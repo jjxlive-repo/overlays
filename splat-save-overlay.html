@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=1920, height=1080">
 <title>Splat Save Overlay</title>
 <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
   :root {
     --clr-deep:    #3B0764;
@@ -118,16 +119,12 @@
   }
   #glow-ring.visible { opacity:1; }
   @keyframes ringPulse { 0%,100%{transform:translateX(-50%) scale(1)} 50%{transform:translateX(-50%) scale(1.06)} }
-
-  /* Status indicator — top right corner, tiny */
   #status-dot {
     position:fixed; top:16px; right:16px;
     width:12px; height:12px; border-radius:50%;
-    background:#333; opacity:0.5;
-    transition:background 0.3s ease;
-    z-index:999;
+    background:#333; opacity:0.5; transition:background 0.3s ease; z-index:999;
   }
-  #status-dot.connected { background:#22c55e; }
+  #status-dot.connected { background:#22c55e; opacity:0.8; }
 </style>
 </head>
 <body>
@@ -167,12 +164,9 @@
     <svg id="crack-svg" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"></svg>
   </div>
 </div>
-<div id="status-dot" title="Controller connection"></div>
+<div id="status-dot"></div>
 
 <script>
-/* ============================================================
-   CONFIGURATION — edit these values to customise everything
-============================================================ */
 const CONFIG = {
   TIMER_SECONDS:      60,
   COPY_COUNTDOWN:     "⚠️ Send a Galaxy or $10 to SAVE the run!",
@@ -185,37 +179,31 @@ const CONFIG = {
   SOUND_RESET_FREQ:   220,
   SOUND_SAVE_FREQ:    880,
   SOUND_EXPIRE_FREQ:  110,
-  // BroadcastChannel name — must match in controller file
-  CHANNEL_NAME:       "splat-overlay-control",
+  ABLY_KEY:           "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0",
+  ABLY_CHANNEL:       "splat-overlay",
 };
-/* ============================================================ */
 
-/* ── BroadcastChannel listener ──────────────────────────── */
-// This lets the controller page (open in another tab/window)
-// send commands to this overlay — works across tabs on the
-// same GitHub Pages origin, so TikTok Studio picks up the
-// state when the overlay page is loaded there.
-const channel = new BroadcastChannel(CONFIG.CHANNEL_NAME);
+/* ── Ably connection ────────────────────────────────────── */
 const statusDot = document.getElementById("status-dot");
+const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+const ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);
 
-channel.onmessage = (e) => {
-  const { cmd } = e.data || {};
-  if (cmd === "ping") {
-    statusDot.classList.add("connected");
-    channel.postMessage({ cmd: "pong" });
-  } else if (cmd === "reset") {
-    enterCountdown();
-  } else if (cmd === "save") {
-    if (state === STATE.COUNTDOWN) enterSaved();
-  } else if (cmd === "idle") {
-    enterIdle();
-  }
-};
+ably.connection.on("connected", () => {
+  statusDot.classList.add("connected");
+});
 
-// Also support legacy keyboard shortcuts when page has focus
+ablyChannel.subscribe("cmd", (msg) => {
+  const cmd = msg.data;
+  if (cmd === "reset")      enterCountdown();
+  else if (cmd === "save")  { if (state === STATE.COUNTDOWN) enterSaved(); }
+  else if (cmd === "idle")  enterIdle();
+});
+
+/* ── Keyboard fallback ──────────────────────────────────── */
 document.addEventListener("keydown", e => {
   if (e.key === "[") enterCountdown();
   else if (e.key === "]") { if (state === STATE.COUNTDOWN) enterSaved(); }
+  else if (e.key === "Escape") enterIdle();
 });
 
 /* ── Audio ──────────────────────────────────────────────── */
@@ -230,35 +218,29 @@ function playSound(type) {
     if (type === "reset") {
       [0, 0.12].forEach((delay, i) => {
         const osc = ctx.createOscillator(), g = ctx.createGain();
-        osc.connect(g); g.connect(ctx.destination);
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(CONFIG.SOUND_RESET_FREQ * (i===0?1.5:1), now+delay);
-        g.gain.setValueAtTime(0.3, now+delay);
-        g.gain.exponentialRampToValueAtTime(0.001, now+delay+0.18);
+        osc.connect(g); g.connect(ctx.destination); osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(CONFIG.SOUND_RESET_FREQ*(i===0?1.5:1), now+delay);
+        g.gain.setValueAtTime(0.3,now+delay); g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.18);
         osc.start(now+delay); osc.stop(now+delay+0.2);
       });
     } else if (type === "save") {
       [0,0.10,0.22,0.36].forEach((delay,i) => {
-        const freq = CONFIG.SOUND_SAVE_FREQ * [1,1.25,1.5,2][i];
+        const freq = CONFIG.SOUND_SAVE_FREQ*[1,1.25,1.5,2][i];
         const osc = ctx.createOscillator(), g = ctx.createGain();
-        osc.connect(g); g.connect(ctx.destination);
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(freq, now+delay);
-        g.gain.setValueAtTime(0.35, now+delay);
-        g.gain.exponentialRampToValueAtTime(0.001, now+delay+0.4);
+        osc.connect(g); g.connect(ctx.destination); osc.type = "sine";
+        osc.frequency.setValueAtTime(freq,now+delay);
+        g.gain.setValueAtTime(0.35,now+delay); g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.4);
         osc.start(now+delay); osc.stop(now+delay+0.45);
       });
     } else if (type === "expire") {
       const osc = ctx.createOscillator(), g = ctx.createGain();
-      osc.connect(g); g.connect(ctx.destination);
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*2, now);
-      osc.frequency.exponentialRampToValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*0.5, now+0.8);
-      g.gain.setValueAtTime(0.4, now);
-      g.gain.exponentialRampToValueAtTime(0.001, now+0.9);
+      osc.connect(g); g.connect(ctx.destination); osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*2,now);
+      osc.frequency.exponentialRampToValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*0.5,now+0.8);
+      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.9);
       osc.start(now); osc.stop(now+1.0);
     }
-  } catch(e) { /* audio blocked — no action needed */ }
+  } catch(e) {}
 }
 
 /* ── DOM refs ───────────────────────────────────────────── */
@@ -291,14 +273,10 @@ BLOBS.forEach((b,i) => {
     background:radial-gradient(ellipse,${b.c} 0%,transparent 70%);opacity:${b.o};
     animation:blobDrift${i} ${b.d}s ease-in-out infinite alternate;`;
   blobLayer.appendChild(el);
-  const dx=(i%2===0?1:-1)*30, dy=(i%3===0?-1:1)*20, dr=(i%2===0?3:-3);
+  const dx=(i%2===0?1:-1)*30,dy=(i%3===0?-1:1)*20,dr=(i%2===0?3:-3);
   addStyle(`@keyframes blobDrift${i}{from{transform:translate(0,0) scale(1) rotate(0deg)}to{transform:translate(${dx}px,${dy}px) scale(1.08) rotate(${dr}deg)}}`);
 });
-function addStyle(css) {
-  const s = document.createElement("style");
-  s.textContent = css;
-  document.head.appendChild(s);
-}
+function addStyle(css) { const s=document.createElement("style"); s.textContent=css; document.head.appendChild(s); }
 
 /* ── State machine ──────────────────────────────────────── */
 const STATE = {IDLE:"idle",COUNTDOWN:"countdown",SAVED:"saved",EXPIRED:"expired"};
@@ -306,12 +284,11 @@ let state = STATE.IDLE;
 let timeLeft = CONFIG.TIMER_SECONDS;
 let ticker = null, lingerTimer = null;
 
-function show(...els) { els.forEach(e => e.classList.add("visible")); }
-function hide(...els) { els.forEach(e => e.classList.remove("visible")); }
+function show(...els) { els.forEach(e=>e.classList.add("visible")); }
+function hide(...els) { els.forEach(e=>e.classList.remove("visible")); }
 
 function enterIdle() {
-  state = STATE.IDLE;
-  clearInterval(ticker); clearTimeout(lingerTimer);
+  state=STATE.IDLE; clearInterval(ticker); clearTimeout(lingerTimer);
   hide(panel,splatBg,blobLayer,glowRing,crackLayer);
   timerNumber.className=""; stateBanner.className="";
   progressFill.classList.remove("danger");
@@ -320,70 +297,59 @@ function enterIdle() {
 }
 
 function enterCountdown() {
-  state = STATE.COUNTDOWN;
-  clearInterval(ticker); clearTimeout(lingerTimer);
-  timeLeft = CONFIG.TIMER_SECONDS;
+  state=STATE.COUNTDOWN; clearInterval(ticker); clearTimeout(lingerTimer);
+  timeLeft=CONFIG.TIMER_SECONDS;
   hide(crackLayer); crackSvg.innerHTML=""; burstLayer.innerHTML="";
   crackLayer.querySelectorAll(".drip").forEach(d=>d.remove());
   stateBanner.className=""; stateBanner.textContent="";
   countWrap.style.display="flex";
   progressFill.classList.remove("danger");
   progressFill.style.transition="none"; progressFill.style.width="100%";
-  requestAnimationFrame(()=>{
-    progressFill.style.transition="width 0.9s linear,background 0.3s ease";
-  });
-  updateDisplay();
-  show(panel,splatBg,blobLayer,glowRing);
-  playSound("reset");
-  ticker = setInterval(()=>{ timeLeft--; updateDisplay(); if(timeLeft<=0) enterExpired(); }, 1000);
+  requestAnimationFrame(()=>{ progressFill.style.transition="width 0.9s linear,background 0.3s ease"; });
+  updateDisplay(); show(panel,splatBg,blobLayer,glowRing); playSound("reset");
+  ticker=setInterval(()=>{ timeLeft--; updateDisplay(); if(timeLeft<=0) enterExpired(); },1000);
 }
 
 function enterSaved() {
-  if (state !== STATE.COUNTDOWN) return;
-  state = STATE.SAVED;
-  clearInterval(ticker);
+  if(state!==STATE.COUNTDOWN) return;
+  state=STATE.SAVED; clearInterval(ticker);
   playSound("save");
   countWrap.style.display="none";
-  stateBanner.textContent=CONFIG.COPY_SAVED;
-  stateBanner.className="saved-text";
+  stateBanner.textContent=CONFIG.COPY_SAVED; stateBanner.className="saved-text";
   triggerBurst();
-  lingerTimer = setTimeout(enterIdle, CONFIG.SAVED_LINGER_MS);
+  lingerTimer=setTimeout(enterIdle,CONFIG.SAVED_LINGER_MS);
 }
 
 function enterExpired() {
-  state = STATE.EXPIRED;
-  clearInterval(ticker);
+  state=STATE.EXPIRED; clearInterval(ticker);
   playSound("expire");
   timerNumber.textContent="0"; timerNumber.className="pulse-danger";
   progressFill.style.width="0%";
   setTimeout(()=>{
     countWrap.style.display="none";
-    stateBanner.textContent=CONFIG.COPY_EXPIRED;
-    stateBanner.className="expired-text";
+    stateBanner.textContent=CONFIG.COPY_EXPIRED; stateBanner.className="expired-text";
     triggerCrack();
-  }, 300);
-  lingerTimer = setTimeout(enterIdle, CONFIG.EXPIRED_LINGER_MS);
+  },300);
+  lingerTimer=setTimeout(enterIdle,CONFIG.EXPIRED_LINGER_MS);
 }
 
 function updateDisplay() {
-  const pct = timeLeft/CONFIG.TIMER_SECONDS;
-  timerNumber.textContent=timeLeft;
-  progressFill.style.width=(pct*100)+"%";
+  const pct=timeLeft/CONFIG.TIMER_SECONDS;
+  timerNumber.textContent=timeLeft; progressFill.style.width=(pct*100)+"%";
   timerNumber.classList.remove("pulse-normal","pulse-warn","pulse-danger");
-  if (timeLeft<=CONFIG.DANGER_THRESHOLD) { timerNumber.classList.add("pulse-danger"); progressFill.classList.add("danger"); }
-  else if (timeLeft<=CONFIG.WARN_THRESHOLD) { timerNumber.classList.add("pulse-warn"); }
-  else { timerNumber.classList.add("pulse-normal"); }
+  if(timeLeft<=CONFIG.DANGER_THRESHOLD){ timerNumber.classList.add("pulse-danger"); progressFill.classList.add("danger"); }
+  else if(timeLeft<=CONFIG.WARN_THRESHOLD){ timerNumber.classList.add("pulse-warn"); }
+  else{ timerNumber.classList.add("pulse-normal"); }
 }
 
 function triggerBurst() {
   const colors=["#A855F7","#C084FC","#E879F9","#7B2FBE","#DDD6FE","#FBBF24"];
   for(let i=0;i<30;i++){
     const el=document.createElement("div"); el.className="splat-particle";
-    const sz=20+Math.random()*90, ang=(i/30)*360+Math.random()*24;
+    const sz=20+Math.random()*90,ang=(i/30)*360+Math.random()*24;
     const r=160+Math.random()*520;
-    const dx=Math.cos(ang*Math.PI/180)*r, dy=Math.sin(ang*Math.PI/180)*r;
-    const col=colors[i%colors.length], dur=0.5+Math.random()*0.6, del=Math.random()*0.18;
-    const rot=Math.random()*360;
+    const dx=Math.cos(ang*Math.PI/180)*r,dy=Math.sin(ang*Math.PI/180)*r;
+    const col=colors[i%colors.length],dur=0.5+Math.random()*0.6,del=Math.random()*0.18,rot=Math.random()*360;
     el.style.cssText=`width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;
       left:calc(50% - ${sz/2}px);top:calc(80% - ${sz/2}px);
       background:radial-gradient(ellipse at 35% 35%,${col},${col}99);
@@ -394,7 +360,7 @@ function triggerBurst() {
     burstLayer.appendChild(el);
   }
   splatBg.style.filter="drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))";
-  setTimeout(()=>{ splatBg.style.filter="drop-shadow(0 0 40px rgba(168,85,247,0.6))"; }, 600);
+  setTimeout(()=>{ splatBg.style.filter="drop-shadow(0 0 40px rgba(168,85,247,0.6))"; },600);
 }
 
 function triggerCrack() {
@@ -425,7 +391,7 @@ function triggerCrack() {
   });
   [150,350,560,780,1050,1280,1540,1760].forEach((x,i)=>{
     const drip=document.createElement("div"); drip.className="drip";
-    const h=80+Math.random()*200, w=8+Math.random()*14;
+    const h=80+Math.random()*200,w=8+Math.random()*14;
     drip.style.cssText=`left:${x}px;height:${h}px;width:${w}px;
       background:linear-gradient(180deg,#F43F5E,#7F1D1D);
       animation:dripDown ${0.6+Math.random()*0.4}s ${0.2+i*0.07}s ease-in forwards;`;
