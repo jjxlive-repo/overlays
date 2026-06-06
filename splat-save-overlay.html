@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1920, height=1080">
+<meta name="viewport" content="width=1080, height=1920">
 <title>Splat Save Overlay</title>
 <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
@@ -17,41 +17,50 @@
     --clr-danger:  #F43F5E;
     --clr-gold:    #FBBF24;
   }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
   html, body {
-    width: 1920px; height: 1080px;
+    width: 1080px; height: 1920px;
     overflow: hidden;
     background: transparent;
     font-family: 'DM Sans', sans-serif;
   }
   #scene {
-    position: relative; width: 1920px; height: 1080px;
+    position: relative; width: 1080px; height: 1920px;
     display: flex; align-items: center; justify-content: center;
     pointer-events: none;
   }
+
+  /* ── Blobs ── */
   .blob-layer { position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity 0.6s ease; }
   .blob-layer.visible { opacity:1; }
   .blob { position:absolute; border-radius:50%; filter:blur(2px); }
+
+  /* ── Panel ── */
   #panel {
     position:relative; z-index:10;
-    display:flex; flex-direction:column; align-items:center; gap:18px;
+    display:flex; flex-direction:column; align-items:center; gap:24px;
+    width: 900px;
     opacity:0; transform:translateY(40px) scale(0.9);
     transition:opacity 0.5s cubic-bezier(.34,1.56,.64,1), transform 0.5s cubic-bezier(.34,1.56,.64,1);
     pointer-events:none;
   }
   #panel.visible { opacity:1; transform:translateY(0) scale(1); }
+
+  /* ── Splat bg ── */
   #splat-bg {
-    position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
-    width:920px; height:280px; z-index:9; opacity:0; transition:opacity 0.5s ease;
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:900px; height:280px; z-index:9; opacity:0; transition:opacity 0.5s ease;
     filter:drop-shadow(0 0 40px rgba(168,85,247,0.6));
   }
   #splat-bg.visible { opacity:1; }
-  #countdown-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; }
+
+  /* ── Timer ── */
+  #countdown-wrap { display:flex; flex-direction:column; align-items:center; gap:14px; width:100%; }
   #timer-number {
-    font-family:'Boogaloo',cursive; font-size:160px; line-height:1;
+    font-family:'Boogaloo',cursive; font-size:200px; line-height:1;
     color:var(--clr-white);
     text-shadow:0 0 20px var(--clr-bright),0 0 60px var(--clr-mid),0 4px 0 rgba(0,0,0,0.4);
-    letter-spacing:-4px;
+    letter-spacing:-6px;
   }
   #timer-number.pulse-normal { animation:pulseNormal 1s ease-in-out infinite; }
   #timer-number.pulse-warn   { animation:pulseWarn 0.5s ease-in-out infinite; }
@@ -63,23 +72,27 @@
     50%{transform:scale(1.14);color:var(--clr-danger);text-shadow:0 0 40px var(--clr-danger),0 0 100px var(--clr-danger)}
   }
   #countdown-label {
-    font-family:'Boogaloo',cursive; font-size:38px; color:var(--clr-white);
+    font-family:'Boogaloo',cursive; font-size:42px; color:var(--clr-white);
     text-shadow:0 0 16px var(--clr-bright),0 2px 0 rgba(0,0,0,0.5);
-    text-align:center; letter-spacing:1px;
+    text-align:center; letter-spacing:1px; padding: 0 20px;
   }
+
+  /* ── Progress bar ── */
   #progress-track {
-    width:700px; height:14px; background:rgba(255,255,255,0.12);
-    border-radius:7px; overflow:hidden; box-shadow:0 0 12px rgba(168,85,247,0.4);
+    width:800px; height:16px; background:rgba(255,255,255,0.12);
+    border-radius:8px; overflow:hidden; box-shadow:0 0 12px rgba(168,85,247,0.4);
   }
   #progress-fill {
     height:100%;
     background:linear-gradient(90deg,var(--clr-mid),var(--clr-accent),var(--clr-light));
-    border-radius:7px; width:100%; transition:width 0.9s linear,background 0.3s ease;
+    border-radius:8px; width:100%; transition:width 0.9s linear,background 0.3s ease;
   }
   #progress-fill.danger { background:linear-gradient(90deg,#7F1D1D,var(--clr-danger),#FB7185); }
+
+  /* ── State banners ── */
   #state-banner {
-    font-family:'Boogaloo',cursive; font-size:72px; color:var(--clr-white);
-    text-align:center; letter-spacing:2px;
+    font-family:'Boogaloo',cursive; font-size:80px; color:var(--clr-white);
+    text-align:center; letter-spacing:2px; padding: 0 40px;
     text-shadow:0 0 30px var(--clr-bright),0 4px 0 rgba(0,0,0,0.5);
   }
   #state-banner.saved-text {
@@ -105,23 +118,34 @@
     60%{transform:translateX(8px)}
     75%{transform:translateX(-4px)}
   }
+
+  /* ── Burst particles — contained ── */
   #burst-layer { position:absolute; inset:0; pointer-events:none; z-index:20; overflow:hidden; }
   .splat-particle { position:absolute; border-radius:50% 70% 50% 70% / 60% 50% 70% 50%; opacity:0; transform:scale(0); }
+
+  /* ── Crack layer ── */
   #crack-layer { position:absolute; inset:0; pointer-events:none; z-index:15; opacity:0; transition:opacity 0.3s ease; }
   #crack-layer.visible { opacity:1; }
   .drip { position:absolute; top:0; border-radius:0 0 50% 50%; opacity:0; transform-origin:top center; }
+
+  /* ── Glow ring ── */
   #glow-ring {
     position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    width:800px; height:800px; border-radius:50%;
+    width:900px; height:900px; border-radius:50%;
     background:radial-gradient(ellipse,rgba(168,85,247,0.15) 0%,transparent 70%);
     pointer-events:none; z-index:8; opacity:0; transition:opacity 0.6s ease;
     animation:ringPulse 2s ease-in-out infinite;
   }
   #glow-ring.visible { opacity:1; }
-  @keyframes ringPulse { 0%,100%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(1.06)} }
+  @keyframes ringPulse {
+    0%,100%{transform:translate(-50%,-50%) scale(1)}
+    50%{transform:translate(-50%,-50%) scale(1.06)}
+  }
+
+  /* ── Connection dot ── */
   #status-dot {
-    position:fixed; top:16px; right:16px;
-    width:12px; height:12px; border-radius:50%;
+    position:fixed; top:20px; right:20px;
+    width:14px; height:14px; border-radius:50%;
     background:#333; opacity:0.5; transition:background 0.3s ease; z-index:999;
   }
   #status-dot.connected { background:#22c55e; opacity:0.8; }
@@ -131,7 +155,8 @@
 <div id="scene">
   <div class="blob-layer" id="blob-layer"></div>
   <div id="glow-ring"></div>
-  <svg id="splat-bg" viewBox="0 0 920 280" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+
+  <svg id="splat-bg" viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
     <defs>
       <radialGradient id="splatGrad" cx="50%" cy="60%" r="60%">
         <stop offset="0%"   stop-color="#A855F7" stop-opacity="0.95"/>
@@ -145,12 +170,13 @@
     </defs>
     <path d="M80,200 C40,180 20,150 30,110 C40,70 80,50 120,60 C130,30 160,10 200,20 C220,-5 260,5 270,35 C300,10 350,15 360,50 C400,20 450,30 455,70 C490,40 540,55 535,95 C575,70 620,90 610,130 C650,110 700,135 690,175 C730,160 770,185 755,220 C790,210 820,240 800,270 C770,290 720,280 700,255 C670,280 630,275 620,250 C590,270 550,260 545,235 C510,255 470,245 470,220 C440,240 400,230 405,205 C370,220 330,205 335,180 C300,195 260,178 270,155 C230,168 190,150 200,125 C160,138 120,118 130,95 C95,105 70,135 80,200 Z" fill="url(#splatGrad)"/>
     <path d="M150,80 C160,50 210,40 240,55 C260,30 310,35 320,60 C340,40 380,48 375,75 C360,55 320,52 305,72 C295,48 255,43 240,65 C218,47 170,52 150,80 Z" fill="url(#splatShine)" opacity="0.7"/>
-    <ellipse cx="50"  cy="215" rx="28" ry="20" fill="#7B2FBE" opacity="0.8"/>
-    <ellipse cx="870" cy="200" rx="34" ry="22" fill="#7B2FBE" opacity="0.8"/>
-    <ellipse cx="460" cy="270" rx="22" ry="14" fill="#A855F7" opacity="0.7"/>
-    <ellipse cx="100" cy="255" rx="18" ry="12" fill="#9333EA" opacity="0.6"/>
-    <ellipse cx="820" cy="250" rx="20" ry="13" fill="#9333EA" opacity="0.6"/>
+    <ellipse cx="30"  cy="215" rx="24" ry="17" fill="#7B2FBE" opacity="0.8"/>
+    <ellipse cx="870" cy="200" rx="28" ry="19" fill="#7B2FBE" opacity="0.8"/>
+    <ellipse cx="450" cy="270" rx="20" ry="13" fill="#A855F7" opacity="0.7"/>
+    <ellipse cx="90"  cy="255" rx="16" ry="11" fill="#9333EA" opacity="0.6"/>
+    <ellipse cx="810" cy="250" rx="18" ry="12" fill="#9333EA" opacity="0.6"/>
   </svg>
+
   <div id="panel">
     <div id="countdown-wrap">
       <div id="timer-number">60</div>
@@ -159,14 +185,18 @@
     </div>
     <div id="state-banner"></div>
   </div>
+
   <div id="burst-layer"></div>
   <div id="crack-layer">
-    <svg id="crack-svg" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg id="crack-svg" width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg"></svg>
   </div>
 </div>
 <div id="status-dot"></div>
 
 <script>
+/* ============================================================
+   CONFIGURATION
+============================================================ */
 const CONFIG = {
   TIMER_SECONDS:      60,
   COPY_COUNTDOWN:     "⚠️ Send a Galaxy or $10 to SAVE the run!",
@@ -183,67 +213,60 @@ const CONFIG = {
   ABLY_CHANNEL:       "splat-overlay",
 };
 
-/* ── Ably connection ────────────────────────────────────── */
+/* ── Ably ───────────────────────────────────────────────── */
 const statusDot = document.getElementById("status-dot");
 const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
 const ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);
-
-ably.connection.on("connected", () => {
-  statusDot.classList.add("connected");
-});
-
+ably.connection.on("connected", () => { statusDot.classList.add("connected"); });
 ablyChannel.subscribe("cmd", (msg) => {
   const cmd = msg.data;
-  if (cmd === "reset")      enterCountdown();
+  if      (cmd === "reset") enterCountdown();
   else if (cmd === "save")  { if (state === STATE.COUNTDOWN) enterSaved(); }
   else if (cmd === "idle")  enterIdle();
 });
 
-/* ── Keyboard fallback ──────────────────────────────────── */
+/* ── Keyboard fallback ── */
 document.addEventListener("keydown", e => {
   if (e.key === "[") enterCountdown();
   else if (e.key === "]") { if (state === STATE.COUNTDOWN) enterSaved(); }
   else if (e.key === "Escape") enterIdle();
 });
 
-/* ── Audio ──────────────────────────────────────────────── */
+/* ── Audio ── */
 let audioCtx = null;
-function ensureAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-}
+function ensureAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
 function playSound(type) {
   try {
-    ensureAudio();
-    const ctx = audioCtx, now = ctx.currentTime;
-    if (type === "reset") {
-      [0, 0.12].forEach((delay, i) => {
-        const osc = ctx.createOscillator(), g = ctx.createGain();
-        osc.connect(g); g.connect(ctx.destination); osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(CONFIG.SOUND_RESET_FREQ*(i===0?1.5:1), now+delay);
-        g.gain.setValueAtTime(0.3,now+delay); g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.18);
-        osc.start(now+delay); osc.stop(now+delay+0.2);
+    ensureAudio(); const ctx=audioCtx, now=ctx.currentTime;
+    if (type==="reset") {
+      [0,0.12].forEach((delay,i)=>{
+        const osc=ctx.createOscillator(),g=ctx.createGain();
+        osc.connect(g);g.connect(ctx.destination);osc.type="sawtooth";
+        osc.frequency.setValueAtTime(CONFIG.SOUND_RESET_FREQ*(i===0?1.5:1),now+delay);
+        g.gain.setValueAtTime(0.3,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.18);
+        osc.start(now+delay);osc.stop(now+delay+0.2);
       });
-    } else if (type === "save") {
-      [0,0.10,0.22,0.36].forEach((delay,i) => {
-        const freq = CONFIG.SOUND_SAVE_FREQ*[1,1.25,1.5,2][i];
-        const osc = ctx.createOscillator(), g = ctx.createGain();
-        osc.connect(g); g.connect(ctx.destination); osc.type = "sine";
+    } else if (type==="save") {
+      [0,0.10,0.22,0.36].forEach((delay,i)=>{
+        const freq=CONFIG.SOUND_SAVE_FREQ*[1,1.25,1.5,2][i];
+        const osc=ctx.createOscillator(),g=ctx.createGain();
+        osc.connect(g);g.connect(ctx.destination);osc.type="sine";
         osc.frequency.setValueAtTime(freq,now+delay);
-        g.gain.setValueAtTime(0.35,now+delay); g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.4);
-        osc.start(now+delay); osc.stop(now+delay+0.45);
+        g.gain.setValueAtTime(0.35,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.4);
+        osc.start(now+delay);osc.stop(now+delay+0.45);
       });
-    } else if (type === "expire") {
-      const osc = ctx.createOscillator(), g = ctx.createGain();
-      osc.connect(g); g.connect(ctx.destination); osc.type = "sawtooth";
+    } else if (type==="expire") {
+      const osc=ctx.createOscillator(),g=ctx.createGain();
+      osc.connect(g);g.connect(ctx.destination);osc.type="sawtooth";
       osc.frequency.setValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*2,now);
       osc.frequency.exponentialRampToValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*0.5,now+0.8);
-      g.gain.setValueAtTime(0.4,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.9);
-      osc.start(now); osc.stop(now+1.0);
+      g.gain.setValueAtTime(0.4,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.9);
+      osc.start(now);osc.stop(now+1.0);
     }
   } catch(e) {}
 }
 
-/* ── DOM refs ───────────────────────────────────────────── */
+/* ── DOM refs ── */
 const panel        = document.getElementById("panel");
 const splatBg      = document.getElementById("splat-bg");
 const blobLayer    = document.getElementById("blob-layer");
@@ -258,36 +281,32 @@ const crackSvg     = document.getElementById("crack-svg");
 const countWrap    = document.getElementById("countdown-wrap");
 countLabel.textContent = CONFIG.COPY_COUNTDOWN;
 
-/* ── Ambient blobs ──────────────────────────────────────── */
+/* ── Ambient blobs — repositioned for vertical ── */
 const BLOBS = [
-  {w:340,h:260,l:"5%", t:"55%",c:"#7B2FBE",o:0.25,d:8},
-  {w:260,h:200,l:"80%",t:"60%",c:"#A855F7",o:0.20,d:11},
-  {w:180,h:140,l:"45%",t:"5%", c:"#9333EA",o:0.15,d:7},
-  {w:120,h:100,l:"15%",t:"10%",c:"#C084FC",o:0.18,d:9},
-  {w:150,h:110,l:"70%",t:"15%",c:"#6D28D9",o:0.15,d:13},
+  {w:300,h:240,l:"5%",  t:"35%", c:"#7B2FBE",o:0.22,d:8},
+  {w:240,h:180,l:"65%", t:"55%", c:"#A855F7",o:0.18,d:11},
+  {w:160,h:130,l:"40%", t:"15%", c:"#9333EA",o:0.14,d:7},
+  {w:110,h:90, l:"10%", t:"60%", c:"#C084FC",o:0.16,d:9},
+  {w:140,h:100,l:"70%", t:"25%", c:"#6D28D9",o:0.14,d:13},
 ];
-BLOBS.forEach((b,i) => {
-  const el = document.createElement("div");
-  el.className = "blob";
-  el.style.cssText = `width:${b.w}px;height:${b.h}px;left:${b.l};top:${b.t};
+BLOBS.forEach((b,i)=>{
+  const el=document.createElement("div"); el.className="blob";
+  el.style.cssText=`width:${b.w}px;height:${b.h}px;left:${b.l};top:${b.t};
     background:radial-gradient(ellipse,${b.c} 0%,transparent 70%);opacity:${b.o};
     animation:blobDrift${i} ${b.d}s ease-in-out infinite alternate;`;
   blobLayer.appendChild(el);
-  const dx=(i%2===0?1:-1)*30,dy=(i%3===0?-1:1)*20,dr=(i%2===0?3:-3);
+  const dx=(i%2===0?1:-1)*25,dy=(i%3===0?-1:1)*18,dr=(i%2===0?3:-3);
   addStyle(`@keyframes blobDrift${i}{from{transform:translate(0,0) scale(1) rotate(0deg)}to{transform:translate(${dx}px,${dy}px) scale(1.08) rotate(${dr}deg)}}`);
 });
-function addStyle(css) { const s=document.createElement("style"); s.textContent=css; document.head.appendChild(s); }
+function addStyle(css){const s=document.createElement("style");s.textContent=css;document.head.appendChild(s);}
 
-/* ── State machine ──────────────────────────────────────── */
-const STATE = {IDLE:"idle",COUNTDOWN:"countdown",SAVED:"saved",EXPIRED:"expired"};
-let state = STATE.IDLE;
-let timeLeft = CONFIG.TIMER_SECONDS;
-let ticker = null, lingerTimer = null;
+/* ── State machine ── */
+const STATE={IDLE:"idle",COUNTDOWN:"countdown",SAVED:"saved",EXPIRED:"expired"};
+let state=STATE.IDLE, timeLeft=CONFIG.TIMER_SECONDS, ticker=null, lingerTimer=null;
+function show(...els){els.forEach(e=>e.classList.add("visible"));}
+function hide(...els){els.forEach(e=>e.classList.remove("visible"));}
 
-function show(...els) { els.forEach(e=>e.classList.add("visible")); }
-function hide(...els) { els.forEach(e=>e.classList.remove("visible")); }
-
-function enterIdle() {
+function enterIdle(){
   state=STATE.IDLE; clearInterval(ticker); clearTimeout(lingerTimer);
   hide(panel,splatBg,blobLayer,glowRing,crackLayer);
   timerNumber.className=""; stateBanner.className="";
@@ -296,7 +315,7 @@ function enterIdle() {
   crackLayer.querySelectorAll(".drip").forEach(d=>d.remove());
 }
 
-function enterCountdown() {
+function enterCountdown(){
   state=STATE.COUNTDOWN; clearInterval(ticker); clearTimeout(lingerTimer);
   timeLeft=CONFIG.TIMER_SECONDS;
   hide(crackLayer); crackSvg.innerHTML=""; burstLayer.innerHTML="";
@@ -305,13 +324,13 @@ function enterCountdown() {
   countWrap.style.display="flex";
   progressFill.classList.remove("danger");
   progressFill.style.transition="none"; progressFill.style.width="100%";
-  requestAnimationFrame(()=>{ progressFill.style.transition="width 0.9s linear,background 0.3s ease"; });
+  requestAnimationFrame(()=>{progressFill.style.transition="width 0.9s linear,background 0.3s ease";});
   updateDisplay(); show(panel,splatBg,blobLayer,glowRing); playSound("reset");
-  ticker=setInterval(()=>{ timeLeft--; updateDisplay(); if(timeLeft<=0) enterExpired(); },1000);
+  ticker=setInterval(()=>{timeLeft--;updateDisplay();if(timeLeft<=0)enterExpired();},1000);
 }
 
-function enterSaved() {
-  if(state!==STATE.COUNTDOWN) return;
+function enterSaved(){
+  if(state!==STATE.COUNTDOWN)return;
   state=STATE.SAVED; clearInterval(ticker);
   playSound("save");
   countWrap.style.display="none";
@@ -320,7 +339,7 @@ function enterSaved() {
   lingerTimer=setTimeout(enterIdle,CONFIG.SAVED_LINGER_MS);
 }
 
-function enterExpired() {
+function enterExpired(){
   state=STATE.EXPIRED; clearInterval(ticker);
   playSound("expire");
   timerNumber.textContent="0"; timerNumber.className="pulse-danger";
@@ -333,25 +352,29 @@ function enterExpired() {
   lingerTimer=setTimeout(enterIdle,CONFIG.EXPIRED_LINGER_MS);
 }
 
-function updateDisplay() {
+function updateDisplay(){
   const pct=timeLeft/CONFIG.TIMER_SECONDS;
   timerNumber.textContent=timeLeft; progressFill.style.width=(pct*100)+"%";
   timerNumber.classList.remove("pulse-normal","pulse-warn","pulse-danger");
-  if(timeLeft<=CONFIG.DANGER_THRESHOLD){ timerNumber.classList.add("pulse-danger"); progressFill.classList.add("danger"); }
-  else if(timeLeft<=CONFIG.WARN_THRESHOLD){ timerNumber.classList.add("pulse-warn"); }
-  else{ timerNumber.classList.add("pulse-normal"); }
+  if(timeLeft<=CONFIG.DANGER_THRESHOLD){timerNumber.classList.add("pulse-danger");progressFill.classList.add("danger");}
+  else if(timeLeft<=CONFIG.WARN_THRESHOLD){timerNumber.classList.add("pulse-warn");}
+  else{timerNumber.classList.add("pulse-normal");}
 }
 
-function triggerBurst() {
+/* ── Burst — radius capped to stay within 1080px wide canvas ── */
+function triggerBurst(){
   const colors=["#A855F7","#C084FC","#E879F9","#7B2FBE","#DDD6FE","#FBBF24"];
-  for(let i=0;i<30;i++){
+  const CX=540, CY=960; // center of canvas
+  for(let i=0;i<28;i++){
     const el=document.createElement("div"); el.className="splat-particle";
-    const sz=20+Math.random()*90,ang=(i/30)*360+Math.random()*24;
-    const r=160+Math.random()*520;
-    const dx=Math.cos(ang*Math.PI/180)*r,dy=Math.sin(ang*Math.PI/180)*r;
-    const col=colors[i%colors.length],dur=0.5+Math.random()*0.6,del=Math.random()*0.18,rot=Math.random()*360;
+    const sz=16+Math.random()*60; // smaller particles
+    const ang=(i/28)*360+Math.random()*20;
+    const r=80+Math.random()*260; // max radius 340px — well within 540px half-width
+    const dx=Math.cos(ang*Math.PI/180)*r;
+    const dy=Math.sin(ang*Math.PI/180)*r;
+    const col=colors[i%colors.length],dur=0.5+Math.random()*0.5,del=Math.random()*0.15,rot=Math.random()*360;
     el.style.cssText=`width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;
-      left:calc(50% - ${sz/2}px);top:calc(80% - ${sz/2}px);
+      left:calc(50% - ${sz/2}px);top:calc(50% - ${sz/2}px);
       background:radial-gradient(ellipse at 35% 35%,${col},${col}99);
       border-radius:50% 70% 50% 70% / 60% 50% 70% 50%;
       box-shadow:0 0 ${sz*0.4}px ${col}88;
@@ -360,21 +383,22 @@ function triggerBurst() {
     burstLayer.appendChild(el);
   }
   splatBg.style.filter="drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))";
-  setTimeout(()=>{ splatBg.style.filter="drop-shadow(0 0 40px rgba(168,85,247,0.6))"; },600);
+  setTimeout(()=>{splatBg.style.filter="drop-shadow(0 0 40px rgba(168,85,247,0.6))";},600);
 }
 
-function triggerCrack() {
+/* ── Crack — coordinates for 1080x1920 ── */
+function triggerCrack(){
   show(crackLayer);
-  const cx=960,cy=960;
+  const cx=540,cy=1200; // lower center point
   const crackPaths=[
-    [[cx,cy],[cx-180,cy-300],[cx-260,cy-500],[cx-160,cy-720]],
-    [[cx,cy],[cx+200,cy-280],[cx+310,cy-490],[cx+200,cy-700]],
-    [[cx,cy],[cx-80,cy-440],[cx-50,cy-700],[cx-130,cy-920]],
-    [[cx,cy],[cx+60,cy-390],[cx+90,cy-630],[cx+40,cy-870]],
-    [[cx,cy],[cx-330,cy-200],[cx-510,cy-290],[cx-660,cy-270]],
-    [[cx,cy],[cx+360,cy-180],[cx+570,cy-250],[cx+720,cy-230]],
-    [[cx,cy],[cx-140,cy-150],[cx-360,cy-110],[cx-510,cy-190]],
-    [[cx,cy],[cx+160,cy-140],[cx+410,cy-100],[cx+580,cy-170]],
+    [[cx,cy],[cx-120,cy-280],[cx-180,cy-500],[cx-110,cy-720]],
+    [[cx,cy],[cx+130,cy-260],[cx+200,cy-470],[cx+130,cy-680]],
+    [[cx,cy],[cx-50, cy-420],[cx-30, cy-680],[cx-90, cy-900]],
+    [[cx,cy],[cx+40, cy-370],[cx+60, cy-600],[cx+20, cy-830]],
+    [[cx,cy],[cx-240,cy-180],[cx-380,cy-260],[cx-500,cy-240]],
+    [[cx,cy],[cx+260,cy-160],[cx+400,cy-230],[cx+520,cy-210]],
+    [[cx,cy],[cx-100,cy-130],[cx-280,cy-100],[cx-420,cy-170]],
+    [[cx,cy],[cx+110,cy-120],[cx+300,cy-90], [cx+450,cy-155]],
   ];
   crackPaths.forEach((pts,idx)=>{
     const path=document.createElementNS("http://www.w3.org/2000/svg","path");
@@ -389,7 +413,8 @@ function triggerCrack() {
     crackSvg.appendChild(path);
     requestAnimationFrame(()=>requestAnimationFrame(()=>{path.style.strokeDashoffset="0";}));
   });
-  [150,350,560,780,1050,1280,1540,1760].forEach((x,i)=>{
+  // Drips spread across 1080px width
+  [60,180,300,420,540,660,780,900,1020].forEach((x,i)=>{
     const drip=document.createElement("div"); drip.className="drip";
     const h=80+Math.random()*200,w=8+Math.random()*14;
     drip.style.cssText=`left:${x}px;height:${h}px;width:${w}px;
