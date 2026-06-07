@@ -398,15 +398,36 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
       <span class="panel-toggle open" id="conn-panel-toggle">▼</span>
     </div>
     <div class="panel-body" id="conn-panel-body">
+      <!-- Mode toggle -->
+      <div style="margin-bottom:10px">
+        <label style="margin-bottom:5px">Connection Mode</label>
+        <div class="mode-group">
+          <button class="btn-mode" id="mode-local" data-conn="local">🖥 Desktop App (local)</button>
+          <button class="btn-mode" id="mode-cloud" data-conn="cloud">☁️ Browser Extension (cloud)</button>
+        </div>
+      </div>
+
       <div class="conn-row">
-        <div style="flex:0 0 auto">
-          <label for="ssn-session-id">Session ID</label>
+        <!-- Local mode fields -->
+        <div id="local-fields" style="flex:0 0 auto">
+          <label>Local Port <span class="dim">(SSN desktop default: 7777)</span></label>
           <div class="conn-row" style="gap:6px">
-            <input type="text" id="ssn-session-id" placeholder="your-session-id" autocomplete="off" style="font-family:monospace">
+            <input type="text" id="ssn-port" value="7777" style="width:80px;font-family:monospace">
             <button class="btn-primary" id="btn-connect">Connect</button>
             <button class="btn-secondary hidden" id="btn-disconnect">Disconnect</button>
           </div>
         </div>
+
+        <!-- Cloud mode fields -->
+        <div id="cloud-fields" style="flex:0 0 auto;display:none">
+          <label>Session ID</label>
+          <div class="conn-row" style="gap:6px">
+            <input type="text" id="ssn-session-id" placeholder="your-session-id" autocomplete="off" style="font-family:monospace;min-width:180px">
+            <button class="btn-primary" id="btn-connect-cloud">Connect</button>
+            <button class="btn-secondary hidden" id="btn-disconnect-cloud">Disconnect</button>
+          </div>
+        </div>
+
         <div id="conn-status" style="margin-top:18px">
           <span class="status-dot disconnected" id="status-dot"></span>
           <span id="status-text">Disconnected</span>
@@ -1004,7 +1025,7 @@ function connectSSN(sessionId) {
       if (!joined && ws && ws.readyState === WebSocket.OPEN) {
         joined = true;
         ws.send(`42["join",${JSON.stringify(sessionId)}]`);
-        setStatus('connected', '🟢 Connected');
+        setStatus('connected', 'Connected');
         isConnecting = false;
         console.log('[SSN] Sent join (fallback — no handshake received)');
       }
@@ -1031,7 +1052,7 @@ function connectSSN(sessionId) {
       if (!joined) {
         joined = true;
         ws.send(`42["join",${JSON.stringify(sessionId)}]`);
-        setStatus('connected', '🟢 Connected');
+        setStatus('connected', 'Connected');
         isConnecting = false;
         console.log('[SSN] Namespace connected, sent join');
       }
@@ -1044,7 +1065,7 @@ function connectSSN(sessionId) {
         const payload = JSON.parse(data.slice(2));
         if (!joined) {
           joined = true;
-          setStatus('connected', '🟢 Connected');
+          setStatus('connected', 'Connected');
           isConnecting = false;
         }
         handleSSNEvent(payload);
@@ -1056,7 +1077,7 @@ function connectSSN(sessionId) {
     if (data.startsWith('{') || data.startsWith('[')) {
       try {
         const payload = JSON.parse(data);
-        if (!joined) { joined = true; setStatus('connected', '🟢 Connected'); isConnecting = false; }
+        if (!joined) { joined = true; setStatus('connected', 'Connected'); isConnecting = false; }
         handleSSNEvent(['message', Array.isArray(payload) ? payload[0] : payload]);
       } catch(e) {}
     }
@@ -1070,17 +1091,19 @@ function connectSSN(sessionId) {
     isConnecting = false;
     if (!intentionalDisconnect) {
       setStatus('connecting', '🟡 Reconnecting in 10s…');
-      scheduleReconnect(sessionId);
+      scheduleReconnect(() => connectSSN(sessionId));
     } else {
       setStatus('disconnected', 'Disconnected');
     }
   };
 }
 
-function scheduleReconnect(sessionId) {
+function scheduleReconnect(connectFn) {
   clearTimeout(reconnectTimer);
+  // Accept either a callback or a session ID string (cloud legacy)
+  const fn = typeof connectFn === 'function' ? connectFn : () => connectSSN(connectFn);
   reconnectTimer = setTimeout(() => {
-    if (!intentionalDisconnect) connectSSN(sessionId);
+    if (!intentionalDisconnect) fn();
   }, 10000);
 }
 
@@ -1131,29 +1154,97 @@ function handleSSNEvent(payload) {
 }
 
 /* ── Connection UI ── */
+/* ───────────────────────────── CONNECTION MODE UI ──── */
+let connMode = localStorage.getItem('ssn-conn-mode') || 'local';
+
+function applyConnMode(mode) {
+  connMode = mode;
+  localStorage.setItem('ssn-conn-mode', mode);
+  document.getElementById('local-fields').style.display = mode === 'local' ? 'block' : 'none';
+  document.getElementById('cloud-fields').style.display = mode === 'cloud' ? 'block' : 'none';
+  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
+  document.getElementById('mode-cloud').classList.toggle('active', mode === 'cloud');
+}
+
+document.getElementById('mode-local').addEventListener('click', () => applyConnMode('local'));
+document.getElementById('mode-cloud').addEventListener('click', () => applyConnMode('cloud'));
+
+// Local connect
 document.getElementById('btn-connect').addEventListener('click', () => {
+  const port = document.getElementById('ssn-port').value.trim() || '7777';
+  localStorage.setItem('ssn-port', port);
+  connectSSNLocal(port);
+});
+document.getElementById('btn-disconnect').addEventListener('click', disconnectSSN);
+
+// Cloud connect
+document.getElementById('btn-connect-cloud').addEventListener('click', () => {
   const id = document.getElementById('ssn-session-id').value.trim();
   if (id) localStorage.setItem('ssn-session-id', id);
   connectSSN(id);
 });
-
-document.getElementById('btn-disconnect').addEventListener('click', disconnectSSN);
+document.getElementById('btn-disconnect-cloud').addEventListener('click', disconnectSSN);
 
 document.getElementById('ssn-session-id').addEventListener('change', e => {
-  // Save session ID (but keep it out of logs/exports)
   localStorage.setItem('ssn-session-id', e.target.value.trim());
 });
 
-// Restore session ID
-const savedSession = localStorage.getItem('ssn-session-id') || '';
-document.getElementById('ssn-session-id').value = savedSession;
+// Restore saved values
+document.getElementById('ssn-session-id').value = localStorage.getItem('ssn-session-id') || '';
+document.getElementById('ssn-port').value = localStorage.getItem('ssn-port') || '7777';
+applyConnMode(connMode);
+
+/* ───────────────────────────── LOCAL (DESKTOP APP) CONNECT ──── */
+function connectSSNLocal(port) {
+  intentionalDisconnect = false;
+  if (ws) { ws.close(); ws = null; }
+
+  setStatus('connecting', 'Connecting…');
+  const url = `ws://localhost:${port}`;
+  console.log('[SSN Local] Connecting to', url);
+
+  try { ws = new WebSocket(url); }
+  catch(e) {
+    setStatus('disconnected', 'Error: ' + e.message);
+    scheduleReconnect(() => connectSSNLocal(port));
+    return;
+  }
+
+  ws.onopen = () => {
+    setStatus('connected', 'Connected (local)');
+    console.log('[SSN Local] Connected on port', port);
+  };
+
+  ws.onmessage = (evt) => {
+    const data = evt.data;
+    console.log('[SSN Local] ←', data.length > 200 ? data.slice(0,200) + '…' : data);
+    try {
+      const payload = JSON.parse(data);
+      // SSN desktop sends raw JSON objects or arrays
+      const obj = Array.isArray(payload) ? payload[0] : payload;
+      handleSSNEvent(['message', obj]);
+    } catch(e) { /* non-JSON frame, ignore */ }
+  };
+
+  ws.onerror = (e) => { console.warn('[SSN Local] WS error', e); };
+
+  ws.onclose = (e) => {
+    console.log('[SSN Local] WS closed', e.code, e.reason);
+    if (!intentionalDisconnect) {
+      setStatus('connecting', '🟡 Reconnecting in 10s…');
+      scheduleReconnect(() => connectSSNLocal(port));
+    } else {
+      setStatus('disconnected', 'Disconnected');
+    }
+  };
+}
 
 /* ───────────────────────────── SETTINGS ──── */
 function applySettings() {
   const mode   = DB.settings.displayMode;
   const iosPct = DB.settings.iosPercent;
 
-  document.querySelectorAll('.btn-mode').forEach(b => {
+  document.querySelectorAll('.btn-mode[data-mode]').forEach(b => {
     b.classList.toggle('active', b.dataset.mode === mode);
   });
 
