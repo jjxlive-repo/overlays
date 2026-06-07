@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🎁 Gift & Donation Tracker</title>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -984,59 +983,48 @@ function setStatus(state, text) {
 function connectSSN(sessionId) {
   if (!sessionId) { alert('Please enter a Session ID.'); return; }
   intentionalDisconnect = false;
-  if (ws) { ws.disconnect(); ws = null; }
+  if (ws) { try { ws.close(); } catch(e) {} ws = null; }
 
   setStatus('connecting', 'Connecting…');
   isConnecting = true;
-  console.log('[SSN] Connecting with socket.io client, session:', sessionId);
 
-  // Use the Socket.IO client library — handles polling→WS upgrade automatically
-  ws = io('https://io.socialstream.ninja', {
-    query: { session: sessionId, channel: '3' },
-    transports: ['polling', 'websocket'],
-    reconnection: false,
-    timeout: 10000,
-  });
+  // SSN plain WebSocket — channel 4 = chat messages from Extension
+  const url = `wss://io.socialstream.ninja/join/${sessionId}/4`;
+  console.log('[SSN] Connecting to', url);
 
-  ws.on('connect', () => {
-    console.log('[SSN] Connected! socket id:', ws.id);
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    console.log('[SSN] WebSocket open');
     setStatus('connected', 'Connected');
     isConnecting = false;
-  });
+  };
 
-  ws.on('connect_error', (err) => {
-    console.warn('[SSN] connect_error:', err.message);
-    setStatus('connecting', '🟡 Reconnecting in 10s…');
-    ws.disconnect();
+  ws.onmessage = (evt) => {
+    try {
+      const data = JSON.parse(evt.data);
+      console.log('[SSN] message', JSON.stringify(data).slice(0, 300));
+      handleSSNEvent(data);
+    } catch(e) {
+      console.warn('[SSN] non-JSON message:', evt.data);
+    }
+  };
+
+  ws.onerror = (err) => {
+    console.warn('[SSN] WebSocket error', err);
+  };
+
+  ws.onclose = (evt) => {
+    console.log('[SSN] Closed — code:', evt.code, 'reason:', evt.reason);
     ws = null;
-    if (!intentionalDisconnect) scheduleReconnect(sessionId);
-  });
-
-  ws.on('disconnect', (reason) => {
-    console.log('[SSN] Disconnected:', reason);
     isConnecting = false;
     if (!intentionalDisconnect) {
-      setStatus('connecting', '🟡 Reconnecting in 10s…');
+      setStatus('connecting', 'Reconnecting in 10s…');
       scheduleReconnect(sessionId);
     } else {
       setStatus('disconnected', 'Disconnected');
     }
-  });
-
-  // SSN sends donation/chat events — listen on all common event names
-  ['message', 'chatmessage', 'chat', 'data', 'event', 'donation'].forEach(evtName => {
-    ws.on(evtName, (data) => {
-      console.log(`[SSN] event:${evtName}`, JSON.stringify(data).slice(0, 200));
-      handleSSNEvent([evtName, typeof data === 'object' ? data : { raw: data }]);
-    });
-  });
-
-  // Catch-all for any other event
-  ws.onAny((evtName, data) => {
-    if (!['connect','disconnect','connect_error','message','chatmessage','chat','data','event','donation'].includes(evtName)) {
-      console.log(`[SSN] unknown event:${evtName}`, JSON.stringify(data).slice(0, 200));
-    }
-  });
+  };
 }
 
 function scheduleReconnect(sessionId) {
@@ -1049,7 +1037,7 @@ function scheduleReconnect(sessionId) {
 function disconnectSSN() {
   intentionalDisconnect = true;
   clearTimeout(reconnectTimer);
-  if (ws) { ws.disconnect(); ws = null; }
+  if (ws) { try { ws.close(); } catch(e) {} ws = null; }
   setStatus('disconnected', 'Disconnected');
 }
 
@@ -1068,9 +1056,8 @@ function mapType(raw) {
 }
 
 function handleSSNEvent(payload) {
-  // payload is [eventName, data] from socket.io
-  if (!Array.isArray(payload) || payload.length < 2) return;
-  const data = payload[1];
+  // payload is a raw JSON object from the plain WebSocket channel 4
+  const data = Array.isArray(payload) ? payload[1] : payload;
   if (!data || typeof data !== 'object') return;
 
   const debugAll = document.getElementById('debug-all')?.checked;
