@@ -1058,9 +1058,36 @@ function mapType(raw) {
 function parseAmount(val) {
   if (!val && val !== 0) return 0;
   if (typeof val === 'number') return val;
-  // Strip currency symbols, commas, spaces — then parse
+  // Strip currency symbols, commas — then parse
   const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
   return isNaN(n) ? 0 : n;
+}
+
+// Extract amount from chatmessage when SSN embeds it as text e.g. "sent 5 roses" or "2500 gold"
+// Returns { amount, type } or null
+const GIFT_PATTERNS = [
+  // "X gold/silver/etc" (YouTube SuperChat tiers)
+  { re: /\b(\d[\d,]*)\s*(gold|silver|blue|teal|green|yellow|orange|red|pink|magenta)\b/i, type: 'youtube_superchat' },
+  // "Super Chat $X" or "$X Super Chat"
+  { re: /\$\s*(\d[\d,.]*)/i,                           type: 'youtube_superchat' },
+  // "sent X roses/stars/etc"
+  { re: /\b(\d[\d,]*)\s*(rose|star|diamond|jewel|heart|panda|universe|lion|rocket)/i, type: 'tiktok_coins' },
+  // "X coins/bits/cheers"
+  { re: /\b(\d[\d,]*)\s*(coin|bit|cheer)/i,            type: 'tiktok_coins' },
+  // fallback: leading number before a gift keyword anywhere in message
+  { re: /\b(\d[\d,]+)\b/,                              type: null },
+];
+
+function extractGiftFromMessage(msg) {
+  if (!msg) return null;
+  for (const { re, type } of GIFT_PATTERNS) {
+    const m = String(msg).match(re);
+    if (m) {
+      const n = parseFloat(m[1].replace(/,/g, ''));
+      if (n > 0) return { amount: n, type };
+    }
+  }
+  return null;
 }
 
 function handleSSNEvent(payload) {
@@ -1070,9 +1097,11 @@ function handleSSNEvent(payload) {
 
   const debugAll = document.getElementById('debug-all')?.checked;
 
-  // Filter: must have donation flag or relevant type (unless debug mode)
-  const hasDonation = data.hasDonation === true || data.hasDonation === 'true'
-    || data.hasDonation === 1 || data.hasDonation === '1';
+  // SSN stores hasDonation as: true (boolean), "true", 1, OR a string like "$5.00" / "2500 gold"
+  const rawHasDonation = data.hasDonation;
+  const hasDonation = !!rawHasDonation && rawHasDonation !== 'false' && rawHasDonation !== '0';
+  const hasDonationStr = (typeof rawHasDonation === 'string' && rawHasDonation !== 'true') ? rawHasDonation : '';
+
   const relevantTypes = ['superchat','gift','donation','cheer','bits','coins','gold','jewel','rose','star','diamond','heart','sub','tier'];
   const rawType = (data.type || data.donoType || '').toLowerCase();
   const rawMsg  = JSON.stringify(data).toLowerCase();
@@ -1084,22 +1113,40 @@ function handleSSNEvent(payload) {
 
   const name = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
 
-  // Try every plausible amount field SSN might use
-  const amount = parseAmount(
+  // 1. Try dedicated numeric fields
+  let amount = parseAmount(
     data.donoValue ?? data.amount ?? data.value ?? data.donationAmount ??
     data.bits ?? data.coins ?? data.superChatAmount ?? data.sticker_amount ?? 0
   );
 
+  // 2. Try hasDonation string value (SSN stores "$5.00" or "2500 gold" here)
+  if (amount === 0 && hasDonationStr) {
+    const fromFlag = extractGiftFromMessage(hasDonationStr) || { amount: parseAmount(hasDonationStr), type: null };
+    if (fromFlag.amount > 0) {
+      amount = fromFlag.amount;
+      console.log('[SSN] Amount from hasDonation string:', hasDonationStr, '→', amount);
+    }
+  }
+
   // Infer type — prefer donoType over platform type
   const typeRaw = data.donoType || data.type || '';
-  const type = mapType(typeRaw);
+  let type = mapType(typeRaw);
   const platform = data.source || data.type || typeToPlatform(type);
   const ts = Date.now();
 
-  // Debug: log when relevant but amount is still zero so we can find the right field
+  // 3. Fallback: parse amount from chatmessage / textContent
+  if (amount === 0 && isRelevant) {
+    const extracted = extractGiftFromMessage(data.chatmessage || data.textContent || '');
+    if (extracted) {
+      amount = extracted.amount;
+      if (extracted.type && type === 'direct_donation') type = extracted.type;
+      console.log('[SSN] Amount from message text:', amount, type);
+    }
+  }
+
+  // Debug: log key gift fields when amount still zero
   if (isRelevant && amount === 0) {
-    console.warn('[SSN] Relevant event but amount=0 — keys:', Object.keys(data).join(', '));
-    console.warn('[SSN] Full event:', JSON.stringify(data).slice(0, 600));
+    console.warn('[SSN] amount=0 | hasDonation:', rawHasDonation, '| chatmessage:', data.chatmessage, '| textContent:', data.textContent, '| donation:', data.donation);
   }
 
   // In debug mode, log everything but only upsert if it looks like a real gift
