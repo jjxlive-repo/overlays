@@ -149,6 +149,68 @@
     background:#333; opacity:0.5; transition:background 0.3s ease; z-index:999;
   }
   #status-dot.connected { background:#22c55e; opacity:0.8; }
+
+  /* ── Idle bait widget ── */
+  #idle-bait {
+    position:absolute; z-index:10;
+    bottom: 680px;
+    left: 50%; transform: translateX(-50%) translateY(30px) scale(0.92);
+    width: 400px; height: 200px;
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    padding: 0 20px;
+    background: rgba(20, 0, 40, 0.72);
+    border: 2px solid rgba(168, 85, 247, 0.55);
+    border-radius: 18px;
+    box-shadow: 0 0 24px rgba(168,85,247,0.35), inset 0 0 20px rgba(59,7,100,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.55s cubic-bezier(.4,0,.2,1), transform 0.55s cubic-bezier(.34,1.56,.64,1), box-shadow 3s ease-in-out;
+  }
+  #idle-bait.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  #idle-bait.visible { animation: baitGlow 3s ease-in-out infinite; }
+  @keyframes baitGlow {
+    0%,100% { box-shadow: 0 0 24px rgba(168,85,247,0.35), inset 0 0 20px rgba(59,7,100,0.4); }
+    50%      { box-shadow: 0 0 50px rgba(168,85,247,0.65), inset 0 0 28px rgba(59,7,100,0.5); }
+  }
+  #bait-galaxy-img {
+    width: 100px; height: 100px; object-fit: contain; flex-shrink: 0;
+    filter: drop-shadow(0 0 10px rgba(232,121,249,0.8)) drop-shadow(0 0 22px rgba(168,85,247,0.6));
+    animation: baitFloat 2.6s ease-in-out infinite;
+  }
+  @keyframes baitFloat {
+    0%,100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-6px) scale(1.04); }
+  }
+  #bait-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  #bait-label-send {
+    font-family:'Boogaloo',cursive; font-size:15px;
+    color: rgba(192,132,252,0.9); letter-spacing:1px; text-transform:uppercase;
+  }
+  #bait-label-main {
+    font-family:'Boogaloo',cursive; font-size:46px; line-height:1;
+    color:var(--clr-white); letter-spacing:2px;
+    text-shadow:0 0 14px rgba(232,121,249,0.9),0 0 32px rgba(168,85,247,0.7),0 3px 0 rgba(0,0,0,0.5);
+    animation: baitTextGlow 3s ease-in-out infinite;
+  }
+  @keyframes baitTextGlow {
+    0%,100% { text-shadow:0 0 14px rgba(232,121,249,0.9),0 0 32px rgba(168,85,247,0.7),0 3px 0 rgba(0,0,0,0.5); }
+    50%      { text-shadow:0 0 24px rgba(232,121,249,1),0 0 56px rgba(168,85,247,0.9),0 3px 0 rgba(0,0,0,0.5); }
+  }
+  #bait-label-sub {
+    font-family:'Boogaloo',cursive; font-size:14px;
+    color: rgba(250,245,255,0.55); letter-spacing:0.5px;
+  }
+  .bait-sparkle {
+    position:absolute; border-radius:50%; background:#E879F9;
+    opacity:0; pointer-events:none;
+    animation: baitSparkle var(--dur) var(--del) ease-in-out infinite;
+  }
+  @keyframes baitSparkle {
+    0%,100%{opacity:0;transform:scale(0)} 50%{opacity:0.9;transform:scale(1)}
+  }
 </style>
 </head>
 <body>
@@ -184,6 +246,18 @@
       <div id="progress-track"><div id="progress-fill"></div></div>
     </div>
     <div id="state-banner"></div>
+  </div>
+
+  <!-- Idle bait widget -->
+  <div id="idle-bait">
+    <img id="bait-galaxy-img"
+         src="https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/resource/79a02148079526539f7599150da9fd28.png~tplv-obj.webp"
+         alt="Galaxy">
+    <div id="bait-text">
+      <span id="bait-label-send">Send a</span>
+      <span id="bait-label-main">RESET/SAVE</span>
+      <span id="bait-label-sub">to start the timer &amp; save the run</span>
+    </div>
   </div>
 
   <div id="burst-layer"></div>
@@ -279,7 +353,22 @@ const burstLayer   = document.getElementById("burst-layer");
 const crackLayer   = document.getElementById("crack-layer");
 const crackSvg     = document.getElementById("crack-svg");
 const countWrap    = document.getElementById("countdown-wrap");
+const idleBait     = document.getElementById("idle-bait");
 countLabel.textContent = CONFIG.COPY_COUNTDOWN;
+
+/* ── Idle bait sparkles ── */
+[
+  {size:5, top:"12%", left:"8%",  dur:"2.1s", del:"0s"   },
+  {size:4, top:"80%", left:"14%", dur:"2.8s", del:"0.4s" },
+  {size:6, top:"20%", left:"90%", dur:"2.4s", del:"0.9s" },
+  {size:3, top:"70%", left:"82%", dur:"1.9s", del:"1.3s" },
+  {size:4, top:"50%", left:"4%",  dur:"3.1s", del:"0.6s" },
+  {size:5, top:"88%", left:"55%", dur:"2.2s", del:"1.8s" },
+].forEach(s=>{
+  const el=document.createElement("div"); el.className="bait-sparkle";
+  el.style.cssText=`width:${s.size}px;height:${s.size}px;top:${s.top};left:${s.left};--dur:${s.dur};--del:${s.del};`;
+  idleBait.appendChild(el);
+});
 
 /* ── Ambient blobs — repositioned for vertical ── */
 const BLOBS = [
@@ -313,10 +402,12 @@ function enterIdle(){
   progressFill.classList.remove("danger");
   burstLayer.innerHTML=""; crackSvg.innerHTML="";
   crackLayer.querySelectorAll(".drip").forEach(d=>d.remove());
+  show(idleBait);
 }
 
 function enterCountdown(){
   state=STATE.COUNTDOWN; clearInterval(ticker); clearTimeout(lingerTimer);
+  hide(idleBait);
   timeLeft=CONFIG.TIMER_SECONDS;
   hide(crackLayer); crackSvg.innerHTML=""; burstLayer.innerHTML="";
   crackLayer.querySelectorAll(".drip").forEach(d=>d.remove());
