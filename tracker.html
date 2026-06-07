@@ -988,8 +988,8 @@ function connectSSN(sessionId) {
   setStatus('connecting', 'Connecting…');
   isConnecting = true;
 
-  // SSN uses Socket.IO — include session in query string, try EIO=3 first
-  const url = `wss://io.socialstream.ninja/socket.io/?EIO=3&transport=websocket&session=${encodeURIComponent(sessionId)}`;
+  // SSN cloud relay: plain Socket.IO URL, session passed via auth in namespace connect
+  const url = `wss://io.socialstream.ninja/socket.io/?EIO=3&transport=websocket`;
   console.log('[SSN] Connecting to', url);
 
   try {
@@ -1000,20 +1000,10 @@ function connectSSN(sessionId) {
     return;
   }
 
-  let joined = false;
+  let authed = false;
 
   ws.onopen = () => {
-    console.log('[SSN] WS open — waiting for server handshake');
-    // Fallback: if no handshake arrives within 2s, attempt join directly
-    setTimeout(() => {
-      if (!joined && ws && ws.readyState === WebSocket.OPEN) {
-        joined = true;
-        ws.send(`42["join",{"session":${JSON.stringify(sessionId)},"channel":"3"}]`);
-        setStatus('connected', 'Connected');
-        isConnecting = false;
-        console.log('[SSN] Sent join on ch3 (fallback — no handshake received)');
-      }
-    }, 2000);
+    console.log('[SSN] WS open');
   };
 
   ws.onmessage = (evt) => {
@@ -1024,22 +1014,31 @@ function connectSSN(sessionId) {
     if (data === '2') { ws.send('3'); return; }
     if (data === '3') { return; }
 
-    // EIO open handshake (0{...}) — respond with namespace connect
+    // EIO open handshake — respond with namespace connect + auth
     if (data.startsWith('0')) {
-      console.log('[SSN] Handshake received, sending 40');
-      ws.send('40');
+      // Pass session as Socket.IO auth so server routes us to the right room
+      const authPacket = `40${JSON.stringify({ auth: { session: sessionId } })}`;
+      console.log('[SSN] Sending auth connect:', authPacket);
+      ws.send(authPacket);
       return;
     }
 
-    // Namespace connected — join session on channel 3 (Chat to External Apps)
+    // Namespace connected (server echoes 40 or 40{...})
     if (data === '40' || data.startsWith('40{') || data.startsWith('40[')) {
-      if (!joined) {
-        joined = true;
-        ws.send(`42["join",{"session":${JSON.stringify(sessionId)},"channel":"3"}]`);
+      if (!authed) {
+        authed = true;
         setStatus('connected', 'Connected');
         isConnecting = false;
-        console.log('[SSN] Namespace connected, sent join on ch3');
+        console.log('[SSN] Namespace connected with auth');
       }
+      return;
+    }
+
+    // Auth error / connection error from server
+    if (data.startsWith('44')) {
+      console.warn('[SSN] Auth/connect error:', data);
+      setStatus('disconnected', 'Auth error — check session ID');
+      ws.close();
       return;
     }
 
@@ -1047,8 +1046,8 @@ function connectSSN(sessionId) {
     if (data.startsWith('42')) {
       try {
         const payload = JSON.parse(data.slice(2));
-        if (!joined) {
-          joined = true;
+        if (!authed) {
+          authed = true;
           setStatus('connected', 'Connected');
           isConnecting = false;
         }
@@ -1057,11 +1056,11 @@ function connectSSN(sessionId) {
       return;
     }
 
-    // Raw JSON fallback (non-Socket.IO)
+    // Raw JSON fallback
     if (data.startsWith('{') || data.startsWith('[')) {
       try {
         const payload = JSON.parse(data);
-        if (!joined) { joined = true; setStatus('connected', 'Connected'); isConnecting = false; }
+        if (!authed) { authed = true; setStatus('connected', 'Connected'); isConnecting = false; }
         handleSSNEvent(['message', Array.isArray(payload) ? payload[0] : payload]);
       } catch(e) {}
     }
