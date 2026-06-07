@@ -516,8 +516,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
           <select id="ag-type">
             <option value="tiktok_coins">TikTok Coins</option>
             <option value="youtube_jewels">YouTube Jewels</option>
-            <option value="youtube_superchat">YouTube SuperChat</option>
-            <option value="twitch_bits">Twitch Bits</option>
+            <option value="youtube_superchat">YouTube SuperChat / Sticker</option>
             <option value="direct_donation">Direct Donation</option>
           </select>
         </div>
@@ -682,20 +681,18 @@ function computeValue(amount, type, mode, iosPercent) {
   if (mode === 'raw') return amount;
   if (mode === 'viewer_spend') {
     switch(type) {
-      case 'tiktok_coins':      return amount * 0.01;
-      case 'youtube_jewels':    return amount * 0.005;
-      case 'youtube_superchat': return amount;
-      case 'twitch_bits':       return amount * 0.014;
-      case 'direct_donation':   return amount;
+      case 'tiktok_coins':      return amount * 0.01;       // 100 coins = $1
+      case 'youtube_jewels':    return amount * 0.01;       // SSN donoValue is already USD — use raw; jewels ~$0.01 each when not using donoValue
+      case 'youtube_superchat': return amount;              // already in USD
+      case 'direct_donation':   return amount;              // already in USD
       default:                  return amount;
     }
   }
   if (mode === 'creator_earnings') {
     switch(type) {
-      case 'tiktok_coins':      return amount * 0.0048;
-      case 'youtube_jewels':    return (amount / 2) * 0.01 * blend;
-      case 'youtube_superchat': return amount * blend;
-      case 'twitch_bits':       return amount * 0.01;
+      case 'tiktok_coins':      return amount * 0.0048;     // ~50% payout, diamonds @ $0.005 each
+      case 'youtube_jewels':    return amount * 0.70;       // YouTube keeps 30%
+      case 'youtube_superchat': return amount * blend;      // YouTube keeps 30%, blended for iOS split
       case 'direct_donation':   return amount;
       default:                  return amount;
     }
@@ -756,7 +753,6 @@ function typeToPlatform(type) {
     case 'tiktok_coins':      return 'tiktok';
     case 'youtube_jewels':
     case 'youtube_superchat': return 'youtube';
-    case 'twitch_bits':       return 'twitch';
     case 'direct_donation':   return 'direct';
     default:                  return 'unknown';
   }
@@ -766,18 +762,16 @@ function platformLabel(platform) {
   switch(platform) {
     case 'tiktok':   return { label: 'TikTok',   cls: 'plat-tiktok' };
     case 'youtube':  return { label: 'YouTube',  cls: 'plat-youtube' };
-    case 'twitch':   return { label: 'Twitch',   cls: 'plat-twitch' };
     case 'direct':   return { label: 'Direct',   cls: 'plat-direct' };
-    default:         return { label: 'Unknown',  cls: 'plat-unknown' };
+    default:         return { label: platform || 'Unknown', cls: 'plat-unknown' };
   }
 }
 
 function typeLabel(type) {
   switch(type) {
-    case 'tiktok_coins':      return 'Coins';
-    case 'youtube_jewels':    return 'Jewels';
+    case 'tiktok_coins':      return 'TikTok Coins';
+    case 'youtube_jewels':    return 'YT Jewels';
     case 'youtube_superchat': return 'SuperChat';
-    case 'twitch_bits':       return 'Bits';
     case 'direct_donation':   return 'Direct';
     default:                  return type || '—';
   }
@@ -1041,115 +1035,132 @@ function disconnectSSN() {
   setStatus('disconnected', 'Disconnected');
 }
 
-/* ── Map SSN event type → our type ── */
-function mapType(raw) {
-  const t = (raw || '').toLowerCase();
-  if (t.includes('coin'))      return 'tiktok_coins';
-  if (t.includes('jewel'))     return 'youtube_jewels';
-  if (t.includes('superchat')) return 'youtube_superchat';
-  if (t.includes('bit'))       return 'twitch_bits';
-  if (t.includes('cheer'))     return 'twitch_bits';
-  if (t.includes('gift'))      return 'tiktok_coins';
-  if (t.includes('donation'))  return 'direct_donation';
-  if (t.includes('dono'))      return 'direct_donation';
+/* ── Map SSN event+platform → our internal type ──
+ *
+ * SSN event reference (YouTube + TikTok only):
+ *   TikTok  gift           → hasDonation = "N coins"   (SSN converts gift→coins)
+ *   YouTube jeweldonation  → hasDonation = "N Jewels",  donoValue = USD numeric
+ *   YouTube donation       → hasDonation = "$5.00"      (Super Chat / Super Sticker)
+ *   YouTube supersticker   → hasDonation = "$5.00"
+ *   any     (webhook)      → hasDonation = "$50.00 USD" (Ko-Fi, Stripe, etc.)
+ */
+function mapEventType(event, platform) {
+  const e = (event  || '').toLowerCase();
+  const p = (platform || '').toLowerCase();
+  if (p === 'tiktok' && e === 'gift')         return 'tiktok_coins';
+  if (e === 'jeweldonation')                   return 'youtube_jewels';
+  if (e === 'donation' || e === 'supersticker') return 'youtube_superchat';
+  if (e === 'giftpurchase')                    return 'youtube_superchat'; // gifted memberships
+  // fallback: guess from platform
+  if (p === 'tiktok')   return 'tiktok_coins';
+  if (p === 'youtube')  return 'youtube_superchat';
   return 'direct_donation';
 }
 
 function parseAmount(val) {
   if (!val && val !== 0) return 0;
   if (typeof val === 'number') return val;
-  // Strip currency symbols, commas — then parse
   const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
   return isNaN(n) ? 0 : n;
 }
 
-// Extract amount from chatmessage when SSN embeds it as text e.g. "sent 5 roses" or "2500 gold"
-// Returns { amount, type } or null
-const GIFT_PATTERNS = [
-  // "X gold/silver/etc" (YouTube SuperChat tiers)
-  { re: /\b(\d[\d,]*)\s*(gold|silver|blue|teal|green|yellow|orange|red|pink|magenta)\b/i, type: 'youtube_superchat' },
-  // "Super Chat $X" or "$X Super Chat"
-  { re: /\$\s*(\d[\d,.]*)/i,                           type: 'youtube_superchat' },
-  // "sent X roses/stars/etc"
-  { re: /\b(\d[\d,]*)\s*(rose|star|diamond|jewel|heart|panda|universe|lion|rocket)/i, type: 'tiktok_coins' },
-  // "X coins/bits/cheers"
-  { re: /\b(\d[\d,]*)\s*(coin|bit|cheer)/i,            type: 'tiktok_coins' },
-  // fallback: leading number before a gift keyword anywhere in message
-  { re: /\b(\d[\d,]+)\b/,                              type: null },
-];
+function stripHtml(str) {
+  return String(str).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
-function extractGiftFromMessage(msg) {
-  if (!msg) return null;
-  for (const { re, type } of GIFT_PATTERNS) {
-    const m = String(msg).match(re);
-    if (m) {
-      const n = parseFloat(m[1].replace(/,/g, ''));
-      if (n > 0) return { amount: n, type };
-    }
-  }
+// Parse hasDonation string per SSN event type:
+//   TikTok gift   → "150 coins"   → { amount: 150, type: 'tiktok_coins' }
+//   YT jewel      → "500 Jewels"  → { amount: 500, type: 'youtube_jewels' }
+//   YT superchat  → "$5.00"       → { amount: 5,   type: 'youtube_superchat' }
+//   webhook       → "$50.00 USD"  → { amount: 50,  type: 'direct_donation' }
+function parseHasDonation(str, knownType) {
+  if (!str) return null;
+  const s = stripHtml(str).trim();
+
+  // "$X" or "$X.XX USD" → dollar amount
+  const dollar = s.match(/\$\s*([\d,]+(?:\.\d+)?)/);
+  if (dollar) return { amount: parseFloat(dollar[1].replace(/,/g, '')), type: knownType || 'direct_donation' };
+
+  // "N coins" → TikTok coins
+  const coins = s.match(/^([\d,]+)\s*coins?$/i);
+  if (coins) return { amount: parseFloat(coins[1].replace(/,/g, '')), type: 'tiktok_coins' };
+
+  // "N Jewels" → YouTube jewels
+  const jewels = s.match(/^([\d,]+)\s*jewels?$/i);
+  if (jewels) return { amount: parseFloat(jewels[1].replace(/,/g, '')), type: 'youtube_jewels' };
+
+  // "N Gifted" → YouTube gift memberships (use donoValue instead, but extract N)
+  const gifted = s.match(/^([\d,]+)\s*gifted$/i);
+  if (gifted) return { amount: parseFloat(gifted[1].replace(/,/g, '')), type: 'youtube_superchat' };
+
+  // Generic leading number
+  const generic = s.match(/^([\d,]+(?:\.\d+)?)/);
+  if (generic) return { amount: parseFloat(generic[1].replace(/,/g, '')), type: knownType || null };
+
   return null;
 }
 
 function handleSSNEvent(payload) {
-  // payload is a raw JSON object from the plain WebSocket channel 4
   const data = Array.isArray(payload) ? payload[1] : payload;
   if (!data || typeof data !== 'object') return;
 
   const debugAll = document.getElementById('debug-all')?.checked;
 
-  // SSN stores hasDonation as: true (boolean), "true", 1, OR a string like "$5.00" / "2500 gold"
+  // Only process donation/gift events — filter by hasDonation or known gift event names
   const rawHasDonation = data.hasDonation;
   const hasDonation = !!rawHasDonation && rawHasDonation !== 'false' && rawHasDonation !== '0';
   const hasDonationStr = (typeof rawHasDonation === 'string' && rawHasDonation !== 'true') ? rawHasDonation : '';
 
-  const relevantTypes = ['superchat','gift','donation','cheer','bits','coins','gold','jewel','rose','star','diamond','heart','sub','tier'];
-  const rawType = (data.type || data.donoType || '').toLowerCase();
-  const rawMsg  = JSON.stringify(data).toLowerCase();
-  const isRelevant = hasDonation
-    || relevantTypes.some(t => rawType.includes(t))
-    || relevantTypes.some(t => rawMsg.includes(t));
+  // data.event may be a string ("gift","donation","jeweldonation"…) OR boolean true (TikTok generic)
+  // Per SSN docs: hasDonation is the primary donation signal — data.event is often absent
+  const ssnEvent    = (data.event && data.event !== true) ? String(data.event).toLowerCase() : '';
+  const ssnPlatform = (data.type  || '').toLowerCase();
+  const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase','thankyou'].includes(ssnEvent);
+  const isRelevant  = hasDonation || isGiftEvent;
 
   if (!debugAll && !isRelevant) return;
 
   const name = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
 
-  // 1. Try dedicated numeric fields
-  let amount = parseAmount(
-    data.donoValue ?? data.amount ?? data.value ?? data.donationAmount ??
-    data.bits ?? data.coins ?? data.superChatAmount ?? data.sticker_amount ?? 0
-  );
-
-  // 2. Try hasDonation string value (SSN stores "$5.00" or "2500 gold" here)
-  if (amount === 0 && hasDonationStr) {
-    const fromFlag = extractGiftFromMessage(hasDonationStr) || { amount: parseAmount(hasDonationStr), type: null };
-    if (fromFlag.amount > 0) {
-      amount = fromFlag.amount;
-      console.log('[SSN] Amount from hasDonation string:', hasDonationStr, '→', amount);
-    }
-  }
-
-  // Infer type — prefer donoType over platform type
-  const typeRaw = data.donoType || data.type || '';
-  let type = mapType(typeRaw);
-  const platform = data.source || data.type || typeToPlatform(type);
+  // Determine our internal type first so parseHasDonation can use it
+  let type = mapEventType(ssnEvent, ssnPlatform);
+  const platform = ssnPlatform || typeToPlatform(type);
   const ts = Date.now();
 
-  // 3. Fallback: parse amount from chatmessage / textContent
-  if (amount === 0 && isRelevant) {
-    const extracted = extractGiftFromMessage(data.chatmessage || data.textContent || '');
-    if (extracted) {
-      amount = extracted.amount;
-      if (extracted.type && type === 'direct_donation') type = extracted.type;
-      console.log('[SSN] Amount from message text:', amount, type);
+  // Amount resolution — in priority order:
+  // 1. donoValue (numeric USD, present on jeweldonation & giftpurchase)
+  // 2. hasDonation string ("N coins", "N Jewels", "$5.00")
+  // 3. other numeric fields
+  let amount = 0;
+
+  if (data.donoValue !== undefined && data.donoValue !== null && data.donoValue !== '') {
+    const dv = parseAmount(data.donoValue);
+    if (dv > 0) {
+      amount = dv;
+      // donoValue is already USD for jewels/giftpurchase — treat as superchat-equivalent
+      if (type === 'youtube_jewels') type = 'youtube_superchat';
     }
   }
 
-  // Debug: log key gift fields when amount still zero
-  if (isRelevant && amount === 0) {
-    console.warn('[SSN] amount=0 | hasDonation:', rawHasDonation, '| chatmessage:', data.chatmessage, '| textContent:', data.textContent, '| donation:', data.donation);
+  if (amount === 0 && hasDonationStr) {
+    const parsed = parseHasDonation(hasDonationStr, type);
+    if (parsed && parsed.amount > 0) {
+      amount = parsed.amount;
+      if (parsed.type) type = parsed.type;
+      console.log('[SSN] amount from hasDonation:', hasDonationStr, '→', amount, type);
+    }
   }
 
-  // In debug mode, log everything but only upsert if it looks like a real gift
+  if (amount === 0) {
+    amount = parseAmount(data.amount ?? data.value ?? data.donationAmount ?? data.coins ?? 0);
+  }
+
+  if (isRelevant && amount === 0) {
+    console.warn('[SSN] amount=0 | event:', ssnEvent, '| platform:', ssnPlatform,
+      '| hasDonation:', rawHasDonation, '| donoValue:', data.donoValue,
+      '| chatmessage:', (data.chatmessage || '').slice(0, 80));
+  }
+
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant);
   if (isRelevant && amount > 0) {
     upsertGift(name, amount, type, platform, '');
