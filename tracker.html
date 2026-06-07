@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎁 Gift & Donation Tracker</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0d0d12;
+  --surface:   #16161e;
+  --surface2:  #1e1e2a;
+  --surface3:  #252535;
+  --border:    #2e2e42;
+  --text:      #e2e2f0;
+  --muted:     #7a7a9a;
+  --accent:    #a855f7;
+  --accent2:   #7b2fbe;
+  --green:     #22c55e;
+  --red:       #ef4444;
+  --yellow:    #eab308;
+  --gold:      #f59e0b;
+  --tiktok:    #ee1d52;
+  --youtube:   #ff0000;
+  --twitch:    #9146ff;
+  --direct:    #22c55e;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 12px 16px 40px;
+}
+
+/* ── Typography ── */
+h1 { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: .3px; }
+h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+
+/* ── Layout ── */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.page-header h1 { flex: 1; }
+
+section { margin-bottom: 14px; }
+
+/* ── Collapsible panels ── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface2);
+}
+.panel-header:hover { background: var(--surface3); }
+.panel-header h2 { flex: 1; }
+.panel-toggle { color: var(--muted); font-size: 11px; transition: transform .2s; }
+.panel-toggle.open { transform: rotate(180deg); }
+.panel-body { padding: 12px; }
+.panel-body.hidden { display: none; }
+
+/* ── Forms / Inputs ── */
+input[type=text], input[type=number], input[type=file], select, textarea {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 8px;
+  outline: none;
+  transition: border-color .15s;
+}
+input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+input[type=range] { accent-color: var(--accent); }
+input::placeholder { color: var(--muted); }
+select option { background: var(--surface2); }
+label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 3px; }
+
+/* ── Buttons ── */
+button {
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  transition: opacity .15s, transform .1s;
+  white-space: nowrap;
+}
+button:hover { opacity: .85; }
+button:active { transform: scale(.97); }
+
+.btn-primary   { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--surface3); color: var(--text); border: 1px solid var(--border); }
+.btn-danger    { background: var(--red); color: #fff; }
+.btn-ghost     { background: transparent; color: var(--muted); padding: 4px 6px; }
+.btn-ghost:hover { color: var(--text); background: var(--surface3); }
+.btn-sm { padding: 3px 7px; font-size: 11px; }
+
+.btn-mode {
+  background: var(--surface3);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.btn-mode.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ── Connection row ── */
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.conn-row input { flex: 1; min-width: 160px; max-width: 340px; font-family: monospace; }
+#conn-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.status-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.status-dot.connected    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.connecting   { background: var(--yellow); animation: blink .8s infinite; }
+.status-dot.disconnected { background: var(--red); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── Event log ── */
+#event-log-list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--surface2);
+  animation: slideIn .2s ease;
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.log-time { color: var(--muted); font-size: 10px; font-family: monospace; flex-shrink: 0; }
+.log-name { font-weight: 600; color: var(--accent); }
+.log-amount { font-weight: 700; }
+.log-type { color: var(--muted); font-size: 11px; }
+.log-platform { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+
+/* ── Settings ── */
+.settings-grid {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.mode-group { display: flex; gap: 4px; }
+.slider-wrap { display: flex; align-items: center; gap: 8px; }
+.slider-wrap input { width: 120px; }
+#blended-label { font-size: 11px; color: var(--accent); white-space: nowrap; }
+.ios-group { display: flex; align-items: center; gap: 8px; }
+
+/* ── Table section ── */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.table-toolbar .search-wrap { flex: 1; min-width: 160px; max-width: 280px; }
+.table-toolbar input { width: 100%; }
+
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+thead th {
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+thead th:hover { color: var(--text); }
+thead th.sort-asc::after  { content: ' ↑'; color: var(--accent); }
+thead th.sort-desc::after { content: ' ↓'; color: var(--accent); }
+thead th:last-child { cursor: default; }
+
+tbody tr {
+  border-top: 1px solid var(--border);
+  transition: background .15s;
+}
+tbody tr:hover { background: var(--surface2); }
+tbody tr.flash-gold {
+  animation: goldFlash .8s ease;
+}
+@keyframes goldFlash {
+  0%   { background: rgba(245,158,11,.25); }
+  100% { background: transparent; }
+}
+
+td {
+  padding: 7px 10px;
+  vertical-align: middle;
+}
+.td-name { font-weight: 600; }
+.td-platform { white-space: nowrap; }
+.td-val { font-family: monospace; font-weight: 600; text-align: right; }
+.td-val.positive { color: var(--green); }
+.td-actions { display: flex; gap: 4px; align-items: center; }
+
+.empty-row td {
+  text-align: center;
+  color: var(--muted);
+  padding: 28px;
+  font-style: italic;
+}
+
+/* Platform badges */
+.plat-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.plat-tiktok   { background: rgba(238,29,82,.2);  color: #ff6b8a; }
+.plat-youtube  { background: rgba(255,0,0,.2);    color: #ff6060; }
+.plat-twitch   { background: rgba(145,70,255,.2); color: #b97fff; }
+.plat-direct   { background: rgba(34,197,94,.2);  color: #4ade80; }
+.plat-unknown  { background: rgba(120,120,160,.2);color: var(--muted); }
+
+/* ── Bottom bar ── */
+.bottom-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.bottom-bar .spacer { flex: 1; }
+
+/* ── Add Gifter form ── */
+.add-gifter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.add-gifter-form .form-group { display: flex; flex-direction: column; }
+.add-gifter-form .full-row { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn .15s;
+}
+.modal-overlay.hidden { display: none; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  min-width: 320px;
+  max-width: 440px;
+  width: 90%;
+  animation: slideUp .2s ease;
+}
+@keyframes slideUp { from{transform:translateY(12px);opacity:0} to{transform:none;opacity:1} }
+.modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+.modal .form-row { margin-bottom: 10px; }
+.modal .form-row label { margin-bottom: 4px; }
+.modal .form-row input,
+.modal .form-row select,
+.modal .form-row textarea { width: 100%; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ── Tooltip ── */
+[data-tip] { position: relative; cursor: help; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111;
+  color: #ddd;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 11px;
+  white-space: pre-line;
+  width: max-content;
+  max-width: 260px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 100;
+}
+[data-tip]:hover::after { opacity: 1; }
+
+/* ── Reset confirm input ── */
+#reset-confirm-wrap { margin-top: 10px; }
+#reset-confirm-wrap input { width: 100%; font-family: monospace; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Misc ── */
+.row-gap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dim { color: var(--muted); font-size: 11px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════ PAGE HEADER ══ -->
+<header class="page-header">
+  <h1>🎁 Gift & Donation Tracker</h1>
+  <span class="dim" id="last-updated-label"></span>
+</header>
+
+<!-- ═══════════════════════════════════════ SSN CONNECTION ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="conn-panel-hdr">
+      <h2>📡 Social Stream Ninja</h2>
+      <span id="conn-panel-status" style="font-size:11px;color:var(--muted)">Disconnected</span>
+      <span class="panel-toggle open" id="conn-panel-toggle">▼</span>
+    </div>
+    <div class="panel-body" id="conn-panel-body">
+      <div class="conn-row">
+        <div style="flex:0 0 auto">
+          <label for="ssn-session-id">Session ID</label>
+          <div class="conn-row" style="gap:6px">
+            <input type="text" id="ssn-session-id" placeholder="your-session-id" autocomplete="off" style="font-family:monospace">
+            <button class="btn-primary" id="btn-connect">Connect</button>
+            <button class="btn-secondary hidden" id="btn-disconnect">Disconnect</button>
+          </div>
+        </div>
+        <div id="conn-status" style="margin-top:18px">
+          <span class="status-dot disconnected" id="status-dot"></span>
+          <span id="status-text">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ EVENT LOG ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="log-panel-hdr">
+      <h2>📋 Live Event Log</h2>
+      <span class="dim" id="log-count">0 events captured</span>
+      <span class="panel-toggle open" id="log-toggle">▼</span>
+    </div>
+    <div class="panel-body" id="log-panel-body">
+      <div id="event-log-list">
+        <div style="color:var(--muted);font-style:italic;font-size:12px;padding:4px">
+          Waiting for events — connect SSN above to start capturing…
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ SETTINGS ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="settings-hdr">
+      <h2>⚙️ Display Settings</h2>
+      <span class="panel-toggle" id="settings-toggle">▼</span>
+    </div>
+    <div class="panel-body hidden" id="settings-body">
+      <div class="settings-grid">
+        <div>
+          <label style="margin-bottom:5px">Display Mode</label>
+          <div class="mode-group">
+            <button class="btn-mode" data-mode="raw">Raw Units</button>
+            <button class="btn-mode active" data-mode="viewer_spend">Viewer Spend</button>
+            <button class="btn-mode" data-mode="creator_earnings">Creator Earnings</button>
+          </div>
+        </div>
+        <div class="ios-group" id="ios-group" style="display:none">
+          <div>
+            <label>YouTube iOS % <span class="dim">(who buys on iOS)</span></label>
+            <div class="slider-wrap">
+              <input type="range" id="ios-pct" min="0" max="100" value="50">
+              <span id="ios-val">50%</span>
+              <span id="blended-label">blended ×0.595</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dim" style="margin-top:8px">
+        <strong>Viewer Spend</strong>: what viewers paid&ensp;|&ensp;<strong>Creator Earnings</strong>: what you actually receive&ensp;|&ensp;<strong>Raw Units</strong>: coins/jewels/bits as-is
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ TABLE ══ -->
+<section>
+  <div class="table-toolbar">
+    <div class="search-wrap">
+      <input type="text" id="tbl-search" placeholder="🔍  Search gifters…">
+    </div>
+    <div class="dim" id="tbl-count"></div>
+    <div style="flex:1"></div>
+    <button class="btn-secondary btn-sm" id="btn-show-add">+ Add Gifter</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="gifter-table">
+      <thead>
+        <tr>
+          <th data-col="name">Name</th>
+          <th data-col="platform">Platform</th>
+          <th data-col="type">Type</th>
+          <th data-col="today" class="td-val">Today</th>
+          <th data-col="month" class="td-val">This Month</th>
+          <th data-col="alltime" class="td-val sort-desc">All Time</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="gifter-tbody">
+        <tr class="empty-row"><td colspan="7">No gifters yet — connect SSN or add one manually.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Add Gifter form (collapsed by default) -->
+  <div id="add-gifter-panel" class="panel" style="margin-top:10px;display:none">
+    <div class="panel-body">
+      <h2 style="margin-bottom:8px">Add Gifter Manually</h2>
+      <div class="add-gifter-form">
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" id="ag-name" placeholder="StreamFan99">
+        </div>
+        <div class="form-group">
+          <label>Type *</label>
+          <select id="ag-type">
+            <option value="tiktok_coins">TikTok Coins</option>
+            <option value="youtube_jewels">YouTube Jewels</option>
+            <option value="youtube_superchat">YouTube SuperChat</option>
+            <option value="twitch_bits">Twitch Bits</option>
+            <option value="direct_donation">Direct Donation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount *</label>
+          <input type="number" id="ag-amount" placeholder="0" min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>Note (optional)</label>
+          <input type="text" id="ag-note" placeholder="optional note">
+        </div>
+        <div class="full-row">
+          <button class="btn-secondary" id="btn-hide-add">Cancel</button>
+          <button class="btn-primary" id="btn-add-gifter">Add Entry</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ BOTTOM BAR ══ -->
+<div class="bottom-bar">
+  <button class="btn-secondary" id="btn-export">⬇ Export JSON</button>
+  <label class="btn-secondary" style="cursor:pointer;display:inline-flex;align-items:center;padding:5px 11px;border-radius:5px;font-size:12px;font-weight:600;border:1px solid var(--border);background:var(--surface3)">
+    ⬆ Import JSON
+    <input type="file" id="btn-import" accept=".json" style="display:none">
+  </label>
+  <div class="spacer"></div>
+  <button class="btn-secondary btn-sm" id="btn-reset-today" style="color:var(--yellow)">Reset Today</button>
+  <button class="btn-secondary btn-sm" id="btn-reset-month" style="color:var(--yellow)">Reset Month</button>
+  <button class="btn-danger btn-sm" id="btn-reset-all">Reset All</button>
+</div>
+
+<!-- ═══════════════════════════════════════ MODALS ══ -->
+
+<!-- Add gift modal -->
+<div class="modal-overlay hidden" id="modal-add-gift">
+  <div class="modal">
+    <h3>➕ Add Gift</h3>
+    <div class="dim" id="modal-gifter-name" style="margin-bottom:12px"></div>
+    <div class="form-row">
+      <label>Amount *</label>
+      <input type="number" id="modal-amount" placeholder="e.g. 500" min="0" step="any">
+    </div>
+    <div class="form-row">
+      <label>Type *</label>
+      <select id="modal-type">
+        <option value="tiktok_coins">TikTok Coins</option>
+        <option value="youtube_jewels">YouTube Jewels</option>
+        <option value="youtube_superchat">YouTube SuperChat</option>
+        <option value="twitch_bits">Twitch Bits</option>
+        <option value="direct_donation">Direct Donation</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Note (optional)</label>
+      <input type="text" id="modal-note" placeholder="optional note">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modal-add-cancel">Cancel</button>
+      <button class="btn-primary" id="modal-add-confirm">Add Gift</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename modal -->
+<div class="modal-overlay hidden" id="modal-rename">
+  <div class="modal">
+    <h3>✏️ Rename Gifter</h3>
+    <div class="dim" id="rename-current" style="margin-bottom:10px"></div>
+    <div class="form-row">
+      <label>New Display Name</label>
+      <input type="text" id="rename-input" placeholder="New name">
+    </div>
+    <div class="dim" id="rename-merge-warn" style="color:var(--yellow);margin-top:6px;display:none">
+      ⚠️ This name matches an existing gifter — their gift histories will be merged.
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="rename-cancel">Cancel</button>
+      <button class="btn-primary" id="rename-confirm">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- Undo confirm modal -->
+<div class="modal-overlay hidden" id="modal-undo">
+  <div class="modal">
+    <h3>↩ Undo Last Gift</h3>
+    <div id="undo-detail" style="background:var(--surface2);border-radius:5px;padding:10px;margin-bottom:14px;font-size:12px;color:var(--muted)"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="undo-cancel">Cancel</button>
+      <button class="btn-danger" id="undo-confirm">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal-overlay hidden" id="modal-delete">
+  <div class="modal">
+    <h3>🗑️ Delete Gifter</h3>
+    <div id="delete-detail" style="margin-bottom:14px;color:var(--muted);font-size:12px"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="delete-cancel">Cancel</button>
+      <button class="btn-danger" id="delete-confirm">Delete Everything</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset modal -->
+<div class="modal-overlay hidden" id="modal-reset">
+  <div class="modal">
+    <h3 id="reset-title">Reset Confirmation</h3>
+    <div id="reset-detail" style="color:var(--muted);font-size:12px;margin-bottom:10px"></div>
+    <div id="reset-confirm-wrap" class="hidden">
+      <label>Type <strong>RESET</strong> to confirm</label>
+      <input type="text" id="reset-confirm-input" placeholder="RESET" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="reset-cancel">Cancel</button>
+      <button class="btn-danger" id="reset-do">Confirm Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ SCRIPT ══ -->
+<script>
+'use strict';
+
+/* ───────────────────────────── STORAGE KEY ──── */
+const STORAGE_KEY = 'gift-tracker-data';
+
+/* ───────────────────────────── DEFAULTS ──── */
+function emptyStore() {
+  return { gifters: {}, settings: { displayMode: 'viewer_spend', iosPercent: 50 }, lastUpdated: null };
+}
+
+/* ───────────────────────────── LOAD / SAVE ──── */
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return emptyStore();
+    return JSON.parse(raw);
+  } catch(e) { return emptyStore(); }
+}
+
+function saveData(data) {
+  data.lastUpdated = Date.now();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  renderLastUpdated(data.lastUpdated);
+}
+
+let DB = loadData();
+
+/* ───────────────────────────── CONVERSION ENGINE ──── */
+function blendedRate(iosPercent) {
+  return (iosPercent / 100 * 0.49) + ((1 - iosPercent / 100) * 0.70);
+}
+
+function computeValue(amount, type, mode, iosPercent) {
+  const ios = iosPercent ?? DB.settings.iosPercent ?? 50;
+  const blend = blendedRate(ios);
+  if (mode === 'raw') return amount;
+  if (mode === 'viewer_spend') {
+    switch(type) {
+      case 'tiktok_coins':      return amount * 0.01;
+      case 'youtube_jewels':    return amount * 0.005;
+      case 'youtube_superchat': return amount;
+      case 'twitch_bits':       return amount * 0.014;
+      case 'direct_donation':   return amount;
+      default:                  return amount;
+    }
+  }
+  if (mode === 'creator_earnings') {
+    switch(type) {
+      case 'tiktok_coins':      return amount * 0.0048;
+      case 'youtube_jewels':    return (amount / 2) * 0.01 * blend;
+      case 'youtube_superchat': return amount * blend;
+      case 'twitch_bits':       return amount * 0.01;
+      case 'direct_donation':   return amount;
+      default:                  return amount;
+    }
+  }
+  return amount;
+}
+
+function formatVal(v, mode) {
+  if (mode === 'raw') return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2);
+  return '$' + v.toFixed(2);
+}
+
+/* ───────────────────────────── GIFTER HELPERS ──── */
+function normKey(name) { return name.trim().toLowerCase(); }
+
+function uuidv4() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function gifterTotals(gifter, mode, iosPercent) {
+  const now = Date.now();
+  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+
+  let today = 0, month = 0, allTime = 0;
+  for (const g of gifter.gifts) {
+    const v = computeValue(g.amount, g.type, mode, iosPercent);
+    allTime += v;
+    if (g.timestamp >= monthStart.getTime()) month += v;
+    if (g.timestamp >= midnightToday.getTime()) today += v;
+  }
+  return { today, month, allTime };
+}
+
+function gifterPlatform(gifter) {
+  if (!gifter.gifts.length) return 'unknown';
+  const counts = {};
+  for (const g of gifter.gifts) {
+    const p = typeToPlatform(g.type);
+    counts[p] = (counts[p] || 0) + 1;
+  }
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+function gifterType(gifter) {
+  if (!gifter.gifts.length) return '—';
+  const counts = {};
+  for (const g of gifter.gifts) counts[g.type] = (counts[g.type] || 0) + 1;
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+function typeToPlatform(type) {
+  switch(type) {
+    case 'tiktok_coins':      return 'tiktok';
+    case 'youtube_jewels':
+    case 'youtube_superchat': return 'youtube';
+    case 'twitch_bits':       return 'twitch';
+    case 'direct_donation':   return 'direct';
+    default:                  return 'unknown';
+  }
+}
+
+function platformLabel(platform) {
+  switch(platform) {
+    case 'tiktok':   return { label: 'TikTok',   cls: 'plat-tiktok' };
+    case 'youtube':  return { label: 'YouTube',  cls: 'plat-youtube' };
+    case 'twitch':   return { label: 'Twitch',   cls: 'plat-twitch' };
+    case 'direct':   return { label: 'Direct',   cls: 'plat-direct' };
+    default:         return { label: 'Unknown',  cls: 'plat-unknown' };
+  }
+}
+
+function typeLabel(type) {
+  switch(type) {
+    case 'tiktok_coins':      return 'Coins';
+    case 'youtube_jewels':    return 'Jewels';
+    case 'youtube_superchat': return 'SuperChat';
+    case 'twitch_bits':       return 'Bits';
+    case 'direct_donation':   return 'Direct';
+    default:                  return type || '—';
+  }
+}
+
+/* ───────────────────────────── UPSERT GIFT ──── */
+function upsertGift(rawName, amount, type, platform, note) {
+  const key = normKey(rawName);
+  if (!DB.gifters[key]) {
+    DB.gifters[key] = { displayName: rawName.trim(), gifts: [] };
+  } else if (!DB.gifters[key].displayName) {
+    DB.gifters[key].displayName = rawName.trim();
+  }
+  DB.gifters[key].gifts.push({
+    id: uuidv4(),
+    amount: parseFloat(amount) || 0,
+    type,
+    platform: platform || typeToPlatform(type),
+    timestamp: Date.now(),
+    note: note || ''
+  });
+  saveData(DB);
+}
+
+/* ───────────────────────────── LAST UPDATED ──── */
+function renderLastUpdated(ts) {
+  if (!ts) { document.getElementById('last-updated-label').textContent = ''; return; }
+  document.getElementById('last-updated-label').textContent =
+    'Updated ' + new Date(ts).toLocaleTimeString();
+}
+renderLastUpdated(DB.lastUpdated);
+
+/* ───────────────────────────── TABLE STATE ──── */
+let sortCol = 'alltime';
+let sortDir = -1; // -1 = desc, 1 = asc
+let searchQuery = '';
+
+/* ───────────────────────────── TABLE RENDER ──── */
+function renderTable() {
+  const mode      = DB.settings.displayMode;
+  const iosPct    = DB.settings.iosPercent;
+  const tbody     = document.getElementById('gifter-tbody');
+  const countEl   = document.getElementById('tbl-count');
+  const q         = searchQuery.toLowerCase();
+
+  let rows = Object.entries(DB.gifters).map(([key, gifter]) => {
+    const totals = gifterTotals(gifter, mode, iosPct);
+    const platform = gifterPlatform(gifter);
+    const type = gifterType(gifter);
+    return { key, gifter, totals, platform, type };
+  });
+
+  if (q) {
+    rows = rows.filter(r => r.gifter.displayName.toLowerCase().includes(q));
+  }
+
+  rows.sort((a, b) => {
+    let av, bv;
+    switch(sortCol) {
+      case 'name':     av = a.gifter.displayName.toLowerCase(); bv = b.gifter.displayName.toLowerCase(); break;
+      case 'platform': av = a.platform; bv = b.platform; break;
+      case 'type':     av = a.type; bv = b.type; break;
+      case 'today':    av = a.totals.today; bv = b.totals.today; break;
+      case 'month':    av = a.totals.month; bv = b.totals.month; break;
+      default:         av = a.totals.allTime; bv = b.totals.allTime;
+    }
+    if (av < bv) return sortDir;
+    if (av > bv) return -sortDir;
+    return 0;
+  });
+
+  countEl.textContent = rows.length + ' gifter' + (rows.length !== 1 ? 's' : '');
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">${q ? 'No results for "'+q+'"' : 'No gifters yet — connect SSN or add one manually.'}</td></tr>`;
+    return;
+  }
+
+  const tipHtml = buildEarningsTip(mode, iosPct);
+
+  tbody.innerHTML = rows.map(({ key, gifter, totals, platform, type }) => {
+    const plat = platformLabel(platform);
+    const todayFmt   = totals.today   > 0 ? formatVal(totals.today,   mode) : '—';
+    const monthFmt   = totals.month   > 0 ? formatVal(totals.month,   mode) : '—';
+    const allTimeFmt = totals.allTime > 0 ? formatVal(totals.allTime, mode) : '—';
+    const tipAttr    = mode === 'creator_earnings' ? `data-tip="${tipHtml}"` : '';
+
+    return `<tr data-key="${esc(key)}" id="row-${esc(key)}">
+      <td class="td-name">${esc(gifter.displayName)}</td>
+      <td class="td-platform"><span class="plat-badge ${plat.cls}">${plat.label}</span></td>
+      <td>${esc(typeLabel(type))}</td>
+      <td class="td-val ${totals.today>0?'positive':''}">${todayFmt}</td>
+      <td class="td-val ${totals.month>0?'positive':''}">${monthFmt}</td>
+      <td class="td-val ${totals.allTime>0?'positive':''}" ${tipAttr}>${allTimeFmt}</td>
+      <td class="td-actions">
+        <button class="btn-secondary btn-sm" onclick="openAddGift('${esc(key)}')">+ Add</button>
+        <button class="btn-ghost btn-sm" onclick="openUndo('${esc(key)}')">↩</button>
+        <button class="btn-ghost btn-sm" onclick="openRename('${esc(key)}')">✏️</button>
+        <button class="btn-ghost btn-sm" style="color:var(--red)" onclick="openDelete('${esc(key)}')">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // restore sort indicators
+  document.querySelectorAll('thead th[data-col]').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.col === sortCol) {
+      th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    }
+  });
+}
+
+function buildEarningsTip(mode, iosPct) {
+  if (mode !== 'creator_earnings') return '';
+  const blend = blendedRate(iosPct);
+  return `YouTube Blended Rate: ×${blend.toFixed(3)}\\nDesktop/Android: ×0.70\\niOS: ×0.49\\nAt ${iosPct}% iOS: ×${blend.toFixed(3)}`;
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ── Highlight row on new gift ── */
+function flashRow(key) {
+  const row = document.getElementById('row-' + key);
+  if (!row) return;
+  row.classList.remove('flash-gold');
+  void row.offsetWidth; // reflow
+  row.classList.add('flash-gold');
+}
+
+/* ── Sort headers ── */
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortDir *= -1;
+    else { sortCol = col; sortDir = -1; }
+    renderTable();
+  });
+});
+
+/* ── Search ── */
+document.getElementById('tbl-search').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  renderTable();
+});
+
+/* ───────────────────────────── EVENT LOG ──── */
+let logTotal = 0;
+const MAX_LOG = 20;
+
+function addLogEntry(name, amount, type, platform, timestamp) {
+  logTotal++;
+  document.getElementById('log-count').textContent = logTotal + ' event' + (logTotal !== 1 ? 's' : '') + ' captured';
+
+  const list = document.getElementById('event-log-list');
+
+  // Remove placeholder
+  const placeholder = list.querySelector('div[style*="italic"]');
+  if (placeholder) placeholder.remove();
+
+  const time = new Date(timestamp).toLocaleTimeString();
+  const plat = platformLabel(typeToPlatform(type));
+
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `
+    <span class="log-time">${time}</span>
+    <span class="log-name">${esc(name)}</span>
+    <span class="log-amount">${amount}</span>
+    <span class="log-type">${esc(typeLabel(type))}</span>
+    <span class="log-platform ${plat.cls}">${plat.label}</span>
+  `;
+  list.insertBefore(el, list.firstChild);
+
+  // Trim to MAX_LOG
+  while (list.children.length > MAX_LOG) list.removeChild(list.lastChild);
+}
+
+/* ───────────────────────────── SSN WEBSOCKET ──── */
+let ws = null;
+let reconnectTimer = null;
+let isConnecting = false;
+let intentionalDisconnect = false;
+
+function setStatus(state, text) {
+  const dot  = document.getElementById('status-dot');
+  const txt  = document.getElementById('status-text');
+  const pst  = document.getElementById('conn-panel-status');
+  const btnC = document.getElementById('btn-connect');
+  const btnD = document.getElementById('btn-disconnect');
+
+  dot.className = 'status-dot ' + state;
+  txt.textContent = text;
+  pst.textContent = text;
+
+  btnC.classList.toggle('hidden', state === 'connected' || state === 'connecting');
+  btnD.classList.toggle('hidden', state !== 'connected' && state !== 'connecting');
+}
+
+function connectSSN(sessionId) {
+  if (!sessionId) { alert('Please enter a Session ID.'); return; }
+  intentionalDisconnect = false;
+  if (ws) { ws.close(); ws = null; }
+
+  setStatus('connecting', 'Connecting…');
+  isConnecting = true;
+
+  // Social Stream Ninja uses Socket.IO (EIO=4) over WebSocket
+  const url = `wss://io.socialstream.ninja/socket.io/?EIO=4&transport=websocket`;
+  try {
+    ws = new WebSocket(url);
+  } catch(e) {
+    setStatus('disconnected', 'Error: ' + e.message);
+    scheduleReconnect(sessionId);
+    return;
+  }
+
+  let joined = false;
+
+  ws.onopen = () => {
+    // Socket.IO protocol: after WS open, server sends EIO handshake "0{...}"
+    // We wait for it, then send "40" (connect namespace), then join room
+  };
+
+  ws.onmessage = (evt) => {
+    const data = evt.data;
+
+    // EIO4 ping from server
+    if (data === '2') { ws.send('3'); return; }
+
+    // EIO4 open handshake
+    if (data.startsWith('0')) {
+      ws.send('40'); // connect to default namespace
+      return;
+    }
+
+    // Namespace connected
+    if (data === '40' || data.startsWith('40{')) {
+      if (!joined) {
+        joined = true;
+        // Join the room with session ID
+        ws.send(`42["join",{"channel":"1","session":${JSON.stringify(sessionId)}}]`);
+        setStatus('connected', '🟢 Connected');
+        isConnecting = false;
+      }
+      return;
+    }
+
+    // Event
+    if (data.startsWith('42')) {
+      try {
+        const payload = JSON.parse(data.slice(2));
+        handleSSNEvent(payload);
+      } catch(e) { /* ignore parse errors */ }
+      return;
+    }
+  };
+
+  ws.onerror = () => {};
+
+  ws.onclose = () => {
+    isConnecting = false;
+    if (!intentionalDisconnect) {
+      setStatus('connecting', '🟡 Reconnecting…');
+      scheduleReconnect(sessionId);
+    } else {
+      setStatus('disconnected', 'Disconnected');
+    }
+  };
+}
+
+function scheduleReconnect(sessionId) {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    if (!intentionalDisconnect) connectSSN(sessionId);
+  }, 10000);
+}
+
+function disconnectSSN() {
+  intentionalDisconnect = true;
+  clearTimeout(reconnectTimer);
+  if (ws) { ws.close(); ws = null; }
+  setStatus('disconnected', 'Disconnected');
+}
+
+/* ── Map SSN event type → our type ── */
+function mapType(raw) {
+  const t = (raw || '').toLowerCase();
+  if (t.includes('coin'))      return 'tiktok_coins';
+  if (t.includes('jewel'))     return 'youtube_jewels';
+  if (t.includes('superchat')) return 'youtube_superchat';
+  if (t.includes('bit'))       return 'twitch_bits';
+  if (t.includes('cheer'))     return 'twitch_bits';
+  if (t.includes('gift'))      return 'tiktok_coins';
+  if (t.includes('donation'))  return 'direct_donation';
+  if (t.includes('dono'))      return 'direct_donation';
+  return 'direct_donation';
+}
+
+function handleSSNEvent(payload) {
+  // payload is [eventName, data] from socket.io
+  if (!Array.isArray(payload) || payload.length < 2) return;
+  const data = payload[1];
+  if (!data || typeof data !== 'object') return;
+
+  // Filter: must have donation flag or relevant type
+  const hasDonation = data.hasDonation === true || data.hasDonation === 'true';
+  const relevantTypes = ['superchat','gift','donation','cheer','bits','coins'];
+  const rawType = (data.type || '').toLowerCase();
+  const isRelevant = hasDonation || relevantTypes.some(t => rawType.includes(t));
+  if (!isRelevant) return;
+
+  const name   = (data.chatname || data.name || 'Unknown').trim() || 'Unknown';
+  const amount = parseFloat(data.donoValue || data.amount || 0) || 0;
+  const type   = mapType(data.type);
+  const platform = data.source || typeToPlatform(type);
+  const ts     = Date.now();
+
+  upsertGift(name, amount, type, platform, '');
+  addLogEntry(name, amount, type, platform, ts);
+  renderTable();
+  flashRow(normKey(name));
+}
+
+/* ── Connection UI ── */
+document.getElementById('btn-connect').addEventListener('click', () => {
+  const id = document.getElementById('ssn-session-id').value.trim();
+  if (id) localStorage.setItem('ssn-session-id', id);
+  connectSSN(id);
+});
+
+document.getElementById('btn-disconnect').addEventListener('click', disconnectSSN);
+
+document.getElementById('ssn-session-id').addEventListener('change', e => {
+  // Save session ID (but keep it out of logs/exports)
+  localStorage.setItem('ssn-session-id', e.target.value.trim());
+});
+
+// Restore session ID
+const savedSession = localStorage.getItem('ssn-session-id') || '';
+document.getElementById('ssn-session-id').value = savedSession;
+
+/* ───────────────────────────── SETTINGS ──── */
+function applySettings() {
+  const mode   = DB.settings.displayMode;
+  const iosPct = DB.settings.iosPercent;
+
+  document.querySelectorAll('.btn-mode').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+
+  const iosGroup = document.getElementById('ios-group');
+  iosGroup.style.display = (mode === 'creator_earnings') ? 'flex' : 'none';
+
+  document.getElementById('ios-pct').value = iosPct;
+  document.getElementById('ios-val').textContent = iosPct + '%';
+  document.getElementById('blended-label').textContent =
+    'blended ×' + blendedRate(iosPct).toFixed(3);
+}
+
+document.querySelectorAll('.btn-mode').forEach(b => {
+  b.addEventListener('click', () => {
+    DB.settings.displayMode = b.dataset.mode;
+    saveData(DB);
+    applySettings();
+    renderTable();
+  });
+});
+
+document.getElementById('ios-pct').addEventListener('input', e => {
+  DB.settings.iosPercent = parseInt(e.target.value);
+  saveData(DB);
+  applySettings();
+  renderTable();
+});
+
+applySettings();
+
+/* ───────────────────────────── COLLAPSIBLES ──── */
+function makeCollapsible(hdrId, bodyId, toggleId, defaultOpen) {
+  const hdr    = document.getElementById(hdrId);
+  const body   = document.getElementById(bodyId);
+  const toggle = document.getElementById(toggleId);
+  let open = defaultOpen;
+
+  function update() {
+    body.classList.toggle('hidden', !open);
+    toggle.classList.toggle('open', open);
+  }
+  update();
+
+  hdr.addEventListener('click', () => {
+    open = !open;
+    update();
+  });
+}
+
+makeCollapsible('conn-panel-hdr',  'conn-panel-body',  'conn-panel-toggle',  true);
+makeCollapsible('log-panel-hdr',   'log-panel-body',   'log-toggle',         true);
+makeCollapsible('settings-hdr',    'settings-body',    'settings-toggle',    false);
+
+/* ───────────────────────────── ADD GIFTER MANUALLY ──── */
+document.getElementById('btn-show-add').addEventListener('click', () => {
+  document.getElementById('add-gifter-panel').style.display = 'block';
+  document.getElementById('ag-name').focus();
+});
+document.getElementById('btn-hide-add').addEventListener('click', () => {
+  document.getElementById('add-gifter-panel').style.display = 'none';
+  clearAddForm();
+});
+
+function clearAddForm() {
+  ['ag-name','ag-amount','ag-note'].forEach(id => document.getElementById(id).value = '');
+}
+
+document.getElementById('btn-add-gifter').addEventListener('click', () => {
+  const name   = document.getElementById('ag-name').value.trim();
+  const amount = parseFloat(document.getElementById('ag-amount').value) || 0;
+  const type   = document.getElementById('ag-type').value;
+  const note   = document.getElementById('ag-note').value.trim();
+
+  if (!name) { document.getElementById('ag-name').focus(); return; }
+  if (amount <= 0) { document.getElementById('ag-amount').focus(); return; }
+
+  upsertGift(name, amount, type, typeToPlatform(type), note);
+  renderTable();
+  flashRow(normKey(name));
+  clearAddForm();
+  document.getElementById('add-gifter-panel').style.display = 'none';
+});
+
+/* ───────────────────────────── MODAL: ADD GIFT ──── */
+let addGiftKey = null;
+
+function openAddGift(key) {
+  addGiftKey = key;
+  const gifter = DB.gifters[key];
+  document.getElementById('modal-gifter-name').textContent =
+    'Adding gift for ' + gifter.displayName;
+  document.getElementById('modal-amount').value = '';
+  document.getElementById('modal-note').value   = '';
+  document.getElementById('modal-add-gift').classList.remove('hidden');
+  setTimeout(() => document.getElementById('modal-amount').focus(), 50);
+}
+
+document.getElementById('modal-add-cancel').addEventListener('click', () => {
+  document.getElementById('modal-add-gift').classList.add('hidden');
+  addGiftKey = null;
+});
+
+document.getElementById('modal-add-confirm').addEventListener('click', () => {
+  if (!addGiftKey) return;
+  const amount = parseFloat(document.getElementById('modal-amount').value) || 0;
+  const type   = document.getElementById('modal-type').value;
+  const note   = document.getElementById('modal-note').value.trim();
+  if (amount <= 0) { document.getElementById('modal-amount').focus(); return; }
+
+  const gifter = DB.gifters[addGiftKey];
+  gifter.gifts.push({
+    id: uuidv4(), amount, type,
+    platform: typeToPlatform(type),
+    timestamp: Date.now(), note
+  });
+  saveData(DB);
+  renderTable();
+  flashRow(addGiftKey);
+  document.getElementById('modal-add-gift').classList.add('hidden');
+  addGiftKey = null;
+});
+
+/* ───────────────────────────── MODAL: UNDO ──── */
+let undoKey = null;
+
+function openUndo(key) {
+  undoKey = key;
+  const gifter = DB.gifters[key];
+  if (!gifter || !gifter.gifts.length) {
+    alert('No gift history to undo for ' + gifter.displayName);
+    return;
+  }
+  const last = [...gifter.gifts].sort((a,b) => b.timestamp - a.timestamp)[0];
+  const detail = document.getElementById('undo-detail');
+  detail.innerHTML = `
+    <div><strong>${esc(gifter.displayName)}</strong></div>
+    <div>Amount: ${last.amount} ${esc(typeLabel(last.type))}</div>
+    <div>Time: ${new Date(last.timestamp).toLocaleString()}</div>
+    ${last.note ? `<div>Note: ${esc(last.note)}</div>` : ''}
+  `;
+  document.getElementById('modal-undo').classList.remove('hidden');
+}
+
+document.getElementById('undo-cancel').addEventListener('click', () => {
+  document.getElementById('modal-undo').classList.add('hidden');
+  undoKey = null;
+});
+
+document.getElementById('undo-confirm').addEventListener('click', () => {
+  if (!undoKey) return;
+  const gifter = DB.gifters[undoKey];
+  const sorted = [...gifter.gifts].sort((a,b) => b.timestamp - a.timestamp);
+  const lastId = sorted[0].id;
+  gifter.gifts = gifter.gifts.filter(g => g.id !== lastId);
+  saveData(DB);
+  renderTable();
+  document.getElementById('modal-undo').classList.add('hidden');
+  undoKey = null;
+});
+
+/* ───────────────────────────── MODAL: RENAME ──── */
+let renameKey = null;
+
+function openRename(key) {
+  renameKey = key;
+  const gifter = DB.gifters[key];
+  document.getElementById('rename-current').textContent =
+    'Current name: ' + gifter.displayName;
+  document.getElementById('rename-input').value = gifter.displayName;
+  document.getElementById('rename-merge-warn').style.display = 'none';
+  document.getElementById('modal-rename').classList.remove('hidden');
+  setTimeout(() => document.getElementById('rename-input').focus(), 50);
+}
+
+document.getElementById('rename-input').addEventListener('input', e => {
+  const newName = e.target.value.trim();
+  const newKey  = normKey(newName);
+  const warn    = document.getElementById('rename-merge-warn');
+  warn.style.display = (DB.gifters[newKey] && newKey !== renameKey) ? 'block' : 'none';
+});
+
+document.getElementById('rename-cancel').addEventListener('click', () => {
+  document.getElementById('modal-rename').classList.add('hidden');
+  renameKey = null;
+});
+
+document.getElementById('rename-confirm').addEventListener('click', () => {
+  if (!renameKey) return;
+  const newName = document.getElementById('rename-input').value.trim();
+  if (!newName) return;
+  const newKey  = normKey(newName);
+
+  if (newKey === renameKey) {
+    // Just update display name
+    DB.gifters[renameKey].displayName = newName;
+    saveData(DB);
+    renderTable();
+  } else if (DB.gifters[newKey]) {
+    // Merge into existing
+    DB.gifters[newKey].gifts.push(...DB.gifters[renameKey].gifts);
+    delete DB.gifters[renameKey];
+    saveData(DB);
+    renderTable();
+  } else {
+    // Rename key
+    DB.gifters[newKey] = { ...DB.gifters[renameKey], displayName: newName };
+    delete DB.gifters[renameKey];
+    saveData(DB);
+    renderTable();
+  }
+
+  document.getElementById('modal-rename').classList.add('hidden');
+  renameKey = null;
+});
+
+/* ───────────────────────────── MODAL: DELETE ──── */
+let deleteKey = null;
+
+function openDelete(key) {
+  deleteKey = key;
+  const gifter = DB.gifters[key];
+  const count  = gifter.gifts.length;
+  document.getElementById('delete-detail').innerHTML =
+    `Delete <strong>${esc(gifter.displayName)}</strong> and all ${count} gift entr${count !== 1 ? 'ies' : 'y'}?
+     This cannot be undone.`;
+  document.getElementById('modal-delete').classList.remove('hidden');
+}
+
+document.getElementById('delete-cancel').addEventListener('click', () => {
+  document.getElementById('modal-delete').classList.add('hidden');
+  deleteKey = null;
+});
+
+document.getElementById('delete-confirm').addEventListener('click', () => {
+  if (!deleteKey) return;
+  delete DB.gifters[deleteKey];
+  saveData(DB);
+  renderTable();
+  document.getElementById('modal-delete').classList.add('hidden');
+  deleteKey = null;
+});
+
+/* ───────────────────────────── MODAL: RESET ──── */
+let resetMode = null;
+
+function openReset(mode) {
+  resetMode = mode;
+  const title  = document.getElementById('reset-title');
+  const detail = document.getElementById('reset-detail');
+  const wrap   = document.getElementById('reset-confirm-wrap');
+  const inp    = document.getElementById('reset-confirm-input');
+
+  inp.value = '';
+  wrap.classList.add('hidden');
+
+  switch(mode) {
+    case 'today':
+      title.textContent = 'Reset Today\'s Gifts';
+      detail.textContent = 'This will remove all gift entries with today\'s timestamps.';
+      break;
+    case 'month':
+      title.textContent = 'Reset This Month\'s Gifts';
+      detail.textContent = 'This will remove all gift entries from the current calendar month.';
+      break;
+    case 'all':
+      title.textContent = 'Reset Everything';
+      detail.textContent = '⚠️ This will permanently delete ALL gifters and gift history.';
+      wrap.classList.remove('hidden');
+      break;
+  }
+  document.getElementById('modal-reset').classList.remove('hidden');
+}
+
+document.getElementById('reset-cancel').addEventListener('click', () => {
+  document.getElementById('modal-reset').classList.add('hidden');
+  resetMode = null;
+});
+
+document.getElementById('reset-do').addEventListener('click', () => {
+  if (!resetMode) return;
+
+  if (resetMode === 'all') {
+    const val = document.getElementById('reset-confirm-input').value.trim();
+    if (val !== 'RESET') {
+      document.getElementById('reset-confirm-input').focus();
+      document.getElementById('reset-confirm-input').style.borderColor = 'var(--red)';
+      return;
+    }
+  }
+
+  const now = Date.now();
+  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
+  const monthStart    = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+
+  if (resetMode === 'all') {
+    const savedSettings = { ...DB.settings };
+    DB = emptyStore();
+    DB.settings = savedSettings;
+    applySettings();
+  } else {
+    for (const key of Object.keys(DB.gifters)) {
+      const gifter = DB.gifters[key];
+      if (resetMode === 'today') {
+        gifter.gifts = gifter.gifts.filter(g => g.timestamp < midnightToday.getTime());
+      } else if (resetMode === 'month') {
+        gifter.gifts = gifter.gifts.filter(g => g.timestamp < monthStart.getTime());
+      }
+    }
+  }
+
+  saveData(DB);
+  renderTable();
+  document.getElementById('modal-reset').classList.add('hidden');
+  resetMode = null;
+});
+
+document.getElementById('btn-reset-today').addEventListener('click', () => openReset('today'));
+document.getElementById('btn-reset-month').addEventListener('click', () => openReset('month'));
+document.getElementById('btn-reset-all').addEventListener('click', () => openReset('all'));
+
+/* ───────────────────────────── EXPORT / IMPORT ──── */
+document.getElementById('btn-export').addEventListener('click', () => {
+  const exportData = JSON.parse(JSON.stringify(DB)); // deep clone
+  // Do NOT include session ID in export
+  const dateStr = new Date().toISOString().slice(0,10);
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `gift-tracker-backup-${dateStr}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btn-import').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    if (!confirm('⚠️ This will overwrite ALL current data with the imported file.\n\nContinue?')) {
+      e.target.value = '';
+      return;
+    }
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (!imported.gifters) throw new Error('Invalid format');
+      DB = imported;
+      saveData(DB);
+      applySettings();
+      renderTable();
+      alert('✅ Import successful! ' + Object.keys(DB.gifters).length + ' gifters loaded.');
+    } catch(err) {
+      alert('❌ Import failed: ' + err.message);
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+/* ───────────────────────────── CLOSE MODALS ON OVERLAY CLICK ──── */
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.add('hidden');
+  });
+});
+
+/* ───────────────────────────── KEYBOARD SHORTCUTS ──── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
+  }
+});
+
+/* ───────────────────────────── INITIAL RENDER ──── */
+renderTable();
+
+
+</script>
+</body>
+</html>
