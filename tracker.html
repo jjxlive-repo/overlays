@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🎁 Gift & Donation Tracker</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -983,94 +984,36 @@ function setStatus(state, text) {
 function connectSSN(sessionId) {
   if (!sessionId) { alert('Please enter a Session ID.'); return; }
   intentionalDisconnect = false;
-  if (ws) { ws.close(); ws = null; }
+  if (ws) { ws.disconnect(); ws = null; }
 
   setStatus('connecting', 'Connecting…');
   isConnecting = true;
+  console.log('[SSN] Connecting with socket.io client, session:', sessionId);
 
-  // SSN cloud relay: plain Socket.IO URL, session passed via auth in namespace connect
-  const url = `wss://io.socialstream.ninja/socket.io/?EIO=3&transport=websocket`;
-  console.log('[SSN] Connecting to', url);
+  // Use the Socket.IO client library — handles polling→WS upgrade automatically
+  ws = io('https://io.socialstream.ninja', {
+    auth: { session: sessionId },
+    transports: ['polling', 'websocket'],
+    reconnection: false,   // we manage reconnect ourselves
+    timeout: 10000,
+  });
 
-  try {
-    ws = new WebSocket(url);
-  } catch(e) {
-    setStatus('disconnected', 'Error: ' + e.message);
-    scheduleReconnect(sessionId);
-    return;
-  }
+  ws.on('connect', () => {
+    console.log('[SSN] Connected! socket id:', ws.id);
+    setStatus('connected', 'Connected');
+    isConnecting = false;
+  });
 
-  let authed = false;
+  ws.on('connect_error', (err) => {
+    console.warn('[SSN] connect_error:', err.message);
+    setStatus('connecting', '🟡 Reconnecting in 10s…');
+    ws.disconnect();
+    ws = null;
+    if (!intentionalDisconnect) scheduleReconnect(sessionId);
+  });
 
-  ws.onopen = () => {
-    console.log('[SSN] WS open');
-  };
-
-  ws.onmessage = (evt) => {
-    const data = evt.data;
-    console.log('[SSN] ←', data.length > 200 ? data.slice(0, 200) + '…' : data);
-
-    // EIO ping → pong
-    if (data === '2') { ws.send('3'); return; }
-    if (data === '3') { return; }
-
-    // EIO open handshake — respond with namespace connect + auth
-    if (data.startsWith('0')) {
-      // Pass session as Socket.IO auth so server routes us to the right room
-      const authPacket = `40${JSON.stringify({ auth: { session: sessionId } })}`;
-      console.log('[SSN] Sending auth connect:', authPacket);
-      ws.send(authPacket);
-      return;
-    }
-
-    // Namespace connected (server echoes 40 or 40{...})
-    if (data === '40' || data.startsWith('40{') || data.startsWith('40[')) {
-      if (!authed) {
-        authed = true;
-        setStatus('connected', 'Connected');
-        isConnecting = false;
-        console.log('[SSN] Namespace connected with auth');
-      }
-      return;
-    }
-
-    // Auth error / connection error from server
-    if (data.startsWith('44')) {
-      console.warn('[SSN] Auth/connect error:', data);
-      setStatus('disconnected', 'Auth error — check session ID');
-      ws.close();
-      return;
-    }
-
-    // Socket.IO event packet
-    if (data.startsWith('42')) {
-      try {
-        const payload = JSON.parse(data.slice(2));
-        if (!authed) {
-          authed = true;
-          setStatus('connected', 'Connected');
-          isConnecting = false;
-        }
-        handleSSNEvent(payload);
-      } catch(e) { console.warn('[SSN] Parse error', e); }
-      return;
-    }
-
-    // Raw JSON fallback
-    if (data.startsWith('{') || data.startsWith('[')) {
-      try {
-        const payload = JSON.parse(data);
-        if (!authed) { authed = true; setStatus('connected', 'Connected'); isConnecting = false; }
-        handleSSNEvent(['message', Array.isArray(payload) ? payload[0] : payload]);
-      } catch(e) {}
-    }
-  };
-
-  ws.onerror = (e) => { console.warn('[SSN] WS error', e); };
-
-  ws.onclose = (e) => {
-    console.log('[SSN] WS closed', e.code, e.reason);
-    joined = false;
+  ws.on('disconnect', (reason) => {
+    console.log('[SSN] Disconnected:', reason);
     isConnecting = false;
     if (!intentionalDisconnect) {
       setStatus('connecting', '🟡 Reconnecting in 10s…');
@@ -1078,7 +1021,22 @@ function connectSSN(sessionId) {
     } else {
       setStatus('disconnected', 'Disconnected');
     }
-  };
+  });
+
+  // SSN sends donation/chat events — listen on all common event names
+  ['message', 'chatmessage', 'chat', 'data', 'event', 'donation'].forEach(evtName => {
+    ws.on(evtName, (data) => {
+      console.log(`[SSN] event:${evtName}`, JSON.stringify(data).slice(0, 200));
+      handleSSNEvent([evtName, typeof data === 'object' ? data : { raw: data }]);
+    });
+  });
+
+  // Catch-all for any other event
+  ws.onAny((evtName, data) => {
+    if (!['connect','disconnect','connect_error','message','chatmessage','chat','data','event','donation'].includes(evtName)) {
+      console.log(`[SSN] unknown event:${evtName}`, JSON.stringify(data).slice(0, 200));
+    }
+  });
 }
 
 function scheduleReconnect(sessionId) {
@@ -1091,7 +1049,7 @@ function scheduleReconnect(sessionId) {
 function disconnectSSN() {
   intentionalDisconnect = true;
   clearTimeout(reconnectTimer);
-  if (ws) { ws.close(); ws = null; }
+  if (ws) { ws.disconnect(); ws = null; }
   setStatus('disconnected', 'Disconnected');
 }
 
