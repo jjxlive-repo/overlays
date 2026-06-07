@@ -1055,6 +1055,14 @@ function mapType(raw) {
   return 'direct_donation';
 }
 
+function parseAmount(val) {
+  if (!val && val !== 0) return 0;
+  if (typeof val === 'number') return val;
+  // Strip currency symbols, commas, spaces — then parse
+  const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
 function handleSSNEvent(payload) {
   // payload is a raw JSON object from the plain WebSocket channel 4
   const data = Array.isArray(payload) ? payload[1] : payload;
@@ -1063,9 +1071,10 @@ function handleSSNEvent(payload) {
   const debugAll = document.getElementById('debug-all')?.checked;
 
   // Filter: must have donation flag or relevant type (unless debug mode)
-  const hasDonation = data.hasDonation === true || data.hasDonation === 'true';
+  const hasDonation = data.hasDonation === true || data.hasDonation === 'true'
+    || data.hasDonation === 1 || data.hasDonation === '1';
   const relevantTypes = ['superchat','gift','donation','cheer','bits','coins','gold','jewel','rose','star','diamond','heart','sub','tier'];
-  const rawType = (data.type || '').toLowerCase();
+  const rawType = (data.type || data.donoType || '').toLowerCase();
   const rawMsg  = JSON.stringify(data).toLowerCase();
   const isRelevant = hasDonation
     || relevantTypes.some(t => rawType.includes(t))
@@ -1073,11 +1082,25 @@ function handleSSNEvent(payload) {
 
   if (!debugAll && !isRelevant) return;
 
-  const name   = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
-  const amount = parseFloat(data.donoValue || data.amount || data.value || 0) || 0;
-  const type   = mapType(data.type || '');
-  const platform = data.source || typeToPlatform(type);
-  const ts     = Date.now();
+  const name = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
+
+  // Try every plausible amount field SSN might use
+  const amount = parseAmount(
+    data.donoValue ?? data.amount ?? data.value ?? data.donationAmount ??
+    data.bits ?? data.coins ?? data.superChatAmount ?? data.sticker_amount ?? 0
+  );
+
+  // Infer type — prefer donoType over platform type
+  const typeRaw = data.donoType || data.type || '';
+  const type = mapType(typeRaw);
+  const platform = data.source || data.type || typeToPlatform(type);
+  const ts = Date.now();
+
+  // Debug: log when relevant but amount is still zero so we can find the right field
+  if (isRelevant && amount === 0) {
+    console.warn('[SSN] Relevant event but amount=0 — keys:', Object.keys(data).join(', '));
+    console.warn('[SSN] Full event:', JSON.stringify(data).slice(0, 600));
+  }
 
   // In debug mode, log everything but only upsert if it looks like a real gift
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant);
