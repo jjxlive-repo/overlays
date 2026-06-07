@@ -983,8 +983,10 @@ function connectSSN(sessionId) {
   setStatus('connecting', 'Connecting…');
   isConnecting = true;
 
-  // Social Stream Ninja uses Socket.IO (EIO=4) over WebSocket
-  const url = `wss://io.socialstream.ninja/socket.io/?EIO=4&transport=websocket`;
+  // SSN uses Socket.IO — include session in query string, try EIO=3 first
+  const url = `wss://io.socialstream.ninja/socket.io/?EIO=3&transport=websocket&session=${encodeURIComponent(sessionId)}`;
+  console.log('[SSN] Connecting to', url);
+
   try {
     ws = new WebSocket(url);
   } catch(e) {
@@ -996,50 +998,78 @@ function connectSSN(sessionId) {
   let joined = false;
 
   ws.onopen = () => {
-    // Socket.IO protocol: after WS open, server sends EIO handshake "0{...}"
-    // We wait for it, then send "40" (connect namespace), then join room
+    console.log('[SSN] WS open — waiting for server handshake');
+    // Fallback: if no handshake arrives within 2s, attempt join directly
+    setTimeout(() => {
+      if (!joined && ws && ws.readyState === WebSocket.OPEN) {
+        joined = true;
+        ws.send(`42["join",${JSON.stringify(sessionId)}]`);
+        setStatus('connected', '🟢 Connected');
+        isConnecting = false;
+        console.log('[SSN] Sent join (fallback — no handshake received)');
+      }
+    }, 2000);
   };
 
   ws.onmessage = (evt) => {
     const data = evt.data;
+    console.log('[SSN] ←', data.length > 200 ? data.slice(0, 200) + '…' : data);
 
-    // EIO4 ping from server
+    // EIO ping → pong
     if (data === '2') { ws.send('3'); return; }
+    if (data === '3') { return; }
 
-    // EIO4 open handshake
+    // EIO open handshake (0{...}) — respond with namespace connect
     if (data.startsWith('0')) {
-      ws.send('40'); // connect to default namespace
+      console.log('[SSN] Handshake received, sending 40');
+      ws.send('40');
       return;
     }
 
-    // Namespace connected
-    if (data === '40' || data.startsWith('40{')) {
+    // Namespace connected — send join with session as plain string
+    if (data === '40' || data.startsWith('40{') || data.startsWith('40[')) {
       if (!joined) {
         joined = true;
-        // Join the room with session ID
-        ws.send(`42["join",{"channel":"1","session":${JSON.stringify(sessionId)}}]`);
+        ws.send(`42["join",${JSON.stringify(sessionId)}]`);
         setStatus('connected', '🟢 Connected');
         isConnecting = false;
+        console.log('[SSN] Namespace connected, sent join');
       }
       return;
     }
 
-    // Event
+    // Socket.IO event packet
     if (data.startsWith('42')) {
       try {
         const payload = JSON.parse(data.slice(2));
+        if (!joined) {
+          joined = true;
+          setStatus('connected', '🟢 Connected');
+          isConnecting = false;
+        }
         handleSSNEvent(payload);
-      } catch(e) { /* ignore parse errors */ }
+      } catch(e) { console.warn('[SSN] Parse error', e); }
       return;
+    }
+
+    // Raw JSON fallback (non-Socket.IO)
+    if (data.startsWith('{') || data.startsWith('[')) {
+      try {
+        const payload = JSON.parse(data);
+        if (!joined) { joined = true; setStatus('connected', '🟢 Connected'); isConnecting = false; }
+        handleSSNEvent(['message', Array.isArray(payload) ? payload[0] : payload]);
+      } catch(e) {}
     }
   };
 
-  ws.onerror = () => {};
+  ws.onerror = (e) => { console.warn('[SSN] WS error', e); };
 
-  ws.onclose = () => {
+  ws.onclose = (e) => {
+    console.log('[SSN] WS closed', e.code, e.reason);
+    joined = false;
     isConnecting = false;
     if (!intentionalDisconnect) {
-      setStatus('connecting', '🟡 Reconnecting…');
+      setStatus('connecting', '🟡 Reconnecting in 10s…');
       scheduleReconnect(sessionId);
     } else {
       setStatus('disconnected', 'Disconnected');
