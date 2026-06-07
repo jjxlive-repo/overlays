@@ -380,6 +380,7 @@ td {
 .dim { color: var(--muted); font-size: 11px; }
 hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 </style>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 </head>
 <body>
 
@@ -666,6 +667,8 @@ function saveData(data) {
   data.lastUpdated = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   renderLastUpdated(data.lastUpdated);
+  // Publish leaderboard after data change (deferred so DB is current)
+  setTimeout(publishLeaderboard, 50);
 }
 
 let DB = loadData();
@@ -1563,6 +1566,50 @@ document.addEventListener('keydown', e => {
     document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
   }
 });
+
+/* ───────────────────────────── ABLY LEADERBOARD ──── */
+const ABLY_KEY     = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CHANNEL = 'splat-overlay';
+
+let ablyClient  = null;
+let ablyChannel = null;
+
+(function initAbly() {
+  try {
+    ablyClient  = new Ably.Realtime({ key: ABLY_KEY });
+    ablyChannel = ablyClient.channels.get(ABLY_CHANNEL);
+
+    // Status indicator
+    const dot = document.createElement('div');
+    dot.id = 'ably-dot';
+    Object.assign(dot.style, {
+      position: 'fixed', bottom: '10px', right: '10px',
+      width: '10px', height: '10px', borderRadius: '50%',
+      background: '#555', zIndex: '9999',
+      boxShadow: '0 0 0 2px rgba(0,0,0,.4)',
+      transition: 'background .4s',
+    });
+    document.body.appendChild(dot);
+    ablyClient.connection.on('connected',     () => { dot.style.background = '#22c55e'; });
+    ablyClient.connection.on('disconnected',  () => { dot.style.background = '#555'; });
+  } catch(e) {
+    console.warn('[Ably] init failed:', e);
+  }
+})();
+
+function publishLeaderboard() {
+  if (!ablyChannel) return;
+  const mode   = DB.settings.displayMode   || 'viewer_spend';
+  const iosPct = DB.settings.iosPercent    ?? 50;
+
+  const ranked = Object.values(DB.gifters)
+    .map(g => ({ name: g.displayName, amount: gifterTotals(g, mode, iosPct).allTime }))
+    .filter(g => g.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 2);
+
+  ablyChannel.publish('leaderboard', { top: ranked }).catch(e => console.warn('[Ably] publish err:', e));
+}
 
 /* ───────────────────────────── INITIAL RENDER ──── */
 renderTable();
