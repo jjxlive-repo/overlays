@@ -473,6 +473,47 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════ OVERLAY CONTROLS ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="overlay-ctrl-hdr">
+      <h2>📡 Overlay Controls</h2>
+      <span class="panel-toggle open" id="overlay-ctrl-toggle">▼</span>
+    </div>
+    <div class="panel-body" id="overlay-ctrl-body">
+      <div class="settings-grid">
+        <div>
+          <label style="margin-bottom:5px">Featured Slot (time frame)</label>
+          <div class="mode-group">
+            <button class="btn-mode btn-overlay-tf active" data-tf="today">Today</button>
+            <button class="btn-mode btn-overlay-tf" data-tf="month">This Month</button>
+            <button class="btn-mode btn-overlay-tf" data-tf="allTime">All Time</button>
+          </div>
+          <div class="dim" style="margin-top:4px">Day resets at 12:00 AM CST</div>
+        </div>
+        <div>
+          <label style="margin-bottom:5px">Ranked Gifters (shown to right)</label>
+          <div class="mode-group">
+            <button class="btn-mode btn-overlay-count" data-count="1">1</button>
+            <button class="btn-mode btn-overlay-count" data-count="2">2</button>
+            <button class="btn-mode btn-overlay-count active" data-count="3">3</button>
+            <button class="btn-mode btn-overlay-count" data-count="4">4</button>
+            <button class="btn-mode btn-overlay-count" data-count="5">5</button>
+          </div>
+          <div class="dim" style="margin-top:4px">Width = each gifter's % share of ranked total</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+        <button class="btn-primary btn-sm" id="btn-push-overlay">Push to Overlay Now</button>
+        <span class="dim" id="overlay-push-status"></span>
+        <span style="flex:1"></span>
+        <span class="dim">Ably: </span>
+        <span id="ably-status-text" class="dim">connecting…</span>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TABLE ══ -->
 <section>
   <div class="table-toolbar">
@@ -491,14 +532,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
           <th data-col="name">Name</th>
           <th data-col="platform">Platform</th>
           <th data-col="type">Type</th>
-          <th data-col="today" class="td-val">Today</th>
-          <th data-col="month" class="td-val">This Month</th>
-          <th data-col="alltime" class="td-val sort-desc">All Time</th>
+          <th data-col="rawToday" class="td-val">Raw Today</th>
+          <th data-col="spendToday" class="td-val">$ Today</th>
+          <th data-col="rawMonth" class="td-val">Raw Month</th>
+          <th data-col="rawAllTime" class="td-val sort-desc">Raw All Time</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="gifter-tbody">
-        <tr class="empty-row"><td colspan="7">No gifters yet — connect SSN or add one manually.</td></tr>
+        <tr class="empty-row"><td colspan="8">No gifters yet — connect SSN or add one manually.</td></tr>
       </tbody>
     </table>
   </div>
@@ -651,7 +693,7 @@ const STORAGE_KEY = 'gift-tracker-data';
 
 /* ───────────────────────────── DEFAULTS ──── */
 function emptyStore() {
-  return { gifters: {}, settings: { displayMode: 'viewer_spend', iosPercent: 50 }, lastUpdated: null };
+  return { gifters: {}, settings: { displayMode: 'viewer_spend', iosPercent: 50, overlayTimeFrame: 'today', overlayRankedCount: 3 }, lastUpdated: null };
 }
 
 /* ───────────────────────────── LOAD / SAVE ──── */
@@ -720,10 +762,8 @@ function uuidv4() {
 }
 
 function gifterTotals(gifter, mode, iosPercent) {
-  const now = Date.now();
   const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-
   let today = 0, month = 0, allTime = 0;
   for (const g of gifter.gifts) {
     const v = computeValue(g.amount, g.type, mode, iosPercent);
@@ -732,6 +772,29 @@ function gifterTotals(gifter, mode, iosPercent) {
     if (g.timestamp >= midnightToday.getTime()) today += v;
   }
   return { today, month, allTime };
+}
+
+function gifterRawTotals(gifter) {
+  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  let today = 0, month = 0, allTime = 0;
+  for (const g of gifter.gifts) {
+    allTime += g.amount;
+    if (g.timestamp >= monthStart.getTime()) month += g.amount;
+    if (g.timestamp >= midnightToday.getTime()) today += g.amount;
+  }
+  return { today, month, allTime };
+}
+
+function formatRaw(amount, primaryType) {
+  if (!amount) return '—';
+  switch(primaryType) {
+    case 'tiktok_coins':      return amount.toLocaleString() + ' coins';
+    case 'youtube_jewels':    return amount.toLocaleString() + ' jewels';
+    case 'youtube_superchat':
+    case 'direct_donation':   return '$' + amount.toFixed(2);
+    default:                  return amount.toLocaleString();
+  }
 }
 
 function gifterPlatform(gifter) {
@@ -814,17 +877,17 @@ let searchQuery = '';
 
 /* ───────────────────────────── TABLE RENDER ──── */
 function renderTable() {
-  const mode      = DB.settings.displayMode;
-  const iosPct    = DB.settings.iosPercent;
-  const tbody     = document.getElementById('gifter-tbody');
-  const countEl   = document.getElementById('tbl-count');
-  const q         = searchQuery.toLowerCase();
+  const iosPct  = DB.settings.iosPercent;
+  const tbody   = document.getElementById('gifter-tbody');
+  const countEl = document.getElementById('tbl-count');
+  const q       = searchQuery.toLowerCase();
 
   let rows = Object.entries(DB.gifters).map(([key, gifter]) => {
-    const totals = gifterTotals(gifter, mode, iosPct);
+    const raw      = gifterRawTotals(gifter);
+    const spend    = gifterTotals(gifter, 'viewer_spend', iosPct);
     const platform = gifterPlatform(gifter);
-    const type = gifterType(gifter);
-    return { key, gifter, totals, platform, type };
+    const type     = gifterType(gifter);
+    return { key, gifter, raw, spend, platform, type };
   });
 
   if (q) {
@@ -834,12 +897,13 @@ function renderTable() {
   rows.sort((a, b) => {
     let av, bv;
     switch(sortCol) {
-      case 'name':     av = a.gifter.displayName.toLowerCase(); bv = b.gifter.displayName.toLowerCase(); break;
-      case 'platform': av = a.platform; bv = b.platform; break;
-      case 'type':     av = a.type; bv = b.type; break;
-      case 'today':    av = a.totals.today; bv = b.totals.today; break;
-      case 'month':    av = a.totals.month; bv = b.totals.month; break;
-      default:         av = a.totals.allTime; bv = b.totals.allTime;
+      case 'name':       av = a.gifter.displayName.toLowerCase(); bv = b.gifter.displayName.toLowerCase(); break;
+      case 'platform':   av = a.platform; bv = b.platform; break;
+      case 'type':       av = a.type; bv = b.type; break;
+      case 'rawToday':   av = a.raw.today;   bv = b.raw.today;   break;
+      case 'spendToday': av = a.spend.today; bv = b.spend.today; break;
+      case 'rawMonth':   av = a.raw.month;   bv = b.raw.month;   break;
+      default:           av = a.raw.allTime; bv = b.raw.allTime;
     }
     if (av < bv) return sortDir;
     if (av > bv) return -sortDir;
@@ -849,26 +913,25 @@ function renderTable() {
   countEl.textContent = rows.length + ' gifter' + (rows.length !== 1 ? 's' : '');
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">${q ? 'No results for "'+q+'"' : 'No gifters yet — connect SSN or add one manually.'}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">${q ? 'No results for "'+q+'"' : 'No gifters yet — connect SSN or add one manually.'}</td></tr>`;
     return;
   }
 
-  const tipHtml = buildEarningsTip(mode, iosPct);
-
-  tbody.innerHTML = rows.map(({ key, gifter, totals, platform, type }) => {
-    const plat = platformLabel(platform);
-    const todayFmt   = totals.today   > 0 ? formatVal(totals.today,   mode) : '—';
-    const monthFmt   = totals.month   > 0 ? formatVal(totals.month,   mode) : '—';
-    const allTimeFmt = totals.allTime > 0 ? formatVal(totals.allTime, mode) : '—';
-    const tipAttr    = mode === 'creator_earnings' ? `data-tip="${tipHtml}"` : '';
+  tbody.innerHTML = rows.map(({ key, gifter, raw, spend, platform, type }) => {
+    const plat         = platformLabel(platform);
+    const rawTodayFmt  = formatRaw(raw.today,   type);
+    const spendTodayFmt= spend.today > 0 ? '$' + spend.today.toFixed(2) : '—';
+    const rawMonthFmt  = formatRaw(raw.month,   type);
+    const rawAllFmt    = formatRaw(raw.allTime, type);
 
     return `<tr data-key="${esc(key)}" id="row-${esc(key)}">
       <td class="td-name">${esc(gifter.displayName)}</td>
       <td class="td-platform"><span class="plat-badge ${plat.cls}">${plat.label}</span></td>
       <td>${esc(typeLabel(type))}</td>
-      <td class="td-val ${totals.today>0?'positive':''}">${todayFmt}</td>
-      <td class="td-val ${totals.month>0?'positive':''}">${monthFmt}</td>
-      <td class="td-val ${totals.allTime>0?'positive':''}" ${tipAttr}>${allTimeFmt}</td>
+      <td class="td-val ${raw.today>0?'positive':''}">${rawTodayFmt}</td>
+      <td class="td-val ${spend.today>0?'positive':''}">${spendTodayFmt}</td>
+      <td class="td-val ${raw.month>0?'positive':''}">${rawMonthFmt}</td>
+      <td class="td-val ${raw.allTime>0?'positive':''}">${rawAllFmt}</td>
       <td class="td-actions">
         <button class="btn-secondary btn-sm" onclick="openAddGift('${esc(key)}')">+ Add</button>
         <button class="btn-ghost btn-sm" onclick="openUndo('${esc(key)}')">↩</button>
@@ -1574,12 +1637,61 @@ const ABLY_CHANNEL = 'splat-overlay';
 let ablyClient  = null;
 let ablyChannel = null;
 
+/* ── CST time helpers ── */
+function todayStartCST() {
+  const now = new Date();
+  const chicagoStr = now.toLocaleString('en-US', { timeZone: 'America/Chicago' });
+  const chicagoNow = new Date(chicagoStr);
+  const tzOffsetMs = now.getTime() - chicagoNow.getTime();
+  const midnight = new Date(chicagoNow);
+  midnight.setHours(0, 0, 0, 0);
+  return midnight.getTime() + tzOffsetMs;
+}
+
+function monthStartCST() {
+  const now = new Date();
+  const chicagoStr = now.toLocaleString('en-US', { timeZone: 'America/Chicago' });
+  const chicagoNow = new Date(chicagoStr);
+  const tzOffsetMs = now.getTime() - chicagoNow.getTime();
+  const first = new Date(chicagoNow);
+  first.setDate(1);
+  first.setHours(0, 0, 0, 0);
+  return first.getTime() + tzOffsetMs;
+}
+
+function cutoffForTimeFrame(tf) {
+  if (tf === 'today')   return todayStartCST();
+  if (tf === 'month')   return monthStartCST();
+  return 0; // allTime
+}
+
+function buildGifterStats(gifter, cutoff, iosPct) {
+  let rawAmount = 0, spendAmount = 0;
+  for (const g of gifter.gifts) {
+    if (g.timestamp >= cutoff) {
+      rawAmount   += g.amount;
+      spendAmount += computeValue(g.amount, g.type, 'viewer_spend', iosPct);
+    }
+  }
+  return { rawAmount, spendAmount };
+}
+
+function formatRawAmount(rawAmount, type) {
+  if (!rawAmount) return '0';
+  switch(type) {
+    case 'tiktok_coins':      return rawAmount.toLocaleString() + ' coins';
+    case 'youtube_jewels':    return rawAmount.toLocaleString() + ' jewels';
+    case 'youtube_superchat':
+    case 'direct_donation':   return '$' + rawAmount.toFixed(2);
+    default:                  return rawAmount.toLocaleString();
+  }
+}
+
 (function initAbly() {
   try {
     ablyClient  = new Ably.Realtime({ key: ABLY_KEY });
     ablyChannel = ablyClient.channels.get(ABLY_CHANNEL);
 
-    // Status indicator
     const dot = document.createElement('div');
     dot.id = 'ably-dot';
     Object.assign(dot.style, {
@@ -1590,8 +1702,20 @@ let ablyChannel = null;
       transition: 'background .4s',
     });
     document.body.appendChild(dot);
-    ablyClient.connection.on('connected',     () => { dot.style.background = '#22c55e'; });
-    ablyClient.connection.on('disconnected',  () => { dot.style.background = '#555'; });
+
+    const statusText = document.getElementById('ably-status-text');
+    ablyClient.connection.on('connected',    () => {
+      dot.style.background = '#22c55e';
+      if (statusText) statusText.textContent = 'connected ●';
+    });
+    ablyClient.connection.on('disconnected', () => {
+      dot.style.background = '#555';
+      if (statusText) statusText.textContent = 'disconnected';
+    });
+    ablyClient.connection.on('failed',       () => {
+      dot.style.background = '#ef4444';
+      if (statusText) statusText.textContent = 'failed';
+    });
   } catch(e) {
     console.warn('[Ably] init failed:', e);
   }
@@ -1599,17 +1723,106 @@ let ablyChannel = null;
 
 function publishLeaderboard() {
   if (!ablyChannel) return;
-  const mode   = DB.settings.displayMode   || 'viewer_spend';
-  const iosPct = DB.settings.iosPercent    ?? 50;
 
-  const ranked = Object.values(DB.gifters)
-    .map(g => ({ name: g.displayName, amount: gifterTotals(g, mode, iosPct).allTime }))
-    .filter(g => g.amount > 0)
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 2);
+  const tf          = DB.settings.overlayTimeFrame   || 'today';
+  const rankedCount = DB.settings.overlayRankedCount || 3;
+  const iosPct      = DB.settings.iosPercent ?? 50;
+  const cutoff      = cutoffForTimeFrame(tf);
 
-  ablyChannel.publish('leaderboard', { top: ranked }).catch(e => console.warn('[Ably] publish err:', e));
+  // Build sorted list by viewer_spend for the time frame
+  const all = Object.values(DB.gifters).map(g => {
+    const { rawAmount, spendAmount } = buildGifterStats(g, cutoff, iosPct);
+    return {
+      name:       g.displayName,
+      rawAmount,
+      spendAmount,
+      rawDisplay: formatRawAmount(rawAmount, gifterType(g)),
+      type:       gifterType(g),
+      platform:   gifterPlatform(g),
+      profilePic: g.profilePic || null,
+    };
+  }).filter(g => g.spendAmount > 0).sort((a, b) => b.spendAmount - a.spendAmount);
+
+  if (!all.length) {
+    ablyChannel.publish('leaderboard', { featured: null, ranked: [], timeFrame: tf }).catch(() => {});
+    return;
+  }
+
+  const featured = all[0];
+  const rankedPool = all.slice(1, 1 + rankedCount);
+  const totalRankedSpend = rankedPool.reduce((s, g) => s + g.spendAmount, 0) || 1;
+
+  const ranked = rankedPool.map((g, i) => ({
+    rank:       i + 2,
+    name:       g.name,
+    rawDisplay: g.rawDisplay,
+    type:       g.type,
+    platform:   g.platform,
+    profilePic: g.profilePic,
+    spendShare: g.spendAmount / totalRankedSpend,
+  }));
+
+  ablyChannel.publish('leaderboard', {
+    featured: {
+      name:       featured.name,
+      rawDisplay: featured.rawDisplay,
+      type:       featured.type,
+      platform:   featured.platform,
+      profilePic: featured.profilePic,
+    },
+    ranked,
+    timeFrame: tf,
+    rankedCount,
+  }).catch(e => console.warn('[Ably] publish err:', e));
 }
+
+/* ── Overlay control panel events ── */
+(function initOverlayControls() {
+  // Sync active states from DB
+  function syncOverlayUI() {
+    const tf    = DB.settings.overlayTimeFrame   || 'today';
+    const count = DB.settings.overlayRankedCount || 3;
+    document.querySelectorAll('.btn-overlay-tf').forEach(b => {
+      b.classList.toggle('active', b.dataset.tf === tf);
+    });
+    document.querySelectorAll('.btn-overlay-count').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.count) === count);
+    });
+  }
+
+  document.querySelectorAll('.btn-overlay-tf').forEach(b => {
+    b.addEventListener('click', () => {
+      DB.settings.overlayTimeFrame = b.dataset.tf;
+      saveData(DB);
+      syncOverlayUI();
+    });
+  });
+
+  document.querySelectorAll('.btn-overlay-count').forEach(b => {
+    b.addEventListener('click', () => {
+      DB.settings.overlayRankedCount = Number(b.dataset.count);
+      saveData(DB);
+      syncOverlayUI();
+    });
+  });
+
+  document.getElementById('btn-push-overlay').addEventListener('click', () => {
+    publishLeaderboard();
+    const st = document.getElementById('overlay-push-status');
+    st.textContent = '✓ pushed';
+    setTimeout(() => st.textContent = '', 2000);
+  });
+
+  // Collapsible panel
+  document.getElementById('overlay-ctrl-hdr').addEventListener('click', () => {
+    const body   = document.getElementById('overlay-ctrl-body');
+    const toggle = document.getElementById('overlay-ctrl-toggle');
+    const hidden = body.classList.toggle('hidden');
+    toggle.classList.toggle('open', !hidden);
+  });
+
+  syncOverlayUI();
+})();
 
 /* ───────────────────────────── INITIAL RENDER ──── */
 renderTable();
