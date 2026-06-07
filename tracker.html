@@ -398,36 +398,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
       <span class="panel-toggle open" id="conn-panel-toggle">▼</span>
     </div>
     <div class="panel-body" id="conn-panel-body">
-      <!-- Mode toggle -->
-      <div style="margin-bottom:10px">
-        <label style="margin-bottom:5px">Connection Mode</label>
-        <div class="mode-group">
-          <button class="btn-mode" id="mode-local" data-conn="local">🖥 Desktop App (local)</button>
-          <button class="btn-mode" id="mode-cloud" data-conn="cloud">☁️ Browser Extension (cloud)</button>
-        </div>
-      </div>
-
       <div class="conn-row">
-        <!-- Local mode fields -->
-        <div id="local-fields" style="flex:0 0 auto">
-          <label>Local Port <span class="dim">(SSN desktop default: 7777)</span></label>
+        <div style="flex:0 0 auto">
+          <label>Session ID</label>
           <div class="conn-row" style="gap:6px">
-            <input type="text" id="ssn-port" value="7777" style="width:80px;font-family:monospace">
+            <input type="text" id="ssn-session-id" placeholder="your-session-id" autocomplete="off" style="font-family:monospace;min-width:200px">
             <button class="btn-primary" id="btn-connect">Connect</button>
             <button class="btn-secondary hidden" id="btn-disconnect">Disconnect</button>
           </div>
         </div>
-
-        <!-- Cloud mode fields -->
-        <div id="cloud-fields" style="flex:0 0 auto;display:none">
-          <label>Session ID</label>
-          <div class="conn-row" style="gap:6px">
-            <input type="text" id="ssn-session-id" placeholder="your-session-id" autocomplete="off" style="font-family:monospace;min-width:180px">
-            <button class="btn-primary" id="btn-connect-cloud">Connect</button>
-            <button class="btn-secondary hidden" id="btn-disconnect-cloud">Disconnect</button>
-          </div>
-        </div>
-
         <div id="conn-status" style="margin-top:18px">
           <span class="status-dot disconnected" id="status-dot"></span>
           <span id="status-text">Disconnected</span>
@@ -443,6 +422,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
     <div class="panel-header" id="log-panel-hdr">
       <h2>📋 Live Event Log</h2>
       <span class="dim" id="log-count">0 events captured</span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;margin-left:8px" onclick="event.stopPropagation()">
+        <input type="checkbox" id="debug-all" style="accent-color:var(--accent)"> show all
+      </label>
       <span class="panel-toggle open" id="log-toggle">▼</span>
     </div>
     <div class="panel-body" id="log-panel-body">
@@ -1024,10 +1006,10 @@ function connectSSN(sessionId) {
     setTimeout(() => {
       if (!joined && ws && ws.readyState === WebSocket.OPEN) {
         joined = true;
-        ws.send(`42["join",${JSON.stringify(sessionId)}]`);
+        ws.send(`42["join",{"session":${JSON.stringify(sessionId)},"channel":"3"}]`);
         setStatus('connected', 'Connected');
         isConnecting = false;
-        console.log('[SSN] Sent join (fallback — no handshake received)');
+        console.log('[SSN] Sent join on ch3 (fallback — no handshake received)');
       }
     }, 2000);
   };
@@ -1047,14 +1029,14 @@ function connectSSN(sessionId) {
       return;
     }
 
-    // Namespace connected — send join with session as plain string
+    // Namespace connected — join session on channel 3 (Chat to External Apps)
     if (data === '40' || data.startsWith('40{') || data.startsWith('40[')) {
       if (!joined) {
         joined = true;
-        ws.send(`42["join",${JSON.stringify(sessionId)}]`);
+        ws.send(`42["join",{"session":${JSON.stringify(sessionId)},"channel":"3"}]`);
         setStatus('connected', 'Connected');
         isConnecting = false;
-        console.log('[SSN] Namespace connected, sent join');
+        console.log('[SSN] Namespace connected, sent join on ch3');
       }
       return;
     }
@@ -1091,19 +1073,17 @@ function connectSSN(sessionId) {
     isConnecting = false;
     if (!intentionalDisconnect) {
       setStatus('connecting', '🟡 Reconnecting in 10s…');
-      scheduleReconnect(() => connectSSN(sessionId));
+      scheduleReconnect(sessionId);
     } else {
       setStatus('disconnected', 'Disconnected');
     }
   };
 }
 
-function scheduleReconnect(connectFn) {
+function scheduleReconnect(sessionId) {
   clearTimeout(reconnectTimer);
-  // Accept either a callback or a session ID string (cloud legacy)
-  const fn = typeof connectFn === 'function' ? connectFn : () => connectSSN(connectFn);
   reconnectTimer = setTimeout(() => {
-    if (!intentionalDisconnect) fn();
+    if (!intentionalDisconnect) connectSSN(sessionId);
   }, 10000);
 }
 
@@ -1134,110 +1114,49 @@ function handleSSNEvent(payload) {
   const data = payload[1];
   if (!data || typeof data !== 'object') return;
 
-  // Filter: must have donation flag or relevant type
-  const hasDonation = data.hasDonation === true || data.hasDonation === 'true';
-  const relevantTypes = ['superchat','gift','donation','cheer','bits','coins'];
-  const rawType = (data.type || '').toLowerCase();
-  const isRelevant = hasDonation || relevantTypes.some(t => rawType.includes(t));
-  if (!isRelevant) return;
+  const debugAll = document.getElementById('debug-all')?.checked;
 
-  const name   = (data.chatname || data.name || 'Unknown').trim() || 'Unknown';
-  const amount = parseFloat(data.donoValue || data.amount || 0) || 0;
-  const type   = mapType(data.type);
+  // Filter: must have donation flag or relevant type (unless debug mode)
+  const hasDonation = data.hasDonation === true || data.hasDonation === 'true';
+  const relevantTypes = ['superchat','gift','donation','cheer','bits','coins','gold','jewel','rose','star','diamond','heart','sub','tier'];
+  const rawType = (data.type || '').toLowerCase();
+  const rawMsg  = JSON.stringify(data).toLowerCase();
+  const isRelevant = hasDonation
+    || relevantTypes.some(t => rawType.includes(t))
+    || relevantTypes.some(t => rawMsg.includes(t));
+
+  if (!debugAll && !isRelevant) return;
+
+  const name   = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
+  const amount = parseFloat(data.donoValue || data.amount || data.value || 0) || 0;
+  const type   = mapType(data.type || '');
   const platform = data.source || typeToPlatform(type);
   const ts     = Date.now();
 
-  upsertGift(name, amount, type, platform, '');
-  addLogEntry(name, amount, type, platform, ts);
-  renderTable();
-  flashRow(normKey(name));
+  // In debug mode, log everything but only upsert if it looks like a real gift
+  addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant);
+  if (isRelevant && amount > 0) {
+    upsertGift(name, amount, type, platform, '');
+    renderTable();
+    flashRow(normKey(name));
+  }
 }
 
 /* ── Connection UI ── */
-/* ───────────────────────────── CONNECTION MODE UI ──── */
-let connMode = localStorage.getItem('ssn-conn-mode') || 'local';
-
-function applyConnMode(mode) {
-  connMode = mode;
-  localStorage.setItem('ssn-conn-mode', mode);
-  document.getElementById('local-fields').style.display = mode === 'local' ? 'block' : 'none';
-  document.getElementById('cloud-fields').style.display = mode === 'cloud' ? 'block' : 'none';
-  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
-  document.getElementById('mode-cloud').classList.toggle('active', mode === 'cloud');
-}
-
-document.getElementById('mode-local').addEventListener('click', () => applyConnMode('local'));
-document.getElementById('mode-cloud').addEventListener('click', () => applyConnMode('cloud'));
-
-// Local connect
 document.getElementById('btn-connect').addEventListener('click', () => {
-  const port = document.getElementById('ssn-port').value.trim() || '7777';
-  localStorage.setItem('ssn-port', port);
-  connectSSNLocal(port);
-});
-document.getElementById('btn-disconnect').addEventListener('click', disconnectSSN);
-
-// Cloud connect
-document.getElementById('btn-connect-cloud').addEventListener('click', () => {
   const id = document.getElementById('ssn-session-id').value.trim();
   if (id) localStorage.setItem('ssn-session-id', id);
   connectSSN(id);
 });
-document.getElementById('btn-disconnect-cloud').addEventListener('click', disconnectSSN);
+document.getElementById('btn-disconnect').addEventListener('click', disconnectSSN);
 
 document.getElementById('ssn-session-id').addEventListener('change', e => {
   localStorage.setItem('ssn-session-id', e.target.value.trim());
 });
 
-// Restore saved values
+// Restore saved session ID
 document.getElementById('ssn-session-id').value = localStorage.getItem('ssn-session-id') || '';
-document.getElementById('ssn-port').value = localStorage.getItem('ssn-port') || '7777';
-applyConnMode(connMode);
 
-/* ───────────────────────────── LOCAL (DESKTOP APP) CONNECT ──── */
-function connectSSNLocal(port) {
-  intentionalDisconnect = false;
-  if (ws) { ws.close(); ws = null; }
-
-  setStatus('connecting', 'Connecting…');
-  const url = `ws://localhost:${port}`;
-  console.log('[SSN Local] Connecting to', url);
-
-  try { ws = new WebSocket(url); }
-  catch(e) {
-    setStatus('disconnected', 'Error: ' + e.message);
-    scheduleReconnect(() => connectSSNLocal(port));
-    return;
-  }
-
-  ws.onopen = () => {
-    setStatus('connected', 'Connected (local)');
-    console.log('[SSN Local] Connected on port', port);
-  };
-
-  ws.onmessage = (evt) => {
-    const data = evt.data;
-    console.log('[SSN Local] ←', data.length > 200 ? data.slice(0,200) + '…' : data);
-    try {
-      const payload = JSON.parse(data);
-      // SSN desktop sends raw JSON objects or arrays
-      const obj = Array.isArray(payload) ? payload[0] : payload;
-      handleSSNEvent(['message', obj]);
-    } catch(e) { /* non-JSON frame, ignore */ }
-  };
-
-  ws.onerror = (e) => { console.warn('[SSN Local] WS error', e); };
-
-  ws.onclose = (e) => {
-    console.log('[SSN Local] WS closed', e.code, e.reason);
-    if (!intentionalDisconnect) {
-      setStatus('connecting', '🟡 Reconnecting in 10s…');
-      scheduleReconnect(() => connectSSNLocal(port));
-    } else {
-      setStatus('disconnected', 'Disconnected');
-    }
-  };
-}
 
 /* ───────────────────────────── SETTINGS ──── */
 function applySettings() {
