@@ -1873,14 +1873,17 @@ function publishGiftrLeaderboard() {
   const weekCut     = weekStartCST();
   const monthCut    = monthStartCST();
 
-  // Build per-gifter aggregates for each time window
+  // Build per-gifter aggregates for each time window.
+  // Rank by viewer_spend (USD-normalized) so YouTube/TikTok/direct compare fairly.
   const rows = Object.values(DB.gifters).map(g => {
     let dayRaw = 0, weekRaw = 0, monthRaw = 0, allRaw = 0;
+    let daySpend = 0, weekSpend = 0, monthSpend = 0, allSpend = 0;
     for (const gift of g.gifts) {
-      allRaw   += gift.amount;
-      if (gift.timestamp >= monthCut) monthRaw += gift.amount;
-      if (gift.timestamp >= weekCut)  weekRaw  += gift.amount;
-      if (gift.timestamp >= todayCut) dayRaw   += gift.amount;
+      const spend = computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
+      allRaw += gift.amount;   allSpend += spend;
+      if (gift.timestamp >= monthCut) { monthRaw += gift.amount; monthSpend += spend; }
+      if (gift.timestamp >= weekCut)  { weekRaw  += gift.amount; weekSpend  += spend; }
+      if (gift.timestamp >= todayCut) { dayRaw   += gift.amount; daySpend   += spend; }
     }
     return {
       name:       g.displayName,
@@ -1888,18 +1891,20 @@ function publishGiftrLeaderboard() {
       platform:   gifterPlatform(g),
       profilePic: g.profilePic || null,
       dayRaw, weekRaw, monthRaw, allRaw,
+      daySpend, weekSpend, monthSpend, allSpend,
     };
   });
 
-  function topBy(field) {
-    const best = rows.filter(r => r[field] > 0).sort((a, b) => b[field] - a[field])[0];
+  function topBy(rawField) {
+    const spendField = rawField.replace('Raw', 'Spend');
+    const best = rows.filter(r => r[spendField] > 0).sort((a, b) => b[spendField] - a[spendField])[0];
     if (!best) return null;
-    return { name: best.name, amount: best[field], type: best.type, platform: best.platform, profilePic: best.profilePic };
+    return { name: best.name, amount: best[rawField], type: best.type, platform: best.platform, profilePic: best.profilePic };
   }
 
   function topByPlat(platform) {
-    const best = rows.filter(r => r.platform === platform && r.allRaw > 0)
-                     .sort((a, b) => b.allRaw - a.allRaw)[0];
+    const best = rows.filter(r => r.platform === platform && r.allSpend > 0)
+                     .sort((a, b) => b.allSpend - a.allSpend)[0];
     if (!best) return null;
     return { name: best.name, amount: best.allRaw, type: best.type, platform: best.platform, profilePic: best.profilePic };
   }
@@ -2136,7 +2141,6 @@ document.getElementById('edit-entries-cancel').addEventListener('click', () => {
 document.getElementById('edit-entries-save').addEventListener('click', () => {
   if (!editEntriesKey) return;
 
-  // Rename / re-key if display name changed
   const newName = document.getElementById('edit-display-name').value.trim();
   if (newName) {
     const newKey = normKey(newName);
@@ -2155,7 +2159,6 @@ document.getElementById('edit-entries-save').addEventListener('click', () => {
     }
   }
 
-  // Collect updated entries from the modal rows
   const rows = document.querySelectorAll('#edit-entries-list .edit-entry-row');
   const updatedGifts = [];
   rows.forEach(row => {
@@ -2164,14 +2167,7 @@ document.getElementById('edit-entries-save').addEventListener('click', () => {
     const amount = parseFloat(row.querySelector('.entry-amount').value) || 0;
     const note   = row.querySelector('.entry-note').value.trim();
     const ts     = tsVal ? new Date(tsVal).getTime() : Date.now();
-    updatedGifts.push({
-      id:        row.dataset.id || uuidv4(),
-      amount,
-      type,
-      platform:  typeToPlatform(type),
-      timestamp: ts,
-      note
-    });
+    updatedGifts.push({ id: row.dataset.id || uuidv4(), amount, type, platform: typeToPlatform(type), timestamp: ts, note });
   });
 
   DB.gifters[editEntriesKey].gifts = updatedGifts;
