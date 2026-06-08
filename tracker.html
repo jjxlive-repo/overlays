@@ -510,6 +510,22 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         <span class="dim">Ably: </span>
         <span id="ably-status-text" class="dim">connecting…</span>
       </div>
+
+      <hr style="margin:14px 0">
+
+      <!-- ── Giftr Top Slot Controls ── -->
+      <div>
+        <label style="margin-bottom:7px;display:block">Giftr Overlay — Pin Slot</label>
+        <div class="mode-group" id="giftr-slot-btns">
+          <button class="btn-mode btn-giftr-slot" data-slot="daily">🌟 Daily</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="weekly">📅 Weekly</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="monthly">🏆 Monthly</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="youtube">▶ YouTube</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="tiktok">♪ TikTok</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="auto" id="btn-giftr-auto">↺ Auto</button>
+        </div>
+        <div class="dim" style="margin-top:4px">Pinning a slot pauses auto-rotation on the overlay. ↺ Auto resumes it.</div>
+      </div>
     </div>
   </div>
 </section>
@@ -1880,9 +1896,25 @@ function publishGiftrLeaderboard() {
 
   document.getElementById('btn-push-overlay').addEventListener('click', () => {
     publishLeaderboard();
+    publishGiftrLeaderboard();
     const st = document.getElementById('overlay-push-status');
     st.textContent = '✓ pushed';
     setTimeout(() => st.textContent = '', 2000);
+  });
+
+  // ── Giftr slot pin buttons ──
+  document.querySelectorAll('.btn-giftr-slot').forEach(b => {
+    b.addEventListener('click', () => {
+      const slot = b.dataset.slot;
+      // Highlight active pin
+      document.querySelectorAll('.btn-giftr-slot').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      // Send pin command to overlay via Ably
+      if (ablyChannel) {
+        ablyChannel.publish('giftr-cmd', slot === 'auto' ? 'auto' : 'slot:' + slot)
+          .catch(e => console.warn('[Ably] giftr-cmd err:', e));
+      }
+    });
   });
 
   // Collapsible panel
