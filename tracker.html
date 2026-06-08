@@ -561,6 +561,26 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════ TOP 10 ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="top10-hdr">
+      <h2>&#x1F3C6; Top 10 Gifters</h2>
+      <div class="mode-group" style="margin-left:auto;flex-wrap:wrap" onclick="event.stopPropagation()">
+        <button class="btn-mode btn-top10-tf active" data-tf="day">Day</button>
+        <button class="btn-mode btn-top10-tf" data-tf="week">Week</button>
+        <button class="btn-mode btn-top10-tf" data-tf="month">Month</button>
+        <button class="btn-mode btn-top10-tf" data-tf="year">Year</button>
+        <button class="btn-mode btn-top10-tf" data-tf="allTime">All Time</button>
+      </div>
+      <span class="panel-toggle open" id="top10-toggle">&#x25BC;</span>
+    </div>
+    <div class="panel-body" id="top10-body">
+      <div id="top10-list"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TABLE ══ -->
 <section>
   <div class="table-toolbar">
@@ -1015,6 +1035,9 @@ function renderTable() {
       th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
     }
   });
+
+  // keep top-10 in sync
+  if (typeof renderTop10 === 'function') renderTop10();
 }
 
 function buildEarningsTip(mode, iosPct) {
@@ -1739,6 +1762,16 @@ function weekStartCST() {
   return monday.getTime() + tzOffsetMs;
 }
 
+function yearStartCST() {
+  const now = new Date();
+  const chicagoStr = now.toLocaleString('en-US', { timeZone: 'America/Chicago' });
+  const chicagoNow = new Date(chicagoStr);
+  const tzOffsetMs = now.getTime() - chicagoNow.getTime();
+  const jan1 = new Date(chicagoNow);
+  jan1.setMonth(0); jan1.setDate(1); jan1.setHours(0, 0, 0, 0);
+  return jan1.getTime() + tzOffsetMs;
+}
+
 function cutoffForTimeFrame(tf) {
   if (tf === 'today')   return todayStartCST();
   if (tf === 'month')   return monthStartCST();
@@ -2078,6 +2111,75 @@ function publishGiftrLeaderboard() {
     syncCustomStatus();
   });
 })();
+
+/* ─────────────────────────── TOP 10 VIEW ──── */
+let top10TimeFrame = 'day';
+
+function cutoffForTop10(tf) {
+  if (tf === 'day')   return todayStartCST();
+  if (tf === 'week')  return weekStartCST();
+  if (tf === 'month') return monthStartCST();
+  if (tf === 'year')  return yearStartCST();
+  return 0; // allTime
+}
+
+function renderTop10() {
+  const iosPct = DB.settings.iosPercent ?? 50;
+  const cutoff = cutoffForTop10(top10TimeFrame);
+  const list   = document.getElementById('top10-list');
+  if (!list) return;
+
+  const ranked = Object.values(DB.gifters).map(g => {
+    let rawTotal = 0, spendTotal = 0;
+    for (const gift of g.gifts) {
+      if (gift.timestamp >= cutoff) {
+        rawTotal   += gift.amount;
+        spendTotal += computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
+      }
+    }
+    return { gifter: g, rawTotal, spendTotal, type: gifterType(g), platform: gifterPlatform(g) };
+  })
+  .filter(r => r.spendTotal > 0)
+  .sort((a, b) => b.spendTotal - a.spendTotal)
+  .slice(0, 10);
+
+  if (!ranked.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-style:italic;text-align:center;padding:20px;font-size:12px">No gifts recorded for this period.</div>';
+    return;
+  }
+
+  const maxSpend = ranked[0].spendTotal;
+
+  list.innerHTML = ranked.map((r, i) => {
+    const plat     = platformLabel(r.platform);
+    const rawFmt   = formatRaw(r.rawTotal, r.type);
+    const spendFmt = '$' + r.spendTotal.toFixed(2);
+    const barPct   = (r.spendTotal / maxSpend * 100).toFixed(1);
+    const rankColor = i === 0 ? 'var(--gold)' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'var(--muted)';
+    const medal    = i === 0 ? '&#x1F947;' : i === 1 ? '&#x1F948;' : i === 2 ? '&#x1F949;' : (i + 1);
+
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-radius:5px;background:' + (i%2===0?'var(--surface2)':'transparent') + '">'
+      + '<span style="width:22px;text-align:center;font-size:13px;font-weight:700;color:' + rankColor + ';flex-shrink:0">' + medal + '</span>'
+      + '<span style="flex:0 0 auto"><span class="plat-badge ' + plat.cls + '">' + plat.label + '</span></span>'
+      + '<span style="flex:1;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.gifter.displayName) + '</span>'
+      + '<span style="font-family:monospace;font-size:11px;color:var(--muted);flex-shrink:0">' + rawFmt + '</span>'
+      + '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);flex-shrink:0;min-width:62px;text-align:right">' + spendFmt + '</span>'
+      + '<div style="width:72px;flex-shrink:0"><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">'
+      + '<div style="height:100%;width:' + barPct + '%;background:var(--accent);border-radius:3px"></div></div></div>'
+      + '</div>';
+  }).join('');
+}
+
+document.querySelectorAll('.btn-top10-tf').forEach(b => {
+  b.addEventListener('click', () => {
+    top10TimeFrame = b.dataset.tf;
+    document.querySelectorAll('.btn-top10-tf').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    renderTop10();
+  });
+});
+
+makeCollapsible('top10-hdr', 'top10-body', 'top10-toggle', true);
 
 /* ─────────────────────────── MODAL: EDIT ENTRIES ──── */
 let editEntriesKey = null;
