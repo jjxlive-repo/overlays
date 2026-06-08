@@ -710,7 +710,8 @@ function saveData(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   renderLastUpdated(data.lastUpdated);
   // Publish leaderboard after data change (deferred so DB is current)
-  setTimeout(publishLeaderboard, 50);
+  setTimeout(publishLeaderboard,     50);
+  setTimeout(publishGiftrLeaderboard, 80);
 }
 
 let DB = loadData();
@@ -1659,6 +1660,19 @@ function monthStartCST() {
   return first.getTime() + tzOffsetMs;
 }
 
+function weekStartCST() {
+  const now = new Date();
+  const chicagoStr = now.toLocaleString('en-US', { timeZone: 'America/Chicago' });
+  const chicagoNow = new Date(chicagoStr);
+  const tzOffsetMs = now.getTime() - chicagoNow.getTime();
+  const monday = new Date(chicagoNow);
+  const day = monday.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day; // back to Monday
+  monday.setDate(monday.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday.getTime() + tzOffsetMs;
+}
+
 function cutoffForTimeFrame(tf) {
   if (tf === 'today')   return todayStartCST();
   if (tf === 'month')   return monthStartCST();
@@ -1715,6 +1729,14 @@ function formatRawAmount(rawAmount, type) {
     ablyClient.connection.on('failed',       () => {
       dot.style.background = '#ef4444';
       if (statusText) statusText.textContent = 'failed';
+    });
+
+    // Respond to overlay requests for current leaderboard data
+    ablyChannel.subscribe('cmd', msg => {
+      if (msg.data === 'requestLeaderboard') {
+        publishLeaderboard();
+        publishGiftrLeaderboard();
+      }
     });
   } catch(e) {
     console.warn('[Ably] init failed:', e);
@@ -1774,6 +1796,56 @@ function publishLeaderboard() {
     timeFrame: tf,
     rankedCount,
   }).catch(e => console.warn('[Ably] publish err:', e));
+}
+
+/* ── Giftr 5-slot leaderboard (for giftr-overlay.html) ── */
+function publishGiftrLeaderboard() {
+  if (!ablyChannel) return;
+
+  const iosPct      = DB.settings.iosPercent ?? 50;
+  const todayCut    = todayStartCST();
+  const weekCut     = weekStartCST();
+  const monthCut    = monthStartCST();
+
+  // Build per-gifter aggregates for each time window
+  const rows = Object.values(DB.gifters).map(g => {
+    let dayRaw = 0, weekRaw = 0, monthRaw = 0, allRaw = 0;
+    for (const gift of g.gifts) {
+      allRaw   += gift.amount;
+      if (gift.timestamp >= monthCut) monthRaw += gift.amount;
+      if (gift.timestamp >= weekCut)  weekRaw  += gift.amount;
+      if (gift.timestamp >= todayCut) dayRaw   += gift.amount;
+    }
+    return {
+      name:     g.displayName,
+      type:     gifterType(g),
+      platform: gifterPlatform(g),
+      dayRaw, weekRaw, monthRaw, allRaw,
+    };
+  });
+
+  function topBy(field) {
+    const best = rows.filter(r => r[field] > 0).sort((a, b) => b[field] - a[field])[0];
+    if (!best) return null;
+    return { name: best.name, amount: best[field], type: best.type, platform: best.platform };
+  }
+
+  function topByPlat(platform) {
+    const best = rows.filter(r => r.platform === platform && r.allRaw > 0)
+                     .sort((a, b) => b.allRaw - a.allRaw)[0];
+    if (!best) return null;
+    return { name: best.name, amount: best.allRaw, type: best.type, platform: best.platform };
+  }
+
+  const payload = {
+    daily:   topBy('dayRaw'),
+    weekly:  topBy('weekRaw'),
+    monthly: topBy('monthRaw'),
+    youtube: topByPlat('youtube'),
+    tiktok:  topByPlat('tiktok'),
+  };
+
+  ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
 }
 
 /* ── Overlay control panel events ── */
