@@ -497,9 +497,21 @@ function nextSlot() {
   showSlot((currentIdx + 1) % SLOTS.length);
 }
 
+let pinned = false; // true = manual slot pinned, auto-rotation paused
+
 function startRotation() {
   clearInterval(rotateTimer);
+  pinned = false;
   rotateTimer = setInterval(nextSlot, CONFIG.ROTATE_MS);
+}
+
+function pinSlot(key) {
+  const idx = SLOTS.findIndex(s => s.key === key);
+  if (idx === -1) return;
+  clearInterval(rotateTimer);
+  rotateTimer = null;
+  pinned = true;
+  showSlot(idx);
 }
 
 /* ════════════════════════════════════════
@@ -535,8 +547,21 @@ ably.connection.on('disconnected', () => setStatus('connecting'));
 ably.connection.on('connecting',   () => setStatus('connecting'));
 ably.connection.on('failed',       () => setStatus(''));
 
-// Listen for giftr leaderboard messages
+// Leaderboard data
 ch.subscribe('giftr', msg => onGiftrData(msg.data));
+
+// Manual slot pin commands from tracker controller
+ch.subscribe('giftr-cmd', msg => {
+  const cmd = msg.data || '';
+  if (cmd === 'auto') {
+    // Resume auto-rotation
+    const hasAny = SLOTS.some(m => leaderboard[m.key] && leaderboard[m.key].name);
+    if (hasAny) startRotation();
+  } else if (cmd.startsWith('slot:')) {
+    const key = cmd.slice(5); // e.g. 'daily', 'youtube'
+    pinSlot(key);
+  }
+});
 </script>
 </body>
 </html>
