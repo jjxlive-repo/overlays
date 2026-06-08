@@ -8,26 +8,24 @@
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
   :root {
-    --clr-deep:    #3B0764;
-    --clr-mid:     #7B2FBE;
-    --clr-bright:  #A855F7;
-    --clr-light:   #C084FC;
-    --clr-accent:  #E879F9;
-    --clr-white:   #FAF5FF;
-    --clr-danger:  #F43F5E;
-    --clr-gold:    #FBBF24;
+    --clr-deep:   #3B0764;
+    --clr-mid:    #7B2FBE;
+    --clr-bright: #A855F7;
+    --clr-light:  #C084FC;
+    --clr-accent: #E879F9;
+    --clr-white:  #FAF5FF;
+    --clr-danger: #F43F5E;
+    --clr-gold:   #FBBF24;
   }
   *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
   html, body {
-    width: 1080px; height: 1920px;
-    overflow: hidden;
-    background: transparent;
-    font-family: 'DM Sans', sans-serif;
+    width:1080px; height:1920px; overflow:hidden;
+    background:transparent; font-family:'DM Sans',sans-serif;
   }
   #scene {
-    position: relative; width: 1080px; height: 1920px;
-    display: flex; align-items: center; justify-content: center;
-    pointer-events: none;
+    position:relative; width:1080px; height:1920px;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
   }
 
   /* ── Blobs ── */
@@ -38,8 +36,7 @@
   /* ── Panel ── */
   #panel {
     position:relative; z-index:10;
-    display:flex; flex-direction:column; align-items:center; gap:24px;
-    width: 900px;
+    display:flex; flex-direction:column; align-items:center; gap:24px; width:900px;
     opacity:0; transform:translateY(40px) scale(0.9);
     transition:opacity 0.5s cubic-bezier(.34,1.56,.64,1), transform 0.5s cubic-bezier(.34,1.56,.64,1);
     pointer-events:none;
@@ -74,7 +71,7 @@
   #countdown-label {
     font-family:'Boogaloo',cursive; font-size:42px; color:var(--clr-white);
     text-shadow:0 0 16px var(--clr-bright),0 2px 0 rgba(0,0,0,0.5);
-    text-align:center; letter-spacing:1px; padding: 0 20px;
+    text-align:center; letter-spacing:1px; padding:0 20px;
   }
 
   /* ── Progress bar ── */
@@ -83,8 +80,7 @@
     border-radius:8px; overflow:hidden; box-shadow:0 0 12px rgba(168,85,247,0.4);
   }
   #progress-fill {
-    height:100%;
-    background:linear-gradient(90deg,var(--clr-mid),var(--clr-accent),var(--clr-light));
+    height:100%; background:linear-gradient(90deg,var(--clr-mid),var(--clr-accent),var(--clr-light));
     border-radius:8px; width:100%; transition:width 0.9s linear,background 0.3s ease;
   }
   #progress-fill.danger { background:linear-gradient(90deg,#7F1D1D,var(--clr-danger),#FB7185); }
@@ -92,7 +88,7 @@
   /* ── State banners ── */
   #state-banner {
     font-family:'Boogaloo',cursive; font-size:80px; color:var(--clr-white);
-    text-align:center; letter-spacing:2px; padding: 0 40px;
+    text-align:center; letter-spacing:2px; padding:0 40px;
     text-shadow:0 0 30px var(--clr-bright),0 4px 0 rgba(0,0,0,0.5);
   }
   #state-banner.saved-text {
@@ -114,16 +110,13 @@
     0%,100%{transform:translateX(0) scale(1)}
     15%{transform:translateX(-18px) scale(1.05)}
     30%{transform:translateX(14px) scale(1.05)}
-    45%{transform:translateX(-10px)}
-    60%{transform:translateX(8px)}
+    45%{transform:translateX(-10px)} 60%{transform:translateX(8px)}
     75%{transform:translateX(-4px)}
   }
 
-  /* ── Burst particles ── */
+  /* ── Burst / crack ── */
   #burst-layer { position:absolute; inset:0; pointer-events:none; z-index:20; overflow:hidden; }
   .splat-particle { position:absolute; border-radius:50% 70% 50% 70% / 60% 50% 70% 50%; opacity:0; transform:scale(0); }
-
-  /* ── Crack layer ── */
   #crack-layer { position:absolute; inset:0; pointer-events:none; z-index:15; opacity:0; transition:opacity 0.3s ease; }
   #crack-layer.visible { opacity:1; }
   .drip { position:absolute; top:0; border-radius:0 0 50% 50%; opacity:0; transform-origin:top center; }
@@ -142,122 +135,260 @@
     50%{transform:translate(-50%,-50%) scale(1.06)}
   }
 
-  /* ── Connection dot ── */
+  /* ── Status dot ── */
   #status-dot {
-    position:fixed; top:20px; right:20px;
-    width:14px; height:14px; border-radius:50%;
+    position:fixed; top:20px; right:20px; width:14px; height:14px; border-radius:50%;
     background:#333; opacity:0.5; transition:background 0.3s ease; z-index:999;
   }
   #status-dot.connected { background:#22c55e; opacity:0.8; }
 
   /* ═══════════════════════════════════════════════════════════
-     IDLE BAIT WIDGET
-     Positioned: left edge, 400px from top
+     FEATURED SLOT WIDGET
+     220×220px square | top: 200px | left: 40px
   ═══════════════════════════════════════════════════════════ */
-  #idle-bait {
+
+  /* Outer wrapper — handles show/hide transition */
+  #feat-slot {
     position: absolute;
-    z-index: 10;
-    top: 400px;
+    top: 200px;
     left: 40px;
-    /* Slide in from left on appear */
-    transform: translateX(-30px) scale(0.92);
-    width: 430px;
-    padding: 18px 22px;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 16px;
-    background: rgba(20, 0, 40, 0.78);
-    border: 2px solid rgba(168, 85, 247, 0.55);
-    border-radius: 20px;
-    box-shadow: 0 0 24px rgba(168,85,247,0.35), inset 0 0 20px rgba(59,7,100,0.4);
+    width: 220px;
+    height: 220px;
+    z-index: 10;
     opacity: 0;
+    transform: translateX(-24px) scale(0.90);
+    transition: opacity 0.5s cubic-bezier(.4,0,.2,1),
+                transform 0.5s cubic-bezier(.34,1.56,.64,1);
     pointer-events: none;
-    transition: opacity 0.55s cubic-bezier(.4,0,.2,1), transform 0.55s cubic-bezier(.34,1.56,.64,1);
   }
-  #idle-bait.visible {
+  #feat-slot.visible {
     opacity: 1;
     transform: translateX(0) scale(1);
-    animation: baitGlow 3s ease-in-out infinite;
-  }
-  @keyframes baitGlow {
-    0%,100% { box-shadow: 0 0 24px rgba(168,85,247,0.35), inset 0 0 20px rgba(59,7,100,0.4); }
-    50%      { box-shadow: 0 0 55px rgba(168,85,247,0.7),  inset 0 0 28px rgba(59,7,100,0.5); }
   }
 
-  /* Inner wrapper carries the periodic wiggle — separate from parent's show/hide transform */
-  #bait-inner {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    width: 100%;
-    transform-origin: center center;
+  /* Spinning border ring — sits behind the card */
+  .feat-border-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    overflow: hidden;
+    z-index: 0;
   }
-  #idle-bait.visible #bait-inner {
-    /* Wiggles for ~0.6s at the end of every 15s cycle, starts after 2s so entrance settles first */
-    animation: baitWiggle 15s ease-in-out 2s infinite;
+  .feat-border-ring::before {
+    content: '';
+    position: absolute;
+    /* Extend past the box so rotation covers all edges */
+    inset: -60%;
+    animation: spinBorder 4s linear infinite;
   }
-  @keyframes baitWiggle {
-    0%, 92%, 100% { transform: rotate(0deg) scale(1); }
-    93%   { transform: rotate(-5deg) scale(0.97); }
-    94.5% { transform: rotate(6deg)  scale(1.03); }
-    96%   { transform: rotate(-4deg) scale(0.98); }
-    97.5% { transform: rotate(4deg)  scale(1.02); }
-    99%   { transform: rotate(-1deg) scale(1); }
+  /* Platform-specific border gradients */
+  .feat-border-ring.plat-splat::before {
+    background: conic-gradient(#A855F7, #E879F9, #C084FC, #7B2FBE, #A855F7);
   }
+  .feat-border-ring.plat-youtube::before {
+    background: conic-gradient(#FF0000, #FF6B35, #FFD700, #FF0000, #CC0000, #FF0000);
+  }
+  .feat-border-ring.plat-tiktok::before {
+    background: conic-gradient(#69C9D0, #EE1D52, #ffffff, #69C9D0, #EE1D52, #69C9D0);
+  }
+  @keyframes spinBorder { to { transform: rotate(360deg); } }
 
-  #bait-galaxy-img {
-    width: 90px; height: 90px; object-fit: contain; flex-shrink: 0;
-    filter: drop-shadow(0 0 10px rgba(232,121,249,0.8)) drop-shadow(0 0 22px rgba(168,85,247,0.6));
-    animation: baitFloat 2.6s ease-in-out infinite;
-  }
-  @keyframes baitFloat {
-    0%,100% { transform: translateY(0) scale(1); }
-    50%      { transform: translateY(-6px) scale(1.04); }
-  }
-
-  #bait-text {
+  /* Inner card — sits on top of border ring */
+  .feat-card {
+    position: absolute;
+    inset: 2px;
+    border-radius: 18px;
+    z-index: 1;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    overflow: hidden;
+    transition: opacity 0.38s ease, transform 0.38s ease;
   }
-  /* "galaxy/dono" */
-  #bait-label-send {
-    font-family:'Boogaloo',cursive;
-    font-size: 30px;
-    color: rgba(192,132,252,0.95);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    text-shadow: 0 0 12px rgba(168,85,247,0.6);
-    line-height: 1;
+  .feat-card.exiting {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94);
   }
-  /* "RESET/SAVE" */
-  #bait-label-main {
-    font-family:'Boogaloo',cursive;
-    font-size: 58px;
-    line-height: 1;
-    color: var(--clr-white);
-    letter-spacing: 3px;
-    text-shadow:
-      0 0 16px rgba(232,121,249,0.95),
-      0 0 36px rgba(168,85,247,0.75),
-      0 3px 0 rgba(0,0,0,0.55);
-    animation: baitTextGlow 3s ease-in-out infinite;
-  }
-  @keyframes baitTextGlow {
-    0%,100% { text-shadow:0 0 16px rgba(232,121,249,0.9),0 0 36px rgba(168,85,247,0.7),0 3px 0 rgba(0,0,0,0.55); }
-    50%      { text-shadow:0 0 28px rgba(232,121,249,1),0 0 60px rgba(168,85,247,0.9),0 3px 0 rgba(0,0,0,0.55); }
+  .feat-card.entering {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
   }
 
-  .bait-sparkle {
-    position:absolute; border-radius:50%; background:#E879F9;
-    opacity:0; pointer-events:none;
-    animation: baitSparkle var(--dur) var(--del) ease-in-out infinite;
+  /* Platform backgrounds */
+  .feat-card.plat-splat {
+    background: linear-gradient(160deg, rgba(30,0,60,0.94) 0%, rgba(59,7,100,0.92) 100%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(168,85,247,0.2);
   }
-  @keyframes baitSparkle {
-    0%,100%{opacity:0;transform:scale(0)} 50%{opacity:0.9;transform:scale(1)}
+  .feat-card.plat-youtube {
+    background: linear-gradient(160deg, rgba(30,0,0,0.95) 0%, rgba(80,0,0,0.92) 100%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,50,50,0.2);
   }
+  .feat-card.plat-tiktok {
+    background: linear-gradient(160deg, rgba(0,0,0,0.96) 0%, rgba(10,10,20,0.95) 100%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.8), inset 0 1px 0 rgba(105,201,208,0.15);
+  }
+
+  /* ── Card header strip ── */
+  .feat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+
+  .feat-period {
+    font-family: 'Boogaloo', cursive;
+    font-size: 13px;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .plat-splat  .feat-period { color: rgba(192,132,252,0.9); }
+  .plat-youtube .feat-period { color: rgba(255,160,160,0.9); }
+  .plat-tiktok  .feat-period { color: rgba(105,201,208,0.9); }
+
+  /* Platform badge */
+  .feat-badge {
+    font-family: 'Boogaloo', cursive;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    line-height: 1;
+    font-weight: bold;
+  }
+  .plat-splat .feat-badge {
+    background: rgba(168,85,247,0.25);
+    color: #E879F9;
+    border: 1px solid rgba(168,85,247,0.4);
+  }
+  .plat-youtube .feat-badge {
+    background: #FF0000;
+    color: #fff;
+  }
+  .plat-tiktok .feat-badge {
+    background: linear-gradient(90deg, #69C9D0, #EE1D52);
+    color: #fff;
+  }
+
+  /* ── Card body ── */
+  .feat-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px 4px;
+    gap: 4px;
+  }
+
+  /* Crown icon */
+  .feat-crown {
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px rgba(251,191,36,0.8));
+    animation: crownFloat 2.8s ease-in-out infinite;
+  }
+  @keyframes crownFloat {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+  }
+
+  /* Gifter name */
+  .feat-name {
+    font-family: 'Boogaloo', cursive;
+    font-size: 28px;
+    line-height: 1.05;
+    text-align: center;
+    letter-spacing: 1px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plat-splat .feat-name {
+    color: var(--clr-white);
+    text-shadow:
+      0 0 18px rgba(232,121,249,0.85),
+      0 0 40px rgba(168,85,247,0.6),
+      0 3px 0 rgba(0,0,0,0.7);
+  }
+  .plat-youtube .feat-name {
+    color: #fff;
+    text-shadow:
+      0 0 18px rgba(255,80,80,0.9),
+      0 0 40px rgba(200,0,0,0.6),
+      0 3px 0 rgba(0,0,0,0.8);
+  }
+  .plat-tiktok .feat-name {
+    color: #fff;
+    text-shadow:
+      2px 2px 0 #EE1D52,
+      -1px -1px 0 #69C9D0,
+      0 3px 0 rgba(0,0,0,0.8),
+      0 0 20px rgba(105,201,208,0.5);
+  }
+
+  /* Amount row */
+  .feat-amount {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 8px;
+    line-height: 1;
+  }
+  .plat-splat .feat-amount {
+    background: rgba(168,85,247,0.2);
+    color: rgba(224,176,255,0.95);
+    border: 1px solid rgba(168,85,247,0.3);
+  }
+  .plat-youtube .feat-amount {
+    background: rgba(255,0,0,0.18);
+    color: rgba(255,160,160,0.95);
+    border: 1px solid rgba(255,0,0,0.3);
+  }
+  .plat-tiktok .feat-amount {
+    background: rgba(105,201,208,0.12);
+    color: rgba(105,201,208,0.95);
+    border: 1px solid rgba(105,201,208,0.25);
+  }
+
+  /* ── Card footer — progress dots ── */
+  .feat-dots {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 0 10px;
+    flex-shrink: 0;
+  }
+  .feat-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+  .feat-dot.active {
+    background: rgba(255,255,255,0.85);
+    transform: scale(1.4);
+  }
+
+  /* ── Watermark #1 ── */
+  .feat-watermark {
+    position: absolute;
+    bottom: 28px;
+    right: 10px;
+    font-family: 'Boogaloo', cursive;
+    font-size: 48px;
+    line-height: 1;
+    opacity: 0.04;
+    color: #fff;
+    pointer-events: none;
+    user-select: none;
+  }
+
 </style>
 </head>
 <body>
@@ -268,22 +399,20 @@
   <svg id="splat-bg" viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
     <defs>
       <radialGradient id="splatGrad" cx="50%" cy="60%" r="60%">
-        <stop offset="0%"   stop-color="#A855F7" stop-opacity="0.95"/>
-        <stop offset="50%"  stop-color="#7B2FBE" stop-opacity="0.90"/>
+        <stop offset="0%" stop-color="#A855F7" stop-opacity="0.95"/>
+        <stop offset="50%" stop-color="#7B2FBE" stop-opacity="0.90"/>
         <stop offset="100%" stop-color="#3B0764" stop-opacity="0.85"/>
       </radialGradient>
       <radialGradient id="splatShine" cx="35%" cy="25%" r="40%">
-        <stop offset="0%"   stop-color="#E879F9" stop-opacity="0.5"/>
+        <stop offset="0%" stop-color="#E879F9" stop-opacity="0.5"/>
         <stop offset="100%" stop-color="#A855F7" stop-opacity="0"/>
       </radialGradient>
     </defs>
     <path d="M80,200 C40,180 20,150 30,110 C40,70 80,50 120,60 C130,30 160,10 200,20 C220,-5 260,5 270,35 C300,10 350,15 360,50 C400,20 450,30 455,70 C490,40 540,55 535,95 C575,70 620,90 610,130 C650,110 700,135 690,175 C730,160 770,185 755,220 C790,210 820,240 800,270 C770,290 720,280 700,255 C670,280 630,275 620,250 C590,270 550,260 545,235 C510,255 470,245 470,220 C440,240 400,230 405,205 C370,220 330,205 335,180 C300,195 260,178 270,155 C230,168 190,150 200,125 C160,138 120,118 130,95 C95,105 70,135 80,200 Z" fill="url(#splatGrad)"/>
     <path d="M150,80 C160,50 210,40 240,55 C260,30 310,35 320,60 C340,40 380,48 375,75 C360,55 320,52 305,72 C295,48 255,43 240,65 C218,47 170,52 150,80 Z" fill="url(#splatShine)" opacity="0.7"/>
-    <ellipse cx="30"  cy="215" rx="24" ry="17" fill="#7B2FBE" opacity="0.8"/>
+    <ellipse cx="30" cy="215" rx="24" ry="17" fill="#7B2FBE" opacity="0.8"/>
     <ellipse cx="870" cy="200" rx="28" ry="19" fill="#7B2FBE" opacity="0.8"/>
     <ellipse cx="450" cy="270" rx="20" ry="13" fill="#A855F7" opacity="0.7"/>
-    <ellipse cx="90"  cy="255" rx="16" ry="11" fill="#9333EA" opacity="0.6"/>
-    <ellipse cx="810" cy="250" rx="18" ry="12" fill="#9333EA" opacity="0.6"/>
   </svg>
 
   <div id="panel">
@@ -295,18 +424,30 @@
     <div id="state-banner"></div>
   </div>
 
-  <!-- Idle bait widget — left side, 400px from top, two lines only -->
-  <div id="idle-bait">
-    <div id="bait-inner">
-      <img id="bait-galaxy-img"
-           src="https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/resource/79a02148079526539f7599150da9fd28.png~tplv-obj.webp"
-           alt="Galaxy">
-      <div id="bait-text">
-        <span id="bait-label-send">galaxy/dono</span>
-        <span id="bait-label-main">RESET/SAVE</span>
+  <!-- ══ FEATURED SLOT ══ -->
+  <div id="feat-slot">
+    <!-- Spinning border ring (class swapped per platform) -->
+    <div class="feat-border-ring plat-splat" id="feat-ring"></div>
+
+    <!-- Card (inner content) -->
+    <div class="feat-card plat-splat" id="feat-card">
+      <div class="feat-watermark">#1</div>
+
+      <div class="feat-header">
+        <span class="feat-period" id="feat-period">DAILY</span>
+        <span class="feat-badge" id="feat-badge">💜</span>
       </div>
+
+      <div class="feat-body">
+        <div class="feat-crown" id="feat-crown">👑</div>
+        <div class="feat-name" id="feat-name">—</div>
+        <div class="feat-amount" id="feat-amount">—</div>
+      </div>
+
+      <div class="feat-dots" id="feat-dots"></div>
     </div>
   </div>
+  <!-- ══ /FEATURED SLOT ══ -->
 
   <div id="burst-layer"></div>
   <div id="crack-layer">
@@ -317,78 +458,90 @@
 
 <script>
 /* ============================================================
-   CONFIGURATION
+   CONFIGURATION — edit names/amounts here
 ============================================================ */
 const CONFIG = {
-  TIMER_SECONDS:      60,
-  COPY_COUNTDOWN:     "⚠️ Galaxy/DONO to SAVE",
-  COPY_SAVED:         "💜 SAVED! !W",
-  COPY_EXPIRED:       "💀 RESET. GG.",
-  WARN_THRESHOLD:     20,
-  DANGER_THRESHOLD:   10,
-  SAVED_LINGER_MS:    5000,
-  EXPIRED_LINGER_MS:  7000,
-  SOUND_RESET_FREQ:   220,
-  SOUND_SAVE_FREQ:    880,
-  SOUND_EXPIRE_FREQ:  110,
-  ABLY_KEY:           "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0",
-  ABLY_CHANNEL:       "splat-overlay",
+  TIMER_SECONDS:     60,
+  COPY_COUNTDOWN:    "⚠️ Galaxy/DONO to SAVE",
+  COPY_SAVED:        "💜 SAVED! !W",
+  COPY_EXPIRED:      "💀 RESET. GG.",
+  WARN_THRESHOLD:    20,
+  DANGER_THRESHOLD:  10,
+  SAVED_LINGER_MS:   5000,
+  EXPIRED_LINGER_MS: 7000,
+  SOUND_RESET_FREQ:  220,
+  SOUND_SAVE_FREQ:   880,
+  SOUND_EXPIRE_FREQ: 110,
+  ABLY_KEY:          "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0",
+  ABLY_CHANNEL:      "splat-overlay",
+
+  // ── Featured slot data ──────────────────────────────────
+  // platform: "splat" | "youtube" | "tiktok"
+  // unit: shown after amount (coins, gems, $, etc.)
+  FEAT_SLOTS: [
+    { period:"DAILY",    sub:"TOP GIFTER", platform:"splat",   crown:"👑", name:"—",  amount:"—",   unit:"gems"  },
+    { period:"WEEKLY",   sub:"TOP GIFTER", platform:"splat",   crown:"🏆", name:"—",  amount:"—",   unit:"gems"  },
+    { period:"MONTHLY",  sub:"TOP GIFTER", platform:"splat",   crown:"💎", name:"—",  amount:"—",   unit:"gems"  },
+    { period:"TOP",      sub:"YOUTUBE",    platform:"youtube", crown:"🔴", name:"—",  amount:"—",   unit:"$"     },
+    { period:"TOP",      sub:"TIKTOK",     platform:"tiktok",  crown:"🎵", name:"—",  amount:"—",   unit:"coins" },
+  ],
+  FEAT_ROTATE_MS: 5000,   // ms per slot
 };
 
-/* ── Ably ───────────────────────────────────────────────── */
+/* ── Ably ─────────────────────────────────────────────────── */
 const statusDot = document.getElementById("status-dot");
 const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
 const ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);
-ably.connection.on("connected", () => { statusDot.classList.add("connected"); });
-ablyChannel.subscribe("cmd", (msg) => {
+ably.connection.on("connected", () => statusDot.classList.add("connected"));
+ablyChannel.subscribe("cmd", msg => {
   const cmd = msg.data;
   if      (cmd === "reset") enterCountdown();
   else if (cmd === "save")  { if (state === STATE.COUNTDOWN) enterSaved(); }
   else if (cmd === "idle")  enterIdle();
 });
 
-/* ── Keyboard fallback ── */
+/* ── Keyboard fallback ────────────────────────────────────── */
 document.addEventListener("keydown", e => {
-  if (e.key === "[") enterCountdown();
-  else if (e.key === "]") { if (state === STATE.COUNTDOWN) enterSaved(); }
+  if      (e.key === "[")      enterCountdown();
+  else if (e.key === "]")      { if (state === STATE.COUNTDOWN) enterSaved(); }
   else if (e.key === "Escape") enterIdle();
 });
 
-/* ── Audio ── */
+/* ── Audio ────────────────────────────────────────────────── */
 let audioCtx = null;
 function ensureAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
 function playSound(type) {
   try {
-    ensureAudio(); const ctx=audioCtx, now=ctx.currentTime;
-    if (type==="reset") {
-      [0,0.12].forEach((delay,i)=>{
-        const osc=ctx.createOscillator(),g=ctx.createGain();
-        osc.connect(g);g.connect(ctx.destination);osc.type="sawtooth";
-        osc.frequency.setValueAtTime(CONFIG.SOUND_RESET_FREQ*(i===0?1.5:1),now+delay);
-        g.gain.setValueAtTime(0.3,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.18);
-        osc.start(now+delay);osc.stop(now+delay+0.2);
+    ensureAudio(); const ctx = audioCtx, now = ctx.currentTime;
+    if (type === "reset") {
+      [0, 0.12].forEach((d, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination); o.type = "sawtooth";
+        o.frequency.setValueAtTime(CONFIG.SOUND_RESET_FREQ * (i === 0 ? 1.5 : 1), now + d);
+        g.gain.setValueAtTime(0.3, now + d); g.gain.exponentialRampToValueAtTime(0.001, now + d + 0.18);
+        o.start(now + d); o.stop(now + d + 0.2);
       });
-    } else if (type==="save") {
-      [0,0.10,0.22,0.36].forEach((delay,i)=>{
-        const freq=CONFIG.SOUND_SAVE_FREQ*[1,1.25,1.5,2][i];
-        const osc=ctx.createOscillator(),g=ctx.createGain();
-        osc.connect(g);g.connect(ctx.destination);osc.type="sine";
-        osc.frequency.setValueAtTime(freq,now+delay);
-        g.gain.setValueAtTime(0.35,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.4);
-        osc.start(now+delay);osc.stop(now+delay+0.45);
+    } else if (type === "save") {
+      [0, 0.10, 0.22, 0.36].forEach((d, i) => {
+        const freq = CONFIG.SOUND_SAVE_FREQ * [1, 1.25, 1.5, 2][i];
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination); o.type = "sine";
+        o.frequency.setValueAtTime(freq, now + d);
+        g.gain.setValueAtTime(0.35, now + d); g.gain.exponentialRampToValueAtTime(0.001, now + d + 0.4);
+        o.start(now + d); o.stop(now + d + 0.45);
       });
-    } else if (type==="expire") {
-      const osc=ctx.createOscillator(),g=ctx.createGain();
-      osc.connect(g);g.connect(ctx.destination);osc.type="sawtooth";
-      osc.frequency.setValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*2,now);
-      osc.frequency.exponentialRampToValueAtTime(CONFIG.SOUND_EXPIRE_FREQ*0.5,now+0.8);
-      g.gain.setValueAtTime(0.4,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.9);
-      osc.start(now);osc.stop(now+1.0);
+    } else if (type === "expire") {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination); o.type = "sawtooth";
+      o.frequency.setValueAtTime(CONFIG.SOUND_EXPIRE_FREQ * 2, now);
+      o.frequency.exponentialRampToValueAtTime(CONFIG.SOUND_EXPIRE_FREQ * 0.5, now + 0.8);
+      g.gain.setValueAtTime(0.4, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+      o.start(now); o.stop(now + 1.0);
     }
   } catch(e) {}
 }
 
-/* ── DOM refs ── */
+/* ── DOM refs ─────────────────────────────────────────────── */
 const panel        = document.getElementById("panel");
 const splatBg      = document.getElementById("splat-bg");
 const blobLayer    = document.getElementById("blob-layer");
@@ -401,117 +554,185 @@ const burstLayer   = document.getElementById("burst-layer");
 const crackLayer   = document.getElementById("crack-layer");
 const crackSvg     = document.getElementById("crack-svg");
 const countWrap    = document.getElementById("countdown-wrap");
-const idleBait     = document.getElementById("idle-bait");
+const featSlot     = document.getElementById("feat-slot");
+const featCard     = document.getElementById("feat-card");
+const featRing     = document.getElementById("feat-ring");
+const featPeriod   = document.getElementById("feat-period");
+const featBadge    = document.getElementById("feat-badge");
+const featCrown    = document.getElementById("feat-crown");
+const featName     = document.getElementById("feat-name");
+const featAmount   = document.getElementById("feat-amount");
+const featDotsEl   = document.getElementById("feat-dots");
 countLabel.textContent = CONFIG.COPY_COUNTDOWN;
 
-/* ── Sparkles ── */
-[
-  {size:5, top:"12%", left:"8%",  dur:"2.1s", del:"0s"   },
-  {size:4, top:"80%", left:"14%", dur:"2.8s", del:"0.4s" },
-  {size:6, top:"20%", left:"90%", dur:"2.4s", del:"0.9s" },
-  {size:3, top:"70%", left:"82%", dur:"1.9s", del:"1.3s" },
-  {size:4, top:"50%", left:"4%",  dur:"3.1s", del:"0.6s" },
-  {size:5, top:"88%", left:"55%", dur:"2.2s", del:"1.8s" },
-].forEach(s=>{
-  const el=document.createElement("div"); el.className="bait-sparkle";
-  el.style.cssText=`width:${s.size}px;height:${s.size}px;top:${s.top};left:${s.left};--dur:${s.dur};--del:${s.del};`;
-  idleBait.appendChild(el);
+/* ── Build pagination dots ────────────────────────────────── */
+CONFIG.FEAT_SLOTS.forEach((_, i) => {
+  const d = document.createElement("div");
+  d.className = "feat-dot" + (i === 0 ? " active" : "");
+  featDotsEl.appendChild(d);
 });
 
-/* ── Ambient blobs ── */
+/* ── Featured slot rotation ───────────────────────────────── */
+let featIndex = 0;
+let featTimer = null;
+
+const PLATFORM_LABELS = {
+  splat:   "💜",
+  youtube: "YT",
+  tiktok:  "TT",
+};
+
+function renderFeatSlot(idx, animate) {
+  const slot = CONFIG.FEAT_SLOTS[idx];
+  const platClass = "plat-" + slot.platform;
+
+  if (animate) {
+    // Mark exiting
+    featCard.classList.add("exiting");
+    setTimeout(() => {
+      applyFeatContent(slot, platClass);
+      featCard.classList.remove("exiting");
+      featCard.classList.add("entering");
+      // Force reflow then remove entering class to trigger transition
+      void featCard.offsetWidth;
+      featCard.classList.remove("entering");
+    }, 400);
+  } else {
+    applyFeatContent(slot, platClass);
+  }
+}
+
+function applyFeatContent(slot, platClass) {
+  // Platform styling
+  featCard.className = "feat-card " + platClass;
+  featRing.className = "feat-border-ring " + platClass;
+
+  // Content
+  featPeriod.textContent = slot.period;
+  featBadge.textContent  = PLATFORM_LABELS[slot.platform] || "💜";
+  featCrown.textContent  = slot.crown;
+  featName.textContent   = slot.name;
+  featAmount.textContent = slot.amount === "—" ? "—" : slot.amount + " " + slot.unit;
+
+  // Dots
+  document.querySelectorAll(".feat-dot").forEach((d, i) => {
+    d.classList.toggle("active", i === featIndex);
+  });
+}
+
+function startFeatRotation() {
+  renderFeatSlot(featIndex, false);
+  clearInterval(featTimer);
+  featTimer = setInterval(() => {
+    featIndex = (featIndex + 1) % CONFIG.FEAT_SLOTS.length;
+    renderFeatSlot(featIndex, true);
+  }, CONFIG.FEAT_ROTATE_MS);
+}
+
+function stopFeatRotation() {
+  clearInterval(featTimer);
+  featTimer = null;
+}
+
+/* ── Ambient blobs ────────────────────────────────────────── */
 const BLOBS = [
-  {w:300,h:240,l:"5%",  t:"35%", c:"#7B2FBE",o:0.22,d:8},
-  {w:240,h:180,l:"65%", t:"55%", c:"#A855F7",o:0.18,d:11},
-  {w:160,h:130,l:"40%", t:"15%", c:"#9333EA",o:0.14,d:7},
-  {w:110,h:90, l:"10%", t:"60%", c:"#C084FC",o:0.16,d:9},
-  {w:140,h:100,l:"70%", t:"25%", c:"#6D28D9",o:0.14,d:13},
+  {w:300,h:240,l:"5%", t:"35%",c:"#7B2FBE",o:0.22,d:8},
+  {w:240,h:180,l:"65%",t:"55%",c:"#A855F7",o:0.18,d:11},
+  {w:160,h:130,l:"40%",t:"15%",c:"#9333EA",o:0.14,d:7},
+  {w:110,h:90, l:"10%",t:"60%",c:"#C084FC",o:0.16,d:9},
+  {w:140,h:100,l:"70%",t:"25%",c:"#6D28D9",o:0.14,d:13},
 ];
-BLOBS.forEach((b,i)=>{
-  const el=document.createElement("div"); el.className="blob";
-  el.style.cssText=`width:${b.w}px;height:${b.h}px;left:${b.l};top:${b.t};
+BLOBS.forEach((b, i) => {
+  const el = document.createElement("div"); el.className = "blob";
+  el.style.cssText = `width:${b.w}px;height:${b.h}px;left:${b.l};top:${b.t};
     background:radial-gradient(ellipse,${b.c} 0%,transparent 70%);opacity:${b.o};
     animation:blobDrift${i} ${b.d}s ease-in-out infinite alternate;`;
   blobLayer.appendChild(el);
-  const dx=(i%2===0?1:-1)*25,dy=(i%3===0?-1:1)*18,dr=(i%2===0?3:-3);
+  const dx = (i%2===0?1:-1)*25, dy = (i%3===0?-1:1)*18, dr = (i%2===0?3:-3);
   addStyle(`@keyframes blobDrift${i}{from{transform:translate(0,0) scale(1) rotate(0deg)}to{transform:translate(${dx}px,${dy}px) scale(1.08) rotate(${dr}deg)}}`);
 });
-function addStyle(css){const s=document.createElement("style");s.textContent=css;document.head.appendChild(s);}
+function addStyle(css) { const s = document.createElement("style"); s.textContent = css; document.head.appendChild(s); }
 
-/* ── State machine ── */
-const STATE={IDLE:"idle",COUNTDOWN:"countdown",SAVED:"saved",EXPIRED:"expired"};
-let state=STATE.IDLE, timeLeft=CONFIG.TIMER_SECONDS, ticker=null, lingerTimer=null;
-function show(...els){els.forEach(e=>e.classList.add("visible"));}
-function hide(...els){els.forEach(e=>e.classList.remove("visible"));}
+/* ── State machine ────────────────────────────────────────── */
+const STATE = { IDLE:"idle", COUNTDOWN:"countdown", SAVED:"saved", EXPIRED:"expired" };
+let state = STATE.IDLE, timeLeft = CONFIG.TIMER_SECONDS, ticker = null, lingerTimer = null;
+function show(...els) { els.forEach(e => e.classList.add("visible")); }
+function hide(...els) { els.forEach(e => e.classList.remove("visible")); }
 
-function enterIdle(){
-  state=STATE.IDLE; clearInterval(ticker); clearTimeout(lingerTimer);
-  hide(panel,splatBg,blobLayer,glowRing,crackLayer);
-  timerNumber.className=""; stateBanner.className="";
+function enterIdle() {
+  state = STATE.IDLE;
+  clearInterval(ticker); clearTimeout(lingerTimer);
+  hide(panel, splatBg, blobLayer, glowRing, crackLayer);
+  timerNumber.className = ""; stateBanner.className = "";
   progressFill.classList.remove("danger");
-  burstLayer.innerHTML=""; crackSvg.innerHTML="";
-  crackLayer.querySelectorAll(".drip").forEach(d=>d.remove());
-  show(idleBait);
+  burstLayer.innerHTML = ""; crackSvg.innerHTML = "";
+  crackLayer.querySelectorAll(".drip").forEach(d => d.remove());
+  show(featSlot);
+  startFeatRotation();
 }
 
-function enterCountdown(){
-  state=STATE.COUNTDOWN; clearInterval(ticker); clearTimeout(lingerTimer);
-  hide(idleBait);
-  timeLeft=CONFIG.TIMER_SECONDS;
-  hide(crackLayer); crackSvg.innerHTML=""; burstLayer.innerHTML="";
-  crackLayer.querySelectorAll(".drip").forEach(d=>d.remove());
-  stateBanner.className=""; stateBanner.textContent="";
-  countWrap.style.display="flex";
+function enterCountdown() {
+  state = STATE.COUNTDOWN;
+  clearInterval(ticker); clearTimeout(lingerTimer);
+  hide(featSlot);
+  stopFeatRotation();
+  timeLeft = CONFIG.TIMER_SECONDS;
+  hide(crackLayer); crackSvg.innerHTML = ""; burstLayer.innerHTML = "";
+  crackLayer.querySelectorAll(".drip").forEach(d => d.remove());
+  stateBanner.className = ""; stateBanner.textContent = "";
+  countWrap.style.display = "flex";
   progressFill.classList.remove("danger");
-  progressFill.style.transition="none"; progressFill.style.width="100%";
-  requestAnimationFrame(()=>{progressFill.style.transition="width 0.9s linear,background 0.3s ease";});
-  updateDisplay(); show(panel,splatBg,blobLayer,glowRing); playSound("reset");
-  ticker=setInterval(()=>{timeLeft--;updateDisplay();if(timeLeft<=0)enterExpired();},1000);
+  progressFill.style.transition = "none"; progressFill.style.width = "100%";
+  requestAnimationFrame(() => { progressFill.style.transition = "width 0.9s linear,background 0.3s ease"; });
+  updateDisplay();
+  show(panel, splatBg, blobLayer, glowRing);
+  playSound("reset");
+  ticker = setInterval(() => { timeLeft--; updateDisplay(); if (timeLeft <= 0) enterExpired(); }, 1000);
 }
 
-function enterSaved(){
-  if(state!==STATE.COUNTDOWN)return;
-  state=STATE.SAVED; clearInterval(ticker);
+function enterSaved() {
+  if (state !== STATE.COUNTDOWN) return;
+  state = STATE.SAVED; clearInterval(ticker);
   playSound("save");
-  countWrap.style.display="none";
-  stateBanner.textContent=CONFIG.COPY_SAVED; stateBanner.className="saved-text";
+  countWrap.style.display = "none";
+  stateBanner.textContent = CONFIG.COPY_SAVED; stateBanner.className = "saved-text";
   triggerBurst();
-  lingerTimer=setTimeout(enterIdle,CONFIG.SAVED_LINGER_MS);
+  lingerTimer = setTimeout(enterIdle, CONFIG.SAVED_LINGER_MS);
 }
 
-function enterExpired(){
-  state=STATE.EXPIRED; clearInterval(ticker);
+function enterExpired() {
+  state = STATE.EXPIRED; clearInterval(ticker);
   playSound("expire");
-  timerNumber.textContent="0"; timerNumber.className="pulse-danger";
-  progressFill.style.width="0%";
-  setTimeout(()=>{
-    countWrap.style.display="none";
-    stateBanner.textContent=CONFIG.COPY_EXPIRED; stateBanner.className="expired-text";
+  timerNumber.textContent = "0"; timerNumber.className = "pulse-danger";
+  progressFill.style.width = "0%";
+  setTimeout(() => {
+    countWrap.style.display = "none";
+    stateBanner.textContent = CONFIG.COPY_EXPIRED; stateBanner.className = "expired-text";
     triggerCrack();
-  },300);
-  lingerTimer=setTimeout(enterIdle,CONFIG.EXPIRED_LINGER_MS);
+  }, 300);
+  lingerTimer = setTimeout(enterIdle, CONFIG.EXPIRED_LINGER_MS);
 }
 
-function updateDisplay(){
-  const pct=timeLeft/CONFIG.TIMER_SECONDS;
-  timerNumber.textContent=timeLeft; progressFill.style.width=(pct*100)+"%";
+function updateDisplay() {
+  const pct = timeLeft / CONFIG.TIMER_SECONDS;
+  timerNumber.textContent = timeLeft; progressFill.style.width = (pct * 100) + "%";
   timerNumber.classList.remove("pulse-normal","pulse-warn","pulse-danger");
-  if(timeLeft<=CONFIG.DANGER_THRESHOLD){timerNumber.classList.add("pulse-danger");progressFill.classList.add("danger");}
-  else if(timeLeft<=CONFIG.WARN_THRESHOLD){timerNumber.classList.add("pulse-warn");}
-  else{timerNumber.classList.add("pulse-normal");}
+  if (timeLeft <= CONFIG.DANGER_THRESHOLD) { timerNumber.classList.add("pulse-danger"); progressFill.classList.add("danger"); }
+  else if (timeLeft <= CONFIG.WARN_THRESHOLD) timerNumber.classList.add("pulse-warn");
+  else timerNumber.classList.add("pulse-normal");
 }
 
-/* ── Burst ── */
-function triggerBurst(){
-  const colors=["#A855F7","#C084FC","#E879F9","#7B2FBE","#DDD6FE","#FBBF24"];
-  for(let i=0;i<28;i++){
-    const el=document.createElement("div"); el.className="splat-particle";
-    const sz=16+Math.random()*60;
-    const ang=(i/28)*360+Math.random()*20;
-    const r=80+Math.random()*260;
-    const dx=Math.cos(ang*Math.PI/180)*r;
-    const dy=Math.sin(ang*Math.PI/180)*r;
-    const col=colors[i%colors.length],dur=0.5+Math.random()*0.5,del=Math.random()*0.15,rot=Math.random()*360;
-    el.style.cssText=`width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;
+/* ── Burst ────────────────────────────────────────────────── */
+function triggerBurst() {
+  const colors = ["#A855F7","#C084FC","#E879F9","#7B2FBE","#DDD6FE","#FBBF24"];
+  for (let i = 0; i < 28; i++) {
+    const el = document.createElement("div"); el.className = "splat-particle";
+    const sz = 16 + Math.random() * 60;
+    const ang = (i / 28) * 360 + Math.random() * 20;
+    const r = 80 + Math.random() * 260;
+    const dx = Math.cos(ang * Math.PI / 180) * r, dy = Math.sin(ang * Math.PI / 180) * r;
+    const col = colors[i % colors.length], dur = 0.5 + Math.random() * 0.5, del = Math.random() * 0.15, rot = Math.random() * 360;
+    el.style.cssText = `width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;
       left:calc(50% - ${sz/2}px);top:calc(50% - ${sz/2}px);
       background:radial-gradient(ellipse at 35% 35%,${col},${col}99);
       border-radius:50% 70% 50% 70% / 60% 50% 70% 50%;
@@ -520,15 +741,15 @@ function triggerBurst(){
     addStyle(`@keyframes burst${i}{0%{opacity:1;transform:translate(0,0) scale(0) rotate(0deg)}40%{opacity:1}100%{opacity:0;transform:translate(${dx}px,${dy}px) scale(1) rotate(${rot}deg)}}`);
     burstLayer.appendChild(el);
   }
-  splatBg.style.filter="drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))";
-  setTimeout(()=>{splatBg.style.filter="drop-shadow(0 0 40px rgba(168,85,247,0.6))";},600);
+  splatBg.style.filter = "drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))";
+  setTimeout(() => { splatBg.style.filter = "drop-shadow(0 0 40px rgba(168,85,247,0.6))"; }, 600);
 }
 
-/* ── Crack ── */
-function triggerCrack(){
+/* ── Crack ────────────────────────────────────────────────── */
+function triggerCrack() {
   show(crackLayer);
-  const cx=540,cy=1200;
-  const crackPaths=[
+  const cx = 540, cy = 1200;
+  const crackPaths = [
     [[cx,cy],[cx-120,cy-280],[cx-180,cy-500],[cx-110,cy-720]],
     [[cx,cy],[cx+130,cy-260],[cx+200,cy-470],[cx+130,cy-680]],
     [[cx,cy],[cx-50, cy-420],[cx-30, cy-680],[cx-90, cy-900]],
@@ -538,37 +759,38 @@ function triggerCrack(){
     [[cx,cy],[cx-100,cy-130],[cx-280,cy-100],[cx-420,cy-170]],
     [[cx,cy],[cx+110,cy-120],[cx+300,cy-90], [cx+450,cy-155]],
   ];
-  crackPaths.forEach((pts,idx)=>{
-    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
-    let d=`M ${pts[0][0]} ${pts[0][1]}`;
-    pts.slice(1).forEach(p=>{d+=` L ${p[0]} ${p[1]}`});
-    path.setAttribute("d",d); path.setAttribute("stroke","#F43F5E");
-    path.setAttribute("stroke-width",String(Math.max(1.5,4-idx*0.35)));
+  crackPaths.forEach((pts, idx) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+    let d = `M ${pts[0][0]} ${pts[0][1]}`;
+    pts.slice(1).forEach(p => { d += ` L ${p[0]} ${p[1]}`; });
+    path.setAttribute("d", d); path.setAttribute("stroke","#F43F5E");
+    path.setAttribute("stroke-width", String(Math.max(1.5, 4 - idx * 0.35)));
     path.setAttribute("fill","none"); path.setAttribute("opacity","0.85");
-    const len=1400;
-    path.style.strokeDasharray=len; path.style.strokeDashoffset=len;
-    path.style.transition=`stroke-dashoffset ${0.4+idx*0.06}s ${idx*0.04}s ease-out`;
+    const len = 1400;
+    path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+    path.style.transition = `stroke-dashoffset ${0.4 + idx * 0.06}s ${idx * 0.04}s ease-out`;
     crackSvg.appendChild(path);
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{path.style.strokeDashoffset="0";}));
+    requestAnimationFrame(() => requestAnimationFrame(() => { path.style.strokeDashoffset = "0"; }));
   });
-  [60,180,300,420,540,660,780,900,1020].forEach((x,i)=>{
-    const drip=document.createElement("div"); drip.className="drip";
-    const h=80+Math.random()*200,w=8+Math.random()*14;
-    drip.style.cssText=`left:${x}px;height:${h}px;width:${w}px;
+  [60,180,300,420,540,660,780,900,1020].forEach((x, i) => {
+    const drip = document.createElement("div"); drip.className = "drip";
+    const h = 80 + Math.random() * 200, w = 8 + Math.random() * 14;
+    drip.style.cssText = `left:${x}px;height:${h}px;width:${w}px;
       background:linear-gradient(180deg,#F43F5E,#7F1D1D);
       animation:dripDown ${0.6+Math.random()*0.4}s ${0.2+i*0.07}s ease-in forwards;`;
     crackLayer.appendChild(drip);
   });
   addStyle(`@keyframes dripDown{0%{opacity:0;transform:scaleY(0);transform-origin:top}30%{opacity:0.9}100%{opacity:0.7;transform:scaleY(1);transform-origin:top}}`);
-  const flash=document.createElement("div");
-  flash.style.cssText=`position:fixed;inset:0;z-index:50;pointer-events:none;
+  const flash = document.createElement("div");
+  flash.style.cssText = `position:fixed;inset:0;z-index:50;pointer-events:none;
     background:radial-gradient(ellipse at center,transparent 30%,rgba(244,63,94,0.4) 100%);
     animation:vignFade 1.5s ease forwards;`;
   addStyle(`@keyframes vignFade{0%{opacity:0}20%{opacity:1}100%{opacity:0}}`);
   document.body.appendChild(flash);
-  setTimeout(()=>flash.remove(),1600);
+  setTimeout(() => flash.remove(), 1600);
 }
 
+/* ── Init ─────────────────────────────────────────────────── */
 enterIdle();
 </script>
 </body>
