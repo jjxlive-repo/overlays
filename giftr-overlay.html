@@ -218,13 +218,7 @@ html, body {
   <div id="card">
     <div id="slot-container"></div>
 
-    <div id="nav-dots">
-      <div class="nav-dot active"></div>
-      <div class="nav-dot"></div>
-      <div class="nav-dot"></div>
-      <div class="nav-dot"></div>
-      <div class="nav-dot"></div>
-    </div>
+    <div id="nav-dots"><!-- built by JS --></div>
 
     <div id="no-data">
       <div class="no-data-text">Waiting for data</div>
@@ -235,19 +229,21 @@ html, body {
 </div>
 
 <script>
-/* ══ CONFIG ══════════════════════════════════════ */
+/* ══ CONFIG ══════════════════════════════════════════════ */
 const CONFIG = {
   ROTATE_MS:    5000,
   ABLY_KEY:     'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
   ABLY_CHANNEL: 'splat-overlay',
 };
 
-const SLOTS = [
+// All possible slots — activeSlots is the live filtered subset
+const SLOT_DEFS = [
   { key: 'daily',   label: 'Daily Top Gifter'   },
   { key: 'weekly',  label: 'Weekly Top Gifter'  },
   { key: 'monthly', label: 'Monthly Top Gifter' },
   { key: 'youtube', label: 'Top YouTube Gifter' },
   { key: 'tiktok',  label: 'Top TikTok Gifter'  },
+  { key: 'custom',  label: 'Featured Gifter'    }, // only added when custom entry exists
 ];
 
 const GLOW = {
@@ -257,13 +253,22 @@ const GLOW = {
   default: 'linear-gradient(135deg, #7B2FBE, #E879F9)',
 };
 
-/* ══ STATE ══════════════════════════════════════ */
-let leaderboard = {};
-let currentIdx  = 0;
-let rotateTimer = null;
-let pinned      = false;
+/* ══ STATE ══════════════════════════════════════════════ */
+let leaderboard  = {};
+let activeSlots  = SLOT_DEFS.slice(0, 5); // default all standard slots
+let currentIdx   = 0;
+let rotateTimer  = null;
+let pinned       = false;
 
-/* ══ HELPERS ════════════════════════════════════ */
+// Canvas context for measuring Anton font width before render
+let _ctx = null;
+function canvasWidth(text, sizePx) {
+  if (!_ctx) _ctx = Object.assign(document.createElement('canvas'),{width:1,height:1}).getContext('2d');
+  _ctx.font = `${sizePx}px Anton`;
+  return _ctx.measureText(text).width;
+}
+
+/* ══ HELPERS ════════════════════════════════════════════ */
 function platformOf(e) {
   if (!e) return 'default';
   const p = (e.platform || '').toLowerCase();
@@ -284,28 +289,57 @@ function fmtAmount(amount, type) {
   return n.toLocaleString();
 }
 
-// Font size scaled to 322px usable width (350 - 28px padding)
-function nameFontSize(name) {
-  const l = (name || '').length;
-  if (l <= 4)  return '130px';
-  if (l <= 6)  return '110px';
-  if (l <= 8)  return '90px';
-  if (l <= 10) return '74px';
-  if (l <= 13) return '60px';
-  if (l <= 16) return '48px';
-  return '38px';
+// Find largest font size (px) where text fits within maxW pixels
+const SIZE_STEPS = [130, 110, 90, 74, 60, 48, 38, 28, 20];
+function bestFontSize(name, maxW) {
+  const text = (name || '').toUpperCase();
+  for (const sz of SIZE_STEPS) {
+    if (canvasWidth(text, sz) <= maxW) return sz + 'px';
+  }
+  return '18px';
 }
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-/* ══ BUILD SLOTS ════════════════════════════════ */
+/* ══ DOM FIT — shrinks any still-overflowing names after render ══ */
+function fitNames() {
+  requestAnimationFrame(() => {
+    const cardW = document.getElementById('card').offsetWidth;
+    const maxW  = cardW - 28; // 14px padding each side
+    document.querySelectorAll('.slot-name').forEach(el => {
+      // Walk size down until it fits
+      let sz = parseInt(el.style.fontSize) || 60;
+      while (el.scrollWidth > maxW && sz > 18) {
+        sz -= 2;
+        el.style.fontSize = sz + 'px';
+      }
+    });
+  });
+}
+
+/* ══ NAV DOTS ═══════════════════════════════════════════ */
+function rebuildDots() {
+  const wrap = document.getElementById('nav-dots');
+  wrap.innerHTML = '';
+  activeSlots.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'nav-dot' + (i === currentIdx ? ' active' : '');
+    wrap.appendChild(d);
+  });
+}
+
+function updateDots() {
+  document.querySelectorAll('.nav-dot').forEach((d, i) => d.classList.toggle('active', i === currentIdx));
+}
+
+/* ══ BUILD SLOTS ════════════════════════════════════════ */
 function buildSlots() {
   const container = document.getElementById('slot-container');
   container.innerHTML = '';
 
-  SLOTS.forEach((meta, i) => {
+  activeSlots.forEach((meta, i) => {
     const entry = leaderboard[meta.key] || null;
     const plat  = platformOf(entry);
 
@@ -313,32 +347,29 @@ function buildSlots() {
     slot.className = 'slot' + (i === currentIdx ? ' active' : '');
     slot.dataset.platform = plat;
 
-    // Blurred profile pic bg
     const pic = document.createElement('div');
     pic.className = 'slot-pic';
     if (entry && entry.profilePic) {
       pic.style.backgroundImage = `url(${JSON.stringify(entry.profilePic)})`;
     } else {
-      // No blur needed on solid gradient fallbacks
       pic.style.filter = 'none';
-      const fallback = {
-        tiktok:  'linear-gradient(145deg,#04090a,#0c001a)',
-        youtube: 'linear-gradient(145deg,#110000,#0e0003)',
-        default: 'linear-gradient(145deg,#080012,#0b001a)',
-      };
+      const fallback = { tiktok:'linear-gradient(145deg,#04090a,#0c001a)', youtube:'linear-gradient(145deg,#110000,#0e0003)', default:'linear-gradient(145deg,#080012,#0b001a)' };
       pic.style.background = fallback[plat] || fallback.default;
     }
 
-    const veil    = document.createElement('div');
+    const veil = document.createElement('div');
     veil.className = 'slot-veil';
 
     const content = document.createElement('div');
     content.className = 'slot-content';
 
+    const cardW = document.getElementById('card').offsetWidth || 344;
+    const maxW  = cardW - 28;
+
     if (entry && entry.name) {
       content.innerHTML = `
         <div class="slot-label">${esc(meta.label)}</div>
-        <div class="slot-name" style="font-size:${nameFontSize(entry.name)}">${esc(entry.name.toUpperCase())}</div>
+        <div class="slot-name" style="font-size:${bestFontSize(entry.name, maxW)}">${esc(entry.name.toUpperCase())}</div>
         <div class="slot-line"></div>
         <div class="slot-amount">${fmtAmount(entry.amount, entry.type)}</div>
       `;
@@ -354,19 +385,21 @@ function buildSlots() {
     slot.appendChild(content);
     container.appendChild(slot);
   });
+
+  // DOM correction pass after render
+  fitNames();
 }
 
-/* ══ ROTATION ═══════════════════════════════════ */
-function updateDots() {
-  document.querySelectorAll('.nav-dot').forEach((d, i) => d.classList.toggle('active', i === currentIdx));
-}
-
+/* ══ ROTATION ═══════════════════════════════════════════ */
 function updateGlow() {
-  const entry = leaderboard[SLOTS[currentIdx].key];
+  const meta  = activeSlots[currentIdx];
+  const entry = meta ? leaderboard[meta.key] : null;
   document.getElementById('card-glow').style.background = GLOW[platformOf(entry)] || GLOW.default;
 }
 
 function showSlot(idx) {
+  // Clamp to valid range
+  if (idx >= activeSlots.length) idx = 0;
   document.querySelectorAll('.slot').forEach((s, i) => s.classList.toggle('active', i === idx));
   currentIdx = idx;
   updateDots();
@@ -376,11 +409,11 @@ function showSlot(idx) {
 function startRotation() {
   clearInterval(rotateTimer);
   pinned = false;
-  rotateTimer = setInterval(() => showSlot((currentIdx + 1) % SLOTS.length), CONFIG.ROTATE_MS);
+  rotateTimer = setInterval(() => showSlot((currentIdx + 1) % activeSlots.length), CONFIG.ROTATE_MS);
 }
 
 function pinSlot(key) {
-  const idx = SLOTS.findIndex(s => s.key === key);
+  const idx = activeSlots.findIndex(s => s.key === key);
   if (idx === -1) return;
   clearInterval(rotateTimer);
   rotateTimer = null;
@@ -388,17 +421,35 @@ function pinSlot(key) {
   showSlot(idx);
 }
 
-/* ══ DATA ═══════════════════════════════════════ */
+/* ══ DATA ═══════════════════════════════════════════════ */
 function onGiftrData(data) {
   leaderboard = data || {};
-  const hasAny = SLOTS.some(m => leaderboard[m.key] && leaderboard[m.key].name);
+
+  // Rebuild active slot list from enabledSlots + optional custom
+  const enabled = Array.isArray(data.enabledSlots)
+    ? data.enabledSlots
+    : ['daily','weekly','monthly','youtube','tiktok'];
+
+  activeSlots = SLOT_DEFS.filter(d => d.key !== 'custom' && enabled.includes(d.key));
+  if (data.custom && data.custom.name) {
+    // Inject custom entry into leaderboard and add slot def
+    leaderboard['custom'] = data.custom;
+    activeSlots.push({ key: 'custom', label: 'Featured Gifter' });
+  }
+
+  const hasAny = activeSlots.some(m => leaderboard[m.key] && leaderboard[m.key].name);
   document.getElementById('no-data').classList.toggle('hidden', hasAny);
+
+  // Keep currentIdx in bounds
+  if (currentIdx >= activeSlots.length) currentIdx = 0;
+
+  rebuildDots();
   buildSlots();
   showSlot(currentIdx);
   if (hasAny && !pinned && !rotateTimer) startRotation();
 }
 
-/* ══ ABLY ═══════════════════════════════════════ */
+/* ══ ABLY ═══════════════════════════════════════════════ */
 function setStatus(cls) { document.getElementById('status-dot').className = cls; }
 
 const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
@@ -417,8 +468,7 @@ ch.subscribe('giftr', msg => onGiftrData(msg.data));
 ch.subscribe('giftr-cmd', msg => {
   const cmd = (msg.data || '').toString();
   if (cmd === 'auto') {
-    const hasAny = SLOTS.some(m => leaderboard[m.key] && leaderboard[m.key].name);
-    if (hasAny) startRotation();
+    if (activeSlots.length) startRotation();
   } else if (cmd.startsWith('slot:')) {
     pinSlot(cmd.slice(5));
   }
