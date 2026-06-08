@@ -526,6 +526,37 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         </div>
         <div class="dim" style="margin-top:4px">Pinning a slot pauses auto-rotation on the overlay. ↺ Auto resumes it.</div>
       </div>
+
+      <hr style="margin:14px 0">
+
+      <!-- ── Rotation slide selection ── -->
+      <div>
+        <label style="margin-bottom:7px;display:block">Rotation Slides <span class="dim">(multi-select)</span></label>
+        <div class="mode-group" style="flex-wrap:wrap" id="giftr-slides-grp">
+          <button class="btn-mode" data-gslot="daily">Daily</button>
+          <button class="btn-mode" data-gslot="weekly">Weekly</button>
+          <button class="btn-mode" data-gslot="monthly">Monthly</button>
+          <button class="btn-mode" data-gslot="youtube">▶ YouTube</button>
+          <button class="btn-mode" data-gslot="tiktok">♪ TikTok</button>
+        </div>
+        <div class="dim" style="margin-top:4px">Click to toggle slots in/out of rotation. Must keep at least one on.</div>
+      </div>
+
+      <hr style="margin:14px 0">
+
+      <!-- ── Custom featured gifter ── -->
+      <div>
+        <label style="margin-bottom:7px;display:block">Custom Feature <span id="giftr-custom-badge" class="dim"></span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="giftr-custom-input" placeholder="Gifter name…"
+            list="giftr-custom-list" autocomplete="off"
+            style="flex:1;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px">
+          <datalist id="giftr-custom-list"></datalist>
+          <button class="btn-primary btn-sm" id="btn-giftr-feature">Feature</button>
+          <button class="btn-secondary btn-sm" id="btn-giftr-unfeature">Clear</button>
+        </div>
+        <div id="giftr-custom-status" class="dim" style="margin-top:5px"></div>
+      </div>
     </div>
   </div>
 </section>
@@ -709,7 +740,7 @@ const STORAGE_KEY = 'gift-tracker-data';
 
 /* ───────────────────────────── DEFAULTS ──── */
 function emptyStore() {
-  return { gifters: {}, settings: { displayMode: 'viewer_spend', iosPercent: 50, overlayTimeFrame: 'today', overlayRankedCount: 3 }, lastUpdated: null };
+  return { gifters: {}, settings: { displayMode: 'viewer_spend', iosPercent: 50, overlayTimeFrame: 'today', overlayRankedCount: 3, giftrEnabledSlots: ['daily','weekly','monthly','youtube','tiktok'], giftrCustom: null }, lastUpdated: null };
 }
 
 /* ───────────────────────────── LOAD / SAVE ──── */
@@ -1833,9 +1864,10 @@ function publishGiftrLeaderboard() {
       if (gift.timestamp >= todayCut) dayRaw   += gift.amount;
     }
     return {
-      name:     g.displayName,
-      type:     gifterType(g),
-      platform: gifterPlatform(g),
+      name:       g.displayName,
+      type:       gifterType(g),
+      platform:   gifterPlatform(g),
+      profilePic: g.profilePic || null,
       dayRaw, weekRaw, monthRaw, allRaw,
     };
   });
@@ -1843,22 +1875,24 @@ function publishGiftrLeaderboard() {
   function topBy(field) {
     const best = rows.filter(r => r[field] > 0).sort((a, b) => b[field] - a[field])[0];
     if (!best) return null;
-    return { name: best.name, amount: best[field], type: best.type, platform: best.platform };
+    return { name: best.name, amount: best[field], type: best.type, platform: best.platform, profilePic: best.profilePic };
   }
 
   function topByPlat(platform) {
     const best = rows.filter(r => r.platform === platform && r.allRaw > 0)
                      .sort((a, b) => b.allRaw - a.allRaw)[0];
     if (!best) return null;
-    return { name: best.name, amount: best.allRaw, type: best.type, platform: best.platform };
+    return { name: best.name, amount: best.allRaw, type: best.type, platform: best.platform, profilePic: best.profilePic };
   }
 
   const payload = {
-    daily:   topBy('dayRaw'),
-    weekly:  topBy('weekRaw'),
-    monthly: topBy('monthRaw'),
-    youtube: topByPlat('youtube'),
-    tiktok:  topByPlat('tiktok'),
+    daily:        topBy('dayRaw'),
+    weekly:       topBy('weekRaw'),
+    monthly:      topBy('monthRaw'),
+    youtube:      topByPlat('youtube'),
+    tiktok:       topByPlat('tiktok'),
+    enabledSlots: DB.settings.giftrEnabledSlots || ['daily','weekly','monthly','youtube','tiktok'],
+    custom:       DB.settings.giftrCustom || null,
   };
 
   ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
@@ -1926,6 +1960,99 @@ function publishGiftrLeaderboard() {
   });
 
   syncOverlayUI();
+})();
+
+/* ───────────────────────────── GIFTR SLIDES + CUSTOM FEATURE ──── */
+(function initGiftrControls() {
+  const ALL_SLOTS = ['daily','weekly','monthly','youtube','tiktok'];
+
+  // Ensure setting exists
+  if (!Array.isArray(DB.settings.giftrEnabledSlots)) {
+    DB.settings.giftrEnabledSlots = [...ALL_SLOTS];
+  }
+
+  // ── Slide toggles (multi-select) ──
+  const enabled = DB.settings.giftrEnabledSlots;
+
+  function syncSlideButtons() {
+    document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
+      b.classList.toggle('active', enabled.includes(b.dataset.gslot));
+    });
+  }
+  syncSlideButtons();
+
+  document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
+    b.addEventListener('click', () => {
+      const slot = b.dataset.gslot;
+      const idx  = enabled.indexOf(slot);
+      if (idx >= 0) {
+        if (enabled.length <= 1) return; // keep at least one
+        enabled.splice(idx, 1);
+      } else {
+        enabled.push(slot);
+      }
+      DB.settings.giftrEnabledSlots = [...enabled];
+      saveData(DB);
+      syncSlideButtons();
+    });
+  });
+
+  // ── Custom featured gifter ──
+  function populateDatalist() {
+    const dl = document.getElementById('giftr-custom-list');
+    dl.innerHTML = Object.values(DB.gifters)
+      .map(g => `<option value="${g.displayName.replace(/"/g,'&quot;')}">`)
+      .join('');
+  }
+
+  function syncCustomStatus() {
+    const c      = DB.settings.giftrCustom;
+    const status = document.getElementById('giftr-custom-status');
+    const badge  = document.getElementById('giftr-custom-badge');
+    if (c) {
+      status.textContent = `Featuring: ${c.name}  (${c.amount ? c.amount.toLocaleString() : '—'})`;
+      badge.textContent  = '— active';
+    } else {
+      status.textContent = '';
+      badge.textContent  = '';
+    }
+  }
+
+  populateDatalist();
+  syncCustomStatus();
+
+  document.getElementById('btn-giftr-feature').addEventListener('click', () => {
+    const input   = document.getElementById('giftr-custom-input');
+    const rawName = input.value.trim();
+    if (!rawName) return;
+
+    const key    = normKey(rawName);
+    const gifter = DB.gifters[key]
+      || Object.values(DB.gifters).find(g => normKey(g.displayName) === key);
+
+    if (!gifter) {
+      document.getElementById('giftr-custom-status').textContent = '⚠ Gifter not found in tracker.';
+      return;
+    }
+
+    const raw = gifterRawTotals(gifter);
+    DB.settings.giftrCustom = {
+      name:       gifter.displayName,
+      amount:     raw.allTime,
+      type:       gifterType(gifter),
+      platform:   gifterPlatform(gifter),
+      profilePic: gifter.profilePic || null,
+    };
+    input.value = '';
+    saveData(DB);
+    syncCustomStatus();
+  });
+
+  document.getElementById('btn-giftr-unfeature').addEventListener('click', () => {
+    DB.settings.giftrCustom = null;
+    saveData(DB);
+    syncCustomStatus();
+  });
 })();
 
 /* ───────────────────────────── INITIAL RENDER ──── */
