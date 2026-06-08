@@ -715,6 +715,24 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </div>
 
+
+<!-- Edit entries modal -->
+<div class="modal-overlay hidden" id="modal-edit-entries">
+  <div class="modal" style="max-width:660px;width:96%">
+    <h3>&#x1F4DD; Edit Gifter Entries</h3>
+    <div class="form-row" style="margin-bottom:12px">
+      <label>Display Name</label>
+      <input type="text" id="edit-display-name" style="width:100%">
+    </div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:6px">Gift Entries <span id="edit-entry-count" class="dim"></span></div>
+    <div id="edit-entries-list" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;padding-right:2px"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="edit-entries-cancel">Cancel</button>
+      <button class="btn-primary" id="edit-entries-save">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- Reset modal -->
 <div class="modal-overlay hidden" id="modal-reset">
   <div class="modal">
@@ -983,6 +1001,7 @@ function renderTable() {
       <td class="td-actions">
         <button class="btn-secondary btn-sm" onclick="openAddGift('${esc(key)}')">+ Add</button>
         <button class="btn-ghost btn-sm" onclick="openUndo('${esc(key)}')">↩</button>
+        <button class="btn-ghost btn-sm" onclick="openEditEntries('${esc(key)}')">📝 Edit</button>
         <button class="btn-ghost btn-sm" onclick="openRename('${esc(key)}')">✏️</button>
         <button class="btn-ghost btn-sm" style="color:var(--red)" onclick="openDelete('${esc(key)}')">🗑️</button>
       </td>
@@ -2054,6 +2073,113 @@ function publishGiftrLeaderboard() {
     syncCustomStatus();
   });
 })();
+
+/* ─────────────────────────── MODAL: EDIT ENTRIES ──── */
+let editEntriesKey = null;
+
+function typeOptionsHtml(selectedType) {
+  const types = [
+    ['tiktok_coins',      'TikTok Coins'],
+    ['youtube_jewels',    'YouTube Jewels'],
+    ['youtube_superchat', 'YouTube SuperChat'],
+    ['twitch_bits',       'Twitch Bits'],
+    ['direct_donation',   'Direct Donation'],
+  ];
+  return types.map(([v, l]) =>
+    '<option value="' + v + '"' + (v === selectedType ? ' selected' : '') + '>' + l + '</option>'
+  ).join('');
+}
+
+function tsToLocal(timestamp) {
+  const d = new Date(timestamp);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function openEditEntries(key) {
+  editEntriesKey = key;
+  const gifter  = DB.gifters[key];
+  const list    = document.getElementById('edit-entries-list');
+  const counter = document.getElementById('edit-entry-count');
+
+  document.getElementById('edit-display-name').value = gifter.displayName;
+
+  if (!gifter.gifts.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-style:italic;padding:8px;font-size:12px">No gift entries yet.</div>';
+    counter.textContent = '';
+  } else {
+    const sorted = [...gifter.gifts].sort((a, b) => b.timestamp - a.timestamp);
+    counter.textContent = '(' + sorted.length + ')';
+    list.innerHTML = sorted.map(g => {
+      return '<div class="edit-entry-row" data-id="' + esc(g.id) + '" style="display:grid;grid-template-columns:155px 145px 85px 1fr auto;gap:5px;align-items:flex-end;padding:7px 8px;background:var(--surface2);border-radius:4px;border:1px solid var(--border)">'
+        + '<div><label style="font-size:10px">Date / Time</label>'
+        + '<input type="datetime-local" class="entry-ts" value="' + tsToLocal(g.timestamp) + '" style="width:100%;font-size:11px;padding:3px 5px"></div>'
+        + '<div><label style="font-size:10px">Type</label>'
+        + '<select class="entry-type" style="width:100%;font-size:11px;padding:3px 5px">' + typeOptionsHtml(g.type) + '</select></div>'
+        + '<div><label style="font-size:10px">Amount</label>'
+        + '<input type="number" class="entry-amount" value="' + g.amount + '" min="0" step="any" style="width:100%;font-size:11px;padding:3px 5px"></div>'
+        + '<div><label style="font-size:10px">Note</label>'
+        + '<input type="text" class="entry-note" value="' + esc(g.note || '') + '" placeholder="note" style="width:100%;font-size:11px;padding:3px 5px"></div>'
+        + '<button class="btn-ghost btn-sm" style="color:var(--red);padding:4px 6px;align-self:flex-end"'
+        + ' onclick="this.closest(\'.edit-entry-row\').remove();document.getElementById(\'edit-entry-count\').textContent=\'(\'+document.querySelectorAll(\'#edit-entries-list .edit-entry-row\').length+\')\'">'
+        + '&#x1F5D1;&#xFE0F;</button></div>';
+    }).join('');
+  }
+
+  document.getElementById('modal-edit-entries').classList.remove('hidden');
+}
+
+document.getElementById('edit-entries-cancel').addEventListener('click', () => {
+  document.getElementById('modal-edit-entries').classList.add('hidden');
+  editEntriesKey = null;
+});
+
+document.getElementById('edit-entries-save').addEventListener('click', () => {
+  if (!editEntriesKey) return;
+
+  // Rename / re-key if display name changed
+  const newName = document.getElementById('edit-display-name').value.trim();
+  if (newName) {
+    const newKey = normKey(newName);
+    if (newKey !== editEntriesKey) {
+      const gifterData = DB.gifters[editEntriesKey];
+      gifterData.displayName = newName;
+      if (DB.gifters[newKey]) {
+        DB.gifters[newKey].gifts.push(...gifterData.gifts);
+      } else {
+        DB.gifters[newKey] = gifterData;
+      }
+      delete DB.gifters[editEntriesKey];
+      editEntriesKey = newKey;
+    } else {
+      DB.gifters[editEntriesKey].displayName = newName;
+    }
+  }
+
+  // Collect updated entries from the modal rows
+  const rows = document.querySelectorAll('#edit-entries-list .edit-entry-row');
+  const updatedGifts = [];
+  rows.forEach(row => {
+    const tsVal  = row.querySelector('.entry-ts').value;
+    const type   = row.querySelector('.entry-type').value;
+    const amount = parseFloat(row.querySelector('.entry-amount').value) || 0;
+    const note   = row.querySelector('.entry-note').value.trim();
+    const ts     = tsVal ? new Date(tsVal).getTime() : Date.now();
+    updatedGifts.push({
+      id:        row.dataset.id || uuidv4(),
+      amount,
+      type,
+      platform:  typeToPlatform(type),
+      timestamp: ts,
+      note
+    });
+  });
+
+  DB.gifters[editEntriesKey].gifts = updatedGifts;
+  saveData(DB);
+  renderTable();
+  document.getElementById('modal-edit-entries').classList.add('hidden');
+  editEntriesKey = null;
+});
 
 /* ───────────────────────────── INITIAL RENDER ──── */
 renderTable();
