@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream Dock</title>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Nunito:wght@400;600;700&family=Poppins:wght@400;500;600&family=Roboto:wght@400;500&family=Ubuntu:wght@400;500&family=Rajdhani:wght@400;500;600&family=Exo+2:wght@400;500;600&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --tt:        #fe2c55;
+  --yt:        #ff4444;
+  --gift:      #f5a623;
+  --purple:    #A855F7;
+  --purple-dk: #7B2FBE;
+  --green:     #22c55e;
+  --danger:    #F43F5E;
+  --bg:        #0d0d12;
+  --bg-panel:  rgba(18,18,26,0.94);
+  --bg-card:   rgba(255,255,255,0.035);
+  --bg-hover:  rgba(255,255,255,0.06);
+  --bg-feat:   rgba(255,255,255,0.09);
+  --border:    rgba(255,255,255,0.07);
+  --border-hi: rgba(255,255,255,0.14);
+  --txt:       rgba(255,255,255,0.90);
+  --txt-dim:   rgba(255,255,255,0.42);
+  --txt-name:  rgba(255,255,255,0.72);
+  --radius:    10px;
+  --font:      'DM Sans', sans-serif;
+  --mono:      'DM Mono', monospace;
+  --boogaloo:  'Boogaloo', cursive;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  font-family: var(--font);
+  color: var(--txt);
+  overflow: hidden;
+}
+
+/* ── OUTER LAYOUT ── */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 0;
+}
+
+.main-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+  padding: 8px 8px 6px;
+}
+
+/* ── LEFT COLUMN (3 panels) ── */
+.col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 42%;
+  min-width: 0;
+}
+
+/* ── RIGHT COLUMN (unified + send) ── */
+.col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* ── PANEL (shared) ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex: 1;
+}
+
+.badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--txt-dim);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.live-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: #333;
+  transition: background 0.3s;
+}
+.live-dot.on { background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+/* ── VIEWER COUNT BAR ── */
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+.viewer-icon { font-size: 9px; opacity: 0.5; }
+.viewer-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex: 1;
+}
+.viewer-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--txt-dim);
+  transition: color 0.3s;
+  min-width: 24px;
+  text-align: right;
+}
+.viewer-count.live { color: var(--txt); }
+@keyframes vcPop {
+  0%  { transform: scale(1); }
+  40% { transform: scale(1.18); color: var(--green); }
+  100%{ transform: scale(1); }
+}
+.viewer-count.pop { animation: vcPop 0.35s ease; }
+
+/* ── MESSAGES SCROLLER ── */
+.msgs {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+.msgs::-webkit-scrollbar { width: 2px; }
+.msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 1px; }
+
+/* ── CHAT ROW (left panels) ── */
+.msg {
+  display: flex;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  align-items: flex-start;
+  transition: background 0.12s;
+  cursor: default;
+}
+.msg:hover { background: var(--bg-hover); }
+
+/* ── UNIFIED ROW (right panel) — clickable to feature ── */
+.umsg {
+  display: flex;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  align-items: flex-start;
+  transition: background 0.12s;
+  cursor: pointer;
+  position: relative;
+}
+.umsg:hover { background: var(--bg-hover); }
+.umsg:hover .feat-hint { opacity: 1; }
+.umsg.featuring { background: var(--bg-feat); }
+
+.feat-hint {
+  position: absolute;
+  right: 8px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: var(--txt-dim);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.platform-tag {
+  width: 3px;
+  border-radius: 2px;
+  align-self: stretch;
+  flex-shrink: 0;
+  min-height: 14px;
+}
+
+.av {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  margin-top: 1px;
+  overflow: hidden;
+}
+.av img { width:100%; height:100%; object-fit:cover; }
+
+.msg-body { flex:1; min-width:0; }
+
+.msg-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--txt-name);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.msg-text {
+  font-size: 11.5px;
+  color: var(--txt);
+  line-height: 1.42;
+  word-break: break-word;
+}
+.msg-text img { height: 16px; vertical-align: middle; margin: 0 1px; }
+
+/* ── GIFT ROW ── */
+.gift-row {
+  display: flex;
+  gap: 8px;
+  padding: 5px 10px;
+  align-items: center;
+  border-radius: 5px;
+  transition: background 0.12s;
+}
+.gift-row:hover { background: var(--bg-hover); }
+
+.gift-icon {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.gift-icon img { width:18px; height:18px; object-fit:contain; }
+
+.gift-body { flex:1; min-width:0; }
+.gift-name { font-size:10.5px; font-weight:600; color:var(--txt-name); line-height:1.3; }
+.gift-detail { font-size:10px; color:var(--txt-dim); line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gift-amt { font-family:var(--mono); font-size:11px; font-weight:500; flex-shrink:0; }
+
+/* ── EMPTY STATE ── */
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 10px;
+  color: var(--txt-dim);
+}
+
+/* ── SEND BAR (right col bottom) ── */
+.send-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.2);
+}
+
+.send-input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-hi);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--txt);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.send-input::placeholder { color: var(--txt-dim); }
+.send-input:focus { border-color: rgba(255,255,255,0.25); }
+
+.send-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border-hi);
+  border-radius: 7px;
+  padding: 6px 14px;
+  color: var(--txt);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.send-btn:hover { background: rgba(255,255,255,0.14); }
+.send-btn:active { transform: scale(0.97); }
+
+/* ── RIGHT COL HEADER ── */
+.right-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── SPLAT BAR (bottom) ── */
+.splat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  background: rgba(26,5,51,0.85);
+  flex-shrink: 0;
+}
+
+.splat-conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--txt-dim);
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #444;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.conn-dot.connected { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.conn-dot.connecting { background: #FBBF24; animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.splat-timer {
+  font-family: var(--boogaloo);
+  font-size: 28px;
+  line-height: 1;
+  color: rgba(255,255,255,0.2);
+  min-width: 52px;
+  text-align: center;
+  transition: color 0.3s;
+  flex-shrink: 0;
+}
+.splat-timer.countdown { color: var(--txt); text-shadow: 0 0 12px var(--purple); }
+.splat-timer.warn      { color: #E879F9; text-shadow: 0 0 12px #E879F9; }
+.splat-timer.danger    { color: var(--danger); text-shadow: 0 0 12px var(--danger); }
+
+.splat-prog-wrap {
+  flex: 1;
+  height: 5px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+.splat-prog {
+  height: 100%;
+  background: linear-gradient(90deg, var(--purple-dk), var(--purple));
+  border-radius: 3px;
+  width: 100%;
+  transition: width 0.9s linear, background 0.3s;
+}
+.splat-prog.danger { background: linear-gradient(90deg, #7F1D1D, var(--danger)); }
+
+.splat-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sp-btn {
+  font-family: var(--boogaloo);
+  font-size: 14px;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: transform 0.1s, filter 0.15s, opacity 0.2s;
+  white-space: nowrap;
+}
+.sp-btn:active { transform: scale(0.95); }
+
+.sp-reset {
+  background: linear-gradient(135deg, var(--purple-dk), var(--purple));
+  color: white;
+  box-shadow: 0 3px 12px rgba(168,85,247,0.4);
+}
+.sp-reset:hover { filter: brightness(1.1); }
+.sp-reset.active-state { animation: spPulse 1s ease-in-out infinite; }
+@keyframes spPulse { 0%,100%{box-shadow:0 3px 12px rgba(168,85,247,0.4)} 50%{box-shadow:0 3px 20px rgba(168,85,247,0.8)} }
+
+.sp-save {
+  background: linear-gradient(135deg, #15803d, var(--green));
+  color: white;
+  box-shadow: 0 3px 12px rgba(34,197,94,0.35);
+  opacity: 0.3;
+  pointer-events: none;
+  transition: opacity 0.3s, filter 0.15s;
+}
+.sp-save.enabled { opacity: 1; pointer-events: auto; animation: saveReady 1.5s ease-in-out infinite; }
+.sp-save.enabled:hover { filter: brightness(1.1); }
+@keyframes saveReady { 0%,100%{box-shadow:0 3px 12px rgba(34,197,94,0.35)} 50%{box-shadow:0 3px 20px rgba(34,197,94,0.7)} }
+
+.sp-idle {
+  background: rgba(255,255,255,0.06);
+  color: var(--txt-dim);
+  border: 1px solid var(--border-hi);
+  font-size: 12px;
+}
+.sp-idle:hover { background: rgba(255,255,255,0.1); color: var(--txt); }
+
+/* ── FLASH ── */
+#flash { position:fixed; inset:0; pointer-events:none; z-index:999; opacity:0; transition:opacity 0.1s; }
+#flash.green { background:rgba(34,197,94,0.12); }
+#flash.red   { background:rgba(244,63,94,0.12); }
+#flash.show  { opacity:1; }
+
+/* ── SETTINGS PANEL ── */
+.settings-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--txt-dim);
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.settings-btn:hover { color: var(--txt); background: var(--bg-hover); }
+
+.settings-panel {
+  position: absolute;
+  top: 32px;
+  right: 8px;
+  background: rgba(18,18,28,0.98);
+  border: 1px solid var(--border-hi);
+  border-radius: 10px;
+  padding: 12px 14px;
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: none;
+}
+.settings-panel.open { display: block; }
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.settings-row:last-child { margin-bottom: 0; }
+
+.settings-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex-shrink: 0;
+}
+
+.settings-select {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  color: var(--txt);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.settings-select:focus { border-color: var(--purple); }
+
+.settings-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.size-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-hi);
+  border-radius: 5px;
+  color: var(--txt);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.size-btn:hover { background: rgba(255,255,255,0.13); }
+.size-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt);
+  min-width: 28px;
+  text-align: center;
+}
+
+/* ── ANIM ── */
+@keyframes fadein { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
+.msg,.umsg,.gift-row { animation: fadein 0.16s ease; }
+</style>
+</head>
+<body>
+
+<div class="root">
+
+  <!-- MAIN ROW -->
+  <div class="main-row">
+
+    <!-- LEFT: 3 platform panels -->
+    <div class="col-left">
+
+      <!-- TikTok -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--tt)"></div>
+          <span class="panel-title">TikTok</span>
+          <span class="badge" id="cnt-tt">0</span>
+          <div class="live-dot" id="live-tt"></div>
+        </div>
+        <div class="viewer-bar" id="vbar-tt" style="display:none;">
+          <span class="viewer-icon">👁</span>
+          <span class="viewer-label">Viewers</span>
+          <span class="viewer-count" id="vc-tt">—</span>
+        </div>
+        <div class="msgs" id="msgs-tt">
+          <div class="empty" id="emp-tt">waiting…</div>
+        </div>
+      </div>
+
+      <!-- YouTube -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--yt)"></div>
+          <span class="panel-title">YouTube</span>
+          <span class="badge" id="cnt-yt">0</span>
+          <div class="live-dot" id="live-yt"></div>
+        </div>
+        <div class="viewer-bar" id="vbar-yt" style="display:none;">
+          <span class="viewer-icon">👁</span>
+          <span class="viewer-label">Viewers</span>
+          <span class="viewer-count" id="vc-yt">—</span>
+        </div>
+        <div class="msgs" id="msgs-yt">
+          <div class="empty" id="emp-yt">waiting…</div>
+        </div>
+      </div>
+
+      <!-- Gifts -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--gift)"></div>
+          <span class="panel-title">Gifts &amp; Donations</span>
+          <span class="badge" id="cnt-gifts">0</span>
+          <div class="live-dot" id="live-gifts"></div>
+        </div>
+        <div class="msgs" id="msgs-gifts">
+          <div class="empty" id="emp-gifts">no gifts yet…</div>
+        </div>
+      </div>
+
+    </div><!-- /col-left -->
+
+    <!-- RIGHT: unified feed + send -->
+    <div class="col-right">
+
+      <div class="right-header" style="position:relative;">
+        <div class="dot" style="background:rgba(255,255,255,0.3)"></div>
+        <span class="panel-title">All Chat</span>
+        <span class="badge" id="cnt-all">0</span>
+        <span style="font-size:9px;color:var(--txt-dim);margin-left:4px;">click to feature</span>
+        <div class="live-dot" id="live-all"></div>
+        <button class="settings-btn" onclick="toggleSettings(event)" title="Font settings">⚙</button>
+        <div class="settings-panel" id="settings-panel">
+          <div class="settings-row">
+            <span class="settings-label">Font</span>
+            <select class="settings-select" id="font-select" onchange="applyFont()">
+              <option value="'DM Sans', sans-serif">DM Sans</option>
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Nunito', sans-serif">Nunito</option>
+              <option value="'Poppins', sans-serif">Poppins</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Ubuntu', sans-serif">Ubuntu</option>
+              <option value="'Rajdhani', sans-serif">Rajdhani</option>
+              <option value="'Exo 2', sans-serif">Exo 2</option>
+              <option value="'Outfit', sans-serif">Outfit</option>
+              <option value="'Boogaloo', cursive">Boogaloo</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Size</span>
+            <div class="settings-size-row">
+              <button class="size-btn" onclick="adjustSize(-1)">−</button>
+              <span class="size-val" id="size-val">12</span>
+              <button class="size-btn" onclick="adjustSize(1)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="msgs" id="msgs-all" style="flex:1;">
+        <div class="empty" id="emp-all">waiting…</div>
+      </div>
+
+      <div class="send-bar">
+        <input class="send-input" id="send-input" type="text" placeholder="Send to all chats…" maxlength="300">
+        <button class="send-btn" id="send-btn" onclick="sendChatMessage()">Send</button>
+      </div>
+
+    </div><!-- /col-right -->
+
+  </div><!-- /main-row -->
+
+  <!-- SPLAT BAR -->
+  <div class="splat-bar">
+    <div class="splat-conn">
+      <div class="conn-dot connecting" id="conn-dot"></div>
+      <span id="conn-label" style="font-size:10px;">Connecting…</span>
+    </div>
+    <div class="splat-timer" id="splat-timer">--</div>
+    <div class="splat-prog-wrap">
+      <div class="splat-prog" id="splat-prog"></div>
+    </div>
+    <div class="splat-btns">
+      <button class="sp-btn sp-reset" id="btn-reset" onclick="splatCmd('reset')">⚠️ Reset</button>
+      <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')">💜 Save</button>
+      <button class="sp-btn sp-idle"  onclick="splatCmd('idle')">✖ Clear</button>
+    </div>
+  </div>
+
+</div><!-- /root -->
+
+<div id="flash"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════════ */
+const SESSION   = "usNkSpEutq";
+const MAX_MSGS  = 80;
+const ABLY_KEY  = "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0";
+const ABLY_CH   = "splat-overlay";
+const SPLAT_SEC = 60;
+const WARN_AT   = 20;
+const DANGER_AT = 10;
+
+/* ═══════════════════════════════════════════
+   WEBSOCKET — Social Stream Ninja
+   Single socket joined to session (default ch1)
+   — receives on ch4 (chat from extension)
+   — sends commands on ch1 (sendChat, extContent)
+   Feature uses HTTP GET (simplest, most reliable)
+═══════════════════════════════════════════ */
+let ws = null, wsTimer = null;
+let counts = { tt:0, yt:0, gifts:0, all:0 };
+
+function wsConnect() {
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/4`);
+
+  ws.onopen = () => {};
+
+  ws.onmessage = (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch(_){ return; }
+    if (!d) return;
+    if (d.chatname) {
+      handleMsg(d);
+    } else if (d.action === 'content' && d.value) {
+      try { handleMsg(JSON.parse(d.value)); } catch(_){}
+    }
+  };
+
+  ws.onclose = () => { clearTimeout(wsTimer); wsTimer = setTimeout(wsConnect, 3000); };
+  ws.onerror = () => { ws.close(); };
+}
+
+/* sendChat via HTTP GET — simplest, no socket channel confusion */
+function sendChatMessage() {
+  const inp = document.getElementById('send-input');
+  const val = inp.value.trim();
+  if (!val) return;
+  const encoded = encodeURIComponent(val);
+  fetch(`https://io.socialstream.ninja/${SESSION}/sendChat/null/${encoded}`)
+    .catch(() => {});
+  inp.value = '';
+}
+
+document.getElementById('send-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendChatMessage();
+});
+
+/* Feature via HTTP GET — channel=2 targets featured.html with &server2 */
+function featureMessage(data) {
+  if (data.mid) {
+    fetch(`https://io.socialstream.ninja/${SESSION}/mid/null/${data.mid}?channel=2`)
+      .catch(() => {});
+  } else {
+    /* No mid — send full message as content on channel 2 */
+    fetch(`https://io.socialstream.ninja/${SESSION}/content/null/${encodeURIComponent(JSON.stringify(data))}?channel=2`)
+      .catch(() => {});
+  }
+}
+
+/* ═══════════════════════════════════════════
+   MESSAGE HANDLING
+═══════════════════════════════════════════ */
+function updateViewerCount(key, count) {
+  const bar = document.getElementById('vbar-' + key);
+  const el  = document.getElementById('vc-' + key);
+  if (!el) return;
+  bar.style.display = 'flex';
+  const prev = el.textContent;
+  const formatted = count >= 1000
+    ? (count / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+    : count.toString();
+  if (prev !== formatted) {
+    el.textContent = formatted;
+    el.classList.add('live');
+    el.classList.remove('pop');
+    void el.offsetWidth; /* reflow for animation restart */
+    el.classList.add('pop');
+    setTimeout(() => el.classList.remove('pop'), 350);
+  }
+}
+
+function handleMsg(data) {
+  /* ── viewer count updates (no chatname) ── */
+  if (!data.chatname) {
+    const evt = (data.event || '').toLowerCase();
+    const p   = (data.type  || '').toLowerCase();
+    if ((evt === 'viewer_update' || evt === 'viewer_updates') && data.meta != null) {
+      const count = typeof data.meta === 'object' ? null : parseInt(data.meta);
+      if (count !== null && !isNaN(count)) {
+        if (p.includes('tiktok'))  updateViewerCount('tt', count);
+        if (p.includes('youtube')) updateViewerCount('yt', count);
+      }
+    }
+    return;
+  }
+
+  const p = (data.type || '').toLowerCase();
+  const isTT   = p.includes('tiktok');
+  const isYT   = p.includes('youtube');
+  const evt = (data.event || '').toLowerCase();
+  const isGift = !!(data.hasDonation || data.gifttitle || data.membership ||
+                    evt === 'gift' || evt === 'superchat' || evt === 'donation' ||
+                    evt === 'jeweldonation' || evt === 'giftpurchase' ||
+                    evt === 'giftredemption' || evt === 'sponsorship');
+
+  if (isTT)  { document.getElementById('live-tt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
+  if (isYT)  { document.getElementById('live-yt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
+  document.getElementById('live-all').classList.add('on');
+
+  if (isGift) {
+    addGift(data, isTT, isYT);
+  } else if (isTT) {
+    addMsg(data, 'tt');
+  } else if (isYT) {
+    addMsg(data, 'yt');
+  }
+
+  addUnified(data, p, isTT, isYT);
+}
+
+/* ── avatar helpers ── */
+function avColor(name) {
+  const ramps = [['#1e3a5c','#5aabff'],['#3a1a1a','#ff7b7b'],['#1a3a24','#5aff9e'],
+                 ['#3a2a14','#ffb84a'],['#2a1a3a','#c47bff'],['#1a3636','#5af0ee']];
+  let h = 0;
+  for (let i=0;i<(name||'').length;i++) h=(h*31+name.charCodeAt(i))&0xffff;
+  return ramps[h % ramps.length];
+}
+
+function makeAv(data) {
+  const el = document.createElement('div');
+  el.className = 'av';
+  const [bg, fg] = avColor(data.chatname);
+  el.style.background = bg;
+  el.style.color = fg;
+  el.textContent = (data.chatname||'?').slice(0,2).toUpperCase();
+  if (data.chatimg) {
+    const img = document.createElement('img');
+    img.src = data.chatimg;
+    img.onerror = () => {};
+    el.innerHTML = '';
+    el.appendChild(img);
+  }
+  return el;
+}
+
+/* ── left panel chat row ── */
+function addMsg(data, key) {
+  const container = document.getElementById('msgs-' + key);
+  document.getElementById('emp-' + key)?.remove();
+
+  const row = document.createElement('div');
+  row.className = 'msg';
+  row.appendChild(makeAv(data));
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  const name = document.createElement('div');
+  name.className = 'msg-name';
+  name.textContent = data.chatname;
+  const text = document.createElement('div');
+  text.className = 'msg-text';
+  text.innerHTML = data.chatmessage || '';
+  body.appendChild(name);
+  body.appendChild(text);
+  row.appendChild(body);
+
+  container.appendChild(row);
+  trim(container);
+  container.scrollTop = container.scrollHeight;
+
+  counts[key]++;
+  document.getElementById('cnt-' + key).textContent = counts[key];
+}
+
+/* ── unified right panel row ── */
+function addUnified(data, platform, isTT, isYT) {
+  const container = document.getElementById('msgs-all');
+  document.getElementById('emp-all')?.remove();
+
+  const color = isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : data.hasDonation ? 'var(--gift)' : 'rgba(255,255,255,0.18)';
+
+  const row = document.createElement('div');
+  row.className = 'umsg';
+
+  const tag = document.createElement('div');
+  tag.className = 'platform-tag';
+  tag.style.background = color;
+  row.appendChild(tag);
+
+  row.appendChild(makeAv(data));
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  const name = document.createElement('div');
+  name.className = 'msg-name';
+  name.textContent = data.chatname;
+  if (data.hasDonation) {
+    const amt = document.createElement('span');
+    amt.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--gift);margin-left:5px;';
+    amt.textContent = data.hasDonation;
+    name.appendChild(amt);
+  }
+  const text = document.createElement('div');
+  text.className = 'msg-text';
+  text.innerHTML = data.chatmessage || data.gifttitle || '';
+  body.appendChild(name);
+  body.appendChild(text);
+  row.appendChild(body);
+
+  const hint = document.createElement('div');
+  hint.className = 'feat-hint';
+  hint.textContent = '★ feature';
+  row.appendChild(hint);
+
+  row.addEventListener('click', () => {
+    document.querySelectorAll('.umsg.featuring').forEach(el => el.classList.remove('featuring'));
+    row.classList.add('featuring');
+    featureMessage(data);
+    setTimeout(() => row.classList.remove('featuring'), 3000);
+  });
+
+  container.appendChild(row);
+  trim(container);
+  container.scrollTop = container.scrollHeight;
+
+  counts.all++;
+  document.getElementById('cnt-all').textContent = counts.all;
+}
+
+/* ── gift row ── */
+function buildGiftSentence(data, isTT, isYT) {
+  /* Returns e.g. "sent 65 Stars", "sent a Super Chat", "gifted 3 memberships" */
+  const evt   = (data.event || '').toLowerCase();
+  const dono  = data.hasDonation || '';   // e.g. "65 Stars", "$5.00", "500 Coins"
+  const title = data.gifttitle   || '';   // gift name from platform
+
+  /* YouTube specific */
+  function looksLikeMoney(s) { return /[$£€¥₩₹]/.test(s) || /\b(USD|EUR|GBP|CAD|AUD|JPY)\b/i.test(s); }
+  if (isYT) {
+    /* Super Chat: explicit event OR money-looking hasDonation */
+    if (evt === 'superchat' || evt === 'supersticker')
+      return dono ? `sent a Super Chat · ${dono}` : 'sent a Super Chat';
+    if ((evt === 'donation' || data.donoValue) && looksLikeMoney(dono))
+      return `sent a Super Chat · ${dono}`;
+    if (evt === 'supersticker')
+      return dono ? `sent a Super Sticker · ${dono}` : 'sent a Super Sticker';
+    if (evt === 'jeweldonation')
+      return dono ? `sent ${dono}` : 'sent Jewels';
+    if (evt === 'giftpurchase')
+      return dono ? `gifted ${dono}` : 'gifted Memberships';
+    if (evt === 'giftredemption')
+      return 'received a gifted membership';
+    if (data.membership)
+      return `joined · ${data.subtitle || data.membership}`;
+    if (dono) return `sent ${dono}`;
+    if (title) return `sent ${title}`;
+  }
+
+  /* TikTok specific */
+  if (isTT) {
+    if (title && dono) return `sent ${dono} × ${title}`;
+    if (dono)          return `sent ${dono}`;
+    if (title)         return `sent a ${title}`;
+    return 'sent a gift';
+  }
+
+  /* fallback */
+  if (dono && title) return `sent ${dono} · ${title}`;
+  if (dono)          return `sent ${dono}`;
+  if (title)         return `sent ${title}`;
+  return 'sent a gift';
+}
+
+function addGift(data, isTT, isYT) {
+  const container = document.getElementById('msgs-gifts');
+  document.getElementById('emp-gifts')?.remove();
+
+  const row = document.createElement('div');
+  row.className = 'gift-row';
+
+  /* icon */
+  const icon = document.createElement('div');
+  icon.className = 'gift-icon';
+  const evt = (data.event || '').toLowerCase();
+  icon.style.background = isTT ? 'rgba(254,44,85,0.15)' : isYT ? 'rgba(255,68,68,0.13)' : 'rgba(245,166,35,0.15)';
+  if (data.contentimg) {
+    const img = document.createElement('img');
+    img.src = data.contentimg;
+    img.onerror = () => { icon.textContent = isTT ? '🎁' : evt === 'jeweldonation' ? '💎' : isYT ? '⭐' : '💝'; };
+    icon.appendChild(img);
+  } else {
+    icon.textContent = isTT ? '🎁' : evt === 'jeweldonation' ? '💎' : evt === 'superchat' || evt === 'donation' ? '⭐' : evt === 'giftpurchase' ? '🎁' : isYT ? '⭐' : '💝';
+  }
+  row.appendChild(icon);
+
+  /* body — two lines: NAME (bold) + sentence */
+  const body = document.createElement('div');
+  body.className = 'gift-body';
+
+  const gname = document.createElement('div');
+  gname.className = 'gift-name';
+  gname.textContent = data.chatname || 'Anonymous';
+
+  const gdetail = document.createElement('div');
+  gdetail.className = 'gift-detail';
+  gdetail.textContent = buildGiftSentence(data, isTT, isYT);
+
+  body.appendChild(gname);
+  body.appendChild(gdetail);
+  row.appendChild(body);
+
+  /* platform tag pill */
+  const pill = document.createElement('div');
+  pill.style.cssText = `font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    padding:2px 6px;border-radius:10px;flex-shrink:0;align-self:center;
+    background:${isTT ? 'rgba(254,44,85,0.15)' : isYT ? 'rgba(255,68,68,0.12)' : 'rgba(245,166,35,0.12)'};
+    color:${isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : 'var(--gift)'};`;
+  pill.textContent = isTT ? 'TikTok' : isYT ? 'YT' : (data.type || '');
+  row.appendChild(pill);
+
+  container.appendChild(row);
+  trim(container);
+  container.scrollTop = container.scrollHeight;
+
+  counts.gifts++;
+  document.getElementById('cnt-gifts').textContent = counts.gifts;
+}
+
+function trim(el) {
+  const kids = el.querySelectorAll('.msg,.umsg,.gift-row');
+  if (kids.length > MAX_MSGS) for (let i=0;i<kids.length-MAX_MSGS;i++) kids[i].remove();
+}
+
+/* ═══════════════════════════════════════════
+   SPLAT CONTROLLER — Ably
+═══════════════════════════════════════════ */
+const ably = new Ably.Realtime({ key: ABLY_KEY });
+const ablyChannel = ably.channels.get(ABLY_CH);
+
+const connDot   = document.getElementById('conn-dot');
+const connLabel = document.getElementById('conn-label');
+const splatTimer = document.getElementById('splat-timer');
+const splatProg  = document.getElementById('splat-prog');
+const btnSave    = document.getElementById('btn-save');
+const btnReset   = document.getElementById('btn-reset');
+const flash      = document.getElementById('flash');
+
+ably.connection.on('connected', () => {
+  connDot.className = 'conn-dot connected';
+  connLabel.textContent = 'Splat connected ✓';
+});
+ably.connection.on('disconnected', () => {
+  connDot.className = 'conn-dot connecting';
+  connLabel.textContent = 'Reconnecting…';
+});
+
+let splatState = 'idle', timeLeft = SPLAT_SEC, ticker = null;
+
+function splatCmd(cmd) {
+  ablyChannel.publish('cmd', cmd);
+  if (cmd === 'reset') { startCountdown(); doFlash('red'); }
+  if (cmd === 'save')  { if (splatState === 'countdown') doSave(); doFlash('green'); }
+  if (cmd === 'idle')  { goIdle(); }
+}
+
+function startCountdown() {
+  clearInterval(ticker);
+  splatState = 'countdown'; timeLeft = SPLAT_SEC;
+  btnSave.classList.add('enabled');
+  btnReset.classList.add('active-state');
+  updateTimer();
+  ticker = setInterval(() => {
+    timeLeft--;
+    updateTimer();
+    if (timeLeft <= 0) {
+      clearInterval(ticker);
+      splatState = 'expired';
+      splatTimer.textContent = '💀';
+      splatTimer.className = 'splat-timer danger';
+      splatProg.style.width = '0%';
+      btnSave.classList.remove('enabled');
+      btnReset.classList.remove('active-state');
+      setTimeout(goIdle, 7000);
+    }
+  }, 1000);
+}
+
+function doSave() {
+  clearInterval(ticker);
+  splatState = 'saved';
+  splatTimer.textContent = '💜';
+  splatTimer.className = 'splat-timer';
+  splatProg.style.width = '100%';
+  splatProg.classList.remove('danger');
+  btnSave.classList.remove('enabled');
+  btnReset.classList.remove('active-state');
+  setTimeout(goIdle, 5000);
+}
+
+function goIdle() {
+  clearInterval(ticker);
+  splatState = 'idle';
+  splatTimer.textContent = '--';
+  splatTimer.className = 'splat-timer';
+  splatProg.style.width = '100%';
+  splatProg.classList.remove('danger');
+  btnSave.classList.remove('enabled');
+  btnReset.classList.remove('active-state');
+}
+
+function updateTimer() {
+  splatTimer.textContent = timeLeft;
+  splatProg.style.width = ((timeLeft / SPLAT_SEC) * 100) + '%';
+  splatTimer.classList.remove('countdown','warn','danger');
+  splatProg.classList.remove('danger');
+  if (timeLeft <= DANGER_AT) {
+    splatTimer.classList.add('danger');
+    splatProg.classList.add('danger');
+  } else if (timeLeft <= WARN_AT) {
+    splatTimer.classList.add('warn');
+  } else {
+    splatTimer.classList.add('countdown');
+  }
+}
+
+function doFlash(color) {
+  flash.className = color + ' show';
+  setTimeout(() => { flash.className = ''; }, 300);
+}
+
+document.addEventListener('keydown', e => {
+  const active = document.activeElement;
+  const typing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  if (typing) return;
+  if (e.key === '[')      splatCmd('reset');
+  if (e.key === ']')      splatCmd('save');
+  if (e.key === 'Escape') splatCmd('idle');
+});
+
+/* ── kick it off ── */
+
+/* ── FONT / SIZE SETTINGS ── */
+const FONT_OPTIONS = [
+  "'DM Sans', sans-serif", "'Inter', sans-serif", "'Nunito', sans-serif",
+  "'Poppins', sans-serif", "'Roboto', sans-serif", "'Ubuntu', sans-serif",
+  "'Rajdhani', sans-serif", "'Exo 2', sans-serif", "'Outfit', sans-serif",
+  "'Boogaloo', cursive"
+];
+
+let currentSize = parseInt(localStorage.getItem('dock-font-size') || '12');
+let currentFont = localStorage.getItem('dock-font') || "'DM Sans', sans-serif";
+
+function applyFont() {
+  const sel = document.getElementById('font-select');
+  currentFont = sel.value;
+  localStorage.setItem('dock-font', currentFont);
+  document.documentElement.style.setProperty('--font', currentFont);
+}
+
+function applySize() {
+  localStorage.setItem('dock-font-size', currentSize);
+  document.getElementById('size-val').textContent = currentSize;
+  /* scale all message text */
+  document.querySelectorAll('.msg-text, .gift-detail, .gift-name, .msg-name, .gift-amt').forEach(el => {
+    el.style.fontSize = '';
+  });
+  const baseMap = { 'msg-name': currentSize - 1, 'msg-text': currentSize, 'gift-name': currentSize - 1, 'gift-detail': currentSize - 1, 'gift-amt': currentSize };
+  Object.entries(baseMap).forEach(([cls, sz]) => {
+    document.querySelectorAll('.' + cls).forEach(el => el.style.fontSize = sz + 'px');
+  });
+  document.documentElement.style.setProperty('--base-font-size', currentSize + 'px');
+}
+
+function adjustSize(delta) {
+  currentSize = Math.max(8, Math.min(20, currentSize + delta));
+  applySize();
+}
+
+function toggleSettings(e) {
+  e.stopPropagation();
+  document.getElementById('settings-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.remove('open');
+});
+
+/* restore saved settings */
+(function initSettings() {
+  document.documentElement.style.setProperty('--font', currentFont);
+  document.getElementById('size-val').textContent = currentSize;
+  const sel = document.getElementById('font-select');
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === currentFont) { sel.selectedIndex = i; break; }
+  }
+})();
+
+wsConnect();
+</script>
+</body>
+</html>
