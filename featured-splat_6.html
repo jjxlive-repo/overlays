@@ -424,7 +424,13 @@ let ws, wsTimer;
 function isSuperchat(data) {
   const evt = (data.event || '').toLowerCase();
   const p   = (data.type  || '').toLowerCase();
-  return p.includes('youtube') && (evt === 'donation' || evt === 'superchat' || evt === 'supersticker');
+  if (!p.includes('youtube')) return false;
+  /* Primary signal: YouTube + money = Super Chat */
+  if (data.hasDonation && data.donoValue) return true;
+  if (data.hasDonation && !data.membership) return true;
+  /* Explicit event types */
+  if (evt === 'superchat' || evt === 'donation' || evt === 'supersticker') return true;
+  return false;
 }
 
 function connect() {
@@ -591,7 +597,9 @@ function populateBubble(data) {
   badgeEl.textContent = platformLabel(p);
   msgEl.innerHTML    = data.chatmessage || '';
 
-  const isGift = !!(data.hasDonation || data.gifttitle || data.membership ||
+  /* superchats are handled separately — don't double-show as gift block */
+  const isSC = isSuperchat(data);
+  const isGift = !isSC && !!(data.hasDonation || data.gifttitle || data.membership ||
     evt === 'gift' || evt === 'jeweldonation' || evt === 'giftpurchase' ||
     evt === 'giftredemption' || evt === 'sponsorship');
 

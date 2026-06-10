@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stream Dock</title>
-<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Nunito:wght@400;600;700&family=Poppins:wght@400;500;600&family=Roboto:wght@400;500&family=Ubuntu:wght@400;500&family=Rajdhani:wght@400;500;600&family=Exo+2:wght@400;500;600&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -427,6 +427,91 @@ html, body {
 #flash.red   { background:rgba(244,63,94,0.12); }
 #flash.show  { opacity:1; }
 
+/* ── SETTINGS PANEL ── */
+.settings-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--txt-dim);
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.settings-btn:hover { color: var(--txt); background: var(--bg-hover); }
+
+.settings-panel {
+  position: absolute;
+  top: 32px;
+  right: 8px;
+  background: rgba(18,18,28,0.98);
+  border: 1px solid var(--border-hi);
+  border-radius: 10px;
+  padding: 12px 14px;
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: none;
+}
+.settings-panel.open { display: block; }
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.settings-row:last-child { margin-bottom: 0; }
+
+.settings-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex-shrink: 0;
+}
+
+.settings-select {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  color: var(--txt);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.settings-select:focus { border-color: var(--purple); }
+
+.settings-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.size-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-hi);
+  border-radius: 5px;
+  color: var(--txt);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.size-btn:hover { background: rgba(255,255,255,0.13); }
+.size-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt);
+  min-width: 28px;
+  text-align: center;
+}
+
 /* ── ANIM ── */
 @keyframes fadein { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
 .msg,.umsg,.gift-row { animation: fadein 0.16s ease; }
@@ -486,12 +571,38 @@ html, body {
     <!-- RIGHT: unified feed + send -->
     <div class="col-right">
 
-      <div class="right-header">
+      <div class="right-header" style="position:relative;">
         <div class="dot" style="background:rgba(255,255,255,0.3)"></div>
         <span class="panel-title">All Chat</span>
         <span class="badge" id="cnt-all">0</span>
         <span style="font-size:9px;color:var(--txt-dim);margin-left:4px;">click to feature</span>
         <div class="live-dot" id="live-all"></div>
+        <button class="settings-btn" onclick="toggleSettings(event)" title="Font settings">⚙</button>
+        <div class="settings-panel" id="settings-panel">
+          <div class="settings-row">
+            <span class="settings-label">Font</span>
+            <select class="settings-select" id="font-select" onchange="applyFont()">
+              <option value="'DM Sans', sans-serif">DM Sans</option>
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Nunito', sans-serif">Nunito</option>
+              <option value="'Poppins', sans-serif">Poppins</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Ubuntu', sans-serif">Ubuntu</option>
+              <option value="'Rajdhani', sans-serif">Rajdhani</option>
+              <option value="'Exo 2', sans-serif">Exo 2</option>
+              <option value="'Outfit', sans-serif">Outfit</option>
+              <option value="'Boogaloo', cursive">Boogaloo</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Size</span>
+            <div class="settings-size-row">
+              <button class="size-btn" onclick="adjustSize(-1)">−</button>
+              <span class="size-val" id="size-val">12</span>
+              <button class="size-btn" onclick="adjustSize(1)">+</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="msgs" id="msgs-all" style="flex:1;">
@@ -739,6 +850,48 @@ function addUnified(data, platform, isTT, isYT) {
 }
 
 /* ── gift row ── */
+function buildGiftSentence(data, isTT, isYT) {
+  /* Returns e.g. "sent 65 Stars", "sent a Super Chat", "gifted 3 memberships" */
+  const evt   = (data.event || '').toLowerCase();
+  const dono  = data.hasDonation || '';   // e.g. "65 Stars", "$5.00", "500 Coins"
+  const title = data.gifttitle   || '';   // gift name from platform
+
+  /* YouTube specific */
+  if (isYT) {
+    /* Super Chat: YT + money — check this BEFORE membership check */
+    if (dono && (evt === 'superchat' || evt === 'donation' || evt === 'supersticker' || data.donoValue))
+      return `sent a Super Chat · ${dono}`;
+    if (dono && !data.membership)
+      return `sent a Super Chat · ${dono}`;
+    if (evt === 'supersticker')
+      return dono ? `sent a Super Sticker · ${dono}` : 'sent a Super Sticker';
+    if (evt === 'jeweldonation')
+      return dono ? `sent ${dono}` : 'sent Jewels';
+    if (evt === 'giftpurchase')
+      return dono ? `gifted ${dono}` : 'gifted Memberships';
+    if (evt === 'giftredemption')
+      return 'received a gifted membership';
+    if (data.membership)
+      return `joined · ${data.subtitle || data.membership}`;
+    if (dono) return `sent ${dono}`;
+    if (title) return `sent ${title}`;
+  }
+
+  /* TikTok specific */
+  if (isTT) {
+    if (title && dono) return `sent ${dono} × ${title}`;
+    if (dono)          return `sent ${dono}`;
+    if (title)         return `sent a ${title}`;
+    return 'sent a gift';
+  }
+
+  /* fallback */
+  if (dono && title) return `sent ${dono} · ${title}`;
+  if (dono)          return `sent ${dono}`;
+  if (title)         return `sent ${title}`;
+  return 'sent a gift';
+}
+
 function addGift(data, isTT, isYT) {
   const container = document.getElementById('msgs-gifts');
   document.getElementById('emp-gifts')?.remove();
@@ -746,47 +899,45 @@ function addGift(data, isTT, isYT) {
   const row = document.createElement('div');
   row.className = 'gift-row';
 
+  /* icon */
   const icon = document.createElement('div');
   icon.className = 'gift-icon';
+  const evt = (data.event || '').toLowerCase();
   icon.style.background = isTT ? 'rgba(254,44,85,0.15)' : isYT ? 'rgba(255,68,68,0.13)' : 'rgba(245,166,35,0.15)';
   if (data.contentimg) {
     const img = document.createElement('img');
     img.src = data.contentimg;
-    img.onerror = () => { icon.textContent = isTT ? '🎁' : isYT ? '⭐' : '💝'; };
+    img.onerror = () => { icon.textContent = isTT ? '🎁' : evt === 'jeweldonation' ? '💎' : isYT ? '⭐' : '💝'; };
     icon.appendChild(img);
   } else {
-    icon.textContent = isTT ? '🎁' : isYT ? '⭐' : '💝';
+    icon.textContent = isTT ? '🎁' : evt === 'jeweldonation' ? '💎' : evt === 'superchat' || evt === 'donation' ? '⭐' : evt === 'giftpurchase' ? '🎁' : isYT ? '⭐' : '💝';
   }
   row.appendChild(icon);
 
+  /* body — two lines: NAME (bold) + sentence */
   const body = document.createElement('div');
   body.className = 'gift-body';
+
   const gname = document.createElement('div');
   gname.className = 'gift-name';
   gname.textContent = data.chatname || 'Anonymous';
+
   const gdetail = document.createElement('div');
   gdetail.className = 'gift-detail';
-  const evtType = (data.event || '').toLowerCase();
-  let giftLabel = data.gifttitle || '';
-  if (!giftLabel && evtType === 'jeweldonation')  giftLabel = 'YouTube Jewels';
-  if (!giftLabel && evtType === 'giftpurchase')   giftLabel = 'Gifted Memberships';
-  if (!giftLabel && evtType === 'giftredemption') giftLabel = 'Gift Received';
-  if (!giftLabel && evtType === 'donation')        giftLabel = isYT ? 'Super Chat' : 'Donation';
-  if (!giftLabel && data.membership)               giftLabel = data.subtitle || data.membership;
-  if (!giftLabel)                                  giftLabel = data.chatmessage || '';
-  const platformLabel2 = isTT ? 'TikTok' : isYT ? 'YouTube' : (data.type || '');
-  gdetail.textContent = (giftLabel ? giftLabel + ' · ' : '') + platformLabel2;
+  gdetail.textContent = buildGiftSentence(data, isTT, isYT);
+
   body.appendChild(gname);
   body.appendChild(gdetail);
   row.appendChild(body);
 
-  if (data.hasDonation) {
-    const amt = document.createElement('div');
-    amt.className = 'gift-amt';
-    amt.style.color = isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : 'var(--gift)';
-    amt.textContent = data.hasDonation;
-    row.appendChild(amt);
-  }
+  /* platform tag pill */
+  const pill = document.createElement('div');
+  pill.style.cssText = `font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    padding:2px 6px;border-radius:10px;flex-shrink:0;align-self:center;
+    background:${isTT ? 'rgba(254,44,85,0.15)' : isYT ? 'rgba(255,68,68,0.12)' : 'rgba(245,166,35,0.12)'};
+    color:${isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : 'var(--gift)'};`;
+  pill.textContent = isTT ? 'TikTok' : isYT ? 'YT' : (data.type || '');
+  row.appendChild(pill);
 
   container.appendChild(row);
   trim(container);
@@ -908,6 +1059,63 @@ document.addEventListener('keydown', e => {
 });
 
 /* ── kick it off ── */
+
+/* ── FONT / SIZE SETTINGS ── */
+const FONT_OPTIONS = [
+  "'DM Sans', sans-serif", "'Inter', sans-serif", "'Nunito', sans-serif",
+  "'Poppins', sans-serif", "'Roboto', sans-serif", "'Ubuntu', sans-serif",
+  "'Rajdhani', sans-serif", "'Exo 2', sans-serif", "'Outfit', sans-serif",
+  "'Boogaloo', cursive"
+];
+
+let currentSize = parseInt(localStorage.getItem('dock-font-size') || '12');
+let currentFont = localStorage.getItem('dock-font') || "'DM Sans', sans-serif";
+
+function applyFont() {
+  const sel = document.getElementById('font-select');
+  currentFont = sel.value;
+  localStorage.setItem('dock-font', currentFont);
+  document.documentElement.style.setProperty('--font', currentFont);
+}
+
+function applySize() {
+  localStorage.setItem('dock-font-size', currentSize);
+  document.getElementById('size-val').textContent = currentSize;
+  /* scale all message text */
+  document.querySelectorAll('.msg-text, .gift-detail, .gift-name, .msg-name, .gift-amt').forEach(el => {
+    el.style.fontSize = '';
+  });
+  const baseMap = { 'msg-name': currentSize - 1, 'msg-text': currentSize, 'gift-name': currentSize - 1, 'gift-detail': currentSize - 1, 'gift-amt': currentSize };
+  Object.entries(baseMap).forEach(([cls, sz]) => {
+    document.querySelectorAll('.' + cls).forEach(el => el.style.fontSize = sz + 'px');
+  });
+  document.documentElement.style.setProperty('--base-font-size', currentSize + 'px');
+}
+
+function adjustSize(delta) {
+  currentSize = Math.max(8, Math.min(20, currentSize + delta));
+  applySize();
+}
+
+function toggleSettings(e) {
+  e.stopPropagation();
+  document.getElementById('settings-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.remove('open');
+});
+
+/* restore saved settings */
+(function initSettings() {
+  document.documentElement.style.setProperty('--font', currentFont);
+  document.getElementById('size-val').textContent = currentSize;
+  const sel = document.getElementById('font-select');
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === currentFont) { sel.selectedIndex = i; break; }
+  }
+})();
+
 wsConnect();
 </script>
 </body>
