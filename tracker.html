@@ -1200,13 +1200,23 @@ function disconnectSSN() {
  *   YouTube supersticker   → hasDonation = "$5.00"
  *   any     (webhook)      → hasDonation = "$50.00 USD" (Ko-Fi, Stripe, etc.)
  */
+// These events are NEVER gifts — exclude even when hasDonation is set
+// (memberships expose hasDonation = the monthly subscription cost, not a gift)
+const EXCLUDED_EVENTS = new Set([
+  'member','membership','membershipgift','subscription',
+  'follow','raid','host','cheer','welcome','share','like',
+]);
+
 function mapEventType(event, platform) {
   const e = (event  || '').toLowerCase();
   const p = (platform || '').toLowerCase();
+  if (EXCLUDED_EVENTS.has(e))                 return null;  // explicitly not a gift
   if (p === 'tiktok' && e === 'gift')         return 'tiktok_coins';
   if (e === 'jeweldonation')                   return 'youtube_jewels';
-  if (e === 'donation' || e === 'supersticker') return 'youtube_superchat';
-  if (e === 'giftpurchase')                    return 'youtube_superchat'; // gifted memberships
+  if (e === 'donation' || e === 'supersticker'
+   || e === 'superchat' || e === 'superchatwithtext'
+   || e === 'superchatevent')                  return 'youtube_superchat';
+  if (e === 'giftpurchase')                    return 'youtube_superchat';
   // fallback: guess from platform
   if (p === 'tiktok')   return 'tiktok_coins';
   if (p === 'youtube')  return 'youtube_superchat';
@@ -1271,7 +1281,13 @@ function handleSSNEvent(payload) {
   // Per SSN docs: hasDonation is the primary donation signal — data.event is often absent
   const ssnEvent    = (data.event && data.event !== true) ? String(data.event).toLowerCase() : '';
   const ssnPlatform = (data.type  || '').toLowerCase();
-  const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase','thankyou'].includes(ssnEvent);
+
+  // Bail early on explicitly excluded event types (memberships, follows, etc.)
+  // These sometimes have hasDonation set (e.g. membership cost) but are NOT gifts
+  if (EXCLUDED_EVENTS.has(ssnEvent)) return;
+
+  const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase','thankyou',
+                        'superchat','superchatwithtext','superchatevent'].includes(ssnEvent);
   const isRelevant  = hasDonation || isGiftEvent;
 
   if (!debugAll && !isRelevant) return;
@@ -1280,6 +1296,7 @@ function handleSSNEvent(payload) {
 
   // Determine our internal type first so parseHasDonation can use it
   let type = mapEventType(ssnEvent, ssnPlatform);
+  if (type === null) return; // excluded type slipped through (safety net)
   const platform = ssnPlatform || typeToPlatform(type);
   const ts = Date.now();
 
