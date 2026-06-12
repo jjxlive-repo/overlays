@@ -2,231 +2,242 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Giftr — Top Gifters</title>
+<title>Giftr Bar</title>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=DM+Sans:wght@700&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-  width: 350px;
-  height: 350px;
+  width: 1080px;
+  height: 1920px;
   overflow: hidden;
   background: transparent;
 }
 
-/* ── Glow ring ── */
-#card-glow {
+/* ─────────────── BAR ─────────────── */
+#giftr-bar {
   position: absolute;
-  inset: -3px;
-  border-radius: 15px;
-  background: var(--glow-grad, linear-gradient(135deg, #7B2FBE, #E879F9));
-  transition: background 0.8s ease;
-  animation: pulse 3s ease-in-out infinite;
-  z-index: 0;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1;    filter: blur(0);   }
-  50%       { opacity: 0.5; filter: blur(3px); }
-}
-
-/* ── Card ── */
-#card-wrap {
-  position: relative;
-  width: 350px;
-  height: 350px;
-}
-#card {
-  position: absolute;
-  inset: 3px;
-  border-radius: 12px;
+  top: 450px;
+  left: 0;
+  width: 1080px;
+  height: 50px;
   overflow: hidden;
-  background: #05000e;
-  z-index: 1;
-}
-
-/* ── Slot ── */
-.slot {
-  position: absolute;
-  inset: 0;
   opacity: 0;
-  transition: opacity 0.45s ease;
-  will-change: opacity;
+  transition: opacity 0.6s ease;
 }
-.slot.active { opacity: 1; }
+#giftr-bar.visible { opacity: 1; }
 
-/* Profile pic — full bleed blurred bg */
-.slot-pic {
+/* Dark glass background */
+#bar-bg {
   position: absolute;
-  inset: -8px;
-  background-size: cover;
-  background-position: center top;
-  filter: blur(14px) brightness(0.5) saturate(1.3);
+  inset: 0;
+  background: rgba(5, 0, 14, 0.86);
   z-index: 0;
 }
 
-/* Platform colour veil */
-.slot-veil {
+/* Platform colour wash — fades between platforms */
+#bar-wash {
   position: absolute;
   inset: 0;
+  transition: background 1s ease;
   z-index: 1;
-}
-.slot[data-platform="tiktok"]  .slot-veil {
-  background: linear-gradient(150deg, rgba(105,201,208,0.15) 0%, rgba(238,29,82,0.08) 100%),
-              linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.65) 100%);
-}
-.slot[data-platform="youtube"] .slot-veil {
-  background: linear-gradient(150deg, rgba(255,30,30,0.18) 0%, rgba(150,0,0,0.08) 100%),
-              linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.65) 100%);
-}
-.slot[data-platform="direct"]  .slot-veil,
-.slot[data-platform="default"] .slot-veil {
-  background: linear-gradient(150deg, rgba(168,85,247,0.15) 0%, rgba(232,121,249,0.07) 100%),
-              linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.65) 100%);
+  pointer-events: none;
 }
 
-/* ── Content ── */
-.slot-content {
+/* Top & bottom edge accent lines */
+#bar-edge-top, #bar-edge-bot {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1px;
+  transition: background 1s ease;
+  z-index: 4;
+  pointer-events: none;
+}
+#bar-edge-top { top: 0; }
+#bar-edge-bot { bottom: 2px; } /* 2px above progress line */
+
+/* Sweep flash on every slot transition */
+#bar-sweep {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+#bar-sweep.flash {
+  animation: barSweep 0.55s ease-in-out forwards;
+}
+@keyframes barSweep {
+  0%   { opacity: 0;   transform: translateX(-110%); }
+  35%  { opacity: 1;                                 }
+  100% { opacity: 0;   transform: translateX(110%);  }
+}
+
+/* Progress line — fills across bottom over ROTATE_MS */
+#bar-progress {
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 2px;
+  width: 0%;
+  transition: background 1s ease;
+  z-index: 5;
+  border-radius: 0 1px 1px 0;
+}
+
+/* ─────────────── CONTENT FRAMES ─────────────── */
+/* Two frames — crossfade between them */
+.bar-frame {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 14px 14px 34px; /* bottom room for dots */
-  gap: 8px;
+  padding: 0 56px 0 14px; /* right pad leaves room for dots */
+  gap: 0;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.42s ease;
+  pointer-events: none;
+}
+.bar-frame.active { opacity: 1; }
+
+/* Left accent strip — platform colour */
+.bar-accent {
+  width: 3px;
+  height: 28px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-right: 12px;
 }
 
-/* Position label — no icon, just text */
-.slot-label {
+/* Platform badge pill */
+.bar-plat {
   font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
   font-weight: 700;
-  font-size: 30px;
-  letter-spacing: 4px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.92);
-  text-align: center;
-  text-shadow: 0 2px 12px rgba(0,0,0,0.95);
-  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-right: 10px;
+  white-space: nowrap;
+  line-height: 18px;
+}
+.plat-tiktok  { color: #69C9D0; background: rgba(105,201,208,0.16); border: 1px solid rgba(105,201,208,0.30); }
+.plat-youtube { color: #FF6B6B; background: rgba(255, 80, 80,0.16); border: 1px solid rgba(255, 80, 80,0.30); }
+.plat-direct,
+.plat-default { color: #C084FC; background: rgba(192,132,252,0.16); border: 1px solid rgba(192,132,252,0.30); }
+
+/* Vertical separator */
+.bar-sep {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.12);
+  flex-shrink: 0;
+  margin: 0 12px;
 }
 
-/* Name — hero */
-.slot-name {
-  font-family: 'Anton', sans-serif;
+/* Slot label */
+.bar-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #ffffff;
-  text-align: center;
-  width: 100%;
-  line-height: 0.9;
-  letter-spacing: 3px;
-  text-shadow: 0 3px 16px rgba(0,0,0,0.95), 3px 3px 0 rgba(0,0,0,0.4);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: rgba(255,255,255,0.42);
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
-/* Divider */
-.slot-line {
-  width: 80%;
-  height: 2px;
-  border-radius: 1px;
+/* Name — hero */
+.bar-name {
+  font-family: 'Anton', sans-serif;
+  font-size: 26px;
+  text-transform: uppercase;
+  color: #ffffff;
+  letter-spacing: 2px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+  min-width: 0;
 }
-.slot[data-platform="tiktok"]  .slot-line { background: linear-gradient(90deg, transparent, #69C9D0 40%, #69C9D0 60%, transparent); }
-.slot[data-platform="youtube"] .slot-line { background: linear-gradient(90deg, transparent, #FF5555 40%, #FF5555 60%, transparent); }
-.slot[data-platform="direct"]  .slot-line,
-.slot[data-platform="default"] .slot-line { background: linear-gradient(90deg, transparent, #C084FC 40%, #C084FC 60%, transparent); }
 
 /* Amount */
-.slot-amount {
+.bar-amount {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 36px;
-  letter-spacing: 4px;
-  text-align: center;
-  line-height: 1;
+  font-size: 23px;
+  letter-spacing: 3px;
+  flex-shrink: 0;
+  margin-left: 12px;
+  white-space: nowrap;
 }
-.slot[data-platform="tiktok"]  .slot-amount { color: #69C9D0; text-shadow: 0 0 24px rgba(105,201,208,0.5), 0 2px 8px rgba(0,0,0,0.9); }
-.slot[data-platform="youtube"] .slot-amount { color: #FF6B6B; text-shadow: 0 0 24px rgba(255,80,80,0.5),   0 2px 8px rgba(0,0,0,0.9); }
-.slot[data-platform="direct"]  .slot-amount,
-.slot[data-platform="default"] .slot-amount { color: #C084FC; text-shadow: 0 0 24px rgba(192,132,252,0.5), 0 2px 8px rgba(0,0,0,0.9); }
+.amt-tiktok  { color: #69C9D0; text-shadow: 0 0 18px rgba(105,201,208,0.55); }
+.amt-youtube { color: #FF6B6B; text-shadow: 0 0 18px rgba(255, 80, 80,0.55); }
+.amt-direct,
+.amt-default { color: #C084FC; text-shadow: 0 0 18px rgba(192,132,252,0.55); }
 
-/* ── Nav dots ── */
-#nav-dots {
+/* ─────────────── NAV DOTS ─────────────── */
+#bar-dots {
   position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   z-index: 10;
 }
-.nav-dot {
-  height: 8px;
-  width: 8px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.2);
+.bar-dot {
+  height: 5px;
+  width: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.18);
   transition: width 0.3s ease, background 0.3s ease;
+  flex-shrink: 0;
 }
-.nav-dot.active {
-  width: 26px;
-  background: rgba(255,255,255,0.8);
+.bar-dot.active {
+  width: 16px;
+  background: rgba(255,255,255,0.72);
 }
 
-/* ── Status dot ── */
+/* ─────────────── STATUS DOT ─────────────── */
 #status-dot {
   position: absolute;
-  top: 8px;
-  right: 9px;
-  width: 7px;
-  height: 7px;
+  top: 454px; /* 4px inside bar top */
+  left: 6px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #444;
-  z-index: 20;
+  z-index: 30;
   transition: background 0.3s;
 }
 #status-dot.connected  { background: #22c55e; box-shadow: 0 0 5px rgba(34,197,94,0.7); }
 #status-dot.connecting { background: #eab308; }
-
-/* ── No-data ── */
-#no-data {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5,0,14,0.9);
-  border-radius: 12px;
-  z-index: 30;
-  transition: opacity 0.4s;
-}
-#no-data.hidden { opacity: 0; pointer-events: none; }
-.no-data-text {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 700;
-  font-size: 20px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.2);
-}
 </style>
 </head>
 <body>
-<div id="card-wrap">
-  <div id="card-glow"></div>
 
-  <div id="card">
-    <div id="slot-container"></div>
+<div id="giftr-bar">
+  <div id="bar-bg"></div>
+  <div id="bar-wash"></div>
+  <div id="bar-edge-top"></div>
+  <div id="bar-edge-bot"></div>
+  <div id="bar-sweep"></div>
 
-    <div id="nav-dots"><!-- built by JS --></div>
+  <!-- Two frames that crossfade -->
+  <div class="bar-frame" id="frame-a"></div>
+  <div class="bar-frame" id="frame-b"></div>
 
-    <div id="no-data">
-      <div class="no-data-text">Waiting for data</div>
-    </div>
-  </div>
-
-  <div id="status-dot"></div>
+  <div id="bar-dots"></div>
+  <div id="bar-progress"></div>
 </div>
+
+<div id="status-dot"></div>
 
 <script>
 /* ══ CONFIG ══════════════════════════════════════════════ */
@@ -236,243 +247,225 @@ const CONFIG = {
   ABLY_CHANNEL: 'splat-overlay',
 };
 
-// All possible slots — activeSlots is the live filtered subset
 const SLOT_DEFS = [
   { key: 'daily',   label: 'Daily Top Gifter'   },
   { key: 'weekly',  label: 'Weekly Top Gifter'  },
   { key: 'monthly', label: 'Monthly Top Gifter' },
   { key: 'youtube', label: 'Top YouTube Gifter' },
   { key: 'tiktok',  label: 'Top TikTok Gifter'  },
-  { key: 'custom',  label: 'Featured Gifter'    }, // only added when custom entry exists
+  { key: 'custom',  label: 'Featured Gifter'    },
 ];
 
-const GLOW = {
-  tiktok:  'linear-gradient(135deg, #69C9D0, #EE1D52)',
-  youtube: 'linear-gradient(135deg, #FF2020, #FF8800)',
-  direct:  'linear-gradient(135deg, #7B2FBE, #E879F9)',
-  default: 'linear-gradient(135deg, #7B2FBE, #E879F9)',
+const PLAT_COLORS = {
+  tiktok:  { wash: 'rgba(105,201,208,0.07)', edge: '#69C9D0', sweep: 'rgba(105,201,208,0.22)' },
+  youtube: { wash: 'rgba(255, 80, 80,0.07)', edge: '#FF6B6B', sweep: 'rgba(255, 80, 80,0.22)' },
+  direct:  { wash: 'rgba(192,132,252,0.07)', edge: '#C084FC', sweep: 'rgba(192,132,252,0.22)' },
+  default: { wash: 'rgba(192,132,252,0.07)', edge: '#C084FC', sweep: 'rgba(192,132,252,0.22)' },
 };
 
 /* ══ STATE ══════════════════════════════════════════════ */
 let leaderboard  = {};
-let activeSlots  = SLOT_DEFS.slice(0, 5); // default all standard slots
+let activeSlots  = SLOT_DEFS.slice(0, 5);
 let currentIdx   = 0;
 let rotateTimer  = null;
+let progressAnim = null;
 let pinned       = false;
+let frameActive  = 'a';
 
-// Canvas context for measuring Anton font width before render
-let _ctx = null;
-function canvasWidth(text, sizePx) {
-  if (!_ctx) _ctx = Object.assign(document.createElement('canvas'),{width:1,height:1}).getContext('2d');
-  _ctx.font = `${sizePx}px Anton`;
-  return _ctx.measureText(text).width;
-}
-
-/* ══ HELPERS ════════════════════════════════════════════ */
-function platformOf(e) {
-  if (!e) return 'default';
-  const p = (e.platform || '').toLowerCase();
-  const t = (e.type     || '').toLowerCase();
-  if (p === 'youtube' || t.startsWith('youtube')) return 'youtube';
-  if (p === 'tiktok'  || t.startsWith('tiktok'))  return 'tiktok';
-  if (p === 'direct'  || t === 'direct_donation') return 'direct';
-  return 'default';
+/* ══ UTILS ══════════════════════════════════════════════ */
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function fmtAmount(amount, type) {
-  if (!amount) return '—';
-  const n = Number(amount);
-  if (type === 'tiktok_coins')   return n.toLocaleString() + ' COINS';
-  if (type === 'youtube_jewels') return n.toLocaleString() + ' JEWELS';
-  if (type === 'youtube_superchat' || type === 'direct_donation')
-    return '$' + (Number.isInteger(n) ? n.toLocaleString() : n.toFixed(2));
+  const n = Number(amount) || 0;
+  if (type === 'tiktok_coins')      return n.toLocaleString() + ' COINS';
+  if (type === 'youtube_jewels')    return n.toLocaleString() + ' JEWELS';
+  if (type === 'youtube_superchat') return '$' + (Number.isInteger(n) ? n.toLocaleString() : n.toFixed(2));
+  if (type === 'direct_donation')   return '$' + (Number.isInteger(n) ? n.toLocaleString() : n.toFixed(2));
   return n.toLocaleString();
 }
 
-// Find largest font size (px) where text fits within maxW pixels
-const SIZE_STEPS = [130, 110, 90, 74, 60, 48, 38, 28, 20];
-function bestFontSize(name, maxW) {
-  const text = (name || '').toUpperCase();
-  for (const sz of SIZE_STEPS) {
-    if (canvasWidth(text, sz) <= maxW) return sz + 'px';
+function platKey(platform) {
+  return ['tiktok','youtube','direct'].includes(platform) ? platform : 'default';
+}
+
+function platLabel(platform) {
+  if (platform === 'tiktok')  return 'TikTok';
+  if (platform === 'youtube') return 'YouTube';
+  if (platform === 'direct')  return 'Direct';
+  return 'Gift';
+}
+
+/* ══ PROGRESS LINE ══════════════════════════════════════ */
+function startProgress(durationMs) {
+  if (progressAnim) { cancelAnimationFrame(progressAnim); progressAnim = null; }
+  const bar   = document.getElementById('bar-progress');
+  const start = performance.now();
+  bar.style.width = '0%';
+
+  function tick(now) {
+    const pct = Math.min(100, ((now - start) / durationMs) * 100);
+    bar.style.width = pct + '%';
+    if (pct < 100) progressAnim = requestAnimationFrame(tick);
+    else progressAnim = null;
   }
-  return '18px';
+  progressAnim = requestAnimationFrame(tick);
 }
 
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* ══ FRAME CONTENT ══════════════════════════════════════ */
+function buildFrameHTML(slotDef, entry) {
+  const plat     = entry ? platKey(entry.platform) : 'default';
+  const pc       = PLAT_COLORS[plat];
+  const platLbl  = entry ? platLabel(entry.platform) : '';
+  const name     = entry?.name ?? '—';
+  const amt      = entry ? fmtAmount(entry.amount, entry.type) : '';
+
+  return `
+    <div class="bar-accent" style="background:${pc.edge}"></div>
+    <span class="bar-plat plat-${plat}">${esc(platLbl)}</span>
+    <div class="bar-sep"></div>
+    <span class="bar-label">${esc(slotDef.label)}</span>
+    <div class="bar-sep"></div>
+    <span class="bar-name">${esc(name.toUpperCase())}</span>
+    <div class="bar-sep"></div>
+    <span class="bar-amount amt-${plat}">${esc(amt)}</span>
+  `;
 }
 
-/* ══ DOM FIT — shrinks any still-overflowing names after render ══ */
-function fitNames() {
-  requestAnimationFrame(() => {
-    const cardW = document.getElementById('card').offsetWidth;
-    const maxW  = cardW - 28; // 14px padding each side
-    document.querySelectorAll('.slot-name').forEach(el => {
-      // Walk size down until it fits
-      let sz = parseInt(el.style.fontSize) || 60;
-      while (el.scrollWidth > maxW && sz > 18) {
-        sz -= 2;
-        el.style.fontSize = sz + 'px';
-      }
-    });
-  });
-}
-
-/* ══ NAV DOTS ═══════════════════════════════════════════ */
-function rebuildDots() {
-  const wrap = document.getElementById('nav-dots');
-  wrap.innerHTML = '';
-  activeSlots.forEach((_, i) => {
-    const d = document.createElement('div');
-    d.className = 'nav-dot' + (i === currentIdx ? ' active' : '');
-    wrap.appendChild(d);
-  });
-}
-
-function updateDots() {
-  document.querySelectorAll('.nav-dot').forEach((d, i) => d.classList.toggle('active', i === currentIdx));
-}
-
-/* ══ BUILD SLOTS ════════════════════════════════════════ */
-function buildSlots() {
-  const container = document.getElementById('slot-container');
-  container.innerHTML = '';
-
-  activeSlots.forEach((meta, i) => {
-    const entry = leaderboard[meta.key] || null;
-    const plat  = platformOf(entry);
-
-    const slot = document.createElement('div');
-    slot.className = 'slot' + (i === currentIdx ? ' active' : '');
-    slot.dataset.platform = plat;
-
-    const pic = document.createElement('div');
-    pic.className = 'slot-pic';
-    if (entry && entry.profilePic) {
-      pic.style.backgroundImage = `url(${JSON.stringify(entry.profilePic)})`;
-    } else {
-      pic.style.filter = 'none';
-      const fallback = { tiktok:'linear-gradient(145deg,#04090a,#0c001a)', youtube:'linear-gradient(145deg,#110000,#0e0003)', default:'linear-gradient(145deg,#080012,#0b001a)' };
-      pic.style.background = fallback[plat] || fallback.default;
-    }
-
-    const veil = document.createElement('div');
-    veil.className = 'slot-veil';
-
-    const content = document.createElement('div');
-    content.className = 'slot-content';
-
-    const cardW = document.getElementById('card').offsetWidth || 344;
-    const maxW  = cardW - 28;
-
-    if (entry && entry.name) {
-      content.innerHTML = `
-        <div class="slot-label">${esc(meta.label)}</div>
-        <div class="slot-name" style="font-size:${bestFontSize(entry.name, maxW)}">${esc(entry.name.toUpperCase())}</div>
-        <div class="slot-line"></div>
-        <div class="slot-amount">${fmtAmount(entry.amount, entry.type)}</div>
-      `;
-    } else {
-      content.innerHTML = `
-        <div class="slot-label" style="opacity:0.3">${esc(meta.label)}</div>
-        <div class="slot-name" style="font-size:60px;opacity:0.15">— —</div>
-      `;
-    }
-
-    slot.appendChild(pic);
-    slot.appendChild(veil);
-    slot.appendChild(content);
-    container.appendChild(slot);
-  });
-
-  // DOM correction pass after render
-  fitNames();
-}
-
-/* ══ ROTATION ═══════════════════════════════════════════ */
-function updateGlow() {
-  const meta  = activeSlots[currentIdx];
-  const entry = meta ? leaderboard[meta.key] : null;
-  document.getElementById('card-glow').style.background = GLOW[platformOf(entry)] || GLOW.default;
-}
-
+/* ══ SHOW SLOT ══════════════════════════════════════════ */
 function showSlot(idx) {
-  // Clamp to valid range
-  if (idx >= activeSlots.length) idx = 0;
-  document.querySelectorAll('.slot').forEach((s, i) => s.classList.toggle('active', i === idx));
-  currentIdx = idx;
+  if (!activeSlots.length) return;
+  currentIdx = ((idx % activeSlots.length) + activeSlots.length) % activeSlots.length;
+
+  const slotDef   = activeSlots[currentIdx];
+  const entry     = leaderboard[slotDef.key] ?? null;
+  const plat      = entry ? platKey(entry.platform) : 'default';
+  const pc        = PLAT_COLORS[plat];
+
+  // Fill the inactive frame
+  const nextKey = frameActive === 'a' ? 'b' : 'a';
+  document.getElementById('frame-' + nextKey).innerHTML = buildFrameHTML(slotDef, entry);
+
+  // Platform visuals
+  document.getElementById('bar-wash').style.background =
+    `linear-gradient(180deg, ${pc.wash} 0%, rgba(5,0,14,0) 100%)`;
+  document.getElementById('bar-edge-top').style.background =
+    `linear-gradient(90deg, transparent 0%, ${pc.edge} 50%, transparent 100%)`;
+  document.getElementById('bar-edge-bot').style.background =
+    `linear-gradient(90deg, transparent 10%, ${pc.edge}88 50%, transparent 90%)`;
+  document.getElementById('bar-progress').style.background = pc.edge;
+
+  // Sweep flash
+  const sweep = document.getElementById('bar-sweep');
+  sweep.style.background = `linear-gradient(90deg, transparent, ${pc.sweep}, transparent)`;
+  sweep.classList.remove('flash');
+  void sweep.offsetWidth; // force reflow
+  sweep.classList.add('flash');
+
+  // Crossfade after brief delay so sweep leads the content change
+  setTimeout(() => {
+    document.getElementById('frame-' + nextKey).classList.add('active');
+    document.getElementById('frame-' + frameActive).classList.remove('active');
+    frameActive = nextKey;
+  }, 90);
+
   updateDots();
-  updateGlow();
+  startProgress(CONFIG.ROTATE_MS);
 }
 
+/* ══ DOTS ══════════════════════════════════════════════ */
+function updateDots() {
+  document.getElementById('bar-dots').innerHTML = activeSlots
+    .map((_, i) => `<div class="bar-dot${i === currentIdx ? ' active' : ''}"></div>`)
+    .join('');
+}
+
+/* ══ ROTATION ══════════════════════════════════════════ */
 function startRotation() {
-  clearInterval(rotateTimer);
-  pinned = false;
-  rotateTimer = setInterval(() => showSlot((currentIdx + 1) % activeSlots.length), CONFIG.ROTATE_MS);
+  stopRotation();
+  if (!activeSlots.length) return;
+  rotateTimer = setInterval(() => {
+    if (!pinned) showSlot(currentIdx + 1);
+  }, CONFIG.ROTATE_MS);
 }
 
-function pinSlot(key) {
-  const idx = activeSlots.findIndex(s => s.key === key);
-  if (idx === -1) return;
-  clearInterval(rotateTimer);
-  rotateTimer = null;
-  pinned = true;
-  showSlot(idx);
+function stopRotation() {
+  if (rotateTimer)  { clearInterval(rotateTimer); rotateTimer = null; }
+  if (progressAnim) { cancelAnimationFrame(progressAnim); progressAnim = null; }
 }
 
-/* ══ DATA ═══════════════════════════════════════════════ */
+/* ══ DATA HANDLER ══════════════════════════════════════ */
 function onGiftrData(data) {
-  leaderboard = data || {};
+  leaderboard = {};
+  let hasAny  = false;
 
-  // Rebuild active slot list from enabledSlots + optional custom
+  SLOT_DEFS.forEach(def => {
+    if (data[def.key]) { leaderboard[def.key] = data[def.key]; hasAny = true; }
+  });
+
   const enabled = Array.isArray(data.enabledSlots)
     ? data.enabledSlots
     : ['daily','weekly','monthly','youtube','tiktok'];
 
-  activeSlots = SLOT_DEFS.filter(d => d.key !== 'custom' && enabled.includes(d.key));
-  if (data.custom && data.custom.name) {
-    // Inject custom entry into leaderboard and add slot def
-    leaderboard['custom'] = data.custom;
-    activeSlots.push({ key: 'custom', label: 'Featured Gifter' });
+  activeSlots = SLOT_DEFS.filter(d => {
+    if (d.key === 'custom') return !!data.custom;
+    return enabled.includes(d.key);
+  });
+
+  const bar = document.getElementById('giftr-bar');
+
+  if (!hasAny || !activeSlots.length) {
+    bar.classList.remove('visible');
+    stopRotation();
+    return;
   }
 
-  const hasAny = activeSlots.some(m => leaderboard[m.key] && leaderboard[m.key].name);
-  document.getElementById('no-data').classList.toggle('hidden', hasAny);
-
-  // Keep currentIdx in bounds
+  bar.classList.add('visible');
   if (currentIdx >= activeSlots.length) currentIdx = 0;
-
-  rebuildDots();
-  buildSlots();
   showSlot(currentIdx);
-  if (hasAny && !pinned && !rotateTimer) startRotation();
+  startRotation();
 }
 
-/* ══ ABLY ═══════════════════════════════════════════════ */
-function setStatus(cls) { document.getElementById('status-dot').className = cls; }
+/* ══ ABLY ══════════════════════════════════════════════ */
+(function initAbly() {
+  try {
+    const client  = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+    const channel = client.channels.get(CONFIG.ABLY_CHANNEL);
+    const dot     = document.getElementById('status-dot');
 
-const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
-const ch   = ably.channels.get(CONFIG.ABLY_CHANNEL);
+    function setDot(cls) { dot.className = cls; }
+    client.connection.on('connected',    () => setDot('connected'));
+    client.connection.on('disconnected', () => setDot(''));
+    client.connection.on('connecting',   () => setDot('connecting'));
 
-ably.connection.on('connected', () => {
-  setStatus('connected');
-  ch.publish('cmd', 'requestLeaderboard').catch(() => {});
-});
-ably.connection.on('disconnected', () => setStatus('connecting'));
-ably.connection.on('connecting',   () => setStatus('connecting'));
-ably.connection.on('failed',       () => setStatus(''));
+    // Request fresh data on connect
+    client.connection.once('connected', () => {
+      channel.publish('cmd', 'requestLeaderboard').catch(() => {});
+    });
 
-ch.subscribe('giftr', msg => onGiftrData(msg.data));
+    channel.subscribe('giftr', msg => onGiftrData(msg.data));
 
-ch.subscribe('giftr-cmd', msg => {
-  const cmd = (msg.data || '').toString();
-  if (cmd === 'auto') {
-    if (activeSlots.length) startRotation();
-  } else if (cmd.startsWith('slot:')) {
-    pinSlot(cmd.slice(5));
+    channel.subscribe('giftr-cmd', msg => {
+      const cmd = String(msg.data ?? '');
+      if (cmd === 'auto') {
+        pinned = false;
+        startRotation();
+      } else if (cmd.startsWith('slot:')) {
+        const key = cmd.slice(5);
+        const idx = activeSlots.findIndex(s => s.key === key);
+        if (idx >= 0) {
+          pinned = true;
+          stopRotation();
+          showSlot(idx);
+        }
+      }
+    });
+
+  } catch(e) {
+    console.warn('[Ably] init failed:', e);
   }
-});
+})();
 </script>
 </body>
 </html>
