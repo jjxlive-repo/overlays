@@ -658,13 +658,19 @@ function looksLikeMoney(str) {
 function isSuperchat(data) {
   const evt = (data.event || '').toLowerCase();
   const p   = (data.type  || '').toLowerCase();
-  if (!p.includes('youtube')) return false;
-  /* Explicit event types always win */
-  if (evt === 'superchat' || evt === 'supersticker') return true;
-  /* donation event + money value */
-  if (evt === 'donation' && looksLikeMoney(data.hasDonation || '')) return true;
-  /* hasDonation must look like actual money, not "3 hearts" or "500 coins" */
-  if (data.donoValue && looksLikeMoney(data.hasDonation || '')) return true;
+
+  /* Dock sets this flag when manually featuring a gift/superchat */
+  if (data._forceSuperchat) return true;
+
+  /* Explicit SC event types — any platform */
+  if (evt === 'superchat' || evt === 'supersticker' || evt === 'superchatevent' || evt === 'superchatwithtext') return true;
+
+  /* YouTube-only checks */
+  if (p.includes('youtube')) {
+    if (evt === 'donation' && looksLikeMoney(data.hasDonation || '')) return true;
+    if (data.donoValue && looksLikeMoney(data.hasDonation || '')) return true;
+  }
+
   return false;
 }
 
