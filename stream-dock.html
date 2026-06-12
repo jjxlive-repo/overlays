@@ -743,6 +743,7 @@ html, body {
           <div class="dot" style="background:var(--yt)"></div>
           <span class="panel-title">YouTube</span>
           <span class="badge" id="cnt-yt">0</span>
+          <button class="tt-scroll-btn live" id="btn-yt-scroll" onclick="toggleYTScroll(event)" title="Toggle auto-scroll">⬇ Live</button>
           <div class="live-dot" id="live-yt"></div>
         </div>
         <div class="viewer-bar" id="vbar-yt" style="display:none;">
@@ -779,6 +780,7 @@ html, body {
         <span class="badge" id="cnt-all">0</span>
         <span style="font-size:9px;color:var(--txt-dim);margin-left:4px;">click to feature</span>
         <div class="live-dot" id="live-all"></div>
+        <button class="tt-scroll-btn live" id="btn-all-scroll" onclick="toggleAllScroll(event)" title="Toggle auto-scroll">⬇ Live</button>
         <button class="settings-btn" onclick="toggleSettings(event)" title="Font settings">⚙</button>
         <div class="settings-panel" id="settings-panel">
           <div class="settings-row">
@@ -900,13 +902,31 @@ document.getElementById('send-input').addEventListener('keydown', e => {
 });
 
 /* Feature via HTTP GET — channel=2 targets featured.html with &server2 */
+function looksLikeMoneyDock(str) {
+  return /[$£€¥₩₹]/.test(str) || /\b(USD|EUR|GBP|CAD|AUD|JPY)\b/i.test(str);
+}
 function featureMessage(data) {
-  if (data.mid) {
+  // Determine if this is a superchat/donation so featured-splat treats it right
+  const evt = (data.event || '').toLowerCase();
+  const isYT = (data.type || '').toLowerCase().includes('youtube');
+  const isTT = (data.type || '').toLowerCase().includes('tiktok');
+  const hasMoney = looksLikeMoneyDock(data.hasDonation || '');
+  const isScEvent = ['superchat','supersticker','superchatevent','superchatwithtext','donation','giftpurchase'].includes(evt);
+
+  // Build an augmented payload that featured-splat can unambiguously classify
+  const payload = { ...data };
+  // Only YouTube superchats get SC treatment — TikTok gifts are never superchats
+  if ((hasMoney || isScEvent) && (isYT || (!isYT && !isTT))) {
+    if (!isScEvent) payload.event = 'superchat';
+    if (!isYT)      payload._forceSuperchat = true;
+  }
+
+  if (data.mid && !payload._forceSuperchat) {
+    // SSN can replay by mid — only safe for YouTube where type/event survive replay
     fetch(`https://io.socialstream.ninja/${SESSION}/mid/null/${data.mid}?channel=2`)
       .catch(() => {});
   } else {
-    /* No mid — send full message as content on channel 2 */
-    fetch(`https://io.socialstream.ninja/${SESSION}/content/null/${encodeURIComponent(JSON.stringify(data))}?channel=2`)
+    fetch(`https://io.socialstream.ninja/${SESSION}/content/null/${encodeURIComponent(JSON.stringify(payload))}?channel=2`)
       .catch(() => {});
   }
 }
@@ -1039,11 +1059,68 @@ function toggleTTScroll(e) {
   const msgs = document.getElementById('msgs-tt');
   msgs.addEventListener('scroll', () => {
     if (!ttAutoScroll) return;
-    // If user scrolled up more than 40px from bottom, auto-pause
     const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
     if (distFromBottom > 40) {
       ttAutoScroll = false;
       const btn = document.getElementById('btn-tt-scroll');
+      btn.textContent = '⏸ Paused';
+      btn.classList.remove('live');
+    }
+  });
+})();
+
+/* ── YouTube autoscroll ── */
+let ytAutoScroll = true;
+
+function toggleYTScroll(e) {
+  e.stopPropagation();
+  ytAutoScroll = !ytAutoScroll;
+  const btn = document.getElementById('btn-yt-scroll');
+  btn.textContent = ytAutoScroll ? '⬇ Live' : '⏸ Paused';
+  btn.classList.toggle('live', ytAutoScroll);
+  if (ytAutoScroll) {
+    const c = document.getElementById('msgs-yt');
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+(function initYTScrollPause() {
+  const msgs = document.getElementById('msgs-yt');
+  msgs.addEventListener('scroll', () => {
+    if (!ytAutoScroll) return;
+    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+    if (distFromBottom > 40) {
+      ytAutoScroll = false;
+      const btn = document.getElementById('btn-yt-scroll');
+      btn.textContent = '⏸ Paused';
+      btn.classList.remove('live');
+    }
+  });
+})();
+
+/* ── All Chat autoscroll ── */
+let allAutoScroll = true;
+
+function toggleAllScroll(e) {
+  e.stopPropagation();
+  allAutoScroll = !allAutoScroll;
+  const btn = document.getElementById('btn-all-scroll');
+  btn.textContent = allAutoScroll ? '⬇ Live' : '⏸ Paused';
+  btn.classList.toggle('live', allAutoScroll);
+  if (allAutoScroll) {
+    const c = document.getElementById('msgs-all');
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+(function initAllScrollPause() {
+  const msgs = document.getElementById('msgs-all');
+  msgs.addEventListener('scroll', () => {
+    if (!allAutoScroll) return;
+    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+    if (distFromBottom > 40) {
+      allAutoScroll = false;
+      const btn = document.getElementById('btn-all-scroll');
       btn.textContent = '⏸ Paused';
       btn.classList.remove('live');
     }
@@ -1127,10 +1204,9 @@ function addMsg(data, key) {
   container.appendChild(row);
   trim(container);
 
-  // Respect autoscroll state for TikTok; always scroll for other panels
-  if (!isTikTok || ttAutoScroll) {
-    container.scrollTop = container.scrollHeight;
-  }
+  // Respect per-panel autoscroll state
+  const shouldScroll = (isTikTok && ttAutoScroll) || (isYouTube && ytAutoScroll) || (!isTikTok && !isYouTube);
+  if (shouldScroll) container.scrollTop = container.scrollHeight;
 
   counts[key]++;
   document.getElementById('cnt-' + key).textContent = counts[key];
@@ -1143,8 +1219,25 @@ function addUnified(data, platform, isTT, isYT) {
 
   const color = isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : data.hasDonation ? 'var(--gift)' : 'rgba(255,255,255,0.18)';
 
+  // Compute same membership/badge states as addMsg
+  const badgeLevel   = isTT
+    ? (data.badgeLevel != null ? Number(data.badgeLevel)
+      : data.badge != null && typeof data.badge === 'number' ? data.badge : null)
+    : null;
+  const isTTMember   = isTT && !!(data.subBadge || data.isSubscriber || (data.membership != null && data.badgeLevel == null));
+  const isGifter     = badgeLevel != null && badgeLevel > 0;
+  const isTopGifter  = isGifter && badgeLevel >= 10;
+  const isYTMember   = isYT && !!(data.membership || data.subBadge || data.isSubscriber || data.isMember);
+
   const row = document.createElement('div');
-  row.className = 'umsg';
+  const uClasses = ['umsg'];
+  if (isTT) {
+    if (isTTMember)    uClasses.push('tt-member');
+    if (isTopGifter)   uClasses.push('tt-top-gifter');
+    else if (isGifter) uClasses.push('tt-gifter');
+  }
+  if (isYTMember) uClasses.push('yt-member');
+  row.className = uClasses.join(' ');
 
   const tag = document.createElement('div');
   tag.className = 'platform-tag';
@@ -1157,7 +1250,23 @@ function addUnified(data, platform, isTT, isYT) {
   body.className = 'msg-body';
   const name = document.createElement('div');
   name.className = 'msg-name';
-  name.textContent = data.chatname;
+  name.style.cssText = 'display:flex;align-items:center;gap:3px;flex-wrap:wrap;';
+
+  // Badge pills (same as panel view)
+  if (isTT && isTTMember) {
+    const fp = document.createElement('span'); fp.className = 'tt-badge fan'; fp.textContent = '♥ Fan'; name.appendChild(fp);
+  }
+  if (isTT && isGifter) {
+    const lp = document.createElement('span'); lp.className = 'tt-badge ' + ttBadgeClass(badgeLevel); lp.textContent = 'Lv.' + badgeLevel; name.appendChild(lp);
+  }
+  if (isYTMember) {
+    const mp = document.createElement('span'); mp.className = 'yt-badge'; mp.textContent = '★ Member'; name.appendChild(mp);
+  }
+
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = data.chatname;
+  name.appendChild(nameSpan);
+
   if (data.hasDonation) {
     const amt = document.createElement('span');
     amt.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--gift);margin-left:5px;';
@@ -1185,7 +1294,7 @@ function addUnified(data, platform, isTT, isYT) {
 
   container.appendChild(row);
   trim(container);
-  container.scrollTop = container.scrollHeight;
+  if (allAutoScroll) container.scrollTop = container.scrollHeight;
 
   counts.all++;
   document.getElementById('cnt-all').textContent = counts.all;

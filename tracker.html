@@ -484,6 +484,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 <body>
 
 <!-- ═══════════════════════════════════════ PAGE HEADER ══ -->
+<div id="sync-banner" style="display:none;position:fixed;top:10px;right:14px;z-index:2000;
+  align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--accent);
+  border-radius:6px;padding:5px 12px;font-size:12px;color:var(--accent);pointer-events:none">
+  &#x1F504; Synced from another tab
+</div>
 <header class="page-header">
   <h1>🎁 Gift & Donation Tracker</h1>
   <span class="dim" id="last-updated-label"></span>
@@ -1542,17 +1547,30 @@ function handleSSNEvent(payload) {
   const ts = Date.now();
 
   // Amount resolution — in priority order:
-  // 1. donoValue (numeric USD, present on jeweldonation & giftpurchase)
-  // 2. hasDonation string ("N coins", "N Jewels", "$5.00")
+  // 1. hasDonation string ("N coins", "N Jewels", "$5.00") — preferred for jewels
+  //    because it preserves the native jewel count for display, and the conversion
+  //    math (jewels × $0.005) gives the same dollar result as donoValue anyway.
+  // 2. donoValue (USD, present on jeweldonation & giftpurchase) — used for
+  //    non-jewel types where we want the dollar figure directly.
   // 3. other numeric fields
   let amount = 0;
 
-  if (data.donoValue !== undefined && data.donoValue !== null && data.donoValue !== '') {
+  // For jewel donations, always use hasDonation first so we store jewel count
+  // and display "N jewels" rather than silently converting to a superchat dollar value.
+  if (hasDonationStr && type === 'youtube_jewels') {
+    const parsed = parseHasDonation(hasDonationStr, type);
+    if (parsed && parsed.amount > 0) {
+      amount = parsed.amount;
+      if (parsed.type) type = parsed.type;
+      console.log('[SSN] jewel amount from hasDonation:', hasDonationStr, '→', amount, type);
+    }
+  }
+
+  // For all other types, prefer donoValue (USD) when available
+  if (amount === 0 && data.donoValue !== undefined && data.donoValue !== null && data.donoValue !== '') {
     const dv = parseAmount(data.donoValue);
     if (dv > 0) {
       amount = dv;
-      // donoValue is already USD for jewels/giftpurchase — treat as superchat-equivalent
-      if (type === 'youtube_jewels') type = 'youtube_superchat';
     }
   }
 
@@ -2573,6 +2591,28 @@ document.getElementById('edit-entries-save').addEventListener('click', () => {
   renderTable();
   document.getElementById('modal-edit-entries').classList.add('hidden');
   editEntriesKey = null;
+});
+
+/* ───────────────────────────── CROSS-TAB SYNC ──── */
+// If this file is open in multiple tabs simultaneously, the last tab to save
+// would overwrite any changes made in other tabs. This listener keeps all tabs
+// in sync: whenever any tab saves to localStorage, every other tab reloads the
+// data and re-renders automatically — so nothing gets silently lost.
+window.addEventListener('storage', e => {
+  if (e.key !== STORAGE_KEY || !e.newValue) return;
+  try {
+    DB = JSON.parse(e.newValue);
+    applySettings();
+    renderTable();
+    renderLastUpdated(DB.lastUpdated);
+    // Brief banner so you know a sync happened
+    const banner = document.getElementById('sync-banner');
+    if (banner) {
+      banner.style.display = 'flex';
+      clearTimeout(banner._hide);
+      banner._hide = setTimeout(() => banner.style.display = 'none', 3000);
+    }
+  } catch(err) { console.warn('[sync] parse error', err); }
 });
 
 /* ───────────────────────────── INITIAL RENDER ──── */
