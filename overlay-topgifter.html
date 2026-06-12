@@ -2,561 +2,497 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Top Gifter Overlay</title>
+<meta name="viewport" content="width=1080,height=1920,initial-scale=1.0">
+<title>Top Gifter Vertical Overlay</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
 html, body {
-  width: 860px;
-  height: 240px;
+  width: 1080px;
+  height: 1920px;
   overflow: hidden;
   background: transparent;
   pointer-events: none;
+  font-family: 'DM Sans', system-ui, sans-serif;
 }
-
-/* ── Connection dot ── */
+:root {
+  --purple: #a855f7;
+  --purple2: #7c3aed;
+  --hot: #e879f9;
+  --gold: #fbbf24;
+  --white: #faf5ff;
+  --dark: #12051f;
+  --tiktok: #ee1d52;
+  --youtube: #ff0000;
+  --direct: #22c55e;
+}
 #status-dot {
   position: fixed;
-  top: 6px; right: 6px;
-  width: 10px; height: 10px;
+  top: 18px;
+  right: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #444;
-  box-shadow: 0 0 0 2px rgba(0,0,0,.5);
-  transition: background .4s;
-  z-index: 100;
+  box-shadow: 0 0 0 3px rgba(0,0,0,.45);
+  z-index: 200;
 }
-#status-dot.connected { background: #22c55e; box-shadow: 0 0 6px #22c55e99; }
-
-/* ── Particle canvas ── */
+#status-dot.connected { background: #22c55e; box-shadow: 0 0 12px #22c55e, 0 0 0 3px rgba(0,0,0,.45); }
 #particles {
-  position: fixed; inset: 0;
-  pointer-events: none;
-  z-index: 50;
+  position: fixed;
+  inset: 0;
+  width: 1080px;
+  height: 1920px;
+  z-index: 80;
 }
-
-/* ── Root scene ── */
-#scene {
-  width: 860px;
-  height: 240px;
-  display: flex;
-  align-items: stretch;
-  padding: 14px 16px 14px 14px;
-  gap: 12px;
-  opacity: 0;
-  transition: opacity .6s;
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 1080px;
+  height: 1920px;
 }
-#scene.visible { opacity: 1; }
-
-
-/* ════════════════════════════════════════════════════════
-   FEATURED HERO CARD
-   ════════════════════════════════════════════════════════ */
-#featured {
-  width: 230px;
-  flex-shrink: 0;
-  position: relative;
-  border-radius: 18px;
-  overflow: hidden;
-
-  /* Layered dark-to-vivid gradient */
+/* Idle carousel lives in the bottom-right safe area. The tracker decides what slot is pinned/enabled. */
+#idle-card {
+  position: absolute;
+  right: 54px;
+  bottom: 78px;
+  width: 390px;
+  min-height: 186px;
+  border-radius: 34px;
+  padding: 22px 24px 20px;
   background:
-    linear-gradient(160deg,
-      #0A0118 0%,
-      #1A0335 30%,
-      #3B0764 65%,
-      #5B21B6 100%
-    );
-
-  /* Multi-layer border glow */
-  border: 2px solid #9333EA;
+    radial-gradient(circle at 22% 10%, rgba(232,121,249,.28), transparent 36%),
+    linear-gradient(150deg, rgba(10,1,24,.94), rgba(50,10,94,.92) 58%, rgba(91,33,182,.9));
+  border: 3px solid rgba(192,132,252,.85);
   box-shadow:
-    0 0 0 1px #4C1D9544,
-    0 0 18px #7C3AED88,
-    0 0 40px #4C1D9544,
-    inset 0 1px 0 rgba(232,121,249,.15),
-    inset 0 -1px 0 rgba(0,0,0,.4);
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 12px 14px 10px;
+    0 0 24px rgba(168,85,247,.7),
+    0 16px 48px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(255,255,255,.18);
+  opacity: 0;
+  transform: translateY(28px) scale(.96);
+  transition: opacity .55s ease, transform .55s cubic-bezier(.2,1.2,.2,1), filter .25s;
+  z-index: 20;
 }
-
-/* Gold accent line at top */
-#featured::before {
+#idle-card.visible { opacity: 1; transform: translateY(0) scale(1); }
+#idle-card.micro-alert { animation: microJiggle 5s ease both; }
+#idle-card::before {
   content: '';
   position: absolute;
-  top: 0; left: 20%; right: 20%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #F59E0B, transparent);
-  border-radius: 0 0 4px 4px;
-}
-
-/* Shimmer on new king */
-#featured::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(105deg,
-    transparent 35%, rgba(255,255,255,.08) 50%, transparent 65%);
-  background-size: 200% 100%;
-  background-position: 200% 0;
+  inset: -2px;
+  border-radius: 34px;
+  background: linear-gradient(115deg, transparent 25%, rgba(255,255,255,.24), transparent 55%);
+  background-size: 220% 100%;
+  opacity: 0;
   pointer-events: none;
-  border-radius: 16px;
 }
-#featured.shimmer::after {
-  animation: shimmer .65s ease-out forwards;
+#idle-card.micro-alert::before { animation: shimmerSweep 1s ease 0s 4; opacity: 1; }
+@keyframes microJiggle {
+  0%,100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 0 rgba(232,121,249,0)); }
+  4%,12%,20% { transform: translate(-8px,-5px) rotate(-1.4deg) scale(1.035); }
+  8%,16%,24% { transform: translate(8px,3px) rotate(1.4deg) scale(1.035); }
+  30%,88% { transform: translateY(0) scale(1.025); filter: drop-shadow(0 0 24px rgba(232,121,249,.8)); }
 }
-@keyframes shimmer {
-  from { background-position: 200% 0; }
-  to   { background-position: -200% 0; }
-}
-
-/* Time-frame label */
-#feat-tf-label {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 9.5px;
-  font-weight: 800;
-  color: #F59E0B;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  line-height: 1;
-  opacity: .9;
-}
-
-/* Crown */
-#feat-crown {
-  font-size: 26px;
-  line-height: 1;
-  filter: drop-shadow(0 0 8px #F59E0B) drop-shadow(0 2px 4px #00000099);
-}
-#featured.crown-in #feat-crown {
-  animation: crown-drop .55s cubic-bezier(.34,1.56,.64,1);
-}
-@keyframes crown-drop {
-  0%   { transform: translateY(-20px) scale(.5) rotate(-12deg); opacity: 0; }
-  100% { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
-}
-
-/* Avatar */
-#feat-avatar {
-  width: 52px; height: 52px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Boogaloo', cursive;
-  font-size: 24px;
-  color: #fff;
-  overflow: hidden;
-  flex-shrink: 0;
-  border: 2.5px solid rgba(255,255,255,.25);
-  box-shadow: 0 2px 10px rgba(0,0,0,.5);
-}
-#feat-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-
-/* Name — the big deal */
-#feat-name {
-  font-family: 'Boogaloo', cursive;
-  font-size: 30px;
-  color: #FAF5FF;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  text-shadow: 0 2px 10px rgba(0,0,0,.6);
-  letter-spacing: .3px;
-}
-
-/* Amount */
-#feat-amount {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 800;
-  font-size: 14px;
-  color: #E879F9;
-  letter-spacing: .4px;
-  text-shadow: 0 0 8px #E879F966;
-}
-
-/* Platform chip */
-.plat-chip {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 800;
-  font-size: 9px;
-  border-radius: 4px;
-  padding: 2px 6px;
-  line-height: 1.4;
-  letter-spacing: .6px;
-  text-transform: uppercase;
-}
-.plat-tiktok   { background: #EE1D52; color: #fff; }
-.plat-youtube  { background: #FF0000; color: #fff; }
-.plat-direct   { background: #22c55e; color: #fff; }
-.plat-unknown  { background: #44415a; color: #ccc; }
-
-
-/* ════════════════════════════════════════════════════════
-   RANKED SECTION
-   ════════════════════════════════════════════════════════ */
-#ranked-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-#ranked-header {
+@keyframes shimmerSweep { from { background-position: 220% 0; } to { background-position: -220% 0; } }
+.idle-topline {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
-
-#ranked-label {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 9.5px;
-  font-weight: 800;
-  color: #9333EA;
+#idle-label {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 2.2px;
   text-transform: uppercase;
-  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(251,191,36,.45);
 }
-
-#ranked-tf-label {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 9px;
-  font-weight: 600;
-  color: #5B21B6;
+.plat-chip {
+  font-size: 17px;
+  font-weight: 900;
+  border-radius: 999px;
+  padding: 5px 11px;
+  color: #fff;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25);
+}
+.plat-tiktok { background: var(--tiktok); }
+.plat-youtube { background: var(--youtube); }
+.plat-direct { background: var(--direct); }
+.plat-unknown { background: #5b5568; }
+#idle-name {
+  font-family: 'Boogaloo', cursive;
+  font-size: 58px;
+  line-height: .96;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 4px 14px rgba(0,0,0,.7), 0 0 22px rgba(232,121,249,.45);
+}
+#idle-amount {
+  margin-top: 6px;
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--hot);
   letter-spacing: .5px;
 }
-
-/* The meter itself */
-#ranked-meter {
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  background: #07020F;
-  border: 1.5px solid #3B1A6B;
-  border-radius: 14px;
-  overflow: hidden;
+#idle-sub {
+  margin-top: 6px;
+  font-size: 16px;
+  color: rgba(250,245,255,.7);
+  font-weight: 700;
+}
+#alert-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  opacity: 0;
+  transform: scale(.4);
+  transition: opacity .18s ease;
+}
+#alert-wrap.active {
+  opacity: 1;
+  animation: alertIn 6.2s cubic-bezier(.2,1.25,.2,1) forwards;
+}
+#alert-wrap.big.active { animation-duration: 6.8s; }
+#alert-wrap.loud.active, #alert-wrap.third.active, #alert-wrap.mega.active { animation-duration: 7.4s; }
+@keyframes alertIn {
+  0% { transform: translate(300px,680px) scale(.22) rotate(8deg); opacity: 0; }
+  10% { transform: translate(0,0) scale(1.08) rotate(-2deg); opacity: 1; }
+  17% { transform: translate(0,0) scale(1) rotate(0); opacity: 1; }
+  82% { transform: translate(0,0) scale(1) rotate(0); opacity: 1; }
+  100% { transform: translate(0,80px) scale(.72) rotate(-4deg); opacity: 0; }
+}
+.splat {
   position: relative;
-  box-shadow: inset 0 2px 6px rgba(0,0,0,.6), 0 2px 12px rgba(0,0,0,.4);
-}
-
-/* Dividers between segments */
-.seg-divider {
-  width: 1px;
-  background: rgba(0,0,0,.5);
-  flex-shrink: 0;
-  align-self: stretch;
-}
-
-/* Each segment */
-.segment {
+  width: 620px;
+  min-height: 390px;
+  padding: 76px 58px 60px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 8px 8px 6px;
-  overflow: hidden;
-  position: relative;
-  transition: flex-grow .75s cubic-bezier(.34,1.56,.64,1);
-  min-width: 60px;  /* floor: always readable even at small share */
+  text-align: center;
+  filter: drop-shadow(0 22px 42px rgba(0,0,0,.6)) drop-shadow(0 0 42px rgba(232,121,249,.75));
 }
-
-/* Inset shine at top of each segment */
-.segment::before {
+.splat::before {
   content: '';
   position: absolute;
-  top: 0; left: 10%; right: 10%;
-  height: 1px;
-  background: rgba(255,255,255,.08);
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 15% 23%, #e879f9 0 8%, transparent 8.5%),
+    radial-gradient(circle at 84% 20%, #c084fc 0 10%, transparent 10.5%),
+    radial-gradient(circle at 92% 68%, #7c3aed 0 13%, transparent 13.5%),
+    radial-gradient(circle at 17% 77%, #a855f7 0 15%, transparent 15.5%),
+    radial-gradient(circle at 48% 50%, #8617d6 0 48%, transparent 49%);
+  clip-path: polygon(50% 0%, 58% 17%, 82% 7%, 76% 30%, 100% 37%, 78% 52%, 94% 75%, 66% 69%, 56% 100%, 43% 73%, 18% 92%, 24% 62%, 0 55%, 22% 40%, 7% 15%, 36% 24%);
+  transform: rotate(-3deg);
+  animation: splatPulse 1s ease-in-out infinite alternate;
 }
-
-/* Colour palette: rank 2–6 */
-.seg-c0 { background: linear-gradient(170deg, #3B1270 0%, #6D28D9 100%); }
-.seg-c1 { background: linear-gradient(170deg, #2E0D5C 0%, #5B21B6 100%); }
-.seg-c2 { background: linear-gradient(170deg, #230B4A 0%, #4C1D95 100%); }
-.seg-c3 { background: linear-gradient(170deg, #1A0838 0%, #3B1A6B 100%); }
-.seg-c4 { background: linear-gradient(170deg, #110526 0%, #2E1065 100%); }
-
-/* Rank badge — top-left */
-.seg-rank {
+.splat::after {
+  content: '';
   position: absolute;
-  top: 5px; left: 6px;
-  font-family: 'Boogaloo', cursive;
-  font-size: 11px;
-  color: rgba(255,255,255,.35);
-  line-height: 1;
+  inset: -40px;
+  z-index: -2;
+  background: radial-gradient(circle, rgba(232,121,249,.32), transparent 62%);
+  animation: glowPulse 1.25s ease-in-out infinite alternate;
 }
-
-/* Platform badge — top-right */
-.seg-plat {
-  position: absolute;
-  top: 5px; right: 5px;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 800;
-  font-size: 7.5px;
-  border-radius: 3px;
-  padding: 1.5px 3.5px;
-  letter-spacing: .4px;
+@keyframes splatPulse { from { transform: rotate(-3deg) scale(1); } to { transform: rotate(2deg) scale(1.035); } }
+@keyframes glowPulse { from { opacity: .45; transform: scale(.92); } to { opacity: .95; transform: scale(1.08); } }
+#alert-wrap.big .splat { width: 760px; min-height: 480px; }
+#alert-wrap.loud .splat { width: 880px; min-height: 560px; }
+#alert-wrap.third .splat { width: 980px; min-height: 640px; }
+#alert-wrap.mega .splat { width: 1040px; min-height: 980px; }
+.alert-kicker {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 4px;
   text-transform: uppercase;
-  line-height: 1.3;
+  text-shadow: 0 0 18px rgba(251,191,36,.8), 0 4px 8px rgba(0,0,0,.55);
 }
-
-/* Avatar inside segment */
-.seg-avatar {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
+.alert-name {
   font-family: 'Boogaloo', cursive;
-  font-size: 15px;
+  font-size: 94px;
+  line-height: .88;
   color: #fff;
-  overflow: hidden;
-  flex-shrink: 0;
-  border: 2px solid rgba(255,255,255,.18);
-  margin-bottom: 4px;
-}
-.seg-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-
-.seg-name {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 700;
-  font-size: 13px;
-  color: rgba(255,255,255,.92);
-  white-space: nowrap;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
-  line-height: 1.1;
-}
-
-.seg-amount {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 700;
-  font-size: 11px;
-  color: #C084FC;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  margin-top: 1px;
+  text-shadow: 0 6px 20px rgba(0,0,0,.72), 0 0 34px rgba(255,255,255,.34);
+  margin-top: 12px;
 }
-
-/* Narrow: hide name + amount, show only rank + avatar */
-.segment.narrow .seg-name,
-.segment.narrow .seg-amount { display: none; }
-
-/* Very narrow: also hide avatar text label if present */
-.segment.very-narrow .seg-avatar { width: 26px; height: 26px; font-size: 12px; }
-
-/* Empty state */
-#meter-empty {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  color: #3B1A6B;
-  letter-spacing: .5px;
+.alert-amount {
+  font-size: 46px;
+  font-weight: 900;
+  color: #fff7ad;
+  margin-top: 16px;
+  text-shadow: 0 0 18px rgba(251,191,36,.9), 0 4px 12px rgba(0,0,0,.65);
 }
+.alert-platform { margin-top: 16px; }
+.alert-message {
+  margin-top: 20px;
+  max-width: 760px;
+  font-size: 30px;
+  line-height: 1.16;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(20,4,38,.54);
+  border: 2px solid rgba(255,255,255,.24);
+  border-radius: 24px;
+  padding: 18px 22px;
+  text-shadow: 0 2px 8px rgba(0,0,0,.65);
+}
+#alert-wrap.big .alert-name { font-size: 118px; }
+#alert-wrap.big .alert-amount { font-size: 58px; }
+#alert-wrap.loud .alert-name { font-size: 138px; }
+#alert-wrap.loud .alert-amount { font-size: 70px; }
+#alert-wrap.third .alert-name { font-size: 150px; }
+#alert-wrap.third .alert-amount { font-size: 78px; }
+#alert-wrap.mega .alert-name { font-size: 168px; white-space: normal; }
+#alert-wrap.mega .alert-amount { font-size: 92px; }
+.starburst {
+  position: absolute;
+  inset: -120px;
+  z-index: -3;
+  opacity: .9;
+  background: repeating-conic-gradient(from 0deg, rgba(232,121,249,.3) 0 8deg, transparent 8deg 18deg);
+  border-radius: 50%;
+  animation: spin 6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.hidden { display: none; }
 </style>
 </head>
 <body>
-
 <div id="status-dot"></div>
-<canvas id="particles"></canvas>
-
-<div id="scene">
-
-  <!-- ── Featured hero card ── -->
-  <div id="featured">
-    <div id="feat-tf-label">TOP TODAY</div>
-    <div id="feat-crown">👑</div>
-    <div id="feat-avatar">?</div>
-    <div id="feat-name">—</div>
-    <div id="feat-amount"></div>
-    <div class="plat-chip plat-unknown" id="feat-plat">—</div>
+<canvas id="particles" width="1080" height="1920"></canvas>
+<div id="stage">
+  <div id="idle-card">
+    <div class="idle-topline">
+      <div id="idle-label">TOP TODAY</div>
+      <div class="plat-chip plat-unknown" id="idle-platform">—</div>
+    </div>
+    <div id="idle-name">Waiting…</div>
+    <div id="idle-amount">No gifts yet</div>
+    <div id="idle-sub">Idle carousel</div>
   </div>
 
-  <!-- ── Ranked meter ── -->
-  <div id="ranked-wrap">
-    <div id="ranked-header">
-      <div id="ranked-label">CONTRIBUTORS</div>
-      <div id="ranked-tf-label">TOP TODAY</div>
-    </div>
-    <div id="ranked-meter">
-      <div id="meter-empty">Waiting for gifters…</div>
+  <div id="alert-wrap" aria-hidden="true">
+    <div class="starburst"></div>
+    <div class="splat">
+      <div class="alert-kicker" id="alert-kicker">SPLAT!</div>
+      <div class="alert-name" id="alert-name">—</div>
+      <div class="alert-amount" id="alert-amount"></div>
+      <div class="alert-platform"><span class="plat-chip plat-unknown" id="alert-platform">—</span></div>
+      <div class="alert-message hidden" id="alert-message"></div>
     </div>
   </div>
-
 </div>
-
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <script>
-/* ── CONFIG ─────────────────────────────────────────── */
+'use strict';
 const CONFIG = {
-  ABLY_KEY:     'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+  ABLY_KEY: 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
   ABLY_CHANNEL: 'splat-overlay',
+  ROTATE_MS: 6500,
 };
-
-/* ── Particle engine ─────────────────────────────────── */
+const PLAT_CLS = { tiktok:'plat-tiktok', youtube:'plat-youtube', direct:'plat-direct', unknown:'plat-unknown' };
+const PLAT_LBL = { tiktok:'TikTok', youtube:'YouTube', direct:'Direct', unknown:'—' };
+const SLOT_LABEL = { daily:'TOP TODAY', weekly:'TOP WEEK', monthly:'TOP MONTH', youtube:'TOP YOUTUBE', tiktok:'TOP TIKTOK', custom:'FEATURED' };
+const idle = {
+  card: document.getElementById('idle-card'),
+  label: document.getElementById('idle-label'),
+  name: document.getElementById('idle-name'),
+  amount: document.getElementById('idle-amount'),
+  sub: document.getElementById('idle-sub'),
+  platform: document.getElementById('idle-platform'),
+};
+const alertEls = {
+  wrap: document.getElementById('alert-wrap'),
+  kicker: document.getElementById('alert-kicker'),
+  name: document.getElementById('alert-name'),
+  amount: document.getElementById('alert-amount'),
+  platform: document.getElementById('alert-platform'),
+  message: document.getElementById('alert-message'),
+};
+let lastGiftrPayload = null;
+let slides = [];
+let slideIndex = 0;
+let rotateTimer = null;
+let alertTimer = null;
 const canvas = document.getElementById('particles');
-const ctx    = canvas.getContext('2d');
-canvas.width = 860; canvas.height = 240;
-
+const ctx = canvas.getContext('2d');
 const particles = [];
-let   animating = false;
-
-function spawnBurst(x, y) {
-  const colors = ['#F59E0B','#E879F9','#A855F7','#FAF5FF','#C084FC','#7C3AED','#FBBF24'];
-  for (let i = 0; i < 28; i++) {
+let animating = false;
+function esc(v) {
+  const d = document.createElement('div');
+  d.textContent = String(v ?? '');
+  return d.innerHTML;
+}
+function setChip(el, platform) {
+  const p = (platform || 'unknown').toLowerCase();
+  el.textContent = PLAT_LBL[p] || p.toUpperCase();
+  el.className = 'plat-chip ' + (PLAT_CLS[p] || 'plat-unknown');
+}
+function formatGift(g) {
+  if (!g) return '';
+  if (g.rawDisplay) return g.rawDisplay;
+  if (g.type === 'tiktok_coins') return Number(g.amount || 0).toLocaleString() + ' coins';
+  if (g.type === 'youtube_jewels') return Number(g.amount || 0).toLocaleString() + ' jewels';
+  if (g.type === 'youtube_superchat' || g.type === 'direct_donation') return '$' + Number(g.amount || 0).toFixed(2);
+  return Number(g.amount || 0).toLocaleString();
+}
+function buildSlides(payload) {
+  const enabled = payload?.enabledSlots?.length ? payload.enabledSlots : ['daily','weekly','monthly','youtube','tiktok'];
+  const out = [];
+  if (payload?.custom) out.push({ slot:'custom', ...payload.custom });
+  enabled.forEach(slot => {
+    if (payload?.[slot]) out.push({ slot, ...payload[slot] });
+  });
+  return out.filter(Boolean);
+}
+function renderIdleGift(g, temporaryLabel) {
+  idle.card.classList.add('visible');
+  idle.label.textContent = temporaryLabel || SLOT_LABEL[g?.slot] || 'TOP GIFTER';
+  idle.name.textContent = g?.name || 'Waiting…';
+  idle.amount.textContent = g ? formatGift(g) : 'No gifts yet';
+  idle.sub.textContent = temporaryLabel ? 'New gift!' : 'Idle carousel';
+  setChip(idle.platform, g?.platform || 'unknown');
+}
+function rotateIdle() {
+  if (!slides.length) { renderIdleGift(null); return; }
+  renderIdleGift(slides[slideIndex % slides.length]);
+  slideIndex++;
+}
+function scheduleRotation() {
+  clearInterval(rotateTimer);
+  rotateTimer = setInterval(rotateIdle, CONFIG.ROTATE_MS);
+}
+function updateGiftrCarousel(payload) {
+  lastGiftrPayload = payload || {};
+  slides = buildSlides(lastGiftrPayload);
+  slideIndex = 0;
+  rotateIdle();
+  scheduleRotation();
+}
+function spawnBurst(x, y, count, power) {
+  const colors = ['#fbbf24','#e879f9','#a855f7','#faf5ff','#c084fc','#7c3aed','#fff7ad'];
+  for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
-    const s = 1.5 + Math.random() * 3.5;
+    const s = (2 + Math.random() * 7) * power;
     particles.push({
       x, y,
-      vx: Math.cos(a) * s, vy: Math.sin(a) * s - .8,
-      r: 2.5 + Math.random() * 4,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s - 2 * power,
+      r: 3 + Math.random() * 8 * power,
       color: colors[Math.floor(Math.random() * colors.length)],
-      life: 1, decay: .022 + Math.random() * .02,
+      life: 1,
+      decay: .009 + Math.random() * .018,
     });
   }
   if (!animating) { animating = true; requestAnimationFrame(tick); }
 }
-
 function tick() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,1080,1920);
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p.x += p.vx; p.y += p.vy; p.vy += .1;
+    p.x += p.vx; p.y += p.vy; p.vy += .16;
     p.life -= p.decay;
-    if (p.life <= 0) { particles.splice(i, 1); continue; }
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle   = p.color;
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    if (p.life <= 0) { particles.splice(i,1); continue; }
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
   }
   ctx.globalAlpha = 1;
   animating = particles.length > 0;
   if (animating) requestAnimationFrame(tick);
 }
-
-/* ── Helpers ─────────────────────────────────────────── */
-const PLAT_CLS = { tiktok: 'plat-tiktok', youtube: 'plat-youtube', direct: 'plat-direct', unknown: 'plat-unknown' };
-const PLAT_LBL = { tiktok: 'TikTok', youtube: 'YouTube', direct: 'Direct', unknown: '—' };
-const TF_LBL   = { today: 'TOP TODAY', month: 'TOP THIS MONTH', allTime: 'TOP ALL TIME' };
-const PLAT_COLOR = { tiktok: '#BE185D', youtube: '#B91C1C', direct: '#15803D', unknown: '#44415a' };
-
-function initial(name) { return (name || '?').trim()[0].toUpperCase(); }
-
-function setAvatar(el, name, platform, profilePic) {
-  if (profilePic) {
-    el.innerHTML = `<img src="${profilePic}" alt="">`;
-    el.style.background = '#1a1a2e';
-  } else {
-    el.textContent       = initial(name);
-    el.style.background  = PLAT_COLOR[platform] || '#44415a';
-  }
+function tierClass(alert) {
+  if (alert?.tier) return alert.tier;
+  const usd = Number(alert?.viewerValue || 0);
+  const raw = Number(alert?.amount || 0);
+  if (usd >= 400) return 'mega';
+  if (usd >= 250 || raw >= 25000) return 'third';
+  if (usd >= 100 || raw >= 100000) return 'loud';
+  if (usd >= 50 || raw >= 5000) return 'big';
+  if (usd >= 9.99 || raw >= 1000) return 'center';
+  return 'micro';
 }
-
-/* ── State ───────────────────────────────────────────── */
-let prevFeatName = null;
-
-/* ── Main render ─────────────────────────────────────── */
-function updateDisplay(data) {
-  const { featured, ranked, timeFrame } = data || {};
-  const scene = document.getElementById('scene');
-
-  if (!featured) { scene.classList.remove('visible'); return; }
-  scene.classList.add('visible');
-
-  const tfLabel = TF_LBL[timeFrame] || 'TOP TODAY';
-
-  /* ── Featured ── */
-  const isNewKing = featured.name !== prevFeatName;
-  prevFeatName = featured.name;
-
-  document.getElementById('feat-tf-label').textContent = tfLabel;
-  document.getElementById('feat-name').textContent     = featured.name || '—';
-  document.getElementById('feat-amount').textContent   = featured.rawDisplay || '';
-
-  const chip = document.getElementById('feat-plat');
-  chip.textContent = PLAT_LBL[featured.platform] || '—';
-  chip.className   = 'plat-chip ' + (PLAT_CLS[featured.platform] || 'plat-unknown');
-
-  setAvatar(document.getElementById('feat-avatar'), featured.name, featured.platform, featured.profilePic);
-
-  if (isNewKing) {
-    const feat = document.getElementById('featured');
-    feat.classList.remove('crown-in', 'shimmer');
-    void feat.offsetWidth;
-    feat.classList.add('crown-in', 'shimmer');
-    spawnBurst(115, 120);
-    setTimeout(() => feat.classList.remove('crown-in', 'shimmer'), 900);
-  }
-
-  /* ── Time-frame labels ── */
-  document.getElementById('ranked-tf-label').textContent = tfLabel;
-  document.getElementById('ranked-label').textContent    = 'CONTRIBUTORS';
-
-  /* ── Ranked meter ── */
-  const meter = document.getElementById('ranked-meter');
-  const empty = document.getElementById('meter-empty');
-
-  if (!ranked || ranked.length === 0) {
-    meter.innerHTML = '';
-    empty.style.display = 'flex';
-    meter.appendChild(empty);
+function handleGiftAlert(alert) {
+  const cls = tierClass(alert);
+  const displayGift = { name: alert.name, amount: alert.amount, type: alert.type, rawDisplay: alert.rawDisplay, platform: alert.platform };
+  if (cls === 'micro') {
+    renderIdleGift(displayGift, 'NEW GIFT');
+    idle.card.classList.remove('micro-alert');
+    void idle.card.offsetWidth;
+    idle.card.classList.add('micro-alert');
+    spawnBurst(880, 1760, 24, .55);
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(() => { idle.card.classList.remove('micro-alert'); rotateIdle(); }, 5000);
     return;
   }
-  empty.style.display = 'none';
-
-  // Build segments with dividers between them
-  const segHtml = ranked.map((g, i) => {
-    const platCls   = PLAT_CLS[g.platform] || 'plat-unknown';
-    const platLbl   = PLAT_LBL[g.platform] || '—';
-    const colorCls  = `seg-c${Math.min(i, 4)}`;
-    const bg        = PLAT_COLOR[g.platform] || '#44415a';
-    const avatarHtml = g.profilePic
-      ? `<img src="${g.profilePic}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
-      : initial(g.name);
-
-    const divider = i > 0 ? '<div class="seg-divider"></div>' : '';
-
-    return `${divider}
-    <div class="segment ${colorCls}" style="flex-grow:${g.spendShare}">
-      <span class="seg-rank">#${g.rank}</span>
-      <span class="seg-plat ${platCls}">${platLbl}</span>
-      <div class="seg-avatar" style="background:${bg}">${avatarHtml}</div>
-      <div class="seg-name">${g.name}</div>
-      <div class="seg-amount">${g.rawDisplay}</div>
-    </div>`;
-  }).join('');
-
-  meter.innerHTML = segHtml;
-
-  // Classify narrow segments after layout
-  requestAnimationFrame(() => {
-    meter.querySelectorAll('.segment').forEach(seg => {
-      const w = seg.offsetWidth;
-      seg.classList.toggle('very-narrow', w < 50);
-      seg.classList.toggle('narrow',      w < 80);
-    });
-  });
+  const classList = ['active','center','big','loud','third','mega'];
+  alertEls.wrap.classList.remove(...classList);
+  alertEls.name.textContent = alert.name || 'Unknown';
+  alertEls.amount.textContent = formatGift(alert);
+  setChip(alertEls.platform, alert.platform || 'unknown');
+  const labels = { center:'BIG SPLAT!', big:'HUGE SPLAT!', loud:'LOUD SPLAT!', third:'MASSIVE SPLAT!', mega:'MAX SPLAT!' };
+  alertEls.kicker.textContent = labels[cls] || 'BIG SPLAT!';
+  const msg = (alert.message || '').trim();
+  if (msg && alert.type === 'youtube_superchat') {
+    alertEls.message.textContent = msg;
+    alertEls.message.classList.remove('hidden');
+  } else {
+    alertEls.message.textContent = '';
+    alertEls.message.classList.add('hidden');
+  }
+  void alertEls.wrap.offsetWidth;
+  alertEls.wrap.classList.add('active', cls);
+  const particlePlan = { center:[90,1], big:[150,1.25], loud:[220,1.55], third:[300,1.8], mega:[420,2.15] }[cls] || [90,1];
+  spawnBurst(540, 930, particlePlan[0], particlePlan[1]);
+  setTimeout(() => spawnBurst(540, 780, Math.floor(particlePlan[0]*.45), particlePlan[1]*.85), 420);
+  clearTimeout(alertTimer);
+  alertTimer = setTimeout(() => alertEls.wrap.classList.remove(...classList), cls === 'center' ? 6300 : 7600);
 }
-
-/* ── Ably ────────────────────────────────────────────── */
-const ably    = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+/* Legacy leaderboard support: if the old leaderboard event comes in, use it as a fallback idle slide. */
+function updateLegacyLeaderboard(data) {
+  if (!data?.featured || slides.length) return;
+  slides = [{ slot: data.timeFrame || 'daily', ...data.featured }];
+  rotateIdle();
+  scheduleRotation();
+}
+const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
 const channel = ably.channels.get(CONFIG.ABLY_CHANNEL);
-const dot     = document.getElementById('status-dot');
-
-ably.connection.on('connected',    () => dot.classList.add('connected'));
+const dot = document.getElementById('status-dot');
+ably.connection.on('connected', () => {
+  dot.classList.add('connected');
+  channel.publish('cmd', 'requestLeaderboard').catch(() => {});
+});
 ably.connection.on('disconnected', () => dot.classList.remove('connected'));
-ably.connection.on('failed',       () => dot.classList.remove('connected'));
-
-channel.subscribe('leaderboard', msg => updateDisplay(msg.data));
+ably.connection.on('failed', () => dot.classList.remove('connected'));
+channel.subscribe('giftr', msg => updateGiftrCarousel(msg.data));
+channel.subscribe('giftr-cmd', msg => {
+  const cmd = String(msg.data || 'auto');
+  if (cmd === 'auto') { updateGiftrCarousel(lastGiftrPayload); return; }
+  if (cmd.startsWith('slot:')) {
+    const slot = cmd.slice(5);
+    const picked = slides.find(s => s.slot === slot) || (lastGiftrPayload && lastGiftrPayload[slot] ? { slot, ...lastGiftrPayload[slot] } : null);
+    if (picked) { clearInterval(rotateTimer); renderIdleGift(picked); }
+  }
+});
+channel.subscribe('leaderboard', msg => updateLegacyLeaderboard(msg.data));
+channel.subscribe('gift-alert', msg => handleGiftAlert(msg.data));
+renderIdleGift(null);
 </script>
 </body>
 </html>
