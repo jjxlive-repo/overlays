@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Featured – Splat</title>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; background:transparent; overflow:hidden; font-family:'DM Sans',sans-serif; }
+
+#bubble-wrap {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 520px;
+  max-width: 520px;
+  min-width: 240px;
+  pointer-events: none;
+  transform-origin: center center;
+}
+
+/* ══════════════════════════════════════
+   SUPERCHAT MODE — full override
+══════════════════════════════════════ */
+#superchat-wrap {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.sc-stage {
+  position: relative;
+  width: 540px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* SVG blob sits behind everything */
+.sc-blob-wrap {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 620px;
+  height: 420px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.sc-blob {
+  width: 100%; height: 100%;
+  animation: blobMorph 4s ease-in-out infinite;
+  transform-origin: center;
+  filter: blur(2px);
+}
+
+@keyframes blobMorph {
+  0%   { d: path("M280,60 C380,20 500,80 520,160 C540,240 460,340 360,360 C260,380 140,320 100,240 C60,160 80,60 160,40 C200,30 240,80 280,60 Z"); }
+  25%  { d: path("M300,40 C420,10 530,100 510,180 C490,260 400,360 300,370 C200,380 100,300 80,220 C60,140 100,50 180,30 C220,20 260,60 300,40 Z"); }
+  50%  { d: path("M260,70 C370,30 490,90 515,175 C540,260 450,355 345,365 C240,375 130,310 95,230 C60,150 90,65 170,45 C210,35 230,90 260,70 Z"); }
+  75%  { d: path("M290,50 C400,15 520,85 525,170 C530,255 445,350 340,362 C235,374 120,305 90,225 C60,145 95,55 175,38 C215,28 255,75 290,50 Z"); }
+  100% { d: path("M280,60 C380,20 500,80 520,160 C540,240 460,340 360,360 C260,380 140,320 100,240 C60,160 80,60 160,40 C200,30 240,80 280,60 Z"); }
+}
+
+/* undulating outline ring */
+.sc-blob-ring {
+  width: 100%; height: 100%;
+  position: absolute; top:0; left:0;
+  animation: blobMorph 4s ease-in-out infinite, ringPulse 2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes ringPulse {
+  0%,100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* card on top of blob */
+.sc-card {
+  position: relative;
+  z-index: 1;
+  background: rgba(26,5,51,0.92);
+  border: 2.5px solid #A855F7;
+  border-radius: 20px;
+  padding: 18px 22px 16px;
+  width: 100%;
+  backdrop-filter: blur(4px);
+}
+
+/* YouTube red top stripe */
+.sc-yt-stripe {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #ff0000, #ff4444, #cc0000);
+  border-radius: 20px 20px 0 0;
+}
+
+.sc-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sc-avatar {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: 3px solid #ff0000;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Boogaloo', cursive;
+  font-size: 19px;
+  background: #3a0a0a;
+  color: #ff6b6b;
+  box-shadow: 0 0 14px rgba(255,0,0,0.4);
+}
+.sc-avatar img { width:100%; height:100%; object-fit:cover; }
+
+.sc-name-col { flex:1; min-width:0; }
+
+.sc-username {
+  font-family: 'Boogaloo', cursive;
+  font-size: 24px;
+  color: #fff;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.sc-yt-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ff6b6b;
+  background: rgba(255,0,0,0.12);
+  border: 1px solid rgba(255,0,0,0.3);
+  padding: 2px 7px;
+  border-radius: 20px;
+  margin-top: 2px;
+}
+
+/* THE PRICE — biggest element */
+.sc-price-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+
+.sc-price {
+  font-family: 'Boogaloo', cursive;
+  font-size: 52px;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 20px rgba(255,220,0,0.8), 0 0 40px rgba(255,180,0,0.5);
+  animation: priceGlow 2s ease-in-out infinite;
+}
+
+@keyframes priceGlow {
+  0%,100% { text-shadow: 0 0 20px rgba(255,220,0,0.8), 0 0 40px rgba(255,180,0,0.5); }
+  50%      { text-shadow: 0 0 30px rgba(255,220,0,1),   0 0 60px rgba(255,180,0,0.8), 0 0 80px rgba(255,140,0,0.4); }
+}
+
+.sc-star { font-size: 28px; animation: starSpin 3s linear infinite; }
+@keyframes starSpin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+/* message */
+.sc-msg {
+  font-size: 19px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.9);
+  word-break: break-word;
+  text-align: center;
+  font-style: italic;
+  padding: 0 4px;
+}
+.sc-msg:empty { display: none; }
+.sc-msg img { height:20px; vertical-align:middle; margin:0 1px; }
+
+/* superchat entrance */
+@keyframes scIn {
+  0%   { opacity:0; transform: scale(0.5) rotate(-4deg); }
+  50%  { transform: scale(1.06) rotate(1deg); opacity:1; }
+  70%  { transform: scale(0.98) rotate(-0.5deg); }
+  100% { transform: scale(1) rotate(0deg); opacity:1; }
+}
+@keyframes scOut {
+  0%   { opacity:1; transform: scale(1); }
+  30%  { transform: scale(1.08) rotate(2deg); }
+  100% { opacity:0; transform: scale(0.3) rotate(-8deg) translateY(40px); }
+}
+
+.sc-stage.sc-showing { animation: scIn 0.55s cubic-bezier(0.34,1.56,0.64,1) both; }
+.sc-stage.sc-hiding  { animation: scOut 0.4s cubic-bezier(0.55,0,1,0.45) both; }
+
+
+/* ══════════════════════════════════════
+   NORMAL BUBBLE (unchanged)
+══════════════════════════════════════ */
+.bubble {
+  position: relative;
+  background: #f3e8ff;
+  border: 2.5px solid #A855F7;
+  border-radius: 24px;
+  padding: 18px 20px 18px;
+  box-shadow: 0 0 0 1px rgba(168,85,247,0.2), 0 8px 32px rgba(168,85,247,0.3), 0 2px 8px rgba(0,0,0,0.15);
+}
+.bubble.p-youtube { border-color: #ff0000; box-shadow: 0 0 0 1px rgba(255,0,0,0.2), 0 8px 32px rgba(255,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15); }
+.bubble.p-tiktok  { border-color: #010101; box-shadow: 0 0 0 1px rgba(0,0,0,0.3),   0 8px 32px rgba(254,44,85,0.25), 0 2px 8px rgba(0,0,0,0.2); }
+
+.bubble::before { display: none; }
+.bubble::after  { display: none; }
+
+.bubble-inner { display:flex; align-items:center; gap:12px; }
+
+.avatar {
+  width:56px; height:56px; border-radius:50%; border:2.5px solid #A855F7;
+  flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center;
+  font-family:'Boogaloo',cursive; font-size:20px; background:#e9d5ff; color:#7c3aed; align-self:flex-start;
+  margin-top: 2px;
+}
+.bubble.p-youtube .avatar { border-color:#ff0000; background:#fff0f0; color:#cc0000; }
+.bubble.p-tiktok  .avatar { border-color:#010101; background:#f0f0f0; color:#010101; }
+.avatar img { width:100%; height:100%; object-fit:cover; }
+
+.bubble-content { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; }
+
+.bubble-header { display:flex; align-items:center; gap:7px; margin-bottom:4px; flex-wrap:wrap; }
+
+.username {
+  font-family:'Boogaloo',cursive; font-size:22px; color:#7c3aed;
+  letter-spacing:0.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2;
+}
+.bubble.p-youtube .username { color:#cc0000; }
+.bubble.p-tiktok  .username { color:#010101; }
+
+.platform-badge {
+  display:inline-flex; align-items:center; font-size:12px; font-weight:700;
+  letter-spacing:0.07em; text-transform:uppercase; padding:3px 9px; border-radius:20px; flex-shrink:0;
+}
+.badge-purple  { background:rgba(168,85,247,0.15); color:#7c3aed; border:1px solid rgba(168,85,247,0.3); }
+.badge-youtube { background:rgba(255,0,0,0.1);     color:#cc0000; border:1px solid rgba(255,0,0,0.3); }
+.badge-tiktok  { background:rgba(0,0,0,0.07);      color:#010101; border:1px solid rgba(0,0,0,0.2); }
+.badge-twitch  { background:rgba(145,70,255,0.15); color:#7b2fff; border:1px solid rgba(145,70,255,0.3); }
+
+.bubble-msg { font-size:17px; line-height:1.5; color:#2e1065; word-break:break-word; }
+.bubble-msg img { height:18px; vertical-align:middle; margin:0 1px; }
+.bubble-msg:empty { display:none; }
+
+.gift-block {
+  display:flex; align-items:center; gap:8px; margin-top:6px; padding:7px 10px;
+  border-radius:12px; background:linear-gradient(135deg,rgba(251,191,36,0.18),rgba(251,191,36,0.08));
+  border:1.5px solid rgba(251,191,36,0.45);
+}
+.bubble.p-youtube .gift-block { background:linear-gradient(135deg,rgba(255,0,0,0.1),rgba(255,0,0,0.04)); border-color:rgba(255,0,0,0.3); }
+.bubble.p-tiktok  .gift-block { background:linear-gradient(135deg,rgba(254,44,85,0.1),rgba(254,44,85,0.04)); border-color:rgba(254,44,85,0.3); }
+
+.gift-icon { font-size:22px; flex-shrink:0; line-height:1; }
+.gift-details { flex:1; min-width:0; }
+.gift-amount { font-family:'Boogaloo',cursive; font-size:26px; line-height:1.1; color:#b45309; letter-spacing:0.01em; }
+.bubble.p-youtube .gift-amount { color:#cc0000; }
+.bubble.p-tiktok  .gift-amount { color:#fe2c55; }
+.gift-label {
+  font-size:13px; font-weight:600; color:#92400e; letter-spacing:0.04em;
+  text-transform:uppercase; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.bubble.p-youtube .gift-label { color:#991b1b; }
+.bubble.p-tiktok  .gift-label { color:#9f1239; }
+
+.splat-accent {
+  position:absolute; top:-14px; right:-10px; font-size:26px; line-height:1;
+  transform-origin:center; filter:drop-shadow(0 0 6px rgba(168,85,247,0.7));
+}
+
+@keyframes bubbleIn {
+  0%   { opacity:0; transform:scale(0.6) translateY(24px); }
+  55%  { opacity:1; transform:scale(1.06) translateY(-5px); }
+  75%  { transform:scale(0.97) translateY(2px); }
+  100% { opacity:1; transform:scale(1) translateY(0); }
+}
+@keyframes splatSpin {
+  0%   { transform:scale(0) rotate(-40deg); opacity:0; }
+  100% { transform:scale(1) rotate(0deg);   opacity:1; }
+}
+@keyframes bubbleExpire {
+  0%   { transform:scale(1); opacity:1; }
+  25%  { transform:scale(1.0,0.85); }
+  55%  { transform:scale(1.18,0.7); opacity:1; }
+  80%  { transform:scale(1.3,0.4); opacity:0.4; }
+  100% { transform:scale(1.5,0.1); opacity:0; }
+}
+@keyframes bubbleReplaceOut {
+  0%   { transform:scale(1); opacity:1; }
+  40%  { transform:scale(1.05,0.9); opacity:1; }
+  100% { transform:scale(0.9,0.05); opacity:0; }
+}
+@keyframes bubbleReplaceIn {
+  0%   { transform:scale(0.9,0.05); opacity:0; }
+  45%  { transform:scale(1.04,1.07); opacity:1; }
+  70%  { transform:scale(0.98,0.97); }
+  100% { transform:scale(1); opacity:1; }
+}
+@keyframes shimmer {
+  0%,100% { box-shadow:0 0 0 1px rgba(168,85,247,0.2),0 8px 32px rgba(168,85,247,0.3),0 2px 8px rgba(0,0,0,0.15); }
+  50%      { box-shadow:0 0 0 1px rgba(168,85,247,0.4),0 8px 40px rgba(168,85,247,0.45),0 2px 8px rgba(0,0,0,0.15); }
+}
+@keyframes shimmerYT {
+  0%,100% { box-shadow:0 0 0 1px rgba(255,0,0,0.2),0 8px 32px rgba(255,0,0,0.25),0 2px 8px rgba(0,0,0,0.15); }
+  50%      { box-shadow:0 0 0 1px rgba(255,0,0,0.4),0 8px 40px rgba(255,0,0,0.35),0 2px 8px rgba(0,0,0,0.15); }
+}
+@keyframes shimmerTT {
+  0%,100% { box-shadow:0 0 0 1px rgba(254,44,85,0.2),0 8px 32px rgba(254,44,85,0.25),0 2px 8px rgba(0,0,0,0.15); }
+  50%      { box-shadow:0 0 0 1px rgba(254,44,85,0.4),0 8px 40px rgba(254,44,85,0.35),0 2px 8px rgba(0,0,0,0.15); }
+}
+
+.bubble.showing           { animation:bubbleIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both, shimmer 3s ease-in-out 0.6s infinite; }
+.bubble.p-youtube.showing { animation:bubbleIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both, shimmerYT 3s ease-in-out 0.6s infinite; }
+.bubble.p-tiktok.showing  { animation:bubbleIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both, shimmerTT 3s ease-in-out 0.6s infinite; }
+.bubble.expiring          { animation:bubbleExpire 0.38s cubic-bezier(0.55,0,1,0.45) both; }
+.bubble.replace-out       { animation:bubbleReplaceOut 0.18s ease-in both; }
+.bubble.replace-in        { animation:bubbleReplaceIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both, shimmer 3s ease-in-out 0.5s infinite; }
+.bubble.p-youtube.replace-in { animation:bubbleReplaceIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both, shimmerYT 3s ease-in-out 0.5s infinite; }
+.bubble.p-tiktok.replace-in  { animation:bubbleReplaceIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both, shimmerTT 3s ease-in-out 0.5s infinite; }
+.splat-accent { animation:splatSpin 0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+/* ══════════════════════════════════════
+   SUPERCHAT TIER OVERRIDES
+══════════════════════════════════════ */
+
+/* Canvas for particles */
+#sc-canvas {
+  position: fixed; top:0; left:0;
+  width:100%; height:100%;
+  pointer-events:none; z-index:10;
+}
+
+/* Tier label flash */
+#sc-tier-label {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-120px);
+  font-family:'Boogaloo',cursive; font-size:30px;
+  letter-spacing:0.18em; text-transform:uppercase;
+  opacity:0; pointer-events:none; z-index:12;
+  text-shadow:0 0 30px currentColor; white-space:nowrap;
+}
+#sc-tier-label.flash { animation:tierFlash 1.3s cubic-bezier(0.34,1.56,0.64,1) both; }
+@keyframes tierFlash {
+  0%   { opacity:0; transform:translate(-50%,-150px) scale(0.3); }
+  35%  { opacity:1; transform:translate(-50%,-120px) scale(1.1); }
+  65%  { opacity:1; transform:translate(-50%,-120px) scale(1); }
+  100% { opacity:0; transform:translate(-50%,-130px) scale(0.9); }
+}
+
+/* Vignette flash */
+#sc-vignette {
+  position:fixed; inset:0; pointer-events:none; z-index:5; opacity:0;
+}
+#sc-vignette.pulse { animation:vignPulse 0.7s ease-out; }
+@keyframes vignPulse { 0%{opacity:0} 25%{opacity:1} 100%{opacity:0} }
+
+/* Tier entrance animations */
+@keyframes scInSilver {
+  0%   { opacity:0; transform:scale(0.55) rotate(-2deg) translateY(20px); }
+  55%  { transform:scale(1.07) rotate(0.5deg); opacity:1; }
+  75%  { transform:scale(0.98); }
+  100% { transform:scale(1); opacity:1; }
+}
+@keyframes scInGold {
+  0%   { opacity:0; transform:scale(0.3) rotate(-8deg); }
+  40%  { opacity:1; transform:scale(1.12) rotate(2deg); }
+  65%  { transform:scale(0.97) rotate(-1deg); }
+  82%  { transform:scale(1.03); }
+  100% { transform:scale(1); opacity:1; }
+}
+@keyframes scInPlatinum {
+  0%   { opacity:0; transform:scale(0.2) rotate(6deg); filter:brightness(3); }
+  30%  { opacity:1; transform:scale(1.15) rotate(-1.5deg); filter:brightness(1.8); }
+  55%  { transform:scale(0.96) rotate(0.5deg); filter:brightness(1.2); }
+  78%  { transform:scale(1.04); filter:brightness(1); }
+  100% { transform:scale(1); opacity:1; }
+}
+@keyframes scInDiamond {
+  0%   { opacity:0; transform:scale(0.1) rotate(-15deg); filter:brightness(5) saturate(2); }
+  25%  { opacity:1; transform:scale(1.2) rotate(3deg); filter:brightness(2); }
+  50%  { transform:scale(0.94) rotate(-1deg); filter:brightness(1); }
+  72%  { transform:scale(1.06); }
+  88%  { transform:scale(0.99); }
+  100% { transform:scale(1); opacity:1; }
+}
+@keyframes scInLegendary {
+  0%   { opacity:0; transform:scale(0) rotate(-20deg); filter:brightness(8) saturate(3); }
+  20%  { opacity:1; transform:scale(1.3) rotate(4deg); filter:brightness(3); }
+  42%  { transform:scale(0.91) rotate(-2deg); filter:brightness(1.5); }
+  62%  { transform:scale(1.08) rotate(1deg); filter:brightness(1.2); }
+  82%  { transform:scale(0.98); filter:brightness(1); }
+  100% { transform:scale(1); opacity:1; }
+}
+
+.sc-stage.sc-showing-silver   { animation:scInSilver   0.6s  cubic-bezier(0.34,1.56,0.64,1) both; }
+.sc-stage.sc-showing-gold     { animation:scInGold     0.65s cubic-bezier(0.34,1.56,0.64,1) both; }
+.sc-stage.sc-showing-platinum { animation:scInPlatinum 0.7s  cubic-bezier(0.34,1.56,0.64,1) both; }
+.sc-stage.sc-showing-diamond  { animation:scInDiamond  0.78s cubic-bezier(0.34,1.56,0.64,1) both; }
+.sc-stage.sc-showing-legendary{ animation:scInLegendary 0.95s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+/* ── BRONZE ($1–$4.99): warm orange ── */
+.tier-bronze .sc-card {
+  border-color:#b45309;
+  box-shadow:0 0 30px rgba(180,83,9,.6), 0 0 60px rgba(180,83,9,.3);
+  background:rgba(28,8,0,.93);
+}
+.tier-bronze .sc-yt-stripe { background:linear-gradient(90deg,#f97316,#fb8c00,#e65100); }
+.tier-bronze .sc-avatar { border-color:#fb8c00; box-shadow:0 0 14px rgba(251,140,0,.6); }
+.tier-bronze .sc-yt-label { color:#fb8c00; background:rgba(251,140,0,.1); border-color:rgba(251,140,0,.3); }
+.tier-bronze .sc-price { font-size:48px; animation:priceGlowBronze 2s ease-in-out infinite; }
+@keyframes priceGlowBronze {
+  0%,100%{ text-shadow:0 0 20px rgba(251,140,0,.9), 0 0 45px rgba(180,83,9,.5); }
+  50%    { text-shadow:0 0 32px rgba(251,191,36,1),  0 0 65px rgba(251,140,0,.7); }
+}
+
+/* ── SILVER ($5–$19.99): cool blue-silver ── */
+.tier-silver .sc-card {
+  border-color:#94a3b8; border-width:3px;
+  box-shadow:0 0 45px rgba(148,163,184,.7), 0 0 90px rgba(56,189,248,.25);
+  background:rgba(8,12,28,.93);
+}
+.tier-silver .sc-yt-stripe { background:linear-gradient(90deg,#60a5fa,#94a3b8,#38bdf8,#94a3b8,#60a5fa); }
+.tier-silver .sc-avatar { border-color:#94a3b8; box-shadow:0 0 18px rgba(148,163,184,.7); }
+.tier-silver .sc-yt-label { color:#94a3b8; background:rgba(148,163,184,.1); border-color:rgba(148,163,184,.35); }
+.tier-silver .sc-price { font-size:56px; animation:priceGlowSilver 1.8s ease-in-out infinite; }
+@keyframes priceGlowSilver {
+  0%,100%{ text-shadow:0 0 22px rgba(148,163,184,1), 0 0 55px rgba(56,189,248,.5); color:#e2e8f0; }
+  50%    { text-shadow:0 0 38px rgba(200,220,255,1),  0 0 80px rgba(56,189,248,.8); color:#fff; }
+}
+.tier-silver .sc-star { font-size:32px; }
+
+/* ── GOLD ($20–$49.99): golden glory ── */
+.tier-gold .sc-card {
+  border-color:#f59e0b; border-width:3px;
+  box-shadow:0 0 55px rgba(245,158,11,.85), 0 0 110px rgba(251,191,36,.4);
+  background:rgba(18,10,0,.94);
+}
+.tier-gold .sc-yt-stripe {
+  height:8px;
+  background:linear-gradient(90deg,#f59e0b,#fbbf24,#fcd34d,#fbbf24,#f59e0b);
+  background-size:200% 100%; animation:sweepStripe 2s linear infinite;
+  box-shadow:0 0 10px rgba(251,191,36,.6);
+}
+@keyframes sweepStripe{ 0%{background-position:0%} 100%{background-position:200%} }
+.tier-gold .sc-avatar { border-color:#fbbf24; border-width:4px; box-shadow:0 0 22px rgba(251,191,36,.9); }
+.tier-gold .sc-yt-label { color:#fbbf24; background:rgba(251,191,36,.15); border-color:rgba(251,191,36,.45); }
+.tier-gold .sc-price { font-size:68px; animation:priceGlowGold 1.5s ease-in-out infinite; }
+@keyframes priceGlowGold {
+  0%,100%{ text-shadow:0 0 28px rgba(251,191,36,1), 0 0 65px rgba(245,158,11,.9), 0 0 110px rgba(217,119,6,.5); color:#fcd34d; }
+  50%    { text-shadow:0 0 45px #ffd700, 0 0 90px rgba(251,191,36,1), 0 0 140px rgba(245,158,11,.7); color:#fff8dc; }
+}
+.tier-gold .sc-star { font-size:38px; }
+
+/* ── PLATINUM ($50–$99.99): blinding white ── */
+.tier-platinum .sc-card {
+  border-color:#e2e8f0; border-width:3.5px;
+  box-shadow:0 0 65px rgba(226,232,240,.95), 0 0 130px rgba(148,163,184,.5), inset 0 0 20px rgba(255,255,255,.08);
+  background:rgba(3,4,14,.96);
+}
+.tier-platinum .sc-yt-stripe {
+  height:10px;
+  background:linear-gradient(90deg,#94a3b8,#e2e8f0,#fff,#e2e8f0,#94a3b8);
+  background-size:200% 100%; animation:sweepStripe 1.5s linear infinite;
+  box-shadow:0 0 20px rgba(255,255,255,.85);
+}
+.tier-platinum .sc-avatar { border-color:#fff; border-width:4px; box-shadow:0 0 26px rgba(255,255,255,.95); }
+.tier-platinum .sc-yt-label { color:#e2e8f0; background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.4); }
+.tier-platinum .sc-username { color:#fff; text-shadow:0 0 18px rgba(255,255,255,.9); }
+.tier-platinum .sc-price { font-size:78px; animation:priceGlowPlat 1.2s ease-in-out infinite; }
+@keyframes priceGlowPlat {
+  0%,100%{ text-shadow:0 0 35px #fff, 0 0 70px rgba(200,220,255,.95), 0 0 110px rgba(148,163,184,.7); color:#fff; }
+  50%    { text-shadow:0 0 55px #fff, 0 0 110px #fff, 0 0 160px rgba(200,220,255,.9); color:#fff; }
+}
+.tier-platinum .sc-star { font-size:44px; }
+
+/* ── DIAMOND ($100–$199.99): electric crystal blue ── */
+.tier-diamond .sc-card {
+  border-color:#38bdf8; border-width:3.5px;
+  box-shadow:0 0 65px rgba(56,189,248,1), 0 0 130px rgba(14,165,233,.7), 0 0 200px rgba(56,189,248,.3);
+  background:rgba(0,3,18,.97);
+}
+.tier-diamond .sc-yt-stripe {
+  height:11px;
+  background:linear-gradient(90deg,#0ea5e9,#38bdf8,#7dd3fc,#38bdf8,#0ea5e9);
+  background-size:200% 100%; animation:sweepStripe 1s linear infinite;
+  box-shadow:0 0 22px rgba(56,189,248,1);
+}
+.tier-diamond .sc-avatar { border-color:#38bdf8; border-width:4px; box-shadow:0 0 30px rgba(56,189,248,1); }
+.tier-diamond .sc-yt-label { color:#38bdf8; background:rgba(56,189,248,.12); border-color:rgba(56,189,248,.5); }
+.tier-diamond .sc-username { color:#7dd3fc; text-shadow:0 0 16px rgba(56,189,248,.85); }
+.tier-diamond .sc-price { font-size:86px; animation:priceGlowDia 1s ease-in-out infinite; }
+@keyframes priceGlowDia {
+  0%,100%{ text-shadow:0 0 35px #38bdf8, 0 0 80px rgba(14,165,233,.9), 0 0 130px rgba(56,189,248,.5); color:#7dd3fc; }
+  50%    { text-shadow:0 0 55px #fff, 0 0 110px #38bdf8, 0 0 170px rgba(14,165,233,.8); color:#fff; }
+}
+.tier-diamond .sc-star { font-size:48px; }
+.tier-diamond .sc-msg { color:#bae6fd; }
+
+/* ── LEGENDARY ($200+): rainbow obliteration ── */
+.tier-legendary .sc-card {
+  border-width:4px; border-color:transparent; background-clip:padding-box;
+  background:rgba(0,0,5,.97);
+  box-shadow:0 0 80px rgba(168,85,247,.8), 0 0 160px rgba(236,72,153,.5), 0 0 240px rgba(245,158,11,.4);
+  position:relative; overflow:visible;
+}
+.tier-legendary .sc-card::before {
+  content:''; position:absolute; inset:-4px; border-radius:23px; z-index:-1;
+  background:linear-gradient(90deg,#f59e0b,#ec4899,#a855f7,#38bdf8,#22c55e,#f59e0b);
+  background-size:300% 100%; animation:legendBorder 1.5s linear infinite;
+}
+@keyframes legendBorder{ 0%{background-position:0%} 100%{background-position:300%} }
+.tier-legendary .sc-yt-stripe {
+  height:13px;
+  background:linear-gradient(90deg,#f59e0b,#ec4899,#a855f7,#38bdf8,#22c55e,#f59e0b);
+  background-size:300% 100%; animation:legendBorder 1.5s linear infinite;
+  box-shadow:0 0 28px rgba(255,255,255,.85);
+}
+.tier-legendary .sc-avatar {
+  border-width:4px; box-shadow:0 0 30px rgba(245,158,11,.9);
+  animation:avatarRainbow 3s linear infinite;
+}
+@keyframes avatarRainbow {
+  0%  { border-color:#f59e0b; box-shadow:0 0 30px rgba(245,158,11,.9); }
+  25% { border-color:#ec4899; box-shadow:0 0 30px rgba(236,72,153,.9); }
+  50% { border-color:#a855f7; box-shadow:0 0 30px rgba(168,85,247,.9); }
+  75% { border-color:#38bdf8; box-shadow:0 0 30px rgba(56,189,248,.9); }
+  100%{ border-color:#f59e0b; box-shadow:0 0 30px rgba(245,158,11,.9); }
+}
+.tier-legendary .sc-yt-label { color:#f59e0b; background:rgba(245,158,11,.15); border-color:rgba(245,158,11,.5); }
+.tier-legendary .sc-username { color:#fff; animation:nameRainbow 2.5s linear infinite; }
+@keyframes nameRainbow {
+  0%  { text-shadow:0 0 22px rgba(245,158,11,1); }
+  33% { text-shadow:0 0 22px rgba(236,72,153,1); }
+  66% { text-shadow:0 0 22px rgba(168,85,247,1); }
+  100%{ text-shadow:0 0 22px rgba(245,158,11,1); }
+}
+.tier-legendary .sc-price { font-size:100px; animation:priceGlowLegend 0.8s ease-in-out infinite; }
+@keyframes priceGlowLegend {
+  0%  { text-shadow:0 0 45px #f59e0b, 0 0 100px rgba(245,158,11,.8); color:#fcd34d; }
+  25% { text-shadow:0 0 45px #ec4899, 0 0 100px rgba(236,72,153,.8); color:#f9a8d4; }
+  50% { text-shadow:0 0 45px #a855f7, 0 0 100px rgba(168,85,247,.8); color:#e879f9; }
+  75% { text-shadow:0 0 45px #38bdf8, 0 0 100px rgba(56,189,248,.8); color:#7dd3fc; }
+  100%{ text-shadow:0 0 45px #f59e0b, 0 0 100px rgba(245,158,11,.8); color:#fcd34d; }
+}
+.tier-legendary .sc-star { font-size:56px; }
+.tier-legendary .sc-msg { font-size:21px; color:#fff; }
+</style>
+</head>
+<body>
+
+<!-- NORMAL BUBBLE -->
+<div id="bubble-wrap">
+  <div class="bubble" id="bubble" style="display:none;">
+    <span class="splat-accent" id="splat-accent">💜</span>
+    <div class="bubble-inner">
+      <div class="avatar" id="av"></div>
+      <div class="bubble-content">
+        <div class="bubble-header">
+          <div class="username" id="username"></div>
+          <span class="platform-badge badge-purple" id="platform-badge"></span>
+        </div>
+        <div class="bubble-msg" id="bubble-msg"></div>
+        <div class="gift-block" id="gift-block" style="display:none;">
+          <div class="gift-icon" id="gift-icon"></div>
+          <div class="gift-details">
+            <div class="gift-amount" id="gift-amount"></div>
+            <div class="gift-label"  id="gift-label"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SUPERCHAT OVERLAY -->
+<canvas id="sc-canvas"></canvas>
+<div id="sc-tier-label"></div>
+<div id="sc-vignette"></div>
+<div id="superchat-wrap">
+  <div class="sc-stage" id="sc-stage">
+    <!-- SVG animated blob behind card -->
+    <div class="sc-blob-wrap">
+      <svg class="sc-blob" viewBox="0 0 640 340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="blobGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="#c084fc" stop-opacity="0.9"/>
+            <stop offset="40%"  stop-color="#a855f7" stop-opacity="0.75"/>
+            <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.4"/>
+          </radialGradient>
+        </defs>
+        <path id="blob-path" fill="url(#blobGrad)"
+          d="M280,60 C380,20 500,80 520,160 C540,240 460,340 360,360 C260,380 140,320 100,240 C60,160 80,60 160,40 C200,30 240,80 280,60 Z"/>
+      </svg>
+      <!-- ring outline -->
+      <svg class="sc-blob-ring" viewBox="0 0 640 340" xmlns="http://www.w3.org/2000/svg"
+           style="position:absolute;top:0;left:0;">
+        <path fill="none" stroke="#e879f9" stroke-width="2.5" stroke-dasharray="12 6" opacity="0.7"
+          d="M280,60 C380,20 500,80 520,160 C540,240 460,340 360,360 C260,380 140,320 100,240 C60,160 80,60 160,40 C200,30 240,80 280,60 Z"/>
+      </svg>
+    </div>
+
+    <!-- card on top -->
+    <div class="sc-card" id="sc-card">
+      <div class="sc-yt-stripe"></div>
+      <div class="sc-header">
+        <div class="sc-avatar" id="sc-av"></div>
+        <div class="sc-name-col">
+          <div class="sc-username" id="sc-username"></div>
+          <span class="sc-yt-label">▶ Super Chat · YouTube</span>
+        </div>
+      </div>
+      <div class="sc-price-wrap">
+        <span class="sc-star">⭐</span>
+        <div class="sc-price" id="sc-price"></div>
+        <span class="sc-star">⭐</span>
+      </div>
+      <div class="sc-msg" id="sc-msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SESSION   = "usNkSpEutq";
+const SHOW_TIME = 10000;
+
+let queue = [], showing = false, hideTimer = null, transitioning = false;
+let scTimer = null;
+let ws, wsTimer;
+
+/* ── detect superchat ── */
+function looksLikeMoney(str) {
+  /* Must contain a currency symbol or end in a currency code */
+  return /[$£€¥₩₹]/.test(str) || /\b(USD|EUR|GBP|CAD|AUD|JPY)\b/i.test(str);
+}
+
+function isSuperchat(data) {
+  const evt = (data.event || '').toLowerCase();
+  const p   = (data.type  || '').toLowerCase();
+  if (!p.includes('youtube')) return false;
+  /* Explicit event types always win */
+  if (evt === 'superchat' || evt === 'supersticker') return true;
+  /* donation event + money value */
+  if (evt === 'donation' && looksLikeMoney(data.hasDonation || '')) return true;
+  /* hasDonation must look like actual money, not "3 hearts" or "500 coins" */
+  if (data.donoValue && looksLikeMoney(data.hasDonation || '')) return true;
+  return false;
+}
+
+function connect() {
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/2`);
+  ws.onmessage = (e) => {
+    let d; try { d = JSON.parse(e.data); } catch(_){ return; }
+    if (!d) return;
+    if (d.chatname)                          { enqueue(d); }
+    else if (d.action==='content' && d.value){ try { enqueue(JSON.parse(d.value)); } catch(_){} }
+    else if (d.content)                      { try { enqueue(typeof d.content==='string' ? JSON.parse(d.content) : d.content); } catch(_){} }
+  };
+  ws.onclose = () => { clearTimeout(wsTimer); wsTimer = setTimeout(connect, 3000); };
+  ws.onerror = () => { ws.close(); };
+}
+
+function enqueue(data) {
+  if (!data.chatname) return;
+
+  if (isSuperchat(data)) {
+    /* superchats always interrupt everything and show immediately */
+    clearTimeout(hideTimer);
+    clearTimeout(scTimer);
+    hideBubbleInstant();
+    queue = [];
+    showSuperchat(data);
+    return;
+  }
+
+  queue = [];
+  clearTimeout(hideTimer);
+  const bubble = document.getElementById('bubble');
+  const visible = bubble.style.display !== 'none';
+  if (visible && !transitioning) { replaceWith(data); }
+  else if (!transitioning)       { showing = true; renderInto(data, 'showing'); }
+}
+
+/* ══════════════════════════════════════
+   SUPERCHAT
+══════════════════════════════════════ */
+/* ── Tier system ── */
+function parseDollarAmount(str) {
+  if (!str) return 0;
+  const m = String(str).match(/[$\u00a3\u20ac\u00a5\u20a9\u20b9]?\s*([\d,]+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1].replace(/,/g,'')) : 0;
+}
+const TIER_DEFS = [
+  { name:'legendary', min:200, label:'\ud83d\udc51 LEGENDARY', labelColor:'#fcd34d', vigColor:'rgba(245,158,11,0.25)', showClass:'sc-showing-legendary' },
+  { name:'diamond',   min:100, label:'\ud83d\udc8e DIAMOND',   labelColor:'#38bdf8', vigColor:'rgba(56,189,248,0.2)',  showClass:'sc-showing-diamond'   },
+  { name:'platinum',  min:50,  label:'\u26a1 PLATINUM',         labelColor:'#e2e8f0', vigColor:'rgba(226,232,240,0.2)', showClass:'sc-showing-platinum'  },
+  { name:'gold',      min:20,  label:'\ud83c\udfc6 GOLD',      labelColor:'#fbbf24', vigColor:'rgba(251,191,36,0.2)',  showClass:'sc-showing-gold'      },
+  { name:'silver',    min:5,   label:'\u2730 SILVER',           labelColor:'#94a3b8', vigColor:null,                   showClass:'sc-showing-silver'    },
+  { name:'bronze',    min:0,   label:null,                        labelColor:null,      vigColor:null,                   showClass:'sc-showing'           },
+];
+function getTier(amt) {
+  for (const t of TIER_DEFS) if (amt >= t.min) return t;
+  return TIER_DEFS[TIER_DEFS.length-1];
+}
+
+/* ── Particles ── */
+const scCanvas = document.getElementById('sc-canvas');
+const scCtx    = scCanvas.getContext('2d');
+let   scParts  = [], scPartAnim = null;
+function resizeSCCanvas() { scCanvas.width = window.innerWidth; scCanvas.height = window.innerHeight; }
+resizeSCCanvas(); window.addEventListener('resize', resizeSCCanvas);
+
+const PALETTES = {
+  bronze:   ['#f97316','#fb8c00','#fbbf24','#fed7aa'],
+  silver:   ['#94a3b8','#e2e8f0','#7dd3fc','#bfdbfe','#fff'],
+  gold:     ['#fbbf24','#fcd34d','#f59e0b','#fff8dc','#ffec80','#fff'],
+  platinum: ['#fff','#e2e8f0','#94a3b8','#dbeafe','#bfdbfe'],
+  diamond:  ['#38bdf8','#7dd3fc','#bae6fd','#fff','#0ea5e9'],
+  legendary:['#f59e0b','#ec4899','#a855f7','#38bdf8','#22c55e','#fcd34d','#f9a8d4','#fff'],
+};
+const COUNTS  = { bronze:0, silver:35, gold:60, platinum:80, diamond:100, legendary:160 };
+
+function spawnSCParticles(tierName) {
+  scParts = [];
+  const count = COUNTS[tierName] || 0;
+  if (!count) return;
+  const cx = scCanvas.width/2, cy = scCanvas.height/2;
+  const pal = PALETTES[tierName];
+  for (let i=0; i<count; i++) {
+    const a = Math.random()*Math.PI*2;
+    const spd = (tierName==='legendary'?7:tierName==='diamond'?6:5)*(0.5+Math.random());
+    const sz  = tierName==='legendary' ? 3+Math.random()*9 : 2+Math.random()*5;
+    const shapes = ['circle','rect','star'];
+    const shape = tierName==='legendary' ? shapes[Math.floor(Math.random()*3)]
+                : Math.random()>0.5 ? 'circle' : 'rect';
+    scParts.push({
+      x:cx+(Math.random()-.5)*80, y:cy+(Math.random()-.5)*50,
+      vx:Math.cos(a)*spd, vy:Math.sin(a)*spd-(Math.random()*3),
+      ay:0.09+Math.random()*.05,
+      life:1, decay:0.007+Math.random()*.011,
+      sz, color:pal[Math.floor(Math.random()*pal.length)],
+      shape, rot:Math.random()*Math.PI*2, rotV:(Math.random()-.5)*.25,
+    });
+  }
+}
+function drawStar(ctx,cx,cy,r){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const a=i*Math.PI/5-Math.PI/2;
+    const radius=i%2===0?r:r*.42;
+    i===0?ctx.moveTo(cx+radius*Math.cos(a),cy+radius*Math.sin(a))
+         :ctx.lineTo(cx+radius*Math.cos(a),cy+radius*Math.sin(a));
+  }ctx.closePath();
+}
+function animSCParticles() {
+  scCtx.clearRect(0,0,scCanvas.width,scCanvas.height);
+  scParts=scParts.filter(p=>p.life>0);
+  for(const p of scParts){
+    p.vy+=p.ay; p.x+=p.vx; p.y+=p.vy; p.rot+=p.rotV; p.life-=p.decay;
+    scCtx.save(); scCtx.globalAlpha=Math.max(0,p.life);
+    scCtx.fillStyle=p.color; scCtx.translate(p.x,p.y); scCtx.rotate(p.rot);
+    if(p.shape==='circle'){ scCtx.beginPath();scCtx.arc(0,0,p.sz,0,Math.PI*2);scCtx.fill(); }
+    else if(p.shape==='rect'){ scCtx.fillRect(-p.sz*.5,-p.sz,p.sz,p.sz*2); }
+    else{ drawStar(scCtx,0,0,p.sz*1.5);scCtx.fill(); }
+    scCtx.restore();
+  }
+  if(scParts.length) scPartAnim=requestAnimationFrame(animSCParticles);
+  else scCtx.clearRect(0,0,scCanvas.width,scCanvas.height);
+}
+function fireParticles(tierName) {
+  if(scPartAnim) cancelAnimationFrame(scPartAnim);
+  spawnSCParticles(tierName);
+  if(scParts.length) animSCParticles();
+}
+function stopParticles() {
+  if(scPartAnim) cancelAnimationFrame(scPartAnim);
+  scPartAnim=null; scParts=[];
+  scCtx.clearRect(0,0,scCanvas.width,scCanvas.height);
+}
+
+/* ── Blob colors per tier ── */
+const TIER_BLOBS = {
+  bronze:   ['#f97316','#ea580c','#c2410c','#fb923c'],
+  silver:   ['#bfdbfe','#60a5fa','#1d4ed8','#94a3b8'],
+  gold:     ['#fcd34d','#f59e0b','#b45309','#fbbf24'],
+  platinum: ['#ffffff','#e2e8f0','#94a3b8','#ffffff'],
+  diamond:  ['#7dd3fc','#0ea5e9','#0369a1','#38bdf8'],
+  legendary:['#f9a8d4','#a855f7','#7c3aed','#e879f9'],
+};
+function applyBlobColors(tierName) {
+  const [c0,c40,c100,stroke] = TIER_BLOBS[tierName] || TIER_BLOBS.bronze;
+  const grad = document.getElementById('blobGrad');
+  if (!grad) return;
+  const s = grad.querySelectorAll('stop');
+  if(s[0]) s[0].setAttribute('stop-color',c0);
+  if(s[1]) s[1].setAttribute('stop-color',c40);
+  if(s[2]) s[2].setAttribute('stop-color',c100);
+  const ring = document.querySelector('.sc-blob-ring path');
+  if(ring) ring.setAttribute('stroke', stroke);
+}
+
+/* ── Vignette ── */
+function doVignette(color) {
+  if(!color) return;
+  const v = document.getElementById('sc-vignette');
+  v.style.background = `radial-gradient(ellipse at center, transparent 25%, ${color} 100%)`;
+  v.classList.remove('pulse'); void v.offsetWidth; v.classList.add('pulse');
+}
+
+/* ── Tier label ── */
+const ALL_TIER_CLASSES = ['tier-bronze','tier-silver','tier-gold','tier-platinum','tier-diamond','tier-legendary'];
+
+function flashTierLabel(tier) {
+  if(!tier.label) return;
+  const el = document.getElementById('sc-tier-label');
+  el.textContent = tier.label; el.style.color = tier.labelColor;
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+
+function showSuperchat(data) {
+  const wrap   = document.getElementById('superchat-wrap');
+  const stage  = document.getElementById('sc-stage');
+  const avEl   = document.getElementById('sc-av');
+  const nameEl = document.getElementById('sc-username');
+  const priceEl= document.getElementById('sc-price');
+  const msgEl  = document.getElementById('sc-msg');
+
+  const amount = parseDollarAmount(data.hasDonation || data.donoValue || '');
+  const tier   = getTier(amount);
+
+  // Remove old tier classes, apply new
+  stage.classList.remove(...ALL_TIER_CLASSES);
+  stage.classList.add('tier-' + tier.name);
+  stage.dataset.tier = tier.name;
+
+  applyBlobColors(tier.name);
+
+  avEl.innerHTML = '';
+  if (data.chatimg) {
+    const img = document.createElement('img');
+    img.src = data.chatimg;
+    img.onerror = () => { avEl.innerHTML = ''; avEl.textContent = initials(data.chatname); };
+    avEl.appendChild(img);
+  } else {
+    avEl.textContent = initials(data.chatname);
+  }
+
+  nameEl.textContent  = data.chatname || '';
+  priceEl.textContent = data.hasDonation || '';
+  msgEl.innerHTML     = data.chatmessage || '';
+
+  wrap.style.display = 'flex';
+  // Build class list: sc-stage + tier-X + sc-showing-X
+  stage.className = ['sc-stage', 'tier-'+tier.name, tier.showClass].join(' ');
+
+  fireParticles(tier.name);
+  doVignette(tier.vigColor);
+  flashTierLabel(tier);
+
+  scTimer = setTimeout(hideSuperchat, SHOW_TIME);
+}
+
+function hideSuperchat() {
+  const wrap  = document.getElementById('superchat-wrap');
+  const stage = document.getElementById('sc-stage');
+  const tierCls = 'tier-' + (stage.dataset.tier || 'bronze');
+  stage.className = 'sc-stage ' + tierCls + ' sc-hiding';
+  stage.addEventListener('animationend', () => {
+    wrap.style.display = 'none';
+    stage.className = 'sc-stage';
+    stage.classList.remove(...ALL_TIER_CLASSES);
+    stopParticles();
+    showing = false;
+    showNext();
+  }, { once: true });
+}
+
+function hideBubbleInstant() {
+  const bubble = document.getElementById('bubble');
+  bubble.style.display = 'none';
+  bubble.className = 'bubble';
+  transitioning = false;
+}
+
+/* ══════════════════════════════════════
+   NORMAL BUBBLE
+══════════════════════════════════════ */
+function showNext() {
+  if (!queue.length) { showing = false; return; }
+  showing = true; renderInto(queue.shift(), 'showing');
+}
+
+function replaceWith(data) {
+  transitioning = true;
+  const bubble = document.getElementById('bubble');
+  bubble.className = currentPlatformClass(bubble) + ' replace-out';
+  bubble.addEventListener('animationend', () => {
+    populateBubble(data);
+    bubble.style.display = 'block';
+    const pcls = platformBubbleClass(data.type);
+    bubble.className = 'bubble ' + pcls + ' replace-in';
+    bubble.addEventListener('animationend', () => {
+      transitioning = false;
+      hideTimer = setTimeout(expireBubble, SHOW_TIME);
+    }, { once: true });
+  }, { once: true });
+}
+
+function renderInto(data, cls) {
+  const bubble = document.getElementById('bubble');
+  populateBubble(data);
+  bubble.style.display = 'block';
+  const pcls = platformBubbleClass(data.type);
+  bubble.className = 'bubble ' + pcls + ' ' + cls;
+  hideTimer = setTimeout(expireBubble, SHOW_TIME);
+}
+
+function currentPlatformClass(bubble) {
+  if (bubble.classList.contains('p-youtube')) return 'bubble p-youtube';
+  if (bubble.classList.contains('p-tiktok'))  return 'bubble p-tiktok';
+  return 'bubble';
+}
+
+function platformBubbleClass(type) {
+  const p = (type || '').toLowerCase();
+  if (p.includes('youtube')) return 'p-youtube';
+  if (p.includes('tiktok'))  return 'p-tiktok';
+  return '';
+}
+
+function populateBubble(data) {
+  const avEl      = document.getElementById('av');
+  const nameEl    = document.getElementById('username');
+  const msgEl     = document.getElementById('bubble-msg');
+  const badgeEl   = document.getElementById('platform-badge');
+  const giftBlock = document.getElementById('gift-block');
+  const giftIcon  = document.getElementById('gift-icon');
+  const giftAmt   = document.getElementById('gift-amount');
+  const giftLbl   = document.getElementById('gift-label');
+  const accent    = document.getElementById('splat-accent');
+
+  const p   = (data.type  || '').toLowerCase();
+  const evt = (data.event || '').toLowerCase();
+  const isYT = p.includes('youtube');
+  const isTT = p.includes('tiktok');
+
+  accent.textContent = isYT ? '❤️' : isTT ? '🖤' : '💜';
+
+  avEl.innerHTML = '';
+  if (data.chatimg) {
+    const img = document.createElement('img');
+    img.src = data.chatimg;
+    img.onerror = () => { avEl.innerHTML = ''; avEl.textContent = initials(data.chatname); };
+    avEl.appendChild(img);
+  } else {
+    avEl.textContent = initials(data.chatname);
+  }
+
+  nameEl.textContent = data.chatname || '';
+  badgeEl.className  = 'platform-badge ' + badgeClass(p);
+  badgeEl.textContent = platformLabel(p);
+  msgEl.innerHTML    = data.chatmessage || '';
+
+  /* superchats are handled separately — don't double-show as gift block */
+  const isSC = isSuperchat(data);
+  const isGift = !isSC && !!(data.hasDonation || data.gifttitle || data.membership ||
+    evt === 'gift' || evt === 'jeweldonation' || evt === 'giftpurchase' ||
+    evt === 'giftredemption' || evt === 'sponsorship');
+
+  if (isGift) {
+    let icon = '🎁';
+    if (evt === 'jeweldonation') icon = '💎';
+    else if (isTT && data.contentimg) icon = `<img src="${data.contentimg}" style="height:22px;vertical-align:middle;" onerror="this.replaceWith('🎁')">`;
+
+    giftIcon.innerHTML = icon;
+    giftAmt.textContent = data.hasDonation || '';
+
+    let label = data.gifttitle || '';
+    if (!label && evt === 'jeweldonation')  label = 'YouTube Jewels';
+    if (!label && evt === 'giftpurchase')   label = 'Gifted Memberships';
+    if (!label && evt === 'giftredemption') label = 'Gift Received';
+    if (!label && data.membership)          label = data.subtitle || data.membership;
+    giftLbl.textContent = label;
+    giftBlock.style.display = 'flex';
+  } else {
+    giftBlock.style.display = 'none';
+  }
+}
+
+function expireBubble() {
+  const bubble = document.getElementById('bubble');
+  bubble.className = currentPlatformClass(bubble) + ' expiring';
+  bubble.addEventListener('animationend', () => {
+    bubble.style.display = 'none';
+    bubble.className = 'bubble';
+    showing = false; transitioning = false;
+    showNext();
+  }, { once: true });
+}
+
+function initials(name) {
+  if (!name) return '?';
+  const p = name.trim().split(/\s+/);
+  return p.length >= 2 ? (p[0][0]+p[1][0]).toUpperCase() : name.slice(0,2).toUpperCase();
+}
+function badgeClass(p) {
+  if (p.includes('youtube')) return 'badge-youtube';
+  if (p.includes('tiktok'))  return 'badge-tiktok';
+  if (p.includes('twitch'))  return 'badge-twitch';
+  return 'badge-purple';
+}
+function platformLabel(p) {
+  if (p.includes('youtube')) return '▶ YouTube';
+  if (p.includes('tiktok'))  return '✦ TikTok';
+  if (p.includes('twitch'))  return '● Twitch';
+  if (p.includes('facebook'))return '◆ Facebook';
+  return p ? '◆ ' + p : '◆ Chat';
+}
+
+/* animate the SVG blob paths via JS for Safari compatibility */
+(function animateBlob() {
+  const paths = [
+    "M280,60 C380,20 500,80 520,160 C540,240 460,340 360,360 C260,380 140,320 100,240 C60,160 80,60 160,40 C200,30 240,80 280,60 Z",
+    "M300,40 C420,10 530,100 510,180 C490,260 400,360 300,370 C200,380 100,300 80,220 C60,140 100,50 180,30 C220,20 260,60 300,40 Z",
+    "M260,70 C370,30 490,90 515,175 C540,260 450,355 345,365 C240,375 130,310 95,230 C60,150 90,65 170,45 C210,35 230,90 260,70 Z",
+    "M290,50 C400,15 520,85 525,170 C530,255 445,350 340,362 C235,374 120,305 90,225 C60,145 95,55 175,38 C215,28 255,75 290,50 Z",
+  ];
+  let idx = 0;
+  const blobEl = document.querySelector('#blob-path');
+  const ringEl = document.querySelector('.sc-blob-ring path');
+  if (!blobEl) return;
+
+  function lerp(a, b, t) {
+    /* simple numeric lerp on path string — won't work for morph,
+       we use CSS animation for blob shape and JS just syncs the ring */
+    return b;
+  }
+
+  setInterval(() => {
+    idx = (idx + 1) % paths.length;
+    if (ringEl) ringEl.setAttribute('d', paths[idx]);
+  }, 4000);
+})();
+
+connect();
+</script>
+</body>
+</html>
