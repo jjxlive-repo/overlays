@@ -186,6 +186,105 @@ button:active { transform: scale(.97); }
 .log-type { color: var(--muted); font-size: 11px; }
 .log-platform { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
 
+/* ── TikTok badge pill ── */
+.badge-pill {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #69C9D0, #3a8fa0);
+  color: #000;
+  letter-spacing: .4px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.badge-pill.lv0 { background: linear-gradient(135deg,#888,#555); color:#eee; }
+.badge-pill.lv1 { background: linear-gradient(135deg,#8ecfb3,#5aab87); color:#000; }
+.badge-pill.lv5 { background: linear-gradient(135deg,#69C9D0,#3a8fa0); color:#000; }
+.badge-pill.lv10{ background: linear-gradient(135deg,#c084fc,#7B2FBE); color:#fff; }
+.badge-pill.lv20{ background: linear-gradient(135deg,#facc15,#d97706); color:#000; }
+.badge-pill.lv50{ background: linear-gradient(135deg,#f43f5e,#be123c); color:#fff; }
+
+/* ── Chat autoscroll toggle ── */
+.btn-autoscroll {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface3);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-autoscroll.active {
+  background: rgba(105,201,208,.2);
+  border-color: rgba(105,201,208,.6);
+  color: #69C9D0;
+}
+.btn-autoscroll:hover { opacity: .85; }
+
+/* ── TikTok Chat panel ── */
+#tiktok-chat-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chat-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: var(--surface2);
+  border: 1px solid transparent;
+  animation: slideIn .2s ease;
+  flex-wrap: nowrap;
+}
+/* Gifter badge Lv.1–9 — subtle cyan glow */
+.chat-entry.is-gifter {
+  border-color: rgba(105,201,208,.45);
+  box-shadow: 0 0 8px 1px rgba(105,201,208,.3);
+  background: rgba(105,201,208,.07);
+}
+/* High gifter Lv.10+ — bright purple glow */
+.chat-entry.is-top-gifter {
+  border-color: rgba(192,132,252,.6);
+  box-shadow: 0 0 12px 2px rgba(192,132,252,.4), inset 0 0 8px rgba(192,132,252,.08);
+  background: rgba(123,47,190,.1);
+}
+/* Fan club / subscriber — gold glow */
+.chat-entry.is-member {
+  border-color: rgba(250,204,21,.55);
+  box-shadow: 0 0 10px 2px rgba(250,204,21,.3);
+  background: rgba(250,204,21,.06);
+}
+/* Both member + top gifter */
+.chat-entry.is-member.is-top-gifter {
+  border-color: rgba(250,204,21,.7);
+  box-shadow: 0 0 14px 3px rgba(250,204,21,.35), 0 0 6px 1px rgba(192,132,252,.35);
+}
+.chat-time  { color: var(--muted); font-size: 10px; font-family: monospace; flex-shrink: 0; }
+.chat-name  { font-weight: 600; color: #69C9D0; flex-shrink: 0; }
+.chat-name.is-member  { color: #facc15; }
+.chat-msg   { color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Member crown badge */
+.member-pill {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #facc15, #d97706);
+  color: #000;
+  flex-shrink: 0;
+  letter-spacing: .3px;
+}
+
 /* ── Settings ── */
 .settings-grid {
   display: flex;
@@ -411,6 +510,25 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         <div id="conn-status" style="margin-top:18px">
           <span class="status-dot disconnected" id="status-dot"></span>
           <span id="status-text">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ TIKTOK CHAT ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="chat-panel-hdr">
+      <h2>♪ TikTok Chat</h2>
+      <span class="dim" id="chat-count">0 messages</span>
+      <button id="btn-chat-autoscroll" class="btn-autoscroll active" onclick="event.stopPropagation()" title="Toggle auto-scroll">⬇ Live</button>
+      <span class="panel-toggle" id="chat-toggle">▼</span>
+    </div>
+    <div class="panel-body hidden" id="chat-panel-body">
+      <div id="tiktok-chat-list">
+        <div style="color:var(--muted);font-style:italic;font-size:12px;padding:4px">
+          Waiting for TikTok chat — connect SSN above…
         </div>
       </div>
     </div>
@@ -786,7 +904,25 @@ function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyStore();
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+
+    // ── Migrate v1 keys (plain normalised name) → v2 keys (platform:name) ──
+    // Old key: "justin"  →  New key: "tiktok:justin" / "youtube:justin"
+    if (data.gifters) {
+      const toMigrate = Object.entries(data.gifters).filter(([k]) => !k.includes(':'));
+      for (const [oldKey, gifter] of toMigrate) {
+        const plat  = gifterPlatform(gifter) || 'unknown';
+        const newKey = gifterKey(gifter.displayName || oldKey, plat, gifter.userId || null);
+        if (!data.gifters[newKey]) {
+          data.gifters[newKey] = { ...gifter, platform: plat };
+        } else {
+          data.gifters[newKey].gifts.push(...gifter.gifts);
+        }
+        delete data.gifters[oldKey];
+      }
+    }
+
+    return data;
   } catch(e) { return emptyStore(); }
 }
 
@@ -838,6 +974,15 @@ function formatVal(v, mode) {
 
 /* ───────────────────────────── GIFTER HELPERS ──── */
 function normKey(name) { return name.trim().toLowerCase(); }
+
+// Composite key: platform + userId (preferred) or platform + normName
+// Two users with same display name on different platforms get separate entries.
+// Two users with same name on same platform but different userIds also stay separate.
+function gifterKey(name, platform, userId) {
+  const p = (platform || 'unknown').toLowerCase().trim();
+  const u = userId ? String(userId).trim() : '';
+  return u ? `${p}:${u}` : `${p}:${normKey(name)}`;
+}
 
 function uuidv4() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -930,22 +1075,29 @@ function typeLabel(type) {
 }
 
 /* ───────────────────────────── UPSERT GIFT ──── */
-function upsertGift(rawName, amount, type, platform, note) {
-  const key = normKey(rawName);
+function upsertGift(rawName, amount, type, platform, note, userId) {
+  const plat = platform || typeToPlatform(type) || 'unknown';
+  const key  = gifterKey(rawName, plat, userId);
+
   if (!DB.gifters[key]) {
-    DB.gifters[key] = { displayName: rawName.trim(), gifts: [] };
-  } else if (!DB.gifters[key].displayName) {
-    DB.gifters[key].displayName = rawName.trim();
+    DB.gifters[key] = { displayName: rawName.trim(), platform: plat, userId: userId || null, gifts: [] };
+  } else {
+    // Keep the record fresh with best-known metadata
+    if (!DB.gifters[key].displayName) DB.gifters[key].displayName = rawName.trim();
+    if (!DB.gifters[key].platform)    DB.gifters[key].platform    = plat;
+    if (!DB.gifters[key].userId && userId) DB.gifters[key].userId = userId;
   }
+
   DB.gifters[key].gifts.push({
     id: uuidv4(),
     amount: parseFloat(amount) || 0,
     type,
-    platform: platform || typeToPlatform(type),
+    platform: plat,
     timestamp: Date.now(),
     note: note || ''
   });
   saveData(DB);
+  return key; // caller needs this for flashRow
 }
 
 /* ───────────────────────────── LAST UPDATED ──── */
@@ -1079,7 +1231,16 @@ document.getElementById('tbl-search').addEventListener('input', e => {
 let logTotal = 0;
 const MAX_LOG = 20;
 
-function addLogEntry(name, amount, type, platform, timestamp, isDebugOnly) {
+function badgeLevelClass(lv) {
+  if (!lv || lv <= 0) return 'lv0';
+  if (lv >= 50) return 'lv50';
+  if (lv >= 20) return 'lv20';
+  if (lv >= 10) return 'lv10';
+  if (lv >= 5)  return 'lv5';
+  return 'lv1';
+}
+
+function addLogEntry(name, amount, type, platform, timestamp, isDebugOnly, badgeLevel) {
   logTotal++;
   document.getElementById('log-count').textContent = logTotal + ' event' + (logTotal !== 1 ? 's' : '') + ' captured';
 
@@ -1092,11 +1253,16 @@ function addLogEntry(name, amount, type, platform, timestamp, isDebugOnly) {
   const time = new Date(timestamp).toLocaleTimeString();
   const plat = platformLabel(typeToPlatform(type));
 
+  const badgeHtml = (badgeLevel != null && platform === 'tiktok')
+    ? `<span class="badge-pill ${badgeLevelClass(badgeLevel)}">Lv.${badgeLevel}</span>`
+    : '';
+
   const el = document.createElement('div');
   el.className = 'log-entry';
   if (isDebugOnly) el.style.opacity = '0.45';
   el.innerHTML = `
     <span class="log-time">${time}</span>
+    ${badgeHtml}
     <span class="log-name">${esc(String(name))}</span>
     <span class="log-amount">${esc(String(amount))}</span>
     <span class="log-type">${esc(typeLabel(type))}</span>
@@ -1107,6 +1273,55 @@ function addLogEntry(name, amount, type, platform, timestamp, isDebugOnly) {
 
   // Trim to MAX_LOG
   while (list.children.length > MAX_LOG) list.removeChild(list.lastChild);
+}
+
+const MAX_CHAT = 50;
+let chatTotal = 0;
+let chatAutoScroll = true;
+
+function addChatEntry(name, message, badgeLevel, isMember, timestamp) {
+  chatTotal++;
+  document.getElementById('chat-count').textContent = chatTotal + ' message' + (chatTotal !== 1 ? 's' : '');
+
+  const list = document.getElementById('tiktok-chat-list');
+
+  const placeholder = list.querySelector('div[style*="italic"]');
+  if (placeholder) placeholder.remove();
+
+  const time       = new Date(timestamp).toLocaleTimeString();
+  const isGifter   = badgeLevel != null && badgeLevel > 0;
+  const isTopGifter = isGifter && badgeLevel >= 10;
+
+  // CSS classes on the row
+  const rowClasses = ['chat-entry'];
+  if (isMember)     rowClasses.push('is-member');
+  if (isTopGifter)  rowClasses.push('is-top-gifter');
+  else if (isGifter) rowClasses.push('is-gifter');
+
+  // Name class
+  const nameClass  = isMember ? 'chat-name is-member' : 'chat-name';
+
+  // Pills
+  const memberPill = isMember
+    ? `<span class="member-pill">♥ Fan</span>`
+    : '';
+  const giftPill = isGifter
+    ? `<span class="badge-pill ${badgeLevelClass(badgeLevel)}">Lv.${badgeLevel}</span>`
+    : '';
+
+  const el = document.createElement('div');
+  el.className = rowClasses.join(' ');
+  el.innerHTML = `
+    <span class="chat-time">${time}</span>
+    ${memberPill}${giftPill}
+    <span class="${nameClass}">${esc(String(name))}</span>
+    <span class="chat-msg">${esc(String(message || ''))}</span>
+  `;
+  list.insertBefore(el, list.firstChild);
+  while (list.children.length > MAX_CHAT) list.removeChild(list.lastChild);
+
+  // Scroll to top (newest) only when auto-scroll is on
+  if (chatAutoScroll) list.scrollTop = 0;
 }
 
 /* ───────────────────────────── SSN WEBSOCKET ──── */
@@ -1210,16 +1425,24 @@ const EXCLUDED_EVENTS = new Set([
 function mapEventType(event, platform) {
   const e = (event  || '').toLowerCase();
   const p = (platform || '').toLowerCase();
-  if (EXCLUDED_EVENTS.has(e))                 return null;  // explicitly not a gift
-  if (p === 'tiktok' && e === 'gift')         return 'tiktok_coins';
-  if (e === 'jeweldonation')                   return 'youtube_jewels';
-  if (e === 'donation' || e === 'supersticker'
-   || e === 'superchat' || e === 'superchatwithtext'
-   || e === 'superchatevent')                  return 'youtube_superchat';
-  if (e === 'giftpurchase')                    return 'youtube_superchat';
-  // fallback: guess from platform
+  if (EXCLUDED_EVENTS.has(e))                       return null;  // explicitly not a gift
+
+  // Explicit event names — platform-agnostic
+  if (e === 'jeweldonation')                         return 'youtube_jewels';
+  if (e === 'supersticker' || e === 'superchat'
+   || e === 'superchatwithtext' || e === 'superchatevent'
+   || e === 'donation' || e === 'giftpurchase')      return 'youtube_superchat';
+  if (e === 'gift')                                  return 'tiktok_coins';
+  if (e === 'thankyou')                              return 'tiktok_coins';
+
+  // TikTok fallback: SSN often sends gifts with no event string, only hasDonation
   if (p === 'tiktok')   return 'tiktok_coins';
-  if (p === 'youtube')  return 'youtube_superchat';
+
+  // YouTube: SSN ALWAYS sends a named event for real superchats.
+  // If there's no event string, this is a regular chat message (possibly from a member)
+  // — do NOT classify it as a superchat.
+  if (p === 'youtube')  return null;
+
   return 'direct_donation';
 }
 
@@ -1288,7 +1511,25 @@ function handleSSNEvent(payload) {
 
   const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase','thankyou',
                         'superchat','superchatwithtext','superchatevent'].includes(ssnEvent);
-  const isRelevant  = hasDonation || isGiftEvent;
+
+  // YouTube always uses named event strings for real superchats — hasDonation alone
+  // is not trustworthy for YouTube (member chat messages also have it set).
+  // TikTok legitimately omits the event string, so hasDonation is the primary signal there.
+  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube');
+
+  // Route TikTok chat messages to the chat panel (badge level captured below)
+  const isTikTokChat = (ssnPlatform === 'tiktok') && !isRelevant && !!data.chatmessage;
+  if (isTikTokChat) {
+    const chatName = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
+    const chatBadge = data.badgeLevel != null ? Number(data.badgeLevel)
+      : typeof data.badge === 'number' ? data.badge
+      : null;
+    // Fan club / subscriber: subBadge URL present, isSubscriber flag, or membership field without a gifter badgeLevel
+    const chatIsMember = !!(data.subBadge || data.isSubscriber
+      || (data.membership != null && data.badgeLevel == null));
+    addChatEntry(chatName, data.chatmessage, chatBadge, chatIsMember, Date.now());
+    return;
+  }
 
   if (!debugAll && !isRelevant) return;
 
@@ -1334,11 +1575,22 @@ function handleSSNEvent(payload) {
       '| chatmessage:', (data.chatmessage || '').slice(0, 80));
   }
 
-  addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant);
+  // Extract TikTok gifter badge level
+  const badgeLevel = (ssnPlatform === 'tiktok')
+    ? (data.badgeLevel != null ? Number(data.badgeLevel)
+      : data.membership != null ? Number(data.membership)
+      : typeof data.badge === 'number' ? data.badge
+      : null)
+    : null;
+
+  // Extract platform user ID for deduplication (two "Justin"s on different platforms stay separate)
+  const userId = data.userid || data.channelid || data.authorId || null;
+
+  addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, badgeLevel);
   if (isRelevant && amount > 0) {
-    upsertGift(name, amount, type, platform, '');
+    const key = upsertGift(name, amount, type, platform, '', userId);
     renderTable();
-    flashRow(normKey(name));
+    flashRow(key);
   }
 }
 
@@ -1414,6 +1666,33 @@ function makeCollapsible(hdrId, bodyId, toggleId, defaultOpen) {
 }
 
 makeCollapsible('conn-panel-hdr',  'conn-panel-body',  'conn-panel-toggle',  true);
+makeCollapsible('chat-panel-hdr',  'chat-panel-body',  'chat-toggle',        false);
+
+// ── Chat auto-scroll toggle ──────────────────────────────
+(function() {
+  const btn  = document.getElementById('btn-chat-autoscroll');
+  const list = document.getElementById('tiktok-chat-list');
+
+  function setAutoScroll(on) {
+    chatAutoScroll = on;
+    btn.textContent = on ? '⬇ Live' : '⏸ Paused';
+    btn.classList.toggle('active', on);
+    if (on) list.scrollTop = 0; // jump to newest when re-enabling
+  }
+
+  // Manual button toggle
+  btn.addEventListener('click', () => setAutoScroll(!chatAutoScroll));
+
+  // Scrolling down (away from top/newest) auto-pauses
+  let scrollTimer = null;
+  list.addEventListener('scroll', () => {
+    if (!chatAutoScroll) return;
+    // If user has scrolled more than 40px down from newest, pause
+    if (list.scrollTop > 40) {
+      setAutoScroll(false);
+    }
+  });
+})();
 makeCollapsible('log-panel-hdr',   'log-panel-body',   'log-toggle',         true);
 makeCollapsible('settings-hdr',    'settings-body',    'settings-toggle',    false);
 
@@ -1440,9 +1719,9 @@ document.getElementById('btn-add-gifter').addEventListener('click', () => {
   if (!name) { document.getElementById('ag-name').focus(); return; }
   if (amount <= 0) { document.getElementById('ag-amount').focus(); return; }
 
-  upsertGift(name, amount, type, typeToPlatform(type), note);
+  const key = upsertGift(name, amount, type, typeToPlatform(type), note);
   renderTable();
-  flashRow(normKey(name));
+  flashRow(key);
   clearAddForm();
   document.getElementById('add-gifter-panel').style.display = 'none';
 });
