@@ -49,6 +49,58 @@ html, body {
   gap: 0;
 }
 
+/* ── TOP VIEWER BAR ── */
+#top-viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 5px 14px;
+  background: rgba(0,0,0,0.35);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tvc-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+}
+.tvc-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+.tvc-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.tvc-label {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+}
+.tvc-num {
+  font-family: var(--boogaloo);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--txt-dim);
+  min-width: 38px;
+  text-align: right;
+  transition: color 0.3s;
+}
+.tvc-num.live { color: var(--txt); }
+.tvc-num.pop  { animation: vcPop 0.35s ease; }
+.tvc-icon {
+  font-size: 11px;
+  opacity: 0.4;
+}
+
 .main-row {
   display: flex;
   flex: 1;
@@ -643,6 +695,23 @@ html, body {
 
 <div class="root">
 
+  <!-- VIEWER BAR -->
+  <div id="top-viewer-bar">
+    <div class="tvc-chip" id="tvc-tt">
+      <span class="tvc-dot" style="background:var(--tt)"></span>
+      <span class="tvc-label">TikTok</span>
+      <span class="tvc-num" id="tvcn-tt">—</span>
+      <span class="tvc-icon">👁</span>
+    </div>
+    <div class="tvc-divider"></div>
+    <div class="tvc-chip" id="tvc-yt">
+      <span class="tvc-dot" style="background:var(--yt)"></span>
+      <span class="tvc-label">YouTube</span>
+      <span class="tvc-num" id="tvcn-yt">—</span>
+      <span class="tvc-icon">👁</span>
+    </div>
+  </div>
+
   <!-- MAIN ROW -->
   <div class="main-row">
 
@@ -846,21 +915,34 @@ function featureMessage(data) {
    MESSAGE HANDLING
 ═══════════════════════════════════════════ */
 function updateViewerCount(key, count) {
-  const bar = document.getElementById('vbar-' + key);
-  const el  = document.getElementById('vc-' + key);
-  if (!el) return;
-  bar.style.display = 'flex';
-  const prev = el.textContent;
+  const bar  = document.getElementById('vbar-' + key);
+  const el   = document.getElementById('vc-' + key);
+  const topN = document.getElementById('tvcn-' + key);
   const formatted = count >= 1000
     ? (count / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
     : count.toString();
-  if (prev !== formatted) {
-    el.textContent = formatted;
-    el.classList.add('live');
-    el.classList.remove('pop');
-    void el.offsetWidth; /* reflow for animation restart */
-    el.classList.add('pop');
-    setTimeout(() => el.classList.remove('pop'), 350);
+
+  // Panel sub-bar (existing)
+  if (el && bar) {
+    bar.style.display = 'flex';
+    if (el.textContent !== formatted) {
+      el.textContent = formatted;
+      el.classList.add('live');
+      el.classList.remove('pop');
+      void el.offsetWidth;
+      el.classList.add('pop');
+      setTimeout(() => el.classList.remove('pop'), 350);
+    }
+  }
+
+  // Top viewer bar (new)
+  if (topN && topN.textContent !== formatted) {
+    topN.textContent = formatted;
+    topN.classList.add('live');
+    topN.classList.remove('pop');
+    void topN.offsetWidth;
+    topN.classList.add('pop');
+    setTimeout(() => topN.classList.remove('pop'), 350);
   }
 }
 
