@@ -974,8 +974,8 @@ html, body {
   <!-- TOP GIFTER OVERLAY TEST BAR -->
   <div class="test-bar" id="test-bar">
     <div class="test-bar-header">
-      <span class="test-bar-title">🧪 Top Gifter Overlay Test</span>
-      <span class="test-bar-sub">fires leaderboard event → overlay-topgifter</span>
+      <span class="test-bar-title">🧪 Giftr Overlay Test</span>
+      <span class="test-bar-sub">fires giftr event → giftr-overlay</span>
     </div>
     <div class="test-row">
       <input  class="test-input"  id="test-name"   type="text"   placeholder="Viewer name…" value="TestViewer" style="width:120px;">
@@ -1684,9 +1684,9 @@ document.addEventListener('keydown', e => {
 });
 
 /* ═══════════════════════════════════════════
-   OVERLAY TEST — Top Gifter
-   Publishes a 'leaderboard' event to Ably so you
-   can preview the topgifter overlay animations
+   OVERLAY TEST — Giftr Bar
+   Publishes a 'giftr' event to Ably so you
+   can preview the giftr-overlay bar animations
    without real stream data.
 ═══════════════════════════════════════════ */
 function toggleTestBar() {
@@ -1717,27 +1717,22 @@ function testTypeToPlatform(type) {
   }
 }
 
-/* Build a realistic leaderboard payload:
-   - Test user at #1
-   - Two auto-generated fillers at 60% and 35% of the test amount
-   so the ranked meter renders proportionally */
-function buildTestLeaderboard(name, type, amount) {
-  const platform   = testTypeToPlatform(type);
-  const rawDisplay = testRawDisplay(type, amount);
+/* Build a giftr payload so all 5 slots show test data:
+   - Primary slot matches the gift type (tiktok → tiktok slot, youtube → youtube slot)
+   - Other slots show the same name at scaled amounts so you can preview every card */
+function buildTestGiftr(name, type, amount) {
+  const platform = testTypeToPlatform(type);
+  const entry    = { name, amount, type, platform, profilePic: null };
+  const mk = (mult) => ({ name, amount: Math.round(amount * mult), type, platform, profilePic: null });
 
-  const amt2 = Math.max(1, Math.round(amount * 0.60));
-  const amt3 = Math.max(1, Math.round(amount * 0.35));
-  const total = amount + amt2 + amt3;
-
-  const featured = { name, rawDisplay, platform, profilePic: null };
-
-  const ranked = [
-    { rank: 1, name,          rawDisplay,                          platform, profilePic: null, spendShare: (amount / total) * 100 },
-    { rank: 2, name: 'Viewer2', rawDisplay: testRawDisplay(type, amt2), platform, profilePic: null, spendShare: (amt2   / total) * 100 },
-    { rank: 3, name: 'Viewer3', rawDisplay: testRawDisplay(type, amt3), platform, profilePic: null, spendShare: (amt3   / total) * 100 },
-  ];
-
-  return { featured, ranked, timeFrame: 'today' };
+  return {
+    daily:        mk(1),
+    weekly:       mk(3.5),
+    monthly:      mk(12),
+    youtube:      platform === 'youtube' ? entry : { name: 'YTViewer', amount: Math.round(amount * 0.7), type: 'youtube_jewels',  platform: 'youtube', profilePic: null },
+    tiktok:       platform === 'tiktok'  ? entry : { name: 'TTViewer', amount: Math.round(amount * 0.8), type: 'tiktok_coins',    platform: 'tiktok',  profilePic: null },
+    enabledSlots: ['daily','weekly','monthly','youtube','tiktok'],
+  };
 }
 
 function fireOverlayTest() {
@@ -1745,8 +1740,7 @@ function fireOverlayTest() {
   const type   = document.getElementById('test-type').value;
   const amount = parseFloat(document.getElementById('test-amount').value) || 500;
 
-  const payload = buildTestLeaderboard(name, type, amount);
-  ablyChannel.publish('leaderboard', payload);
+  ablyChannel.publish('giftr', buildTestGiftr(name, type, amount));
   doFlash('green');
 }
 
@@ -1756,9 +1750,12 @@ function quickTest(type, amount) {
   fireOverlayTest();
 }
 
-/* Hide the overlay by sending null featured */
+/* Clear the overlay by sending empty slots */
 function clearOverlayTest() {
-  ablyChannel.publish('leaderboard', { featured: null, ranked: [], timeFrame: 'today' });
+  ablyChannel.publish('giftr', {
+    daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
+    enabledSlots: [],
+  });
   doFlash('red');
 }
 
