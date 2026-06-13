@@ -484,11 +484,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 <body>
 
 <!-- ═══════════════════════════════════════ PAGE HEADER ══ -->
-<div id="sync-banner" style="display:none;position:fixed;top:10px;right:14px;z-index:2000;
-  align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--accent);
-  border-radius:6px;padding:5px 12px;font-size:12px;color:var(--accent);pointer-events:none">
-  &#x1F504; Synced from another tab
-</div>
+<div id="sync-banner" style="display:none;position:fixed;top:10px;right:14px;z-index:2000;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--accent);border-radius:6px;padding:5px 12px;font-size:12px;color:var(--accent);pointer-events:none">&#x1F504; Synced from another tab</div>
 <header class="page-header">
   <h1>🎁 Gift & Donation Tracker</h1>
   <span class="dim" id="last-updated-label"></span>
@@ -1423,8 +1419,8 @@ function disconnectSSN() {
 // These events are NEVER gifts — exclude even when hasDonation is set
 // (memberships expose hasDonation = the monthly subscription cost, not a gift)
 const EXCLUDED_EVENTS = new Set([
-  'member','membership','membershipgift','subscription',
-  'follow','raid','host','cheer','welcome','share','like',
+  'member','membership','membershipgift','memberjoin','newmember','subscription',
+  'follow','raid','host','cheer','welcome','share','like','chat','subchat',
 ]);
 
 function mapEventType(event, platform) {
@@ -1438,9 +1434,11 @@ function mapEventType(event, platform) {
    || e === 'superchatwithtext' || e === 'superchatevent'
    || e === 'donation' || e === 'giftpurchase')      return 'youtube_superchat';
   if (e === 'gift')                                  return 'tiktok_coins';
-  if (e === 'thankyou')                              return 'tiktok_coins';
+  // 'thankyou' is TikTok-only — YouTube fires it for member thank-you chat messages
+  if (e === 'thankyou' && p === 'tiktok')            return 'tiktok_coins';
 
   // TikTok fallback: SSN often sends gifts with no event string, only hasDonation
+  // Only allow this for explicit TikTok platform — not empty/unknown platform
   if (p === 'tiktok')   return 'tiktok_coins';
 
   // YouTube: SSN ALWAYS sends a named event for real superchats.
@@ -1494,54 +1492,6 @@ function parseHasDonation(str, knownType) {
   return null;
 }
 
-
-function safeGiftText(val) {
-  return stripHtml(val || '').slice(0, 220);
-}
-
-function buildGiftAlertPayload(name, amount, type, platform, note, userId, rawData) {
-  const viewerValue = computeValue(parseFloat(amount) || 0, type, 'viewer_spend', DB.settings.iosPercent ?? 50);
-  const nativeAmount = parseFloat(amount) || 0;
-  const rawDisplay = formatRawAmount(nativeAmount, type);
-  const message = safeGiftText(
-    note
-    || rawData?.superChatMessage
-    || rawData?.superchatMessage
-    || rawData?.comment
-    || rawData?.message
-    || rawData?.chatmessage
-    || rawData?.text
-    || ''
-  );
-
-  let tier = 'micro';
-  if (viewerValue >= 400) tier = 'mega';
-  else if (viewerValue >= 250 || nativeAmount >= 25000) tier = 'third';
-  else if (viewerValue >= 100 || nativeAmount >= 100000) tier = 'loud';
-  else if (viewerValue >= 50 || nativeAmount >= 5000) tier = 'big';
-  else if (viewerValue >= 9.99 || nativeAmount >= 1000) tier = 'center';
-
-  return {
-    id: uuidv4(),
-    name: name || 'Unknown',
-    amount: nativeAmount,
-    viewerValue,
-    rawDisplay,
-    type,
-    platform: platform || typeToPlatform(type) || 'unknown',
-    message,
-    userId: userId || null,
-    tier,
-    timestamp: Date.now(),
-  };
-}
-
-function publishGiftAlert(name, amount, type, platform, note, userId, rawData) {
-  if (!ablyChannel) return;
-  const payload = buildGiftAlertPayload(name, amount, type, platform, note, userId, rawData);
-  ablyChannel.publish('gift-alert', payload).catch(e => console.warn('[Ably] gift-alert publish err:', e));
-}
-
 function handleSSNEvent(payload) {
   const data = Array.isArray(payload) ? payload[1] : payload;
   if (!data || typeof data !== 'object') return;
@@ -1562,13 +1512,23 @@ function handleSSNEvent(payload) {
   // These sometimes have hasDonation set (e.g. membership cost) but are NOT gifts
   if (EXCLUDED_EVENTS.has(ssnEvent)) return;
 
-  const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase','thankyou',
-                        'superchat','superchatwithtext','superchatevent'].includes(ssnEvent);
+  // Secondary membership guard: SSN sometimes sends member-join events with no event
+  // string but hasDonation set to the membership price. Catch them by data fields.
+  const hasMembershipMarker = !ssnEvent && !!(
+    data.membership != null || data.isSubscriber || data.subBadge ||
+    data.membershipLevel != null || data.memberDuration != null
+  );
+  if (hasMembershipMarker) return;
+
+  // 'thankyou' is TikTok-only — restrict it in the event list too
+  const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase',
+                        'superchat','superchatwithtext','superchatevent'].includes(ssnEvent)
+                   || (ssnEvent === 'thankyou' && ssnPlatform === 'tiktok');
 
   // YouTube always uses named event strings for real superchats — hasDonation alone
-  // is not trustworthy for YouTube (member chat messages also have it set).
-  // TikTok legitimately omits the event string, so hasDonation is the primary signal there.
-  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube');
+  // is not trustworthy for YouTube (member chat messages may have it set).
+  // TikTok fallback: only when platform is explicitly 'tiktok' (not empty/unknown).
+  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform === 'tiktok');
 
   // Route TikTok chat messages to the chat panel (badge level captured below)
   const isTikTokChat = (ssnPlatform === 'tiktok') && !isRelevant && !!data.chatmessage;
@@ -1594,17 +1554,11 @@ function handleSSNEvent(payload) {
   const platform = ssnPlatform || typeToPlatform(type);
   const ts = Date.now();
 
-  // Amount resolution — in priority order:
-  // 1. hasDonation string ("N coins", "N Jewels", "$5.00") — preferred for jewels
-  //    because it preserves the native jewel count for display, and the conversion
-  //    math (jewels × $0.005) gives the same dollar result as donoValue anyway.
-  // 2. donoValue (USD, present on jeweldonation & giftpurchase) — used for
-  //    non-jewel types where we want the dollar figure directly.
-  // 3. other numeric fields
+  // Amount resolution:
+  // For jewels: use hasDonation first (preserves jewel count for display).
+  // For others: use donoValue (USD) then hasDonation fallback.
   let amount = 0;
 
-  // For jewel donations, always use hasDonation first so we store jewel count
-  // and display "N jewels" rather than silently converting to a superchat dollar value.
   if (hasDonationStr && type === 'youtube_jewels') {
     const parsed = parseHasDonation(hasDonationStr, type);
     if (parsed && parsed.amount > 0) {
@@ -1614,12 +1568,9 @@ function handleSSNEvent(payload) {
     }
   }
 
-  // For all other types, prefer donoValue (USD) when available
   if (amount === 0 && data.donoValue !== undefined && data.donoValue !== null && data.donoValue !== '') {
     const dv = parseAmount(data.donoValue);
-    if (dv > 0) {
-      amount = dv;
-    }
+    if (dv > 0) amount = dv;
   }
 
   if (amount === 0 && hasDonationStr) {
@@ -1654,9 +1605,7 @@ function handleSSNEvent(payload) {
 
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, badgeLevel);
   if (isRelevant && amount > 0) {
-    const message = (type === 'youtube_superchat') ? safeGiftText(data.chatmessage || data.message || data.comment || '') : '';
-    const key = upsertGift(name, amount, type, platform, message, userId);
-    publishGiftAlert(name, amount, type, platform, message, userId, data);
+    const key = upsertGift(name, amount, type, platform, '', userId);
     renderTable();
     flashRow(key);
   }
@@ -1787,9 +1736,7 @@ document.getElementById('btn-add-gifter').addEventListener('click', () => {
   if (!name) { document.getElementById('ag-name').focus(); return; }
   if (amount <= 0) { document.getElementById('ag-amount').focus(); return; }
 
-  const platform = typeToPlatform(type);
-  const key = upsertGift(name, amount, type, platform, note);
-  publishGiftAlert(name, amount, type, platform, note, null, { message: note });
+  const key = upsertGift(name, amount, type, typeToPlatform(type), note);
   renderTable();
   flashRow(key);
   clearAddForm();
@@ -1823,14 +1770,12 @@ document.getElementById('modal-add-confirm').addEventListener('click', () => {
   if (amount <= 0) { document.getElementById('modal-amount').focus(); return; }
 
   const gifter = DB.gifters[addGiftKey];
-  const platform = typeToPlatform(type);
   gifter.gifts.push({
     id: uuidv4(), amount, type,
-    platform,
+    platform: typeToPlatform(type),
     timestamp: Date.now(), note
   });
   saveData(DB);
-  publishGiftAlert(gifter.displayName, amount, type, platform, note, gifter.userId || null, { message: note });
   renderTable();
   flashRow(addGiftKey);
   document.getElementById('modal-add-gift').classList.add('hidden');
@@ -2648,10 +2593,6 @@ document.getElementById('edit-entries-save').addEventListener('click', () => {
 });
 
 /* ───────────────────────────── CROSS-TAB SYNC ──── */
-// If this file is open in multiple tabs simultaneously, the last tab to save
-// would overwrite any changes made in other tabs. This listener keeps all tabs
-// in sync: whenever any tab saves to localStorage, every other tab reloads the
-// data and re-renders automatically — so nothing gets silently lost.
 window.addEventListener('storage', e => {
   if (e.key !== STORAGE_KEY || !e.newValue) return;
   try {
@@ -2659,7 +2600,6 @@ window.addEventListener('storage', e => {
     applySettings();
     renderTable();
     renderLastUpdated(DB.lastUpdated);
-    // Brief banner so you know a sync happened
     const banner = document.getElementById('sync-banner');
     if (banner) {
       banner.style.display = 'flex';
