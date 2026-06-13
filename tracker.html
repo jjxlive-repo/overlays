@@ -1420,7 +1420,7 @@ function disconnectSSN() {
 // (memberships expose hasDonation = the monthly subscription cost, not a gift)
 const EXCLUDED_EVENTS = new Set([
   'member','membership','membershipgift','memberjoin','newmember','subscription',
-  'follow','raid','host','cheer','welcome','share','like','chat','subchat',
+  'follow','raid','host','cheer','welcome','share','like',
 ]);
 
 function mapEventType(event, platform) {
@@ -1512,16 +1512,6 @@ function handleSSNEvent(payload) {
   // These sometimes have hasDonation set (e.g. membership cost) but are NOT gifts
   if (EXCLUDED_EVENTS.has(ssnEvent)) return;
 
-  // Secondary membership guard: SSN sometimes sends member-join events with no event
-  // string but hasDonation set to the membership price. Catch them by data fields.
-  // Only apply membership guard to non-TikTok events — TikTok uses data.membership
-  // for the gifter's fan badge level, not a YouTube-style membership subscription.
-  const hasMembershipMarker = !ssnEvent && ssnPlatform !== 'tiktok' && !!(
-    data.membership != null || data.isSubscriber || data.subBadge ||
-    data.membershipLevel != null || data.memberDuration != null
-  );
-  if (hasMembershipMarker) return;
-
   // 'thankyou' is TikTok-only — restrict it in the event list too
   const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase',
                         'superchat','superchatwithtext','superchatevent'].includes(ssnEvent)
@@ -1605,11 +1595,23 @@ function handleSSNEvent(payload) {
   // Extract platform user ID for deduplication (two "Justin"s on different platforms stay separate)
   const userId = data.userid || data.channelid || data.authorId || null;
 
+  // Gift image + title from SSN (TikTok CDN URL for the gift graphic)
+  const contentImg = data.contentimg || data.giftImage || null;
+  const giftTitle  = data.gifttitle  || null;
+
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, badgeLevel);
   if (isRelevant && amount > 0) {
     const key = upsertGift(name, amount, type, platform, '', userId);
     renderTable();
     flashRow(key);
+    // Publish gift-alert to Ably → triggers gift-bar explosion animation
+    if (ablyChannel) {
+      ablyChannel.publish('gift-alert', {
+        name, amount, type, platform,
+        contentImg, giftTitle,
+        _src: 'tracker',
+      }).catch(() => {});
+    }
   }
 }
 
