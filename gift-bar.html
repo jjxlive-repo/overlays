@@ -148,6 +148,26 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   80%  { box-shadow: inset 0 0 0 1px rgba(168,85,247,0.88),  0 0 14px rgba(168,85,247,0.28);  }
   100% { box-shadow: inset 0 0 0 1px rgba(192,132,252,0.82), 0 0 10px rgba(192,132,252,0.22); }
 }
+/* ─── GRADIENT FADE — extends bg leftward in idle across full canvas ─── */
+/* Sits between bar-bg-layer (right 360px) and left edge of canvas.       */
+/* Fades transparent → dark, seamlessly joining bar-bg-layer at x=720.    */
+#bar-fade-left {
+  position: absolute; right: 360px; top: 0;
+  width: 720px; height: 50px;
+  /* default colour — updated per-slot in JS */
+  background: linear-gradient(to right,
+    transparent 0%,
+    rgba(5,0,14,0.04) 18%,
+    rgba(5,0,14,0.22) 42%,
+    rgba(5,0,14,0.56) 68%,
+    rgba(5,0,14,0.76) 100%);
+  pointer-events: none;
+  transition: opacity 0.50s ease;
+  z-index: 2;
+}
+/* Dissolves out when bar expands to full width on alert */
+#gift-bar.alert-active #bar-fade-left { opacity: 0; }
+
 /* Progress line along bottom of bar */
 #bar-progress {
   position: absolute; bottom: 0; left: 0;
@@ -287,6 +307,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     <div id="bar-border"></div>
     <div id="bar-progress"></div>
   </div>
+  <!-- Gradient fade: transparent (left) → bar bg (right), dismissed on alert -->
+  <div id="bar-fade-left"></div>
   <div id="bar-hero">
     <span id="bar-hero-name"></span>
     <span id="bar-hero-amount"></span>
@@ -570,6 +592,16 @@ function showSlot(idx) {
     rgba(${pc.edgeRgb},0.65) 100%)`;
   document.getElementById('line-top').style.background =
   document.getElementById('line-bot').style.background = lineGrad;
+
+  // Gradient bg fade: dark + faint platform tint, joins bar at x=720
+  document.getElementById('bar-fade-left').style.background =
+    `linear-gradient(to right,
+      transparent 0%,
+      rgba(5,0,14,0.04) 15%,
+      rgba(5,0,14,0.18) 38%,
+      rgba(${pc.edgeRgb},0.04) 55%,
+      rgba(5,0,14,0.55) 70%,
+      rgba(5,0,14,0.76) 100%)`;
 
   startProgress(CONFIG.ROTATE_MS);
 }
