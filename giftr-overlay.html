@@ -7,48 +7,50 @@
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
 html, body {
-  width: 1080px;
-  height: 1920px;
-  overflow: hidden;
-  background: transparent;
-}
-
-/* ─── PARTICLE CANVAS ─────────────────────────────────── */
-#particle-canvas {
-  position: absolute;
-  top: 0; left: 0;
   width: 1080px; height: 1920px;
-  pointer-events: none;
-  z-index: 50;
+  overflow: hidden; background: transparent;
 }
 
-/* ─── SCREEN PULSE (tier 4+) ──────────────────────────── */
+/* ─── PARTICLE CANVAS ─── */
+#particle-canvas {
+  position: absolute; top: 0; left: 0;
+  width: 1080px; height: 1920px;
+  pointer-events: none; z-index: 50;
+}
+
+/* ─── SCREEN PULSE (tier 4+) ─── */
 #screen-pulse {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 8;
-  opacity: 0;
-  transition: opacity 0.35s ease;
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 8;
+  opacity: 0; transition: opacity 0.35s ease;
 }
 
-/* ─────────────────── BAR ─────────────────────────────── */
+/* ═══════════════════════════════════════════════════════
+   BAR
+   #giftr-bar → overflow:visible so the giant name/amount
+   text bleeds above & below the 50px bar height.
+   All background elements live in #bar-bg-layer which
+   keeps overflow:hidden so only text overflows.
+═══════════════════════════════════════════════════════ */
 #giftr-bar {
   position: absolute;
   top: 450px; left: 0;
   width: 1080px; height: 50px;
-  overflow: hidden;
-  opacity: 0;
-  transition: opacity 0.6s ease;
+  overflow: visible;   /* ← text intentionally bleeds out */
+  opacity: 0; transition: opacity 0.6s ease;
   z-index: 10;
 }
 #giftr-bar.visible { opacity: 1; }
 
+/* Background elements — clipped to 50px bar */
+#bar-bg-layer {
+  position: absolute; inset: 0;
+  overflow: hidden;
+}
 #bar-bg {
   position: absolute; inset: 0;
-  background: rgba(5, 0, 14, 0.86);
+  background: rgba(5, 0, 14, 0.68); /* semi-transparent glass */
   z-index: 0;
 }
 #bar-wash {
@@ -83,80 +85,123 @@ html, body {
   z-index: 5; border-radius: 0 1px 1px 0;
 }
 
-/* ─── BAR FRAMES (no nav dots) ────────────────────────── */
+/* Diagonal glint flare — periodic shine sweep */
+#bar-shimmer-flare {
+  position: absolute; inset: 0;
+  background: linear-gradient(115deg,
+    transparent 15%, rgba(255,255,255,0.20) 50%, transparent 85%);
+  background-size: 260% 100%;
+  background-position: -260% 0;
+  pointer-events: none; z-index: 7;
+  animation: barFlareSweep 5s ease-in-out infinite;
+}
+@keyframes barFlareSweep {
+  0%   { background-position: -260% 0; opacity: 0; }
+  8%   { opacity: 1; }
+  50%  { background-position: 260% 0; opacity: 0; }
+  100% { background-position: 260% 0; opacity: 0; }
+}
+
+/* Shimmer border — outside bar-bg-layer so outer glow bleeds */
+#bar-border {
+  position: absolute; inset: 0;
+  z-index: 8; pointer-events: none;
+  animation: barBorderShimmer 5s linear infinite;
+}
+@keyframes barBorderShimmer {
+  0%   { box-shadow: inset 0 0 0 1px rgba(192,132,252,0.82), 0 0 10px rgba(192,132,252,0.22); }
+  20%  { box-shadow: inset 0 0 0 1px rgba(232,121,249,0.96), 0 0 18px rgba(232,121,249,0.34); }
+  40%  { box-shadow: inset 0 0 0 1px rgba(105,201,208,0.82), 0 0 10px rgba(105,201,208,0.22); }
+  60%  { box-shadow: inset 0 0 0 1px rgba(238, 29, 82,0.88), 0 0 14px rgba(238, 29, 82,0.28); }
+  80%  { box-shadow: inset 0 0 0 1px rgba(168, 85,247,0.88), 0 0 14px rgba(168, 85,247,0.28); }
+  100% { box-shadow: inset 0 0 0 1px rgba(192,132,252,0.82), 0 0 10px rgba(192,132,252,0.22); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   BAR FRAMES — new layout:
+   Left 2/3  → giant NAME + AMOUNT  (overflow: visible)
+   Right 1/3 → compact platform/slot info (overflow: hidden)
+
+   Name at 90px bleeds ~20px above & below the 50px bar.
+   Amount at 58px bleeds ~4px above & below.
+   This creates the "bursting out of the banner" effect.
+═══════════════════════════════════════════════════════ */
 .bar-frame {
   position: absolute; inset: 0;
   display: flex; align-items: center;
-  padding: 0 14px; gap: 0;
+  overflow: visible;
   z-index: 3; opacity: 0;
   transition: opacity 0.42s ease;
   pointer-events: none;
 }
 .bar-frame.active { opacity: 1; }
 
-.bar-accent {
-  width: 3px; height: 28px; border-radius: 2px;
-  flex-shrink: 0; margin-right: 12px;
+/* Left ~69% — hero name + amount, overflow visible */
+.bar-left {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center;
+  padding: 0 16px 0 18px;
+  gap: 20px;
+  overflow: visible;
 }
+
+/* 90px in a 50px bar → bleeds 20px top and bottom */
+.bar-name-big {
+  font-family: 'Anton', sans-serif;
+  font-size: 90px; line-height: 1;
+  text-transform: uppercase; color: #ffffff;
+  letter-spacing: 1px; white-space: nowrap;
+  text-shadow:
+    0 3px 18px rgba(0,0,0,0.95),
+    0 1px 5px  rgba(0,0,0,0.85),
+    0 0 40px   rgba(255,255,255,0.06);
+  overflow: visible; flex-shrink: 1;
+}
+
+/* 58px → bleeds ~4px top and bottom */
+.bar-amount-big {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 58px; letter-spacing: 4px;
+  white-space: nowrap; flex-shrink: 0;
+  overflow: visible;
+  /* colour set inline via platform edge */
+}
+
+/* Right ~31% — compact info, stays inside 50px bar */
+.bar-right-info {
+  width: 330px; flex-shrink: 0;
+  height: 50px; overflow: hidden;
+  display: flex; flex-direction: column;
+  align-items: flex-end; justify-content: center;
+  padding: 0 16px; gap: 3px;
+  background: rgba(0,0,0,0.14);
+  border-left: 1px solid rgba(255,255,255,0.06);
+}
+
 .bar-plat {
   font-family: 'DM Sans', sans-serif;
   font-size: 10px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 2px 8px; border-radius: 4px;
-  flex-shrink: 0; margin-right: 10px;
-  white-space: nowrap; line-height: 18px;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px;
+  white-space: nowrap; line-height: 17px; flex-shrink: 0;
 }
 .plat-tiktok  { color: #69C9D0; background: rgba(105,201,208,0.16); border: 1px solid rgba(105,201,208,0.30); }
 .plat-youtube { color: #FF6B6B; background: rgba(255, 80, 80,0.16); border: 1px solid rgba(255, 80, 80,0.30); }
 .plat-direct,
 .plat-default { color: #C084FC; background: rgba(192,132,252,0.16); border: 1px solid rgba(192,132,252,0.30); }
 
-.bar-sep {
-  width: 1px; height: 22px;
-  background: rgba(255,255,255,0.12);
-  flex-shrink: 0; margin: 0 12px;
-}
-.bar-label {
+.bar-slot-lbl {
   font-family: 'DM Sans', sans-serif;
-  font-size: 11px; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: rgba(255,255,255,0.42);
-  flex-shrink: 0; white-space: nowrap;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: rgba(255,255,255,0.36); white-space: nowrap;
 }
 
-/* Name + Amount grouped — pushed right, amount bumps against name */
-.bar-right {
-  display: flex; align-items: center;
-  margin-left: auto; gap: 10px;
-  min-width: 0; overflow: hidden;
-}
-.bar-name {
-  font-family: 'Anton', sans-serif;
-  font-size: 26px; text-transform: uppercase;
-  color: #ffffff; letter-spacing: 2px;
-  overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap;
-  text-shadow: 0 2px 10px rgba(0,0,0,0.8);
-}
-.bar-amount {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 23px; letter-spacing: 3px;
-  flex-shrink: 0; white-space: nowrap;
-}
-.amt-tiktok  { color: #69C9D0; text-shadow: 0 0 18px rgba(105,201,208,0.55); }
-.amt-youtube { color: #FF6B6B; text-shadow: 0 0 18px rgba(255, 80, 80,0.55); }
-.amt-direct,
-.amt-default { color: #C084FC; text-shadow: 0 0 18px rgba(192,132,252,0.55); }
-
-/* ─────────────── GIFT PANEL ──────────────────────────── */
-/*
-  Positioned with top anchored near bar, extends downward.
-  transform-origin: top center → scaleY(0) collapses to bar area.
-  Panel sizes (centered on 1080px canvas):
-    T2: 680 wide  → left:200  T3: 860 → left:110
-    T4: 1000 → left:40        T5: 1060 → left:10
-    T6: 1080 → left:0
-*/
+/* ═══════════════════════════════════════════════════════
+   GIFT PANEL
+   Launches from bar (transform-origin: top center).
+   Semi-transparent glass + shimmering border.
+═══════════════════════════════════════════════════════ */
 #gift-panel {
   position: absolute;
   transform-origin: top center;
@@ -175,6 +220,7 @@ html, body {
   animation: panelOut 0.38s ease-in forwards;
 }
 
+/* Tier sizes — centered on 1080px canvas, anchored at/near bar */
 #gift-panel[data-tier="2"] { top: 500px; left: 200px; width: 680px;  height: 580px;  }
 #gift-panel[data-tier="3"] { top: 500px; left: 110px; width: 860px;  height: 830px;  }
 #gift-panel[data-tier="4"] { top: 490px; left:  40px; width: 1000px; height: 1100px; }
@@ -191,44 +237,74 @@ html, body {
   100% { opacity: 0; transform: scaleY(0.06) scaleX(0.65); }
 }
 
-/* Panel background */
 #panel-bg {
   position: absolute; inset: 0;
   border-radius: 18px; z-index: 0;
 }
-/* Exterior glow behind panel */
 #panel-glow {
   position: absolute; inset: -35px;
-  border-radius: 52px;
-  filter: blur(44px);
-  z-index: 0;
+  border-radius: 52px; filter: blur(44px); z-index: 0;
   animation: glowPulse 2.4s ease-in-out infinite;
 }
 @keyframes glowPulse {
   0%, 100% { opacity: 0.42; filter: blur(44px); }
   50%       { opacity: 0.72; filter: blur(60px); }
 }
-/* Top accent stripe */
 #panel-stripe {
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 3px; z-index: 2;
+  height: 3px; z-index: 4;
   border-radius: 18px 18px 0 0;
 }
 
-/* Platform backgrounds */
+/* Shimmer border ring — cycling color inset shadow */
+#panel-border {
+  position: absolute; inset: 0;
+  border-radius: 18px; z-index: 7;
+  pointer-events: none;
+  animation: panelBorderShimmer 5s linear infinite;
+}
+@keyframes panelBorderShimmer {
+  0%   { box-shadow: inset 0 0 0 1.5px rgba(192,132,252,0.80); }
+  20%  { box-shadow: inset 0 0 0 1.5px rgba(232,121,249,0.95); }
+  40%  { box-shadow: inset 0 0 0 1.5px rgba(105,201,208,0.80); }
+  60%  { box-shadow: inset 0 0 0 1.5px rgba(238, 29, 82,0.85); }
+  80%  { box-shadow: inset 0 0 0 1.5px rgba(168, 85,247,0.85); }
+  100% { box-shadow: inset 0 0 0 1.5px rgba(192,132,252,0.80); }
+}
+
+/* Diagonal glint sweep across panel surface */
+#panel-shimmer-sweep {
+  position: absolute; inset: 0;
+  border-radius: 18px; z-index: 6; pointer-events: none;
+  background: linear-gradient(115deg,
+    transparent 20%, rgba(255,255,255,0.06) 50%, transparent 80%);
+  background-size: 260% 100%;
+  animation: panelFlareSweep 7s ease-in-out infinite;
+}
+@keyframes panelFlareSweep {
+  0%   { background-position: -260% 0; opacity: 0; }
+  8%   { opacity: 1; }
+  42%  { background-position: 260% 0; opacity: 0; }
+  100% { background-position: 260% 0; opacity: 0; }
+}
+
+/* Semi-transparent glass backgrounds */
 #gift-panel[data-platform="tiktok"]  #panel-bg {
-  background: linear-gradient(160deg, rgba(16,4,26,0.97) 0%, rgba(28,10,38,0.99) 100%);
-  border: 1px solid rgba(105,201,208,0.26);
+  background: linear-gradient(160deg, rgba(16,4,26,0.74) 0%, rgba(28,10,38,0.80) 100%);
+  border: 1px solid rgba(105,201,208,0.20);
+  backdrop-filter: blur(18px);
 }
 #gift-panel[data-platform="youtube"] #panel-bg {
-  background: linear-gradient(160deg, rgba(20,4,4,0.97) 0%, rgba(38,8,6,0.99) 100%);
-  border: 1px solid rgba(255,80,80,0.26);
+  background: linear-gradient(160deg, rgba(20,4,4,0.74) 0%, rgba(38,8,6,0.80) 100%);
+  border: 1px solid rgba(255,80,80,0.20);
+  backdrop-filter: blur(18px);
 }
 #gift-panel[data-platform="direct"]  #panel-bg,
 #gift-panel[data-platform="default"] #panel-bg {
-  background: linear-gradient(160deg, rgba(14,4,28,0.97) 0%, rgba(22,8,46,0.99) 100%);
-  border: 1px solid rgba(192,132,252,0.26);
+  background: linear-gradient(160deg, rgba(14,4,28,0.74) 0%, rgba(22,8,46,0.80) 100%);
+  border: 1px solid rgba(192,132,252,0.20);
+  backdrop-filter: blur(18px);
 }
 
 /* Glow colours */
@@ -242,7 +318,7 @@ html, body {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 50px 60px; z-index: 2;
+  padding: 50px 60px; z-index: 8;
   opacity: 0; transition: opacity 0.4s ease;
 }
 #panel-content.show { opacity: 1; }
@@ -259,7 +335,6 @@ html, body {
 #panel-plat-badge.plat-direct,
 #panel-plat-badge.plat-default { color: #C084FC; background: rgba(192,132,252,0.13); border: 1px solid rgba(192,132,252,0.38); }
 
-/* Username — scales with tier */
 #gift-name {
   font-family: 'Anton', sans-serif;
   text-transform: uppercase; color: #ffffff;
@@ -279,11 +354,9 @@ html, body {
   margin: 16px 0; flex-shrink: 0;
 }
 
-/* Amount — scales with tier */
 #gift-amount {
   font-family: 'Bebas Neue', sans-serif;
-  letter-spacing: 6px; text-align: center;
-  flex-shrink: 0;
+  letter-spacing: 6px; text-align: center; flex-shrink: 0;
 }
 #gift-panel[data-tier="2"] #gift-amount { font-size: 52px; }
 #gift-panel[data-tier="3"] #gift-amount { font-size: 70px; }
@@ -296,7 +369,6 @@ html, body {
 #gift-panel[data-platform="direct"]  #gift-amount,
 #gift-panel[data-platform="default"] #gift-amount { color: #C084FC; text-shadow: 0 0 50px rgba(192,132,252,0.65); }
 
-/* Tier label */
 #panel-tier-label {
   font-family: 'DM Sans', sans-serif;
   font-size: 11px; font-weight: 700;
@@ -305,7 +377,6 @@ html, body {
   margin-top: 18px; flex-shrink: 0;
 }
 
-/* SuperChat message */
 #gift-message {
   font-family: 'DM Sans', sans-serif;
   font-weight: 700; font-size: 22px;
@@ -322,10 +393,9 @@ html, body {
 #gift-panel[data-tier="5"] #gift-message,
 #gift-panel[data-tier="6"] #gift-message { font-size: 28px; max-height: 170px; }
 
-/* ─── TIER 1 SHIMMER ──────────────────────────────────── */
+/* ─── TIER 1 SHIMMER ─── */
 #tier1-shimmer {
-  position: absolute;
-  top: 450px; left: 0;
+  position: absolute; top: 450px; left: 0;
   width: 1080px; height: 50px;
   pointer-events: none; z-index: 15;
   background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.22) 50%, transparent 100%);
@@ -339,10 +409,9 @@ html, body {
   100% { opacity: 0; transform: translateX(110%);  }
 }
 
-/* ─── STATUS DOT ──────────────────────────────────────── */
+/* ─── STATUS DOT ─── */
 #status-dot {
-  position: absolute;
-  top: 454px; left: 6px;
+  position: absolute; top: 454px; left: 6px;
   width: 6px; height: 6px;
   border-radius: 50%; background: #444;
   z-index: 30; transition: background 0.3s;
@@ -357,20 +426,29 @@ html, body {
 <div id="screen-pulse"></div>
 
 <div id="giftr-bar">
-  <div id="bar-bg"></div>
-  <div id="bar-wash"></div>
-  <div id="bar-edge-top"></div>
-  <div id="bar-edge-bot"></div>
-  <div id="bar-sweep"></div>
+  <!-- Background layer — clipped to 50px bar -->
+  <div id="bar-bg-layer">
+    <div id="bar-bg"></div>
+    <div id="bar-wash"></div>
+    <div id="bar-edge-top"></div>
+    <div id="bar-edge-bot"></div>
+    <div id="bar-sweep"></div>
+    <div id="bar-progress"></div>
+    <div id="bar-shimmer-flare"></div>
+  </div>
+  <!-- Border lives outside bg-layer so outer glow can bleed -->
+  <div id="bar-border"></div>
+  <!-- Frames overflow the bar bounds (name/amount too tall) -->
   <div class="bar-frame" id="frame-a"></div>
   <div class="bar-frame" id="frame-b"></div>
-  <div id="bar-progress"></div>
 </div>
 
 <div id="gift-panel">
   <div id="panel-bg"></div>
   <div id="panel-glow"></div>
   <div id="panel-stripe"></div>
+  <div id="panel-shimmer-sweep"></div>
+  <div id="panel-border"></div>
   <div id="panel-content">
     <div id="panel-plat-badge"></div>
     <div id="gift-name"></div>
@@ -393,18 +471,18 @@ const CONFIG = {
 };
 
 /*
-  Gift tiers by amount:
-  Coins / Jewels:  <50=skip  <1k=T1  <5k=T2  <25k=T3  <100k=T4  <250k=T5  250k+=T6
-  USD:             <$1=skip  <$10=T1 <$50=T2 <$100=T3 <$250=T4  <$400=T5  $400+=T6
+  Tiers by gift amount:
+    Coins/Jewels: <50=skip  <1k=T1  <5k=T2  <25k=T3  <100k=T4  <250k=T5  250k+=T6
+    USD:          <$1=skip  <$10=T1 <$50=T2 <$100=T3 <$250=T4  <$400=T5  $400+=T6
 */
 const TIER_CONFIG = [
   null,
-  { duration:  5000, barOnly: true,  particles:   0 }, // T1 — bar shimmer only
-  { duration:  6500, barOnly: false, particles:  40 }, // T2 — small panel
-  { duration:  7500, barOnly: false, particles:  80 }, // T3 — mid panel
-  { duration:  9000, barOnly: false, particles: 150 }, // T4 — large panel
-  { duration: 11000, barOnly: false, particles: 250 }, // T5 — full column
-  { duration: 13000, barOnly: false, particles: 400 }, // T6 — god tier
+  { duration:  5000, barOnly: true,  particles:   0 }, // T1 bar shimmer
+  { duration:  6500, barOnly: false, particles:  40 }, // T2 small panel
+  { duration:  7500, barOnly: false, particles:  80 }, // T3 mid panel
+  { duration:  9000, barOnly: false, particles: 150 }, // T4 large panel
+  { duration: 11000, barOnly: false, particles: 250 }, // T5 full column
+  { duration: 13000, barOnly: false, particles: 400 }, // T6 god tier
 ];
 
 const TIER_LABELS = ['','','FEATURED GIFT','BIG GIFT','MEGA GIFT','LEGENDARY GIFT','⚡ GOD TIER ⚡'];
@@ -449,7 +527,6 @@ let rotateTimer  = null;
 let progressAnim = null;
 let pinned       = false;
 let frameActive  = 'a';
-
 let alertQueue   = [];
 let alertActive  = false;
 let panelOpen    = false;
@@ -460,7 +537,6 @@ let panelTimer   = null;
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
 function fmtAmount(amount, type) {
   const n = Number(amount) || 0;
   if (type === 'tiktok_coins')      return n.toLocaleString() + ' COINS';
@@ -469,71 +545,58 @@ function fmtAmount(amount, type) {
   if (type === 'direct_donation')   return '$' + (Number.isInteger(n) ? n.toLocaleString() : n.toFixed(2));
   return n.toLocaleString();
 }
-
-function platKey(p) {
-  return ['tiktok','youtube','direct'].includes(p) ? p : 'default';
-}
-
+function platKey(p) { return ['tiktok','youtube','direct'].includes(p) ? p : 'default'; }
 function platLabel(p) {
   if (p === 'tiktok')  return '♪ TikTok';
   if (p === 'youtube') return '▶ YouTube';
   if (p === 'direct')  return '💚 Direct';
   return '🎁 Gift';
 }
-
 function getTier(amount, type) {
   const n = Number(amount) || 0;
   if (type === 'tiktok_coins' || type === 'youtube_jewels') {
-    if (n < 50)      return 0;
-    if (n < 1000)    return 1;
-    if (n < 5000)    return 2;
-    if (n < 25000)   return 3;
-    if (n < 100000)  return 4;
-    if (n < 250000)  return 5;
+    if (n < 50)     return 0;
+    if (n < 1000)   return 1;
+    if (n < 5000)   return 2;
+    if (n < 25000)  return 3;
+    if (n < 100000) return 4;
+    if (n < 250000) return 5;
     return 6;
   }
-  // USD — superchat or direct
-  if (n < 1)    return 0;
-  if (n < 10)   return 1;
-  if (n < 50)   return 2;
-  if (n < 100)  return 3;
-  if (n < 250)  return 4;
-  if (n < 400)  return 5;
+  if (n < 1)   return 0;
+  if (n < 10)  return 1;
+  if (n < 50)  return 2;
+  if (n < 100) return 3;
+  if (n < 250) return 4;
+  if (n < 400) return 5;
   return 6;
 }
 
-/* ══ PARTICLE SYSTEM ════════════════════════════════════ */
+/* ══ PARTICLES ══════════════════════════════════════════ */
 const pCanvas = document.getElementById('particle-canvas');
 const pCtx    = pCanvas.getContext('2d');
 let   pList   = [];
 let   pRaf    = null;
 
 function emitParticles(tier, plat) {
-  const cfg    = TIER_CONFIG[tier];
+  const cfg = TIER_CONFIG[tier];
   if (!cfg || cfg.particles === 0) return;
   const colors = PLAT_COLORS[plat].particles;
-  const count  = cfg.particles;
-
-  for (let i = 0; i < count; i++) {
-    // Tiers 4+ go full circle; lower tiers fan mostly downward from bar
+  for (let i = 0; i < cfg.particles; i++) {
     const fullCircle = tier >= 4;
     const angle = fullCircle
       ? Math.random() * Math.PI * 2
-      : Math.PI * 0.25 + Math.random() * Math.PI * 0.5; // downward fan
+      : Math.PI * 0.25 + Math.random() * Math.PI * 0.5;
     const speed = (3 + Math.random() * tier * 3.4) * (0.55 + Math.random() * 0.9);
-
     pList.push({
-      x:     480 + Math.random() * 120,           // spread across bar center
-      y:     455 + Math.random() * 30,            // from bar area
-      vx:    Math.cos(angle) * speed,
-      vy:    Math.sin(angle) * speed,
+      x: 480 + Math.random() * 120, y: 455 + Math.random() * 30,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
       color: colors[Math.floor(Math.random() * colors.length)],
       size:  2.5 + Math.random() * tier * 1.7,
       life:  0.7 + Math.random() * 0.3,
       decay: 0.0028 + Math.random() * (0.006 / Math.max(tier, 1)),
-      type:  Math.random() < 0.55 ? 'rect' : 'circle',
-      rot:   Math.random() * Math.PI * 2,
-      rotV:  (Math.random() - 0.5) * 0.13,
+      type: Math.random() < 0.55 ? 'rect' : 'circle',
+      rot: Math.random() * Math.PI * 2, rotV: (Math.random() - 0.5) * 0.13,
     });
   }
   if (!pRaf) pTick();
@@ -542,16 +605,13 @@ function emitParticles(tier, plat) {
 function emitTier1Sparks(plat) {
   const colors = PLAT_COLORS[plat].particles;
   for (let i = 0; i < 18; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 1.5 + Math.random() * 3.5;
+    const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3.5;
     pList.push({
-      x: 100 + Math.random() * 880,
-      y: 465 + Math.random() * 16,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 1,
+      x: 100 + Math.random() * 880, y: 465 + Math.random() * 16,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1,
       color: colors[Math.floor(Math.random() * colors.length)],
-      size: 1.8 + Math.random() * 2.5,
-      life: 1, decay: 0.020 + Math.random() * 0.015,
+      size: 1.8 + Math.random() * 2.5, life: 1,
+      decay: 0.020 + Math.random() * 0.015,
       type: 'circle', rot: 0, rotV: 0,
     });
   }
@@ -561,27 +621,16 @@ function emitTier1Sparks(plat) {
 function pTick() {
   pCtx.clearRect(0, 0, 1080, 1920);
   pList = pList.filter(p => p.life > 0.015);
-
   for (const p of pList) {
-    p.x  += p.vx;
-    p.y  += p.vy;
-    p.vy += 0.22;        // gravity
-    p.vx *= 0.992;       // slight drag
-    p.life -= p.decay;
-    p.rot += p.rotV;
-
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.22; p.vx *= 0.992;
+    p.life -= p.decay; p.rot += p.rotV;
     pCtx.save();
     pCtx.globalAlpha = Math.max(0, Math.min(1, p.life));
     pCtx.fillStyle   = p.color;
-    pCtx.translate(p.x, p.y);
-    pCtx.rotate(p.rot);
-    if (p.type === 'rect') {
-      pCtx.fillRect(-p.size * 0.5, -p.size, p.size, p.size * 2);
-    } else {
-      pCtx.beginPath();
-      pCtx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
-      pCtx.fill();
-    }
+    pCtx.translate(p.x, p.y); pCtx.rotate(p.rot);
+    if (p.type === 'rect') { pCtx.fillRect(-p.size*.5, -p.size, p.size, p.size*2); }
+    else { pCtx.beginPath(); pCtx.arc(0,0,p.size/2,0,Math.PI*2); pCtx.fill(); }
     pCtx.restore();
   }
   pCtx.globalAlpha = 1;
@@ -597,18 +646,16 @@ function clearParticles() {
 /* ══ SCREEN PULSE ════════════════════════════════════════ */
 function triggerScreenPulse(plat, tier) {
   if (tier < 4) return;
-  const pc   = PLAT_COLORS[plat];
-  const sp   = document.getElementById('screen-pulse');
-  const size = (tier - 3) * 65;
-
+  const pc = PLAT_COLORS[plat];
+  const sp = document.getElementById('screen-pulse');
+  const sz = (tier - 3) * 65;
   function pulse(delay) {
     setTimeout(() => {
-      sp.style.boxShadow = `inset 0 0 ${size}px ${size * 0.55}px ${pc.pulse}`;
+      sp.style.boxShadow = `inset 0 0 ${sz}px ${sz*.55}px ${pc.pulse}`;
       sp.style.opacity   = '1';
       setTimeout(() => { sp.style.opacity = '0'; }, 700);
     }, delay);
   }
-
   pulse(0);
   if (tier >= 5) pulse(1300);
   if (tier >= 6) pulse(2500);
@@ -617,7 +664,7 @@ function triggerScreenPulse(plat, tier) {
 /* ══ PROGRESS LINE ═══════════════════════════════════════ */
 function startProgress(durationMs) {
   if (progressAnim) { cancelAnimationFrame(progressAnim); progressAnim = null; }
-  const bar   = document.getElementById('bar-progress');
+  const bar = document.getElementById('bar-progress');
   const start = performance.now();
   bar.style.width = '0%';
   function tick(now) {
@@ -628,7 +675,10 @@ function startProgress(durationMs) {
   progressAnim = requestAnimationFrame(tick);
 }
 
-/* ══ BAR FRAME BUILDER ═══════════════════════════════════ */
+/* ══ BAR FRAME BUILDER ═══════════════════════════════════
+   Left 2/3: giant name + amount (overflows bar height)
+   Right 1/3: compact platform + slot label
+══════════════════════════════════════════════════════════ */
 function buildFrameHTML(slotDef, entry) {
   const plat = entry ? platKey(entry.platform) : 'default';
   const pc   = PLAT_COLORS[plat];
@@ -636,13 +686,13 @@ function buildFrameHTML(slotDef, entry) {
   const amt  = entry ? fmtAmount(entry.amount, entry.type) : '';
 
   return `
-    <div class="bar-accent" style="background:${pc.edge}"></div>
-    <span class="bar-plat plat-${plat}">${esc(platLabel(entry?.platform))}</span>
-    <div class="bar-sep"></div>
-    <span class="bar-label">${esc(slotDef.label)}</span>
-    <div class="bar-right">
-      <span class="bar-name">${esc(name.toUpperCase())}</span>
-      <span class="bar-amount amt-${plat}">${esc(amt)}</span>
+    <div class="bar-left">
+      <span class="bar-name-big">${esc(name.toUpperCase())}</span>
+      <span class="bar-amount-big" style="color:${pc.edge};text-shadow:0 0 28px ${pc.edge}55;">${esc(amt)}</span>
+    </div>
+    <div class="bar-right-info">
+      <span class="bar-plat plat-${plat}">${esc(platLabel(entry?.platform))}</span>
+      <span class="bar-slot-lbl">${esc(slotDef.label)}</span>
     </div>
   `;
 }
@@ -650,7 +700,6 @@ function buildFrameHTML(slotDef, entry) {
 /* ══ SHOW SLOT ═══════════════════════════════════════════ */
 function showSlot(idx, overrideEntry, overrideLabel) {
   let slotDef, entry, doProgress = true;
-
   if (overrideEntry) {
     slotDef    = { key: 'alert', label: overrideLabel ?? 'JUST GIFTED' };
     entry      = overrideEntry;
@@ -699,7 +748,6 @@ function startRotation() {
     if (!pinned && !alertActive) showSlot(currentIdx + 1);
   }, CONFIG.ROTATE_MS);
 }
-
 function stopRotation() {
   if (rotateTimer)  { clearInterval(rotateTimer); rotateTimer = null; }
   if (progressAnim) { cancelAnimationFrame(progressAnim); progressAnim = null; }
@@ -709,27 +757,20 @@ function stopRotation() {
 function onGiftrData(data) {
   leaderboard = {};
   let hasAny  = false;
-
   SLOT_DEFS.forEach(def => {
     if (data[def.key]) { leaderboard[def.key] = data[def.key]; hasAny = true; }
   });
-
   const enabled = Array.isArray(data.enabledSlots)
     ? data.enabledSlots
     : ['daily','weekly','monthly','youtube','tiktok'];
-
   activeSlots = SLOT_DEFS.filter(d => {
     if (d.key === 'custom') return !!data.custom;
     return enabled.includes(d.key);
   });
-
   const bar = document.getElementById('giftr-bar');
   if (!hasAny || !activeSlots.length) {
-    bar.classList.remove('visible');
-    stopRotation();
-    return;
+    bar.classList.remove('visible'); stopRotation(); return;
   }
-
   bar.classList.add('visible');
   if (currentIdx >= activeSlots.length) currentIdx = 0;
   if (!alertActive) { showSlot(currentIdx); startRotation(); }
@@ -747,8 +788,7 @@ function runNextAlert() {
   if (!alertQueue.length) {
     alertActive = false;
     if (activeSlots.length) showSlot(currentIdx);
-    startRotation();
-    return;
+    startRotation(); return;
   }
   alertActive = true;
   showAlert(alertQueue.shift());
@@ -764,11 +804,9 @@ function showAlert(alert) {
   clearTimeout(alertTimeout);
   clearTimeout(panelTimer);
 
-  // Always flash "JUST GIFTED" in the bar
   showSlot(currentIdx, { name, amount, type, platform: plat }, 'JUST GIFTED');
 
   if (tier === 1) {
-    // Bar-only: shimmer + tiny sparks
     panelOpen = false;
     const shimmer = document.getElementById('tier1-shimmer');
     shimmer.classList.remove('active');
@@ -779,7 +817,6 @@ function showAlert(alert) {
     return;
   }
 
-  // Tiers 2–6: launch panel from bar
   panelOpen = true;
   const panel   = document.getElementById('gift-panel');
   const content = document.getElementById('panel-content');
@@ -787,43 +824,32 @@ function showAlert(alert) {
   panel.dataset.tier     = String(tier);
   panel.dataset.platform = plat;
 
-  // Stripe colour
   document.getElementById('panel-stripe').style.background =
     `linear-gradient(90deg, transparent, ${pc.edge}, transparent)`;
 
-  // Badge
   const badge = document.getElementById('panel-plat-badge');
   badge.className   = 'plat-' + plat;
   badge.textContent = platLabel(platform);
 
-  // Content
   document.getElementById('gift-name').textContent        = name.toUpperCase();
   document.getElementById('gift-amount').textContent      = fmtAmount(amount, type);
   document.getElementById('panel-tier-label').textContent = TIER_LABELS[tier] ?? '';
   document.getElementById('gift-divider').style.background =
     `linear-gradient(90deg, transparent, ${pc.edge}, transparent)`;
 
-  // SuperChat message
   const msgEl = document.getElementById('gift-message');
   if (note && type === 'youtube_superchat') {
-    msgEl.textContent = note;
-    msgEl.classList.add('show');
+    msgEl.textContent = note; msgEl.classList.add('show');
   } else {
-    msgEl.textContent = '';
-    msgEl.classList.remove('show');
+    msgEl.textContent = ''; msgEl.classList.remove('show');
   }
 
-  // Launch panel animation
   content.classList.remove('show');
   panel.className = 'show';
-
-  // Fade content in after panel opens
   panelTimer = setTimeout(() => content.classList.add('show'), 380);
 
-  // Particles + screen flash
   emitParticles(tier, plat);
   triggerScreenPulse(plat, tier);
-
   alertTimeout = setTimeout(dismissAlert, cfg.duration);
 }
 
@@ -837,22 +863,20 @@ function dismissAlert() {
     const panel   = document.getElementById('gift-panel');
     const content = document.getElementById('panel-content');
     content.classList.remove('show');
-
     setTimeout(() => {
       panel.className = 'hide';
       let done = false;
       const cleanup = () => {
         if (done) return; done = true;
-        panel.className      = '';
-        panel.dataset.tier   = '';
+        panel.className = '';
+        panel.dataset.tier = '';
         panel.dataset.platform = '';
         runNextAlert();
       };
       panel.addEventListener('animationend', cleanup, { once: true });
-      setTimeout(cleanup, 550); // safety fallback
+      setTimeout(cleanup, 550);
     }, 150);
   } else {
-    // Tier 1 or no panel — go straight to next
     runNextAlert();
   }
 }
@@ -866,11 +890,7 @@ function onGiftrCmd(data) {
   } else if (cmd.startsWith('slot:')) {
     const key = cmd.slice(5);
     const idx = activeSlots.findIndex(s => s.key === key);
-    if (idx >= 0) {
-      pinned = true;
-      stopRotation();
-      showSlot(idx);
-    }
+    if (idx >= 0) { pinned = true; stopRotation(); showSlot(idx); }
   }
 }
 
@@ -880,23 +900,17 @@ function onGiftrCmd(data) {
     const client  = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
     const channel = client.channels.get(CONFIG.ABLY_CHANNEL);
     const dot     = document.getElementById('status-dot');
-
     function setDot(cls) { dot.className = cls; }
     client.connection.on('connected',    () => setDot('connected'));
     client.connection.on('disconnected', () => setDot(''));
     client.connection.on('connecting',   () => setDot('connecting'));
-
     client.connection.once('connected', () => {
       channel.publish('cmd', 'requestLeaderboard').catch(() => {});
     });
-
     channel.subscribe('giftr',      msg => onGiftrData(msg.data));
     channel.subscribe('gift-alert', msg => onGiftAlert(msg.data));
     channel.subscribe('giftr-cmd',  msg => onGiftrCmd(msg.data));
-
-  } catch(e) {
-    console.warn('[Ably] init failed:', e);
-  }
+  } catch(e) { console.warn('[Ably] init failed:', e); }
 })();
 </script>
 </body>
