@@ -175,28 +175,24 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   letter-spacing: 1px; white-space: nowrap; overflow: visible; flex-shrink: 1; min-width: 0;
   text-shadow: 0 3px 18px rgba(0,0,0,0.95), 0 0 40px rgba(255,255,255,0.06);
 }
-/* 58px Bebas — also overflows slightly. Dark stroke + glow for readability */
+/* 58px Bebas — overflows bar. Shadow+glow set dynamically in JS. */
 #bar-hero-amount {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 58px; letter-spacing: 4px;
   white-space: nowrap; flex-shrink: 0; overflow: visible;
-  /* stroke simulation: 4 dark offsets + platform glow set in JS */
-  text-shadow:
-    -2px -2px 0 rgba(0,0,0,0.95),
-     2px -2px 0 rgba(0,0,0,0.95),
-    -2px  2px 0 rgba(0,0,0,0.95),
-     2px  2px 0 rgba(0,0,0,0.95),
-     0 0 0 rgba(0,0,0,0.95);  /* overridden inline with platform glow */
 }
 
-/* ─── INFO PANEL — right 360px, always visible ─── */
+/* ─── INFO PANEL — anchored right, expands left with content ─── */
 #bar-info {
   position: absolute; right: 0; top: 0;
-  width: 360px; height: 50px;
+  width: auto; min-width: 260px; height: 50px;
   overflow: hidden;
+  /* own bg so it always covers its content regardless of clip-path on bar-bg-layer */
+  background: rgba(5,0,14,0.76);
+  border-left: 1px solid rgba(255,255,255,0.06);
   display: flex; flex-direction: column;
   justify-content: center; align-items: flex-end;
-  padding: 0 14px 0 10px; gap: 3px;
+  padding: 0 14px 0 14px; gap: 3px;
   transition: opacity 0.28s ease;
 }
 
@@ -222,8 +218,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #bar-info-name {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 24px; letter-spacing: 2px; color: #fff;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 175px; flex-shrink: 1;
+  white-space: nowrap;   /* never wraps */
+  flex-shrink: 0;        /* never squishes — container expands instead */
   text-shadow: 0 2px 8px rgba(0,0,0,0.9);
 }
 #bar-info-amount {
@@ -652,16 +648,14 @@ function showAlert(alert) {
   heroAmt.style.color = pc.edge;
   // Stroke via 4 dark offsets, then bright platform glow
   heroAmt.style.textShadow = [
-    '-2px -2px 0 rgba(0,0,0,0.98)',
-     '2px -2px 0 rgba(0,0,0,0.98)',
-    '-2px  2px 0 rgba(0,0,0,0.98)',
-     '2px  2px 0 rgba(0,0,0,0.98)',
-    `-1px -1px 0 rgba(0,0,0,0.7)`,
-     `1px -1px 0 rgba(0,0,0,0.7)`,
-    `-1px  1px 0 rgba(0,0,0,0.7)`,
-     `1px  1px 0 rgba(0,0,0,0.7)`,
-    `0 0 30px rgba(${pc.edgeRgb},0.90)`,
-    `0 0 60px rgba(${pc.edgeRgb},0.45)`,
+    // Drop shadow for depth (no hard outline — soft directional dark)
+    '0 3px 10px rgba(0,0,0,0.98)',
+    '0 6px 22px rgba(0,0,0,0.85)',
+    // Platform color glow — inner tight, outer wide bloom
+    `0 0 12px rgba(${pc.edgeRgb},1.0)`,
+    `0 0 30px rgba(${pc.edgeRgb},0.85)`,
+    `0 0 65px rgba(${pc.edgeRgb},0.55)`,
+    `0 0 120px rgba(${pc.edgeRgb},0.25)`,
   ].join(', ');
   document.getElementById('gift-bar').classList.add('alert-active');
 
