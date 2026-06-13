@@ -1106,15 +1106,25 @@ html, body {
       <button class="test-fire" style="min-width:76px;" onclick="sendAnnounce()">⚡ Update</button>
       <button class="sp-bait-set" id="btn-ann-visible" onclick="toggleAnnounceVisible()" style="min-width:60px;">Show</button>
     </div>
-    <!-- Row 2: X + Y position -->
+    <!-- Row 2: Size -->
+    <div class="test-row" style="gap:4px;">
+      <span class="sp-pos-label" style="flex-shrink:0;">Size:</span>
+      <button class="sp-pos-btn" data-asize="xs"  onclick="setAnnounceSize('xs')">XS</button>
+      <button class="sp-pos-btn" data-asize="sm"  onclick="setAnnounceSize('sm')">S</button>
+      <button class="sp-pos-btn" data-asize="md"  onclick="setAnnounceSize('md')">M</button>
+      <button class="sp-pos-btn active" data-asize="lg"  onclick="setAnnounceSize('lg')">L ★</button>
+      <button class="sp-pos-btn" data-asize="xl"  onclick="setAnnounceSize('xl')">XL</button>
+      <button class="sp-pos-btn" data-asize="xxl" onclick="setAnnounceSize('xxl')">XXL</button>
+    </div>
+    <!-- Row 3: X + Y position -->
     <div class="test-row" style="gap:4px;flex-wrap:wrap;">
       <span class="sp-pos-label" style="flex-shrink:0;">X:</span>
       <button class="sp-pos-btn" data-ax="left"   onclick="setAnnounceX('left')">Left</button>
-      <button class="sp-pos-btn active" data-ax="center" onclick="setAnnounceX('center')">Center</button>
+      <button class="sp-pos-btn active" data-ax="center" onclick="setAnnounceX('center')">Ctr</button>
       <button class="sp-pos-btn" data-ax="right"  onclick="setAnnounceX('right')">Right</button>
       <span class="sp-pos-label" style="flex-shrink:0;margin-left:10px;">Y:</span>
-      <button class="sp-pos-btn" data-ay="top"    onclick="setAnnounceY('top')">Top</button>
-      <button class="sp-pos-btn active" data-ay="upper" onclick="setAnnounceY('upper')">Upper</button>
+      <button class="sp-pos-btn active" data-ay="top"    onclick="setAnnounceY('top')">Top</button>
+      <button class="sp-pos-btn" data-ay="upper"  onclick="setAnnounceY('upper')">Upper</button>
       <button class="sp-pos-btn" data-ay="center" onclick="setAnnounceY('center')">Center</button>
       <button class="sp-pos-btn" data-ay="lower"  onclick="setAnnounceY('lower')">Lower</button>
       <button class="sp-pos-btn" data-ay="bottom" onclick="setAnnounceY('bottom')">Bottom</button>
@@ -1996,7 +2006,7 @@ function toggleBaitVisible() {
    ANNOUNCE / LIVE TEXT BOX
 ═══════════════════════════════════════════ */
 let announceVisible = false;
-let announceX = 'center', announceY = 'upper';
+let announceX = 'center', announceY = 'top', announceSize = 'lg';
 
 function toggleAnnounceBar() {
   const bar = document.getElementById('announce-bar');
@@ -2020,12 +2030,18 @@ function sendAnnounce() {
   const text  = document.getElementById('ann-main').value.trim();
   const sub   = document.getElementById('ann-sub').value.trim();
   const badge = document.getElementById('ann-badge').value.trim();
-  const payload = { x: announceX, y: announceY };
+  const payload = { x: announceX, y: announceY, size: announceSize };
   if (text)  payload.text  = text;
   payload.sub   = sub;   // empty string clears sub text
   if (badge) payload.badge = badge;
   ablyChannel.publish('announce', payload).catch(() => {});
   doFlash('green');
+}
+
+function setAnnounceSize(size) {
+  announceSize = size;
+  document.querySelectorAll('[data-asize]').forEach(b => b.classList.toggle('active', b.dataset.asize === size));
+  ablyChannel.publish('announce', { size }).catch(() => {});
 }
 
 function setAnnounceX(x) {
