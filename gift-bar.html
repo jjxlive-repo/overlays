@@ -350,16 +350,20 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 /* ─── ANNOUNCE BOX ─── */
 #announce-box {
   --ax: 540px; --ay: 200px;
+  --aw: 800px; --afm: 76px; --afs: 40px;
   position: absolute; z-index: 15; pointer-events: none;
-  left: var(--ax); top: var(--ay);
+  /* clamp keeps box fully within 0–1080px canvas regardless of X position */
+  left: clamp(calc(var(--aw) / 2), var(--ax), calc(1080px - var(--aw) / 2));
+  top: var(--ay);
   transform: translate(-50%, calc(-50% + 18px)) scale(0.92);
   opacity: 0;
   transition: opacity 0.45s cubic-bezier(.34,1.56,.64,1),
               transform 0.45s cubic-bezier(.34,1.56,.64,1),
-              left 0.38s ease, top 0.38s ease;
+              left 0.38s ease, top 0.38s ease,
+              width 0.25s ease;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 24px 52px 22px;
-  width: max-content; max-width: 1000px; min-width: 360px; text-align: center;
+  padding: 24px 44px 22px;
+  width: var(--aw); text-align: center;
   background: linear-gradient(160deg, rgba(14,0,38,0.93), rgba(6,0,20,0.90));
   border-radius: 22px;
   border: 2px solid rgba(168,85,247,0.75);
@@ -403,18 +407,21 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 @keyframes livePulse { 0%,100%{opacity:1;color:#F43F5E} 50%{opacity:0.65;color:#FB7185} }
 #announce-text {
-  font-family: 'Boogaloo', cursive; font-size: 84px; line-height: 1.0;
-  color: #FAF5FF; letter-spacing: 2px; white-space: nowrap;
+  font-family: 'Boogaloo', cursive; font-size: var(--afm); line-height: 1.0;
+  color: #FAF5FF; letter-spacing: 2px;
+  white-space: normal; word-break: break-word; width: 100%;
   text-shadow: 0 0 26px rgba(168,85,247,0.95), 0 0 65px rgba(168,85,247,0.48), 0 4px 0 rgba(0,0,0,0.65);
+  transition: font-size 0.25s ease;
 }
 #announce-sub {
-  font-family: 'Boogaloo', cursive; font-size: 44px; line-height: 1.1;
-  color: rgba(232,121,249,0.95); letter-spacing: 1px; white-space: nowrap;
+  font-family: 'Boogaloo', cursive; font-size: var(--afs); line-height: 1.1;
+  color: rgba(232,121,249,0.95); letter-spacing: 1px;
+  white-space: normal; word-break: break-word; width: 100%;
   text-shadow: 0 0 16px rgba(232,121,249,0.75), 0 2px 0 rgba(0,0,0,0.55);
   max-height: 0; overflow: hidden;
-  transition: max-height 0.3s ease, margin-top 0.3s ease;
+  transition: max-height 0.3s ease, margin-top 0.3s ease, font-size 0.25s ease;
 }
-#announce-sub.has-text { max-height: 60px; margin-top: 2px; }
+#announce-sub.has-text { max-height: 120px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -688,9 +695,17 @@ function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=p
         }
       }
     });
-    /* Announce box — {text, badge, sub, x, y, visible} any field optional */
-    const ANNOUNCE_X={left:200, center:540, right:880};
-    const ANNOUNCE_Y={top:180, upper:460, center:750, lower:1150, bottom:1620};
+    /* Announce box — {text, badge, sub, x, y, size, visible} any field optional */
+    const ANNOUNCE_X={left:160, center:540, right:920};
+    const ANNOUNCE_Y={top:130, upper:400, center:750, lower:1250, bottom:1770};
+    const ANNOUNCE_SIZES={
+      xs: {w:360, fm:38,  fs:20},
+      sm: {w:500, fm:50,  fs:26},
+      md: {w:640, fm:62,  fs:33},
+      lg: {w:800, fm:76,  fs:40},
+      xl: {w:920, fm:90,  fs:48},
+      xxl:{w:1040,fm:106, fs:56},
+    };
     const announceBox=document.getElementById('announce-box');
     channel.subscribe('announce', msg=>{
       const d=msg.data||{};
@@ -701,12 +716,18 @@ function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=p
         subEl.textContent=d.sub;
         subEl.classList.toggle('has-text',!!d.sub);
       }
+      if(d.size !== undefined){
+        const s=ANNOUNCE_SIZES[d.size]||ANNOUNCE_SIZES.lg;
+        announceBox.style.setProperty('--aw', s.w+'px');
+        announceBox.style.setProperty('--afm', s.fm+'px');
+        announceBox.style.setProperty('--afs', s.fs+'px');
+      }
       if(d.x !== undefined){
         const px=ANNOUNCE_X[d.x]??parseInt(d.x)??540;
         announceBox.style.setProperty('--ax', px+'px');
       }
       if(d.y !== undefined){
-        const py=ANNOUNCE_Y[d.y]??parseInt(d.y)??200;
+        const py=ANNOUNCE_Y[d.y]??parseInt(d.y)??130;
         announceBox.style.setProperty('--ay', py+'px');
       }
       if(d.visible !== undefined) announceBox.classList.toggle('visible',!!d.visible);
