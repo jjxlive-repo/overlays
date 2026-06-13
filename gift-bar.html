@@ -36,11 +36,17 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   pointer-events: none; z-index: 12;
 }
 
-/* The faint idle lines */
+/* Idle lines — full 1080px, fade left→transparent, visible right near content */
 #line-top, #line-bot {
   position: absolute; left: 0; right: 0; height: 1px;
-  background: rgba(192,132,252,0.10);   /* baseline: barely visible */
-  transition: background 0.8s ease, box-shadow 0.8s ease, opacity 0.6s ease;
+  /* Default: fades from transparent (left) to subtle purple (right) */
+  background: linear-gradient(to right,
+    transparent 0%,
+    transparent 30%,
+    rgba(192,132,252,0.15) 55%,
+    rgba(192,132,252,0.45) 80%,
+    rgba(192,132,252,0.65) 100%);
+  transition: background 0.9s ease, box-shadow 0.8s ease;
 }
 #line-top { top: 0; }
 #line-bot { bottom: 0; }
@@ -169,58 +175,68 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   letter-spacing: 1px; white-space: nowrap; overflow: visible; flex-shrink: 1; min-width: 0;
   text-shadow: 0 3px 18px rgba(0,0,0,0.95), 0 0 40px rgba(255,255,255,0.06);
 }
-/* 58px Bebas — also overflows slightly */
+/* 58px Bebas — also overflows slightly. Dark stroke + glow for readability */
 #bar-hero-amount {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 58px; letter-spacing: 4px;
   white-space: nowrap; flex-shrink: 0; overflow: visible;
+  /* stroke simulation: 4 dark offsets + platform glow set in JS */
+  text-shadow:
+    -2px -2px 0 rgba(0,0,0,0.95),
+     2px -2px 0 rgba(0,0,0,0.95),
+    -2px  2px 0 rgba(0,0,0,0.95),
+     2px  2px 0 rgba(0,0,0,0.95),
+     0 0 0 rgba(0,0,0,0.95);  /* overridden inline with platform glow */
 }
 
-/* ─── INFO PANEL — right 360px, always visible, 2-row layout ─── */
+/* ─── INFO PANEL — right 360px, always visible ─── */
 #bar-info {
   position: absolute; right: 0; top: 0;
   width: 360px; height: 50px;
   overflow: hidden;
   display: flex; flex-direction: column;
-  justify-content: center;
-  padding: 0 14px 0 12px; gap: 2px;
+  justify-content: center; align-items: flex-end;
+  padding: 0 14px 0 10px; gap: 3px;
   transition: opacity 0.28s ease;
 }
 
-/* Row 1: slot title (left) + platform badge (right) */
+/* Row 1: slot title + platform badge — same line, right-aligned */
 #bar-info-top {
   display: flex; align-items: center;
-  justify-content: space-between;
-  width: 100%; min-height: 18px;
+  gap: 7px;
 }
-/* Slot title — LARGER and more visible */
+/* Slot title */
 #bar-slot-title {
   font-family: 'DM Sans', sans-serif;
-  font-size: 12px; font-weight: 700;
-  letter-spacing: 0.15em; text-transform: uppercase;
-  color: rgba(255,255,255,0.90);
-  white-space: nowrap; flex-shrink: 1;
-  overflow: hidden; text-overflow: ellipsis;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
 }
 
-/* Row 2: gifter name (left) + amount (right) */
+/* Row 2: name + amount — adjacent, no justify-between spread */
 #bar-info-bot {
   display: flex; align-items: baseline;
-  justify-content: flex-end;
-  gap: 8px; width: 100%;
+  gap: 9px;
 }
 #bar-info-name {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 22px; letter-spacing: 2px; color: #fff;
+  font-size: 24px; letter-spacing: 2px; color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  flex-shrink: 1; max-width: 190px;
+  max-width: 175px; flex-shrink: 1;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9);
 }
 #bar-info-amount {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px; font-weight: 700;
-  letter-spacing: 0.06em; white-space: nowrap; flex-shrink: 0;
-  padding: 1px 5px; border-radius: 4px;
-  transition: background 0.4s ease, box-shadow 0.4s ease, color 0.6s ease;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px; letter-spacing: 2px;
+  white-space: nowrap; flex-shrink: 0;
+  transition: color 0.6s ease;
+  /* dark stroke for readability against any background */
+  text-shadow:
+    -1px -1px 0 rgba(0,0,0,0.95),
+     1px -1px 0 rgba(0,0,0,0.95),
+    -1px  1px 0 rgba(0,0,0,0.95),
+     1px  1px 0 rgba(0,0,0,0.95);
 }
 #bar-info-amount.monthly-shimmer {
   background: rgba(192,132,252,0.14);
@@ -282,7 +298,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="bar-info">
     <div id="bar-info-top">
       <span id="bar-slot-title"></span>
-      <span id="bar-plat-badge"></span>
+      <span id="bar-plat-badge"></span>  <!-- badge sits right of title, same row -->
     </div>
     <div id="bar-info-bot">
       <span id="bar-info-name"></span>
@@ -503,7 +519,7 @@ function startProgress(ms) {
 }
 
 /* ══ BAR INFO UPDATE — crossfade content ═════════════════ */
-function setBarInfo(title, name, amtText, amtColor, platText, platClass, monthly) {
+function setBarInfo(title, name, amtText, amtColor, amtRgb, platText, platClass, monthly) {
   const info = document.getElementById('bar-info');
   clearTimeout(infoFadeTimer);
   info.style.opacity = '0';
@@ -512,6 +528,14 @@ function setBarInfo(title, name, amtText, amtColor, platText, platClass, monthly
     document.getElementById('bar-info-name').textContent  = name;
     const amtEl = document.getElementById('bar-info-amount');
     amtEl.textContent = amtText; amtEl.style.color = amtColor;
+    // Dark stroke + subtle platform glow on info amount
+    amtEl.style.textShadow = [
+      '-1px -1px 0 rgba(0,0,0,0.95)',
+       '1px -1px 0 rgba(0,0,0,0.95)',
+      '-1px  1px 0 rgba(0,0,0,0.95)',
+       '1px  1px 0 rgba(0,0,0,0.95)',
+      `0 0 14px rgba(${amtRgb},0.55)`,
+    ].join(', ');
     amtEl.classList.toggle('monthly-shimmer', !!monthly);
     const badge = document.getElementById('bar-plat-badge');
     badge.textContent = platText; badge.className = 'bar-plat ' + platClass;
@@ -533,7 +557,7 @@ function showSlot(idx) {
     slotDef.label.toUpperCase(),
     entry?.name ? entry.name.toUpperCase() : '—',
     entry ? fmtAmount(entry.amount, entry.type) : '',
-    pc.edge,
+    pc.edge, pc.edgeRgb,
     platLabel(entry?.platform), 'bar-plat plat-' + plat,
     false
   );
@@ -542,10 +566,14 @@ function showSlot(idx) {
     `linear-gradient(180deg, ${pc.wash} 0%, rgba(5,0,14,0) 100%)`;
   document.getElementById('bar-progress').style.background = pc.edge;
 
-  // Idle lines pick up the platform colour subtly
+  // Idle lines: fade from transparent (left) → platform color (right)
+  const lineGrad = `linear-gradient(to right,
+    transparent 0%, transparent 28%,
+    rgba(${pc.edgeRgb},0.12) 50%,
+    rgba(${pc.edgeRgb},0.40) 78%,
+    rgba(${pc.edgeRgb},0.65) 100%)`;
   document.getElementById('line-top').style.background =
-    document.getElementById('line-bot').style.background =
-    `rgba(${pc.edgeRgb}, 0.12)`;
+  document.getElementById('line-bot').style.background = lineGrad;
 
   startProgress(CONFIG.ROTATE_MS);
 }
@@ -603,7 +631,7 @@ function showAlert(alert) {
   activePlat = plat;
 
   // Right info: "JUST GIFTED" with gift amount
-  setBarInfo('JUST GIFTED', name.toUpperCase(), fmtAmount(amount, type), pc.edge, platLabel(platform), 'bar-plat plat-' + plat, false);
+  setBarInfo('JUST GIFTED', name.toUpperCase(), fmtAmount(amount, type), pc.edge, pc.edgeRgb, platLabel(platform), 'bar-plat plat-' + plat, false);
 
   document.getElementById('bar-wash').style.background =
     `linear-gradient(180deg, ${pc.wash} 0%, rgba(5,0,14,0) 100%)`;
@@ -620,9 +648,21 @@ function showAlert(alert) {
   const heroName = document.getElementById('bar-hero-name');
   const heroAmt  = document.getElementById('bar-hero-amount');
   heroName.textContent = name.toUpperCase();
-  heroAmt.textContent  = fmtAmount(amount, type);
-  heroAmt.style.color  = pc.edge;
-  heroAmt.style.textShadow = `0 0 28px ${pc.edge}55`;
+  heroAmt.textContent = fmtAmount(amount, type);
+  heroAmt.style.color = pc.edge;
+  // Stroke via 4 dark offsets, then bright platform glow
+  heroAmt.style.textShadow = [
+    '-2px -2px 0 rgba(0,0,0,0.98)',
+     '2px -2px 0 rgba(0,0,0,0.98)',
+    '-2px  2px 0 rgba(0,0,0,0.98)',
+     '2px  2px 0 rgba(0,0,0,0.98)',
+    `-1px -1px 0 rgba(0,0,0,0.7)`,
+     `1px -1px 0 rgba(0,0,0,0.7)`,
+    `-1px  1px 0 rgba(0,0,0,0.7)`,
+     `1px  1px 0 rgba(0,0,0,0.7)`,
+    `0 0 30px rgba(${pc.edgeRgb},0.90)`,
+    `0 0 60px rgba(${pc.edgeRgb},0.45)`,
+  ].join(', ');
   document.getElementById('gift-bar').classList.add('alert-active');
 
   // Activate lines — intensity scales with tier
@@ -652,7 +692,7 @@ function runMonthlyMoment() {
   if (!monthly) { resumeFromAlert(); return; }
   const plat = platKey(monthly.platform);
   const pc   = PLAT_COLORS[plat];
-  setBarInfo('MONTHLY TOTAL', monthly.name.toUpperCase(), fmtAmount(monthly.amount, monthly.type), pc.edge, platLabel(monthly.platform), 'bar-plat plat-' + plat, true);
+  setBarInfo('MONTHLY TOTAL', monthly.name.toUpperCase(), fmtAmount(monthly.amount, monthly.type), pc.edge, pc.edgeRgb, platLabel(monthly.platform), 'bar-plat plat-' + plat, true);
   document.getElementById('bar-wash').style.background = `linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;
   // Subtle glow on lines during monthly moment
   const top = document.getElementById('line-top'), bot = document.getElementById('line-bot');
