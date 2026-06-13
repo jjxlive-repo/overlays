@@ -402,12 +402,50 @@ html, body {
 /* ── SPLAT BAR (bottom) ── */
 .splat-bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px 8px;
   border-top: 1px solid var(--border);
   background: rgba(26,5,51,0.85);
   flex-shrink: 0;
+}
+
+.splat-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.sp-pos-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sp-pos-btn {
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid rgba(168,85,247,0.25);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  background: rgba(168,85,247,0.08);
+  color: var(--txt-dim);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.sp-pos-btn:hover { background: rgba(168,85,247,0.2); color: var(--txt); border-color: rgba(168,85,247,0.5); }
+.sp-pos-btn.active {
+  background: rgba(168,85,247,0.35);
+  color: #E879F9;
+  border-color: rgba(168,85,247,0.7);
+  box-shadow: 0 0 8px rgba(168,85,247,0.4);
 }
 
 .splat-conn {
@@ -955,19 +993,29 @@ html, body {
 
   <!-- SPLAT BAR -->
   <div class="splat-bar">
-    <div class="splat-conn">
-      <div class="conn-dot connecting" id="conn-dot"></div>
-      <span id="conn-label" style="font-size:10px;">Connecting…</span>
+    <div class="splat-bar-row">
+      <div class="splat-conn">
+        <div class="conn-dot connecting" id="conn-dot"></div>
+        <span id="conn-label" style="font-size:10px;">Connecting…</span>
+      </div>
+      <div class="splat-timer" id="splat-timer">--</div>
+      <div class="splat-prog-wrap">
+        <div class="splat-prog" id="splat-prog"></div>
+      </div>
+      <div class="splat-btns">
+        <button class="sp-btn sp-reset" id="btn-reset" onclick="splatCmd('reset')">⚠️ Reset</button>
+        <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')">💜 Save</button>
+        <button class="sp-btn sp-idle"  onclick="splatCmd('idle')">✖ Clear</button>
+        <button class="test-toggle-btn" id="btn-test-toggle" onclick="toggleTestBar()">🧪 Test</button>
+      </div>
     </div>
-    <div class="splat-timer" id="splat-timer">--</div>
-    <div class="splat-prog-wrap">
-      <div class="splat-prog" id="splat-prog"></div>
-    </div>
-    <div class="splat-btns">
-      <button class="sp-btn sp-reset" id="btn-reset" onclick="splatCmd('reset')">⚠️ Reset</button>
-      <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')">💜 Save</button>
-      <button class="sp-btn sp-idle"  onclick="splatCmd('idle')">✖ Clear</button>
-      <button class="test-toggle-btn" id="btn-test-toggle" onclick="toggleTestBar()">🧪 Test</button>
+    <div class="splat-bar-row">
+      <span class="sp-pos-label">Overlay pos:</span>
+      <button class="sp-pos-btn" data-pos="top"    onclick="setSplatPos('top')">Top</button>
+      <button class="sp-pos-btn" data-pos="upper"  onclick="setSplatPos('upper')">Upper</button>
+      <button class="sp-pos-btn active" data-pos="center" onclick="setSplatPos('center')">Center</button>
+      <button class="sp-pos-btn" data-pos="lower"  onclick="setSplatPos('lower')">Lower</button>
+      <button class="sp-pos-btn" data-pos="bottom" onclick="setSplatPos('bottom')">Bottom</button>
     </div>
   </div>
 
@@ -1819,6 +1867,16 @@ function clearOverlayTest() {
     enabledSlots: [],
   });
   doFlash('red');
+}
+
+/* ═══════════════════════════════════════════
+   SPLAT POSITION CONTROL
+═══════════════════════════════════════════ */
+function setSplatPos(pos) {
+  ablyChannel.publish('splat-pos', pos).catch(() => {});
+  document.querySelectorAll('.sp-pos-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.pos === pos);
+  });
 }
 
 /* ── kick it off ── */
