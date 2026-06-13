@@ -270,6 +270,55 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #status-dot.connected  { background: #22c55e; box-shadow: 0 0 5px rgba(34,197,94,0.7); }
 #status-dot.connecting { background: #eab308; }
+
+/* ─── HERO GLOW PULSE (during alert) ─── */
+@keyframes heroGlowPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(var(--plat-rgb), 0.55))
+            drop-shadow(0 0 0px transparent);
+  }
+  50% {
+    filter: drop-shadow(0 0 18px rgba(var(--plat-rgb), 1.0))
+            drop-shadow(0 0 38px rgba(var(--plat-rgb), 0.60));
+  }
+}
+#gift-bar.alert-active #bar-hero-name {
+  animation: heroGlowPulse 1.4s ease-in-out infinite;
+}
+#gift-bar.alert-active #bar-hero-amount {
+  animation: heroGlowPulse 1.4s ease-in-out infinite 0.18s;
+}
+
+/* ─── ACTION TEXT ("NAME JUST SENT X COINS!") ─── */
+#bar-hero-action {
+  position: absolute;
+  top: 60px; left: 18px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 22px; font-weight: 700;
+  letter-spacing: 0.13em; text-transform: uppercase;
+  color: rgba(255,255,255,0.92);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.32s ease 0.22s, transform 0.42s cubic-bezier(.34,1.56,.64,1) 0.20s;
+  pointer-events: none;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.97), 0 0 18px rgba(var(--plat-rgb), 0.55);
+}
+#gift-bar.alert-active #bar-hero-action {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── HERO GIFT IMAGE ─── */
+#bar-hero-gift-img {
+  height: 78px; width: 78px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: none;
+  filter: drop-shadow(0 0 10px rgba(var(--plat-rgb), 0.85));
+  animation: heroGlowPulse 1.4s ease-in-out infinite;
+  image-rendering: -webkit-optimize-contrast;
+}
 </style>
 </head>
 <body>
@@ -294,9 +343,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     <div id="bar-progress"></div>
   </div>
   <div id="bar-hero">
+    <img id="bar-hero-gift-img" src="" alt="">
     <span id="bar-hero-name"></span>
     <span id="bar-hero-amount"></span>
   </div>
+  <div id="bar-hero-action"></div>
   <div id="bar-info">
     <div id="bar-info-top">
       <span id="bar-slot-title"></span>
@@ -618,9 +669,15 @@ function onGiftrData(data) {
 }
 
 /* ══ GIFT ALERT SYSTEM ═══════════════════════════════════ */
+let _lastAlertKey = null, _lastAlertTime = 0;
 function onGiftAlert(data) {
   const tier = getTier(data.amount, data.type);
   if (tier === 0) return;
+  // Dedup: tracker + dock both publish for the same gift — skip if seen within 4s
+  const key = `${(data.name||'').toLowerCase()}|${data.amount}|${data.type}`;
+  const now = Date.now();
+  if (key === _lastAlertKey && now - _lastAlertTime < 4000) return;
+  _lastAlertKey = key; _lastAlertTime = now;
   alertQueue.push({ ...data, tier });
   if (!alertActive) runNextAlert();
 }
@@ -674,6 +731,19 @@ function showAlert(alert) {
     `0 0 65px rgba(${pc.edgeRgb},0.55)`,
     `0 0 120px rgba(${pc.edgeRgb},0.25)`,
   ].join(', ');
+  // Gift image (TikTok CDN — null for YouTube superchats)
+  const heroImg = document.getElementById('bar-hero-gift-img');
+  if (alert.contentImg) {
+    heroImg.src = alert.contentImg;
+    heroImg.style.display = 'block';
+  } else {
+    heroImg.style.display = 'none';
+  }
+  // Set CSS custom property so glow-pulse animation uses platform color
+  document.getElementById('gift-bar').style.setProperty('--plat-rgb', pc.edgeRgb);
+  // Action text — "NAME JUST SENT X COINS!"
+  document.getElementById('bar-hero-action').textContent =
+    name.toUpperCase() + ' JUST SENT ' + fmtAmount(amount, type) + '!';
   document.getElementById('gift-bar').classList.add('alert-active');
 
   // Activate lines — intensity scales with tier
@@ -692,8 +762,11 @@ function dismissAlert() {
   stopLinePulse(); deactivateLines();
   clearParticles();
 
-  // Collapse hero
+  // Collapse hero + clear action text + hide gift image
   document.getElementById('gift-bar').classList.remove('alert-active');
+  document.getElementById('bar-hero-action').textContent = '';
+  const _img = document.getElementById('bar-hero-gift-img');
+  _img.style.display = 'none'; _img.src = '';
   runNextAlert();
 }
 

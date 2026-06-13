@@ -1131,6 +1131,32 @@ function updateViewerCount(key, count) {
   }
 }
 
+
+/* ── Gift-alert helpers: parse amount + map type for Ably publish ── */
+function parseDockAmount(hasDonation, donoValue) {
+  if (donoValue != null && donoValue !== '') {
+    const n = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
+    if (n > 0) return n;
+  }
+  const s = String(hasDonation || '').trim();
+  const dollar = s.match(/\$\s*([\d,]+(?:\.\d+)?)/);
+  if (dollar) return parseFloat(dollar[1].replace(/,/g, ''));
+  const coins  = s.match(/^([\d,]+)\s*coins?$/i);
+  if (coins)  return parseFloat(coins[1].replace(/,/g, ''));
+  const jewels = s.match(/^([\d,]+)\s*jewels?$/i);
+  if (jewels) return parseFloat(jewels[1].replace(/,/g, ''));
+  const generic = s.match(/^([\d,]+(?:\.\d+)?)/);
+  if (generic) return parseFloat(generic[1].replace(/,/g, ''));
+  return 0;
+}
+function mapAlertType(evt, isTT, isYT) {
+  if (evt === 'jeweldonation') return 'youtube_jewels';
+  if (['superchat','supersticker','superchatwithtext','superchatevent',
+       'donation','giftpurchase'].includes(evt)) return 'youtube_superchat';
+  if (isTT || evt === 'gift') return 'tiktok_coins';
+  return 'direct_donation';
+}
+
 function handleMsg(data) {
   /* ── viewer count updates (no chatname) ── */
   if (!data.chatname) {
@@ -1150,10 +1176,16 @@ function handleMsg(data) {
   const isTT   = p.includes('tiktok');
   const isYT   = p.includes('youtube');
   const evt = (data.event || '').toLowerCase();
-  const isGift = !!(data.hasDonation || data.gifttitle || data.membership ||
-                    evt === 'gift' || evt === 'superchat' || evt === 'donation' ||
-                    evt === 'jeweldonation' || evt === 'giftpurchase' ||
-                    evt === 'giftredemption' || evt === 'sponsorship');
+  // YouTube: hasDonation alone is NOT reliable — members have it set to their subscription cost.
+  // Only treat YouTube messages as gifts when there is a named gift event.
+  // TikTok + webhooks: hasDonation and gifttitle are reliable signals.
+  const ytGiftEvt = isYT && ['superchat','supersticker','superchatevent','superchatwithtext',
+                               'donation','jeweldonation','giftpurchase'].includes(evt);
+  const isGift = !!(
+    ytGiftEvt ||
+    (!isYT && (data.hasDonation || data.gifttitle)) ||
+    evt === 'gift' || evt === 'giftredemption' || evt === 'sponsorship'
+  );
 
   if (isTT)  { document.getElementById('live-tt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
   if (isYT)  { document.getElementById('live-yt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
@@ -1161,6 +1193,21 @@ function handleMsg(data) {
 
   if (isGift) {
     addGift(data, isTT, isYT);
+    // Publish gift-alert → gift-bar explosion animation
+    const alertAmount = parseDockAmount(data.hasDonation, data.donoValue);
+    const alertType   = mapAlertType(evt, isTT, isYT);
+    const alertPlat   = isTT ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
+    if (alertAmount > 0 && ablyChannel) {
+      ablyChannel.publish('gift-alert', {
+        name:       data.chatname  || 'Anonymous',
+        amount:     alertAmount,
+        type:       alertType,
+        platform:   alertPlat,
+        contentImg: data.contentimg || null,
+        giftTitle:  data.gifttitle  || null,
+        _src:       'dock',
+      }).catch(() => {});
+    }
   } else if (isTT) {
     addMsg(data, 'tt');
   } else if (isYT) {
