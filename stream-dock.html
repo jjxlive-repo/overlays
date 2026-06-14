@@ -805,7 +805,7 @@ html, body {
 }
 .ep-dock-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 .ep-dock-field {
@@ -844,13 +844,16 @@ html, body {
 .ep-dock-check input { accent-color: var(--purple); }
 .ep-player-card {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 126px;
+  grid-template-columns: 1fr 1fr;
   gap: 5px;
   align-items: end;
   padding: 6px;
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;
   background: rgba(255,255,255,0.035);
+}
+.ep-player-card .ep-dock-field:last-child {
+  grid-column: 1 / -1;
 }
 .ep-dock-actions {
   display: flex;
@@ -1130,6 +1133,7 @@ html, body {
 
   <!-- SPLAT BAR -->
   <div class="splat-bar">
+    <!-- Row 1: Connection status + timer + progress -->
     <div class="splat-bar-row">
       <div class="splat-conn">
         <div class="conn-dot connecting" id="conn-dot"></div>
@@ -1139,30 +1143,36 @@ html, body {
       <div class="splat-prog-wrap">
         <div class="splat-prog" id="splat-prog"></div>
       </div>
-      <div class="splat-btns">
-        <button class="sp-btn sp-reset" id="btn-reset" onclick="splatCmd('reset')">⚠️ Reset</button>
-        <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')">💜 Save</button>
-        <button class="sp-btn sp-idle"  onclick="splatCmd('idle')">✖ Clear</button>
-        <button class="test-toggle-btn" id="btn-test-toggle"    onclick="toggleTestBar()">🧪 Test</button>
-        <button class="test-toggle-btn" id="btn-announce-toggle" onclick="toggleAnnounceBar()">📢 Live Text</button>
-        <button class="test-toggle-btn" id="btn-event-promo-toggle" onclick="toggleEventPromoBar()">Event Promo</button>
-      </div>
     </div>
+    <!-- Row 2: Primary action buttons -->
     <div class="splat-bar-row">
-      <span class="sp-pos-label">Overlay pos:</span>
+      <button class="sp-btn sp-reset" id="btn-reset" onclick="splatCmd('reset')" style="flex:1;">⚠️ Reset</button>
+      <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')"  style="flex:1;">💜 Save</button>
+      <button class="sp-btn sp-idle"                 onclick="splatCmd('idle')"  style="flex:1;">✖ Clear</button>
+    </div>
+    <!-- Row 3: Panel toggles -->
+    <div class="splat-bar-row">
+      <button class="test-toggle-btn" id="btn-test-toggle"        onclick="toggleTestBar()"        style="flex:1;">🧪 Test</button>
+      <button class="test-toggle-btn" id="btn-announce-toggle"    onclick="toggleAnnounceBar()"    style="flex:1;">📢 Live Text</button>
+      <button class="test-toggle-btn" id="btn-event-promo-toggle" onclick="toggleEventPromoBar()"  style="flex:1;">🎭 Event</button>
+    </div>
+    <!-- Row 4: Overlay position -->
+    <div class="splat-bar-row">
+      <span class="sp-pos-label">Pos:</span>
       <button class="sp-pos-btn" data-pos="top"    onclick="setSplatPos('top')">Top</button>
       <button class="sp-pos-btn" data-pos="upper"  onclick="setSplatPos('upper')">Upper</button>
       <button class="sp-pos-btn active" data-pos="center" onclick="setSplatPos('center')">Center</button>
       <button class="sp-pos-btn" data-pos="lower"  onclick="setSplatPos('lower')">Lower</button>
       <button class="sp-pos-btn" data-pos="bottom" onclick="setSplatPos('bottom')">Bottom</button>
     </div>
+    <!-- Row 5: Bait controls -->
     <div class="splat-bar-row">
       <span class="sp-bait-label">Bait:</span>
-      <input class="sp-bait-input" id="bait-img-url" type="text" placeholder="Image URL (blank = no change)" style="flex:2;">
-      <input class="sp-bait-input" id="bait-top-txt" type="text" placeholder="Top text" style="flex:1;" value="galaxy/dono">
-      <input class="sp-bait-input" id="bait-main-txt" type="text" placeholder="Main text" style="flex:1;" value="RESET/SAVE">
+      <input class="sp-bait-input" id="bait-img-url" type="text" placeholder="Image URL" style="flex:2;">
+      <input class="sp-bait-input" id="bait-top-txt" type="text" placeholder="Top" style="flex:1;" value="galaxy/dono">
+      <input class="sp-bait-input" id="bait-main-txt" type="text" placeholder="Main" style="flex:1;" value="RESET/SAVE">
       <button class="sp-bait-set" onclick="setSplatBait()">Set</button>
-      <button class="sp-bait-set" id="btn-bait-visible" onclick="toggleBaitVisible()" style="background:rgba(34,197,94,0.18);border-color:rgba(34,197,94,0.4);color:#4ade80;min-width:58px;">👁 Bait</button>
+      <button class="sp-bait-set" id="btn-bait-visible" onclick="toggleBaitVisible()" style="background:rgba(34,197,94,0.18);border-color:rgba(34,197,94,0.4);color:#4ade80;min-width:52px;">👁 Bait</button>
     </div>
   </div>
 
@@ -1213,15 +1223,19 @@ html, body {
     </div>
     <div class="ep-section-title">Event Players</div>
     <div class="ep-dock-grid" id="ep-player-fields"></div>
-    <div class="ep-dock-actions">
-      <button class="ep-dock-btn" onclick="eventPromoApply()">Save / Apply to Overlay</button>
-      <button class="ep-dock-btn" onclick="eventPromoShow('passive')">Show Passive</button>
-      <button class="ep-dock-btn" onclick="eventPromoShow('fight-card')">Show Fight Card</button>
-      <button class="ep-dock-btn" onclick="eventPromoShow('fun-drawer')">Show Fun Drawer</button>
-      <button class="ep-dock-btn" onclick="eventPromoShow('paintball')">Paintball Impact Slap</button>
-      <button class="ep-dock-btn danger" onclick="eventPromoHide()">Hide Promo</button>
-      <button class="ep-dock-btn" onclick="eventPromoAuto(true)">Start Auto Cycle</button>
-      <button class="ep-dock-btn danger" onclick="eventPromoAuto(false)">Stop Auto Cycle</button>
+    <div class="ep-dock-actions" style="flex-direction:column;gap:5px;">
+      <button class="ep-dock-btn" onclick="eventPromoApply()" style="width:100%;font-size:14px;padding:8px 10px;background:rgba(168,85,247,0.28);border-color:rgba(168,85,247,0.6);">💾 Save / Apply to Overlay</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="ep-dock-btn" onclick="eventPromoShow('passive')">📺 Passive</button>
+        <button class="ep-dock-btn" onclick="eventPromoShow('fight-card')">⚔️ Fight Card</button>
+        <button class="ep-dock-btn" onclick="eventPromoShow('fun-drawer')">🎉 Fun Drawer</button>
+        <button class="ep-dock-btn" onclick="eventPromoShow('paintball')">🎨 Paintball</button>
+        <button class="ep-dock-btn danger" onclick="eventPromoHide()">🚫 Hide</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="ep-dock-btn" onclick="eventPromoAuto(true)" style="flex:1;background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.35);color:#4ade80;">▶ Start Auto</button>
+        <button class="ep-dock-btn danger" onclick="eventPromoAuto(false)" style="flex:1;">■ Stop Auto</button>
+      </div>
     </div>
   </div>
 
