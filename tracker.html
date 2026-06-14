@@ -689,6 +689,63 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════ GIFT BATTLE ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="gbt-hdr">
+      <h2>🥊 Gift Battle / Progress Bar</h2>
+      <span class="panel-toggle open" id="gbt-toggle">▼</span>
+    </div>
+    <div class="panel-body" id="gbt-body">
+
+      <!-- Mode -->
+      <div style="margin-bottom:12px">
+        <label style="margin-bottom:6px;display:block">Mode</label>
+        <div class="mode-group">
+          <button class="btn-mode gbt-mode active" data-mode="off">Off</button>
+          <button class="btn-mode gbt-mode" data-mode="battle">⚔ Battle</button>
+          <button class="btn-mode gbt-mode" data-mode="progress">📊 Shared Progress</button>
+        </div>
+      </div>
+
+      <!-- Timer (Battle mode only) -->
+      <div id="gbt-timer-row" style="margin-bottom:12px;display:none">
+        <label style="margin-bottom:6px;display:block">Battle Timer</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button class="btn-mode gbt-timer-type active" data-ttype="live">● Full Live</button>
+          <button class="btn-mode gbt-timer-type" data-ttype="timed">⏱ Timed</button>
+          <input type="number" id="gbt-timer-min" min="1" max="180" value="5" placeholder="min"
+            style="width:64px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;display:none">
+          <span class="dim" id="gbt-timer-unit" style="display:none">minutes</span>
+        </div>
+      </div>
+
+      <!-- Goal (Progress mode only) -->
+      <div id="gbt-goal-row" style="margin-bottom:12px;display:none">
+        <label style="margin-bottom:6px;display:block">Shared Goal</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--text);font-size:14px">$</span>
+          <input type="number" id="gbt-goal-amt" min="1" value="100" placeholder="100"
+            style="width:90px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px">
+          <span class="dim">combined YT + TT spend to fill bar</span>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn-primary btn-sm" id="btn-gbt-start" disabled>▶ Activate</button>
+        <button class="btn-secondary btn-sm" id="btn-gbt-stop">✕ Deactivate</button>
+        <span class="dim" id="gbt-status"></span>
+      </div>
+
+      <!-- Active state info -->
+      <div id="gbt-active-info" style="margin-top:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:12px;display:none">
+        <span class="dim">Battle is live on the overlay. Gifts are tracked in real time from activation.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TOP 10 ══ -->
 <section>
   <div class="panel">
@@ -2496,6 +2553,94 @@ function publishGiftrLeaderboard() {
     const hidden = body.classList.toggle('hidden');
     toggle.classList.toggle('open', !hidden);
   });
+})();
+
+/* ─────────────────────────── GIFT BATTLE ──── */
+function publishBattleCmd(mode, opts) {
+  if (!ablyChannel) return;
+  const payload = { mode };
+  if (mode === 'battle' && opts && opts.timerSeconds != null) payload.timerSeconds = opts.timerSeconds;
+  if (mode === 'progress' && opts && opts.goalAmount != null) payload.goalAmount = opts.goalAmount;
+  ablyChannel.publish('gift-battle-cmd', payload)
+    .catch(e => console.warn('[Ably] gift-battle-cmd err:', e));
+}
+
+(function initBattleControls() {
+  function selectedMode() {
+    return document.querySelector('.gbt-mode.active')?.dataset.mode || 'off';
+  }
+  function syncModeUI() {
+    const mode = selectedMode();
+    document.getElementById('gbt-timer-row').style.display = mode === 'battle'   ? '' : 'none';
+    document.getElementById('gbt-goal-row').style.display  = mode === 'progress' ? '' : 'none';
+    document.getElementById('btn-gbt-start').disabled = (mode === 'off');
+  }
+  document.querySelectorAll('.gbt-mode').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.gbt-mode').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      syncModeUI();
+    });
+  });
+
+  function selectedTimerType() {
+    return document.querySelector('.gbt-timer-type.active')?.dataset.ttype || 'live';
+  }
+  function syncTimerUI() {
+    const isTimed = selectedTimerType() === 'timed';
+    document.getElementById('gbt-timer-min').style.display  = isTimed ? '' : 'none';
+    document.getElementById('gbt-timer-unit').style.display = isTimed ? '' : 'none';
+  }
+  document.querySelectorAll('.gbt-timer-type').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.gbt-timer-type').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      syncTimerUI();
+    });
+  });
+
+  document.getElementById('btn-gbt-start').addEventListener('click', () => {
+    const mode = selectedMode();
+    const opts  = {};
+    if (mode === 'battle') {
+      const ttype = selectedTimerType();
+      if (ttype === 'timed') {
+        const mins = parseInt(document.getElementById('gbt-timer-min').value) || 5;
+        opts.timerSeconds = mins * 60;
+      }
+    }
+    if (mode === 'progress') {
+      opts.goalAmount = parseFloat(document.getElementById('gbt-goal-amt').value) || 100;
+    }
+    publishBattleCmd(mode, opts);
+    document.getElementById('gbt-active-info').style.display = '';
+    const st = document.getElementById('gbt-status');
+    st.textContent = '✓ activated';
+    setTimeout(() => { st.textContent = ''; }, 2500);
+  });
+
+  document.getElementById('btn-gbt-stop').addEventListener('click', () => {
+    publishBattleCmd('off');
+    document.getElementById('gbt-active-info').style.display = 'none';
+    // Reset mode UI back to Off
+    document.querySelectorAll('.gbt-mode').forEach(x => x.classList.remove('active'));
+    document.querySelector('.gbt-mode[data-mode="off"]').classList.add('active');
+    syncModeUI();
+    const st = document.getElementById('gbt-status');
+    st.textContent = '✕ deactivated';
+    setTimeout(() => { st.textContent = ''; }, 2500);
+  });
+
+  // Collapsible
+  document.getElementById('gbt-hdr').addEventListener('click', () => {
+    const body   = document.getElementById('gbt-body');
+    const toggle = document.getElementById('gbt-toggle');
+    const hidden = body.classList.toggle('hidden');
+    toggle.classList.toggle('open', !hidden);
+  });
+
+  syncModeUI();
+  syncTimerUI();
 })();
 
 /* ─────────────────────────── TOP 10 VIEW ──── */
