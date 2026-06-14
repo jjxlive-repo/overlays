@@ -1616,12 +1616,14 @@ function handleSSNEvent(payload) {
   // For others: use donoValue (USD) then hasDonation fallback.
   let amount = 0;
 
-  if (hasDonationStr && type === 'youtube_jewels') {
+  // For jewels and TikTok coins, hasDonation gives the raw unit count ("150 coins", "500 Jewels")
+  // which is what we want to store. donoValue is USD and would be wrong for these types.
+  if (hasDonationStr && (type === 'youtube_jewels' || type === 'tiktok_coins')) {
     const parsed = parseHasDonation(hasDonationStr, type);
     if (parsed && parsed.amount > 0) {
       amount = parsed.amount;
       if (parsed.type) type = parsed.type;
-      console.log('[SSN] jewel amount from hasDonation:', hasDonationStr, '→', amount, type);
+      console.log('[SSN] raw unit amount from hasDonation:', hasDonationStr, '→', amount, type);
     }
   }
 
@@ -1640,7 +1642,12 @@ function handleSSNEvent(payload) {
   }
 
   if (amount === 0) {
-    amount = parseAmount(data.amount ?? data.value ?? data.donationAmount ?? data.coins ?? 0);
+    // For TikTok coins: prefer data.coins (raw count) over data.amount (may be USD)
+    if (type === 'tiktok_coins' && (data.coins ?? 0) > 0) {
+      amount = parseAmount(data.coins);
+    } else {
+      amount = parseAmount(data.amount ?? data.value ?? data.donationAmount ?? data.coins ?? 0);
+    }
   }
 
   if (isRelevant && amount === 0) {
