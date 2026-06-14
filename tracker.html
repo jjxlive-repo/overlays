@@ -1486,7 +1486,7 @@ function disconnectSSN() {
 // This table lets us recover the coin count so the gift still gets recorded.
 const TT_GIFT_COINS = {
   'rose':1,'tiktok':1,'ice cream cone':1,'flower':1,'heart me':1,'thumbs up':1,
-  'paper crane':99,'finger heart':5,'sunglasses':49,'doughnut':30,'little crown':10,
+  'paper crane':99,'finger heart':5,'hand heart':99,'sunglasses':49,'doughnut':30,'little crown':10,
   'panda':5,'perfume':20,'diamond':20,'love you':100,'football':100,'birthday cake':100,
   'sending strength':100,'rainbow puke':100,'love explosion':69,'interstellar':1000,
   'concert':500,'castle':500,'rose bouquet':99,'corgi':299,'jolly roger':20,
@@ -1592,6 +1592,13 @@ function handleSSNEvent(payload) {
   // Bail early on explicitly excluded event types (memberships, follows, etc.)
   // These sometimes have hasDonation set (e.g. membership cost) but are NOT gifts
   if (EXCLUDED_EVENTS.has(ssnEvent)) return;
+
+  // DIAGNOSTIC: log full gift-relevant fields for TikTok messages so we can see what SSN sends
+  if (ssnPlatform === 'tiktok' || (data.chatmessage && /sent\s+.*[×x✕]/i.test(data.chatmessage))) {
+    console.log('[SSN:TT] name=%s | event=%s | hasDonation=%o | donoValue=%o | coins=%o | gifttitle=%o | chatmsg=%s',
+      data.chatname, data.event, data.hasDonation, data.donoValue, data.coins, data.gifttitle,
+      (data.chatmessage||'').slice(0,120));
+  }
 
   // 'thankyou' is TikTok-only — restrict it in the event list too
   const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase',
