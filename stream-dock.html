@@ -1265,18 +1265,39 @@ function updateViewerCount(key, count) {
 
 
 /* ── Gift-alert helpers: parse amount + map type for Ably publish ── */
-function parseDockAmount(hasDonation, donoValue) {
+function parseDockAmount(hasDonation, donoValue, alertType, rawCoins) {
+  const s = String(hasDonation || '').trim();
+
+  // For raw-unit types, parse the unit count from hasDonation first —
+  // donoValue is USD and would give a tiny number that fails the tier threshold.
+  if (alertType === 'tiktok_coins') {
+    const coins = s.match(/^([\d,]+)\s*coins?$/i);
+    if (coins) return parseFloat(coins[1].replace(/,/g, ''));
+    if (rawCoins != null && rawCoins > 0) return parseFloat(rawCoins);
+    // last resort: if donoValue is set, back-calculate coins ($0.01 each)
+    if (donoValue != null && donoValue !== '') {
+      const dv = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
+      if (dv > 0) return Math.round(dv / 0.01);
+    }
+    return 0;
+  }
+  if (alertType === 'youtube_jewels') {
+    const jewels = s.match(/^([\d,]+)\s*jewels?$/i);
+    if (jewels) return parseFloat(jewels[1].replace(/,/g, ''));
+    if (donoValue != null && donoValue !== '') {
+      const dv = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
+      if (dv > 0) return Math.round(dv / 0.005); // ~$0.005 per jewel
+    }
+    return 0;
+  }
+
+  // For USD types (superchat, direct): use donoValue then hasDonation
   if (donoValue != null && donoValue !== '') {
     const n = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
     if (n > 0) return n;
   }
-  const s = String(hasDonation || '').trim();
   const dollar = s.match(/\$\s*([\d,]+(?:\.\d+)?)/);
   if (dollar) return parseFloat(dollar[1].replace(/,/g, ''));
-  const coins  = s.match(/^([\d,]+)\s*coins?$/i);
-  if (coins)  return parseFloat(coins[1].replace(/,/g, ''));
-  const jewels = s.match(/^([\d,]+)\s*jewels?$/i);
-  if (jewels) return parseFloat(jewels[1].replace(/,/g, ''));
   const generic = s.match(/^([\d,]+(?:\.\d+)?)/);
   if (generic) return parseFloat(generic[1].replace(/,/g, ''));
   return 0;
@@ -1341,8 +1362,8 @@ function handleMsg(data) {
   if (isGift) {
     addGift(data, isTT, isYT);
     // Publish gift-alert → gift-bar explosion animation
-    const alertAmount = parseDockAmount(data.hasDonation, data.donoValue);
     const alertType   = mapAlertType(evt, isTT, isYT);
+    const alertAmount = parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
     const alertPlat   = isTT ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
     if (alertAmount > 0 && ablyChannel) {
       ablyChannel.publish('gift-alert', {

@@ -938,7 +938,7 @@ function renderTopGifters(data){
     row.innerHTML=`<span class="tgp-medal">${rank<=3?TGP_MEDALS[rank-1]:''}</span>`
       +`<span class="tgp-rank">${rank>3?'#'+rank:''}</span>`
       +`<span class="tgp-name">${(g.name||'').toUpperCase()}</span>`
-      +`<span class="tgp-amount">${g.spendDisplay||g.rawDisplay||''}</span>`
+      +`<span class="tgp-amount">${g.platform==='tiktok'?(g.rawDisplay||g.spendDisplay||''):(g.spendDisplay||g.rawDisplay||'')}</span>`
       +`<span class="tgp-plat plat-${platCls}">${platLabel(plat)}</span>`;
     rows.appendChild(row);
   });
@@ -1172,7 +1172,14 @@ function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=p
     /* Gift bar */
     channel.subscribe('giftr',        msg=>onGiftrData(msg.data));
     channel.subscribe('giftr-cmd',    msg=>onGiftrCmd(msg.data));
-    channel.subscribe('gift-alert',   msg=>{gbbTrackGift(msg.data);if(gbbMode!=='off'){gbbGiftPop(msg.data);}else{onGiftAlert(msg.data);}});
+    channel.subscribe('gift-alert', msg=>{
+      try { gbbTrackGift(msg.data); } catch(e){ console.warn('[gbb] gbbTrackGift err',e); }
+      if(gbbMode!=='off'){
+        try { gbbGiftPop(msg.data); } catch(e){ console.warn('[gbb] gbbGiftPop err',e); }
+      } else {
+        try { onGiftAlert(msg.data); } catch(e){ console.warn('[gbb] onGiftAlert err',e); }
+      }
+    });
     channel.subscribe('top-gifters',  msg=>renderTopGifters(msg.data));
     channel.subscribe('gift-battle-cmd', msg=>gbbHandleCmd(msg.data));
     /* Splat */
