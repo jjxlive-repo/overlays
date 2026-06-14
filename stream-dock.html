@@ -2366,9 +2366,27 @@ function eventPromoLoadImageFile(i, evt) {
 function eventPromoLoadFunImageFile(evt) {
   const file = evt.target.files && evt.target.files[0];
   if (!file) return;
-  eventPromoFileToAvatarDataUrl(file).then(dataUrl => {
+  const loader = file.type === 'image/gif'
+    ? eventPromoFileToDataUrl(file)
+    : eventPromoFileToAvatarDataUrl(file);
+  loader.then(dataUrl => {
     document.getElementById('ep-fun-image').value = dataUrl;
     eventPromoApply();
+  }).catch(() => {
+    eventPromoFileToDataUrl(file).then(dataUrl => {
+      document.getElementById('ep-fun-image').value = dataUrl;
+      eventPromoApply();
+    });
+  });
+}
+
+function eventPromoFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type || !file.type.startsWith('image/')) { reject(new Error('Not an image')); return; }
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsDataURL(file);
   });
 }
 
