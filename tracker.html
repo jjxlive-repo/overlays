@@ -517,6 +517,36 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+
+<!-- ═══════════════════════════════════════ TIKFINITY ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="tikf-panel-hdr">
+      <h2>♪ Tikfinity (TikTok Gifts)</h2>
+      <span id="tikf-panel-status" style="font-size:11px;color:var(--muted)">Disconnected</span>
+      <span class="panel-toggle open" id="tikf-panel-toggle">▼</span>
+    </div>
+    <div class="panel-body" id="tikf-panel-body">
+      <div class="conn-row">
+        <div style="flex:0 0 auto">
+          <p style="color:var(--muted);font-size:12px;margin-bottom:8px">
+            Connects to <strong>Tikfinity Desktop App</strong> running on this computer (<code style="font-size:11px">ws://localhost:21213/</code>).
+            Captures TikTok gifts directly — more reliable than SSN for gifts.
+          </p>
+          <div class="conn-row" style="gap:6px">
+            <button class="btn-primary" id="tikf-btn-connect">Connect</button>
+            <button class="btn-secondary hidden" id="tikf-btn-disconnect">Disconnect</button>
+          </div>
+        </div>
+        <div id="tikf-conn-status" style="margin-top:18px">
+          <span class="status-dot disconnected" id="tikf-status-dot"></span>
+          <span id="tikf-status-text">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TIKTOK CHAT ══ -->
 <section>
   <div class="panel">
@@ -1472,6 +1502,103 @@ function disconnectSSN() {
   setStatus('disconnected', 'Disconnected');
 }
 
+
+/* ───────────────────────────── TIKFINITY WEBSOCKET ──── */
+let tikfWs = null;
+let tikfReconnectTimer = null;
+let tikfIntentionalDisconnect = false;
+
+function tikfSetStatus(state, text) {
+  const dot  = document.getElementById('tikf-status-dot');
+  const txt  = document.getElementById('tikf-status-text');
+  const pst  = document.getElementById('tikf-panel-status');
+  const btnC = document.getElementById('tikf-btn-connect');
+  const btnD = document.getElementById('tikf-btn-disconnect');
+  if (!dot) return;
+  dot.className = 'status-dot ' + state;
+  txt.textContent = text;
+  pst.textContent = text;
+  btnC.classList.toggle('hidden', state === 'connected' || state === 'connecting');
+  btnD.classList.toggle('hidden', state !== 'connected' && state !== 'connecting');
+}
+
+function connectTikfinity() {
+  tikfIntentionalDisconnect = false;
+  if (tikfWs) { try { tikfWs.close(); } catch(e) {} tikfWs = null; }
+  tikfSetStatus('connecting', 'Connecting…');
+
+  tikfWs = new WebSocket('ws://localhost:21213/');
+
+  tikfWs.onopen = () => {
+    console.log('[Tikfinity] Connected');
+    tikfSetStatus('connected', 'Connected');
+  };
+
+  tikfWs.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      if (msg.event === 'gift') handleTikfinityGift(msg.data);
+    } catch(e) {
+      console.warn('[Tikfinity] non-JSON message:', evt.data);
+    }
+  };
+
+  tikfWs.onerror = (err) => {
+    console.warn('[Tikfinity] WebSocket error', err);
+  };
+
+  tikfWs.onclose = (evt) => {
+    console.log('[Tikfinity] Closed — code:', evt.code);
+    tikfWs = null;
+    if (!tikfIntentionalDisconnect) {
+      tikfSetStatus('connecting', 'Reconnecting in 10s…');
+      tikfReconnectTimer = setTimeout(connectTikfinity, 10000);
+    } else {
+      tikfSetStatus('disconnected', 'Disconnected');
+    }
+  };
+}
+
+function disconnectTikfinity() {
+  tikfIntentionalDisconnect = true;
+  clearTimeout(tikfReconnectTimer);
+  if (tikfWs) { try { tikfWs.close(); } catch(e) {} tikfWs = null; }
+  tikfSetStatus('disconnected', 'Disconnected');
+}
+
+function handleTikfinityGift(data) {
+  if (!data) return;
+
+  const name        = (data.nickname || data.uniqueId || 'Unknown').trim() || 'Unknown';
+  const userId      = data.userId    || data.uniqueId || null;
+  const giftName    = data.giftName  || (data.gift && data.gift.name) || '';
+  const diamondCount = data.diamondCount || (data.gift && data.gift.diamond_count) || 1;
+  const repeatCount  = data.repeatCount || 1;
+  const repeatEnd    = data.repeatEnd !== false; // default true when field is missing
+  const giftType     = data.giftType || (data.gift && data.gift.gift_type) || 1;
+
+  // giftType 1 = streakable (rose, etc.) — only record when the combo ends (repeatEnd === true)
+  // giftType 2 = instant — always record immediately
+  if (giftType === 1 && !repeatEnd) {
+    console.log('[Tikfinity] combo in progress:', name, giftName, '×', repeatCount);
+    return;
+  }
+
+  const coins = diamondCount * repeatCount;
+  const ts    = Date.now();
+
+  console.log('[Tikfinity] gift:', name, giftName, '×', repeatCount, '=', coins, 'coins/diamonds');
+
+  addLogEntry(name, coins, 'tiktok_coins', 'tiktok', ts, false, null);
+  if (coins > 0) {
+    const key = upsertGift(name, coins, 'tiktok_coins', 'tiktok', '', userId);
+    if (key) flashRow(key);
+  }
+}
+
+document.getElementById('tikf-btn-connect').addEventListener('click', connectTikfinity);
+document.getElementById('tikf-btn-disconnect').addEventListener('click', disconnectTikfinity);
+
 /* ── Map SSN event+platform → our internal type ──
  *
  * SSN event reference (YouTube + TikTok only):
@@ -1823,6 +1950,7 @@ function makeCollapsible(hdrId, bodyId, toggleId, defaultOpen) {
 }
 
 makeCollapsible('conn-panel-hdr',  'conn-panel-body',  'conn-panel-toggle',  true);
+makeCollapsible('tikf-panel-hdr',  'tikf-panel-body',  'tikf-panel-toggle',  true);
 makeCollapsible('chat-panel-hdr',  'chat-panel-body',  'chat-toggle',        false);
 
 // ── Chat auto-scroll toggle ──────────────────────────────
@@ -2333,575 +2461,4 @@ function publishTopGifters(visible) {
       platform:    gifterPlatform(g),
     };
   }).filter(g => g.spendTotal > 0)
-    .sort((a, b) => b.spendTotal - a.spendTotal)
-    .slice(0, 5)
-    .map((g, i) => ({ rank: i + 1, name: g.name, rawDisplay: g.rawDisplay, spendDisplay: g.spendDisplay, type: g.type, platform: g.platform }));
-
-  ablyChannel.publish('top-gifters', { visible: true, timeFrame: tf, gifters: ranked })
-    .catch(e => console.warn('[Ably] top-gifters err:', e));
-
-  // Update tracker preview
-  const preview = document.getElementById('tgo-preview');
-  if (preview) {
-    preview.innerHTML = ranked.length
-      ? ranked.map(g => `<div style="display:flex;gap:8px;padding:2px 0"><span style="width:20px;text-align:center">${['🥇','🥈','🥉'][g.rank-1]||('#'+g.rank)}</span><span style="flex:1;font-weight:600">${g.name}</span><span style="color:#a78bfa">${g.spendDisplay}</span><span style="color:#888;font-size:11px;margin-left:4px">${g.platform}</span></div>`).join('')
-      : '<span class="dim">— no gifters in this time frame —</span>';
-  }
-}
-
-function publishLeaderboard() {
-  if (!ablyChannel) return;
-
-  const tf          = DB.settings.overlayTimeFrame   || 'today';
-  const rankedCount = DB.settings.overlayRankedCount || 3;
-  const iosPct      = DB.settings.iosPercent ?? 50;
-  const cutoff      = cutoffForTimeFrame(tf);
-
-  // Build sorted list by viewer_spend for the time frame
-  const all = Object.values(DB.gifters).map(g => {
-    const { rawAmount, spendAmount } = buildGifterStats(g, cutoff, iosPct);
-    return {
-      name:       g.displayName,
-      rawAmount,
-      spendAmount,
-      rawDisplay: formatRawAmount(rawAmount, gifterType(g)),
-      type:       gifterType(g),
-      platform:   gifterPlatform(g),
-      profilePic: g.profilePic || null,
-    };
-  }).filter(g => g.spendAmount > 0).sort((a, b) => b.spendAmount - a.spendAmount);
-
-  if (!all.length) {
-    ablyChannel.publish('leaderboard', { featured: null, ranked: [], timeFrame: tf }).catch(() => {});
-    return;
-  }
-
-  const featured = all[0];
-  const rankedPool = all.slice(1, 1 + rankedCount);
-  const totalRankedSpend = rankedPool.reduce((s, g) => s + g.spendAmount, 0) || 1;
-
-  const ranked = rankedPool.map((g, i) => ({
-    rank:       i + 2,
-    name:       g.name,
-    rawDisplay: g.rawDisplay,
-    type:       g.type,
-    platform:   g.platform,
-    profilePic: g.profilePic,
-    spendShare: g.spendAmount / totalRankedSpend,
-  }));
-
-  ablyChannel.publish('leaderboard', {
-    featured: {
-      name:       featured.name,
-      rawDisplay: featured.rawDisplay,
-      type:       featured.type,
-      platform:   featured.platform,
-      profilePic: featured.profilePic,
-    },
-    ranked,
-    timeFrame: tf,
-    rankedCount,
-  }).catch(e => console.warn('[Ably] publish err:', e));
-}
-
-/* ── Giftr 5-slot leaderboard (for giftr-overlay.html) ── */
-function publishGiftrLeaderboard() {
-  if (!ablyChannel) return;
-
-  const iosPct      = DB.settings.iosPercent ?? 50;
-  const todayCut    = todayStartCST();
-  const weekCut     = weekStartCST();
-  const monthCut    = monthStartCST();
-
-  // Build per-gifter aggregates for each time window.
-  // Rank by viewer_spend (USD-normalized) so YouTube/TikTok/direct compare fairly.
-  const rows = Object.values(DB.gifters).map(g => {
-    let dayRaw = 0, weekRaw = 0, monthRaw = 0, allRaw = 0;
-    let daySpend = 0, weekSpend = 0, monthSpend = 0, allSpend = 0;
-    for (const gift of g.gifts) {
-      const spend = computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
-      allRaw += gift.amount;   allSpend += spend;
-      if (gift.timestamp >= monthCut) { monthRaw += gift.amount; monthSpend += spend; }
-      if (gift.timestamp >= weekCut)  { weekRaw  += gift.amount; weekSpend  += spend; }
-      if (gift.timestamp >= todayCut) { dayRaw   += gift.amount; daySpend   += spend; }
-    }
-    return {
-      name:       g.displayName,
-      type:       gifterType(g),
-      platform:   gifterPlatform(g),
-      profilePic: g.profilePic || null,
-      dayRaw, weekRaw, monthRaw, allRaw,
-      daySpend, weekSpend, monthSpend, allSpend,
-    };
-  });
-
-  function topBy(rawField) {
-    const spendField = rawField.replace('Raw', 'Spend');
-    const best = rows.filter(r => r[spendField] > 0).sort((a, b) => b[spendField] - a[spendField])[0];
-    if (!best) return null;
-    return { name: best.name, amount: best[rawField], type: best.type, platform: best.platform, profilePic: best.profilePic };
-  }
-
-  function topByPlat(platform) {
-    const best = rows.filter(r => r.platform === platform && r.allSpend > 0)
-                     .sort((a, b) => b.allSpend - a.allSpend)[0];
-    if (!best) return null;
-    return { name: best.name, amount: best.allRaw, type: best.type, platform: best.platform, profilePic: best.profilePic };
-  }
-
-  const payload = {
-    daily:        topBy('dayRaw'),
-    weekly:       topBy('weekRaw'),
-    monthly:      topBy('monthRaw'),
-    youtube:      topByPlat('youtube'),
-    tiktok:       topByPlat('tiktok'),
-    enabledSlots: DB.settings.giftrEnabledSlots || ['daily','weekly','monthly','youtube','tiktok'],
-    custom:       DB.settings.giftrCustom || null,
-  };
-
-  ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
-}
-
-/* ── Top Gifters Overlay control panel ── */
-(function initTopGiftersControls() {
-  // Restore saved time frame
-  if (!DB.settings.tgoTimeFrame) DB.settings.tgoTimeFrame = 'daily';
-
-  function syncTF() {
-    const tf = DB.settings.tgoTimeFrame;
-    document.querySelectorAll('.tgo-tf').forEach(b => b.classList.toggle('active', b.dataset.tf === tf));
-  }
-  syncTF();
-
-  // Time frame buttons
-  document.querySelectorAll('.tgo-tf').forEach(b => {
-    b.addEventListener('click', () => {
-      DB.settings.tgoTimeFrame = b.dataset.tf;
-      saveData(DB);
-      syncTF();
-    });
-  });
-
-  function flash(msg) {
-    const st = document.getElementById('tgo-status');
-    st.textContent = msg;
-    setTimeout(() => st.textContent = '', 2200);
-  }
-
-  document.getElementById('btn-tgo-show').addEventListener('click', () => {
-    publishTopGifters(true);
-    flash('✓ panel shown');
-  });
-
-  document.getElementById('btn-tgo-hide').addEventListener('click', () => {
-    publishTopGifters(false);
-    flash('✓ panel hidden');
-  });
-
-  document.getElementById('btn-tgo-refresh').addEventListener('click', () => {
-    publishTopGifters(true);
-    flash('↺ refreshed');
-  });
-
-  // Collapsible panel
-  document.getElementById('tgo-hdr').addEventListener('click', () => {
-    const body   = document.getElementById('tgo-body');
-    const toggle = document.getElementById('tgo-toggle');
-    const hidden = body.classList.toggle('hidden');
-    toggle.classList.toggle('open', !hidden);
-  });
-})();
-
-/* ───────────────────────────── GIFTR BAR + CUSTOM FEATURE ──── */
-(function initGiftrControls() {
-  const ALL_SLOTS = ['daily','weekly','monthly','youtube','tiktok'];
-
-  // Ensure setting exists
-  if (!Array.isArray(DB.settings.giftrEnabledSlots)) {
-    DB.settings.giftrEnabledSlots = [...ALL_SLOTS];
-  }
-
-  // ── Slide toggles (multi-select) ──
-  const enabled = DB.settings.giftrEnabledSlots;
-
-  function syncSlideButtons() {
-    document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
-      b.classList.toggle('active', enabled.includes(b.dataset.gslot));
-    });
-  }
-  syncSlideButtons();
-
-  document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
-    b.addEventListener('click', () => {
-      const slot = b.dataset.gslot;
-      const idx  = enabled.indexOf(slot);
-      if (idx >= 0) {
-        if (enabled.length <= 1) return; // keep at least one
-        enabled.splice(idx, 1);
-      } else {
-        enabled.push(slot);
-      }
-      DB.settings.giftrEnabledSlots = [...enabled];
-      saveData(DB);
-      syncSlideButtons();
-    });
-  });
-
-  // ── Giftr slot pin buttons ──
-  document.querySelectorAll('.btn-giftr-slot').forEach(b => {
-    b.addEventListener('click', () => {
-      const slot = b.dataset.slot;
-      document.querySelectorAll('.btn-giftr-slot').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      if (ablyChannel) {
-        ablyChannel.publish('giftr-cmd', slot === 'auto' ? 'auto' : 'slot:' + slot)
-          .catch(e => console.warn('[Ably] giftr-cmd err:', e));
-      }
-    });
-  });
-
-  // ── Custom featured gifter ──
-  function populateDatalist() {
-    const dl = document.getElementById('giftr-custom-list');
-    dl.innerHTML = Object.values(DB.gifters)
-      .map(g => `<option value="${g.displayName.replace(/"/g,'&quot;')}">`)
-      .join('');
-  }
-
-  function syncCustomStatus() {
-    const c      = DB.settings.giftrCustom;
-    const status = document.getElementById('giftr-custom-status');
-    const badge  = document.getElementById('giftr-custom-badge');
-    if (c) {
-      status.textContent = `Featuring: ${c.name}  (${c.amount ? c.amount.toLocaleString() : '—'})`;
-      badge.textContent  = '— active';
-    } else {
-      status.textContent = '';
-      badge.textContent  = '';
-    }
-  }
-
-  populateDatalist();
-  syncCustomStatus();
-
-  document.getElementById('btn-giftr-feature').addEventListener('click', () => {
-    const input   = document.getElementById('giftr-custom-input');
-    const rawName = input.value.trim();
-    if (!rawName) return;
-
-    const key    = normKey(rawName);
-    const gifter = DB.gifters[key]
-      || Object.values(DB.gifters).find(g => normKey(g.displayName) === key);
-
-    if (!gifter) {
-      document.getElementById('giftr-custom-status').textContent = '⚠ Gifter not found in tracker.';
-      return;
-    }
-
-    const raw = gifterRawTotals(gifter);
-    DB.settings.giftrCustom = {
-      name:       gifter.displayName,
-      amount:     raw.allTime,
-      type:       gifterType(gifter),
-      platform:   gifterPlatform(gifter),
-      profilePic: gifter.profilePic || null,
-    };
-    input.value = '';
-    saveData(DB);
-    syncCustomStatus();
-  });
-
-  document.getElementById('btn-giftr-unfeature').addEventListener('click', () => {
-    DB.settings.giftrCustom = null;
-    saveData(DB);
-    syncCustomStatus();
-  });
-
-  // Collapsible panel
-  document.getElementById('giftr-ctrl-hdr').addEventListener('click', () => {
-    const body   = document.getElementById('giftr-ctrl-body');
-    const toggle = document.getElementById('giftr-ctrl-toggle');
-    const hidden = body.classList.toggle('hidden');
-    toggle.classList.toggle('open', !hidden);
-  });
-})();
-
-/* ─────────────────────────── GIFT BATTLE ──── */
-function publishBattleCmd(mode, opts) {
-  if (!ablyChannel) return;
-  const payload = { mode };
-  if (mode === 'battle' && opts && opts.timerSeconds != null) payload.timerSeconds = opts.timerSeconds;
-  if (mode === 'progress' && opts && opts.goalAmount != null) payload.goalAmount = opts.goalAmount;
-  ablyChannel.publish('gift-battle-cmd', payload)
-    .catch(e => console.warn('[Ably] gift-battle-cmd err:', e));
-}
-
-(function initBattleControls() {
-  function selectedMode() {
-    return document.querySelector('.gbt-mode.active')?.dataset.mode || 'off';
-  }
-  function syncModeUI() {
-    const mode = selectedMode();
-    document.getElementById('gbt-timer-row').style.display = mode === 'battle'   ? '' : 'none';
-    document.getElementById('gbt-goal-row').style.display  = mode === 'progress' ? '' : 'none';
-    document.getElementById('btn-gbt-start').disabled = (mode === 'off');
-  }
-  document.querySelectorAll('.gbt-mode').forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll('.gbt-mode').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      syncModeUI();
-    });
-  });
-
-  function selectedTimerType() {
-    return document.querySelector('.gbt-timer-type.active')?.dataset.ttype || 'live';
-  }
-  function syncTimerUI() {
-    const isTimed = selectedTimerType() === 'timed';
-    document.getElementById('gbt-timer-min').style.display  = isTimed ? '' : 'none';
-    document.getElementById('gbt-timer-unit').style.display = isTimed ? '' : 'none';
-  }
-  document.querySelectorAll('.gbt-timer-type').forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll('.gbt-timer-type').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      syncTimerUI();
-    });
-  });
-
-  document.getElementById('btn-gbt-start').addEventListener('click', () => {
-    const mode = selectedMode();
-    const opts  = {};
-    if (mode === 'battle') {
-      const ttype = selectedTimerType();
-      if (ttype === 'timed') {
-        const mins = parseInt(document.getElementById('gbt-timer-min').value) || 5;
-        opts.timerSeconds = mins * 60;
-      }
-    }
-    if (mode === 'progress') {
-      opts.goalAmount = parseFloat(document.getElementById('gbt-goal-amt').value) || 100;
-    }
-    publishBattleCmd(mode, opts);
-    document.getElementById('gbt-active-info').style.display = '';
-    const st = document.getElementById('gbt-status');
-    st.textContent = '✓ activated';
-    setTimeout(() => { st.textContent = ''; }, 2500);
-  });
-
-  document.getElementById('btn-gbt-stop').addEventListener('click', () => {
-    publishBattleCmd('off');
-    document.getElementById('gbt-active-info').style.display = 'none';
-    // Reset mode UI back to Off
-    document.querySelectorAll('.gbt-mode').forEach(x => x.classList.remove('active'));
-    document.querySelector('.gbt-mode[data-mode="off"]').classList.add('active');
-    syncModeUI();
-    const st = document.getElementById('gbt-status');
-    st.textContent = '✕ deactivated';
-    setTimeout(() => { st.textContent = ''; }, 2500);
-  });
-
-  // Collapsible
-  document.getElementById('gbt-hdr').addEventListener('click', () => {
-    const body   = document.getElementById('gbt-body');
-    const toggle = document.getElementById('gbt-toggle');
-    const hidden = body.classList.toggle('hidden');
-    toggle.classList.toggle('open', !hidden);
-  });
-
-  syncModeUI();
-  syncTimerUI();
-})();
-
-/* ─────────────────────────── TOP 10 VIEW ──── */
-let top10TimeFrame = 'day';
-
-function cutoffForTop10(tf) {
-  if (tf === 'day')   return todayStartCST();
-  if (tf === 'week')  return weekStartCST();
-  if (tf === 'month') return monthStartCST();
-  if (tf === 'year')  return yearStartCST();
-  return 0; // allTime
-}
-
-function renderTop10() {
-  const iosPct = DB.settings.iosPercent ?? 50;
-  const cutoff = cutoffForTop10(top10TimeFrame);
-  const list   = document.getElementById('top10-list');
-  if (!list) return;
-
-  const ranked = Object.values(DB.gifters).map(g => {
-    let rawTotal = 0, spendTotal = 0;
-    for (const gift of g.gifts) {
-      if (gift.timestamp >= cutoff) {
-        rawTotal   += gift.amount;
-        spendTotal += computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
-      }
-    }
-    return { gifter: g, rawTotal, spendTotal, type: gifterType(g), platform: gifterPlatform(g) };
-  })
-  .filter(r => r.spendTotal > 0)
-  .sort((a, b) => b.spendTotal - a.spendTotal)
-  .slice(0, 10);
-
-  if (!ranked.length) {
-    list.innerHTML = '<div style="color:var(--muted);font-style:italic;text-align:center;padding:20px;font-size:12px">No gifts recorded for this period.</div>';
-    return;
-  }
-
-  const maxSpend = ranked[0].spendTotal;
-
-  list.innerHTML = ranked.map((r, i) => {
-    const plat     = platformLabel(r.platform);
-    const rawFmt   = formatRaw(r.rawTotal, r.type);
-    const spendFmt = '$' + r.spendTotal.toFixed(2);
-    const barPct   = (r.spendTotal / maxSpend * 100).toFixed(1);
-    const rankColor = i === 0 ? 'var(--gold)' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'var(--muted)';
-    const medal    = i === 0 ? '&#x1F947;' : i === 1 ? '&#x1F948;' : i === 2 ? '&#x1F949;' : (i + 1);
-
-    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 6px;border-radius:5px;background:' + (i%2===0?'var(--surface2)':'transparent') + '">'
-      + '<span style="width:22px;text-align:center;font-size:13px;font-weight:700;color:' + rankColor + ';flex-shrink:0">' + medal + '</span>'
-      + '<span style="flex:0 0 auto"><span class="plat-badge ' + plat.cls + '">' + plat.label + '</span></span>'
-      + '<span style="flex:1;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.gifter.displayName) + '</span>'
-      + '<span style="font-family:monospace;font-size:11px;color:var(--muted);flex-shrink:0">' + rawFmt + '</span>'
-      + '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);flex-shrink:0;min-width:62px;text-align:right">' + spendFmt + '</span>'
-      + '<div style="width:72px;flex-shrink:0"><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">'
-      + '<div style="height:100%;width:' + barPct + '%;background:var(--accent);border-radius:3px"></div></div></div>'
-      + '</div>';
-  }).join('');
-}
-
-document.querySelectorAll('.btn-top10-tf').forEach(b => {
-  b.addEventListener('click', () => {
-    top10TimeFrame = b.dataset.tf;
-    document.querySelectorAll('.btn-top10-tf').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    renderTop10();
-  });
-});
-
-makeCollapsible('top10-hdr', 'top10-body', 'top10-toggle', true);
-
-/* ─────────────────────────── MODAL: EDIT ENTRIES ──── */
-let editEntriesKey = null;
-
-function typeOptionsHtml(selectedType) {
-  const types = [
-    ['tiktok_coins',      'TikTok Coins'],
-    ['youtube_jewels',    'YouTube Jewels'],
-    ['youtube_superchat', 'YouTube SuperChat'],
-    ['twitch_bits',       'Twitch Bits'],
-    ['direct_donation',   'Direct Donation'],
-  ];
-  return types.map(([v, l]) =>
-    '<option value="' + v + '"' + (v === selectedType ? ' selected' : '') + '>' + l + '</option>'
-  ).join('');
-}
-
-function tsToLocal(timestamp) {
-  const d = new Date(timestamp);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-}
-
-function openEditEntries(key) {
-  editEntriesKey = key;
-  const gifter  = DB.gifters[key];
-  const list    = document.getElementById('edit-entries-list');
-  const counter = document.getElementById('edit-entry-count');
-
-  document.getElementById('edit-display-name').value = gifter.displayName;
-
-  if (!gifter.gifts.length) {
-    list.innerHTML = '<div style="color:var(--muted);font-style:italic;padding:8px;font-size:12px">No gift entries yet.</div>';
-    counter.textContent = '';
-  } else {
-    const sorted = [...gifter.gifts].sort((a, b) => b.timestamp - a.timestamp);
-    counter.textContent = '(' + sorted.length + ')';
-    list.innerHTML = sorted.map(g => {
-      return '<div class="edit-entry-row" data-id="' + esc(g.id) + '" style="display:grid;grid-template-columns:155px 145px 85px 1fr auto;gap:5px;align-items:flex-end;padding:7px 8px;background:var(--surface2);border-radius:4px;border:1px solid var(--border)">'
-        + '<div><label style="font-size:10px">Date / Time</label>'
-        + '<input type="datetime-local" class="entry-ts" value="' + tsToLocal(g.timestamp) + '" style="width:100%;font-size:11px;padding:3px 5px"></div>'
-        + '<div><label style="font-size:10px">Type</label>'
-        + '<select class="entry-type" style="width:100%;font-size:11px;padding:3px 5px">' + typeOptionsHtml(g.type) + '</select></div>'
-        + '<div><label style="font-size:10px">Amount</label>'
-        + '<input type="number" class="entry-amount" value="' + g.amount + '" min="0" step="any" style="width:100%;font-size:11px;padding:3px 5px"></div>'
-        + '<div><label style="font-size:10px">Note</label>'
-        + '<input type="text" class="entry-note" value="' + esc(g.note || '') + '" placeholder="note" style="width:100%;font-size:11px;padding:3px 5px"></div>'
-        + '<button class="btn-ghost btn-sm" style="color:var(--red);padding:4px 6px;align-self:flex-end"'
-        + ' onclick="this.closest(\'.edit-entry-row\').remove();document.getElementById(\'edit-entry-count\').textContent=\'(\'+document.querySelectorAll(\'#edit-entries-list .edit-entry-row\').length+\')\'">'
-        + '&#x1F5D1;&#xFE0F;</button></div>';
-    }).join('');
-  }
-
-  document.getElementById('modal-edit-entries').classList.remove('hidden');
-}
-
-document.getElementById('edit-entries-cancel').addEventListener('click', () => {
-  document.getElementById('modal-edit-entries').classList.add('hidden');
-  editEntriesKey = null;
-});
-
-document.getElementById('edit-entries-save').addEventListener('click', () => {
-  if (!editEntriesKey) return;
-
-  const newName = document.getElementById('edit-display-name').value.trim();
-  if (newName) {
-    const newKey = normKey(newName);
-    if (newKey !== editEntriesKey) {
-      const gifterData = DB.gifters[editEntriesKey];
-      gifterData.displayName = newName;
-      if (DB.gifters[newKey]) {
-        DB.gifters[newKey].gifts.push(...gifterData.gifts);
-      } else {
-        DB.gifters[newKey] = gifterData;
-      }
-      delete DB.gifters[editEntriesKey];
-      editEntriesKey = newKey;
-    } else {
-      DB.gifters[editEntriesKey].displayName = newName;
-    }
-  }
-
-  const rows = document.querySelectorAll('#edit-entries-list .edit-entry-row');
-  const updatedGifts = [];
-  rows.forEach(row => {
-    const tsVal  = row.querySelector('.entry-ts').value;
-    const type   = row.querySelector('.entry-type').value;
-    const amount = parseFloat(row.querySelector('.entry-amount').value) || 0;
-    const note   = row.querySelector('.entry-note').value.trim();
-    const ts     = tsVal ? new Date(tsVal).getTime() : Date.now();
-    updatedGifts.push({ id: row.dataset.id || uuidv4(), amount, type, platform: typeToPlatform(type), timestamp: ts, note });
-  });
-
-  DB.gifters[editEntriesKey].gifts = updatedGifts;
-  saveData(DB);
-  renderTable();
-  document.getElementById('modal-edit-entries').classList.add('hidden');
-  editEntriesKey = null;
-});
-
-/* ───────────────────────────── CROSS-TAB SYNC ──── */
-window.addEventListener('storage', e => {
-  if (e.key !== STORAGE_KEY || !e.newValue) return;
-  try {
-    DB = JSON.parse(e.newValue);
-    applySettings();
-    renderTable();
-    renderLastUpdated(DB.lastUpdated);
-    const banner = document.getElementById('sync-banner');
-    if (banner) {
-      banner.style.display = 'flex';
-      clearTimeout(banner._hide);
-      banner._hide = setTimeout(() => banner.style.display = 'none', 3000);
-    }
-  } catch(err) { console.warn('[sync] parse error', err); }
-});
-
-/* ───────────────────────────── INITIAL RENDER ──── */
-renderTable();
-
-
-</script>
-</body>
-</html>
+    .
