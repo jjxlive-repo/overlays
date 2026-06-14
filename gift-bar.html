@@ -158,13 +158,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #gbb-yt-fill {
   position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
   background: linear-gradient(to right, #7f1d1d, #dc2626, #ef4444);
-  transition: width 1.1s cubic-bezier(.4,0,.2,1);
+  transition: width 1.1s cubic-bezier(.4,0,.2,1); overflow: hidden;
 }
 /* TikTok fill — dark from right */
 #gbb-tt-fill {
   position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
   background: linear-gradient(to left, #0c0c1a, #16213e, #1a1a40);
-  transition: width 1.1s cubic-bezier(.4,0,.2,1);
+  transition: width 1.1s cubic-bezier(.4,0,.2,1); overflow: hidden;
 }
 /* Shimmer — activates when shared-progress goal is hit */
 #gbb-goal-shimmer {
@@ -177,34 +177,24 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
 }
-/* Background logo watermarks — low-opacity platform wordmarks */
-#gbb-bg-yt {
-  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  font-family: 'Anton', sans-serif; font-size: 20px; letter-spacing: 3px;
-  color: #ff4444; opacity: 0.16; pointer-events: none; white-space: nowrap; z-index: 1;
+/* Background logo watermarks — clipped inside their fill div so they never overflow */
+.gbb-fill-wm {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-family: 'Anton', sans-serif; font-size: 18px; letter-spacing: 3px;
+  color: rgba(255,255,255,0.22); pointer-events: none; white-space: nowrap;
 }
-#gbb-bg-tt {
-  position: absolute; right: 280px; top: 50%; transform: translateY(-50%);
-  font-family: 'Anton', sans-serif; font-size: 20px; letter-spacing: 3px;
-  color: #93c5fd; opacity: 0.16; pointer-events: none; white-space: nowrap; z-index: 1;
-}
-/* Main content area — stops before carousel */
+#gbb-yt-fill .gbb-fill-wm { right: 10px; }
+#gbb-tt-fill .gbb-fill-wm { left: 10px; }
+/* Main content area — stops before carousel.
+   Uses absolute sub-layout so #gbb-mid is ALWAYS at 50% of this zone. */
 #gbb-content {
-  position: absolute; left: 0; top: 0; bottom: 0; right: 265px;
-  display: flex; align-items: center; z-index: 3;
+  position: absolute; left: 0; top: 0; bottom: 0; right: 265px; z-index: 3;
 }
-#gbb-yt-info {
-  flex: 1; display: flex; align-items: center; gap: 6px;
-  padding: 0 12px; min-width: 0; overflow: hidden; justify-content: flex-start;
-}
-#gbb-tt-info {
-  flex: 1; display: flex; align-items: center; gap: 6px;
-  padding: 0 12px; min-width: 0; overflow: hidden; justify-content: flex-end;
-}
+/* Timer: pinned to the exact horizontal center of the content zone */
 #gbb-mid {
-  flex-shrink: 0; width: 110px;
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 120px; transform: translateX(-50%);
   display: flex; align-items: center; justify-content: center;
-  position: relative;
 }
 #gbb-mid::before, #gbb-mid::after {
   content: ''; position: absolute; top: 18%; bottom: 18%;
@@ -212,6 +202,18 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #gbb-mid::before { left: 0; }
 #gbb-mid::after  { right: 0; }
+/* YT info: left half, right-aligned toward timer */
+#gbb-yt-info {
+  position: absolute; left: 0; top: 0; bottom: 0; right: calc(50% + 60px);
+  display: flex; align-items: center; justify-content: flex-end; gap: 7px;
+  padding: 0 14px 0 12px; overflow: hidden;
+}
+/* TT info: right half, left-aligned away from timer */
+#gbb-tt-info {
+  position: absolute; left: calc(50% + 60px); top: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: flex-start; gap: 7px;
+  padding: 0 12px 0 14px; overflow: hidden;
+}
 .gbb-plat-lbl {
   font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
   letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap;
@@ -220,9 +222,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #gbb-yt-lbl { color: #fca5a5; }
 #gbb-tt-lbl { color: #93c5fd; }
 #gbb-yt-amt, #gbb-tt-amt {
-  font-family: 'Boogaloo', sans-serif; font-size: 25px; letter-spacing: 0.03em;
-  color: #fff; white-space: nowrap; flex-shrink: 0;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.55);
+  font-family: 'Boogaloo', sans-serif; font-size: 19px; letter-spacing: 0.03em;
+  color: rgba(255,255,255,0.58); white-space: nowrap; flex-shrink: 0;
+  text-shadow: 0 1px 5px rgba(0,0,0,0.90);
 }
 /* Timer — normal, warn (last 60s), danger (last 10s), live, ended */
 #gbb-timer-val {
@@ -315,10 +317,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   background: linear-gradient(to left, #164e63, #0891b2, #22d3ee);
 }
 /* Platform color shifts for labels and watermarks */
-#gift-battle-bar.gbb-mode-progress #gbb-bg-yt { color: #fbbf24; }
-#gift-battle-bar.gbb-mode-progress #gbb-bg-tt { color: #22d3ee; }
 #gift-battle-bar.gbb-mode-progress #gbb-yt-lbl { color: #fde68a; }
 #gift-battle-bar.gbb-mode-progress #gbb-tt-lbl { color: #67e8f9; }
+#gift-battle-bar.gbb-mode-progress #gbb-yt-fill .gbb-fill-wm { color: rgba(255,255,255,0.18); }
+#gift-battle-bar.gbb-mode-progress #gbb-tt-fill .gbb-fill-wm { color: rgba(255,255,255,0.18); }
 /* Announce badge colors for progress mode */
 #gift-battle-bar.gbb-mode-progress .gbb-ann-yt {
   color:#fbbf24; background:rgba(251,191,36,0.16); border-color:rgba(251,191,36,0.40);
@@ -718,12 +720,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   </div>
   <!-- ══ GIFT BATTLE BAR — overlays bar when battle/progress mode is active ══ -->
   <div id="gift-battle-bar">
-    <div id="gbb-yt-fill"></div>
-    <div id="gbb-tt-fill"></div>
+    <div id="gbb-yt-fill"><span class="gbb-fill-wm">▶ YOUTUBE</span></div>
+    <div id="gbb-tt-fill"><span class="gbb-fill-wm">TIKTOK ♪</span></div>
     <div id="gbb-goal-shimmer"></div>
     <div id="gbb-goal-line"></div>
-    <div id="gbb-bg-yt">▶ YOUTUBE</div>
-    <div id="gbb-bg-tt">TIKTOK ♪</div>
     <div id="gbb-content">
       <div id="gbb-yt-info">
         <span id="gbb-yt-lbl" class="gbb-plat-lbl">▶ YT</span>
@@ -961,12 +961,17 @@ function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=fal
 
 /* ══ GIFT BATTLE BAR ══ */
 let gbbMode='off';
-let gbbYtSpend=0,gbbTtSpend=0,gbbGoalAmount=100;
+let gbbYtSpend=0,gbbTtSpend=0,gbbTtCoins=0,gbbGoalAmount=100;
 let gbbTimerLeft=null;   // null = full live, number = seconds remaining
 let gbbTimerInterval=null;
 let gbbGoalHit=false;
 
 function gbbFmt(usd){return'$'+usd.toFixed(2);}
+function gbbFmtCoins(n){
+  if(n>=1000000)return(n/1000000).toFixed(1).replace(/\.0$/,'')+'M coins';
+  if(n>=10000)return(n/1000).toFixed(1).replace(/\.0$/,'')+'K coins';
+  return n.toLocaleString()+' coins';
+}
 
 function gbbComputeSpend(amount,type){
   const n=Number(amount)||0;
@@ -982,7 +987,12 @@ function gbbTrackGift(data){
   const spend=gbbComputeSpend(data.amount,data.type);
   if(spend<=0)return;
   if(plat==='youtube')gbbYtSpend+=spend;
-  else if(plat==='tiktok')gbbTtSpend+=spend;
+  else if(plat==='tiktok'){
+    gbbTtSpend+=spend;
+    // accumulate raw coins for display; non-coin gifts approximate via rate
+    if(data.type==='tiktok_coins') gbbTtCoins+=(Number(data.amount)||0);
+    else gbbTtCoins+=Math.round(spend/0.01);
+  }
   gbbUpdateDisplay();
 }
 
@@ -1000,7 +1010,7 @@ function gbbUpdateDisplay(){
     ytFill.style.width=ytPct+'%';
     ttFill.style.width=(100-ytPct)+'%';
     ytAmt.textContent=gbbFmt(yt);
-    ttAmt.textContent=gbbFmt(tt);
+    ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
     if(gbbTimerLeft===null){
       timerEl.textContent='● LIVE';timerEl.className='gbb-live';
     }else if(gbbTimerLeft<=0){
@@ -1018,7 +1028,7 @@ function gbbUpdateDisplay(){
     ytFill.style.width=ytPct+'%';
     ttFill.style.width=ttPct+'%';
     ytAmt.textContent=gbbFmt(yt);
-    ttAmt.textContent=gbbFmt(tt);
+    ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
     if(!gbbGoalHit&&(yt+tt)>=goal){
       gbbGoalHit=true;
       document.getElementById('gbb-goal-shimmer').classList.add('active');
@@ -1088,7 +1098,7 @@ function gbbHandleCmd(data){
   }
   // Reset and activate
   gbbMode=mode;
-  gbbYtSpend=0;gbbTtSpend=0;gbbGoalHit=false;
+  gbbYtSpend=0;gbbTtSpend=0;gbbTtCoins=0;gbbGoalHit=false;
   gbbGoalAmount=Number(goalAmount)||100;
   gbbTimerLeft=timerSeconds?Number(timerSeconds):null;
   document.getElementById('gbb-goal-shimmer').classList.remove('active');
