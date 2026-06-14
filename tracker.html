@@ -632,6 +632,63 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════ GIFTR BAR CONTROLS ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="giftr-ctrl-hdr">
+      <h2>📡 Giftr Bar Controls</h2>
+      <span class="panel-toggle open" id="giftr-ctrl-toggle">▼</span>
+    </div>
+    <div class="panel-body" id="giftr-ctrl-body">
+
+      <!-- ── Giftr Top Slot Controls ── -->
+      <div>
+        <label style="margin-bottom:7px;display:block">Pin Slot</label>
+        <div class="mode-group" id="giftr-slot-btns">
+          <button class="btn-mode btn-giftr-slot" data-slot="daily">🌟 Daily</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="weekly">📅 Weekly</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="monthly">🏆 Monthly</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="youtube">▶ YouTube</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="tiktok">♪ TikTok</button>
+          <button class="btn-mode btn-giftr-slot" data-slot="auto" id="btn-giftr-auto">↺ Auto</button>
+        </div>
+        <div class="dim" style="margin-top:4px">Pinning a slot pauses auto-rotation on the overlay. ↺ Auto resumes it.</div>
+      </div>
+
+      <hr style="margin:14px 0">
+
+      <!-- ── Rotation slide selection ── -->
+      <div>
+        <label style="margin-bottom:7px;display:block">Rotation Slides <span class="dim">(multi-select)</span></label>
+        <div class="mode-group" style="flex-wrap:wrap" id="giftr-slides-grp">
+          <button class="btn-mode" data-gslot="daily">Daily</button>
+          <button class="btn-mode" data-gslot="weekly">Weekly</button>
+          <button class="btn-mode" data-gslot="monthly">Monthly</button>
+          <button class="btn-mode" data-gslot="youtube">▶ YouTube</button>
+          <button class="btn-mode" data-gslot="tiktok">♪ TikTok</button>
+        </div>
+        <div class="dim" style="margin-top:4px">Click to toggle slots in/out of rotation. Must keep at least one on.</div>
+      </div>
+
+      <hr style="margin:14px 0">
+
+      <!-- ── Custom featured gifter ── -->
+      <div>
+        <label style="margin-bottom:7px;display:block">Custom Feature <span id="giftr-custom-badge" class="dim"></span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="giftr-custom-input" placeholder="Gifter name…"
+            list="giftr-custom-list" autocomplete="off"
+            style="flex:1;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px">
+          <datalist id="giftr-custom-list"></datalist>
+          <button class="btn-primary btn-sm" id="btn-giftr-feature">Feature</button>
+          <button class="btn-secondary btn-sm" id="btn-giftr-unfeature">Clear</button>
+        </div>
+        <div id="giftr-custom-status" class="dim" style="margin-top:5px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TOP 10 ══ -->
 <section>
   <div class="panel">
@@ -883,7 +940,8 @@ function saveData(data) {
   data.lastUpdated = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   renderLastUpdated(data.lastUpdated);
-  // (Top Gifters panel is pushed manually from tracker controls)
+  // Publish giftr leaderboard after data change (deferred so DB is current)
+  setTimeout(publishGiftrLeaderboard, 80);
 }
 
 let DB = loadData();
@@ -2097,6 +2155,13 @@ function formatRawAmount(rawAmount, type) {
       if (statusText) statusText.textContent = 'failed';
     });
 
+    // Respond to overlay requests for current giftr leaderboard data
+    ablyChannel.subscribe('cmd', msg => {
+      if (msg.data === 'requestLeaderboard') {
+        publishGiftrLeaderboard();
+      }
+    });
+
   } catch(e) {
     console.warn('[Ably] init failed:', e);
   }
@@ -2156,7 +2221,6 @@ function publishTopGifters(visible) {
   }
 }
 
-/* (legacy stubs — kept so old Ably data doesn't cause errors if replayed) */
 function publishLeaderboard() {
   if (!ablyChannel) return;
 
@@ -2315,6 +2379,120 @@ function publishGiftrLeaderboard() {
   document.getElementById('tgo-hdr').addEventListener('click', () => {
     const body   = document.getElementById('tgo-body');
     const toggle = document.getElementById('tgo-toggle');
+    const hidden = body.classList.toggle('hidden');
+    toggle.classList.toggle('open', !hidden);
+  });
+})();
+
+/* ───────────────────────────── GIFTR BAR + CUSTOM FEATURE ──── */
+(function initGiftrControls() {
+  const ALL_SLOTS = ['daily','weekly','monthly','youtube','tiktok'];
+
+  // Ensure setting exists
+  if (!Array.isArray(DB.settings.giftrEnabledSlots)) {
+    DB.settings.giftrEnabledSlots = [...ALL_SLOTS];
+  }
+
+  // ── Slide toggles (multi-select) ──
+  const enabled = DB.settings.giftrEnabledSlots;
+
+  function syncSlideButtons() {
+    document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
+      b.classList.toggle('active', enabled.includes(b.dataset.gslot));
+    });
+  }
+  syncSlideButtons();
+
+  document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
+    b.addEventListener('click', () => {
+      const slot = b.dataset.gslot;
+      const idx  = enabled.indexOf(slot);
+      if (idx >= 0) {
+        if (enabled.length <= 1) return; // keep at least one
+        enabled.splice(idx, 1);
+      } else {
+        enabled.push(slot);
+      }
+      DB.settings.giftrEnabledSlots = [...enabled];
+      saveData(DB);
+      syncSlideButtons();
+    });
+  });
+
+  // ── Giftr slot pin buttons ──
+  document.querySelectorAll('.btn-giftr-slot').forEach(b => {
+    b.addEventListener('click', () => {
+      const slot = b.dataset.slot;
+      document.querySelectorAll('.btn-giftr-slot').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (ablyChannel) {
+        ablyChannel.publish('giftr-cmd', slot === 'auto' ? 'auto' : 'slot:' + slot)
+          .catch(e => console.warn('[Ably] giftr-cmd err:', e));
+      }
+    });
+  });
+
+  // ── Custom featured gifter ──
+  function populateDatalist() {
+    const dl = document.getElementById('giftr-custom-list');
+    dl.innerHTML = Object.values(DB.gifters)
+      .map(g => `<option value="${g.displayName.replace(/"/g,'&quot;')}">`)
+      .join('');
+  }
+
+  function syncCustomStatus() {
+    const c      = DB.settings.giftrCustom;
+    const status = document.getElementById('giftr-custom-status');
+    const badge  = document.getElementById('giftr-custom-badge');
+    if (c) {
+      status.textContent = `Featuring: ${c.name}  (${c.amount ? c.amount.toLocaleString() : '—'})`;
+      badge.textContent  = '— active';
+    } else {
+      status.textContent = '';
+      badge.textContent  = '';
+    }
+  }
+
+  populateDatalist();
+  syncCustomStatus();
+
+  document.getElementById('btn-giftr-feature').addEventListener('click', () => {
+    const input   = document.getElementById('giftr-custom-input');
+    const rawName = input.value.trim();
+    if (!rawName) return;
+
+    const key    = normKey(rawName);
+    const gifter = DB.gifters[key]
+      || Object.values(DB.gifters).find(g => normKey(g.displayName) === key);
+
+    if (!gifter) {
+      document.getElementById('giftr-custom-status').textContent = '⚠ Gifter not found in tracker.';
+      return;
+    }
+
+    const raw = gifterRawTotals(gifter);
+    DB.settings.giftrCustom = {
+      name:       gifter.displayName,
+      amount:     raw.allTime,
+      type:       gifterType(gifter),
+      platform:   gifterPlatform(gifter),
+      profilePic: gifter.profilePic || null,
+    };
+    input.value = '';
+    saveData(DB);
+    syncCustomStatus();
+  });
+
+  document.getElementById('btn-giftr-unfeature').addEventListener('click', () => {
+    DB.settings.giftrCustom = null;
+    saveData(DB);
+    syncCustomStatus();
+  });
+
+  // Collapsible panel
+  document.getElementById('giftr-ctrl-hdr').addEventListener('click', () => {
+    const body   = document.getElementById('giftr-ctrl-body');
+    const toggle = document.getElementById('giftr-ctrl-toggle');
     const hidden = body.classList.toggle('hidden');
     toggle.classList.toggle('open', !hidden);
   });

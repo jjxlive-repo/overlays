@@ -117,6 +117,41 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   font-family: 'Bebas Neue', sans-serif; font-size: 58px; letter-spacing: 4px;
   white-space: nowrap; flex-shrink: 0; overflow: visible;
 }
+/* ══ GIFT BAR INFO (rotating carousel slot) ══ */
+#bar-info {
+  position: absolute; right: 0; top: 0; width: auto; min-width: 260px; height: 55px; overflow: hidden;
+  background: rgba(5,0,14,0.76); border-left: 1px solid rgba(255,255,255,0.06);
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
+  padding: 9px 14px 2px 14px; gap: 1px; transition: opacity 0.28s ease;
+}
+#bar-info-top { display: flex; align-items: center; gap: 7px; }
+#bar-slot-title {
+  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.55); white-space: nowrap;
+}
+#bar-info-bot { display: flex; align-items: baseline; gap: 9px; }
+#bar-info-name {
+  font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 2px; color: #fff;
+  white-space: nowrap; flex-shrink: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+}
+#bar-info-amount {
+  font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px;
+  white-space: nowrap; flex-shrink: 0; transition: color 0.6s ease;
+  text-shadow: -1px -1px 0 rgba(0,0,0,0.95), 1px -1px 0 rgba(0,0,0,0.95),
+               -1px 1px 0 rgba(0,0,0,0.95), 1px 1px 0 rgba(0,0,0,0.95);
+}
+#bar-info-amount.monthly-shimmer { background: rgba(192,132,252,0.14); animation: monthlyGlow 1.4s ease-in-out infinite; }
+@keyframes monthlyGlow {
+  0%,100%{box-shadow:0 0 6px rgba(192,132,252,0.25)} 50%{box-shadow:0 0 22px rgba(232,121,249,0.70),0 0 40px rgba(168,85,247,0.35)}
+}
+#bar-plat-badge {
+  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.10em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+}
+.plat-tiktok  { color:#69C9D0;background:rgba(105,201,208,0.16);border:1px solid rgba(105,201,208,0.30); }
+.plat-youtube { color:#FF6B6B;background:rgba(255,80,80,0.16);  border:1px solid rgba(255,80,80,0.30);   }
+.plat-direct, .plat-default { color:#C084FC;background:rgba(192,132,252,0.16);border:1px solid rgba(192,132,252,0.30); }
+
 /* ══ TOP GIFTERS PANEL ══ */
 #top-gifters-panel {
   position: absolute; left: 0; top: 505px; width: 1080px; z-index: 9;
@@ -477,6 +512,16 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     <span id="bar-hero-amount"></span>
   </div>
   <div id="bar-hero-action"></div>
+  <div id="bar-info">
+    <div id="bar-info-top">
+      <span id="bar-slot-title"></span>
+      <span id="bar-plat-badge"></span>
+    </div>
+    <div id="bar-info-bot">
+      <span id="bar-info-name"></span>
+      <span id="bar-info-amount"></span>
+    </div>
+  </div>
 </div>
 
 <!-- ══ TOP GIFTERS PANEL — slides down from bottom of gift bar ══ -->
@@ -553,6 +598,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 <script>
 /* ══ CONFIG ══ */
 const CONFIG = {
+  ROTATE_MS: 5000, MONTHLY_LINGER_MS: 3500,
   ABLY_KEY: 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
   ABLY_CHANNEL: 'splat-overlay',
 };
@@ -584,9 +630,17 @@ const PLAT_COLORS = {
   default: {wash:'rgba(192,132,252,0.08)',edge:'#C084FC',edgeRgb:'192,132,252',particles:['#C084FC','#E879F9','#fff','#A855F7','#FAF5FF'],pulse:'rgba(192,132,252,0.24)'},
 };
 
+const SLOT_DEFS = [
+  {key:'daily',  label:'Daily Top Gifter'  },{key:'weekly', label:'Weekly Top Gifter' },
+  {key:'monthly',label:'Monthly Top Gifter'},{key:'youtube',label:'Top YouTube Gifter'},
+  {key:'tiktok', label:'Top TikTok Gifter' },{key:'custom', label:'Featured Gifter'   },
+];
+
 /* ══ GIFT BAR STATE ══ */
-let alertQueue=[], alertActive=false;
-let alertTimeout=null, activePlat='default';
+let leaderboard={}, activeSlots=SLOT_DEFS.slice(0,5);
+let currentIdx=0, rotateTimer=null, progressAnim=null;
+let pinned=false, alertQueue=[], alertActive=false;
+let alertTimeout=null, infoFadeTimer=null, monthlyTimer=null, activePlat='default';
 
 /* ══ GIFT BAR UTILS ══ */
 function fmtAmount(a,t){const n=Number(a)||0;if(t==='tiktok_coins')return n.toLocaleString()+' COINS';if(t==='youtube_jewels')return n.toLocaleString()+' JEWELS';if(t==='youtube_superchat'||t==='direct_donation')return '$'+(Number.isInteger(n)?n.toLocaleString():n.toFixed(2));return n.toLocaleString();}
@@ -611,6 +665,22 @@ let linePulseInterval=null;
 function startLinePulse(plat){stopLinePulse();const pc=PLAT_COLORS[plat],rgb=pc.edgeRgb,top=document.getElementById('line-top'),bot=document.getElementById('line-bot');let bright=true;linePulseInterval=setInterval(()=>{const glow=bright?`0 0 18px rgba(${rgb},1),0 0 40px rgba(${rgb},0.7)`:`0 0 6px rgba(${rgb},0.6)`;top.style.boxShadow=bot.style.boxShadow=glow;bright=!bright;},500);}
 function stopLinePulse(){if(linePulseInterval){clearInterval(linePulseInterval);linePulseInterval=null;}}
 
+
+/* ══ GIFT BAR PROGRESS LINE ══ */
+function startProgress(ms){if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}const bar=document.getElementById('bar-progress'),start=performance.now();bar.style.width='0%';function tick(now){const pct=Math.min(100,((now-start)/ms)*100);bar.style.width=pct+'%';progressAnim=pct<100?requestAnimationFrame(tick):null;}progressAnim=requestAnimationFrame(tick);}
+
+/* ══ GIFT BAR INFO ══ */
+function setBarInfo(title,name,amtText,amtColor,amtRgb,platText,platClass,monthly){const info=document.getElementById('bar-info');clearTimeout(infoFadeTimer);info.style.opacity='0';infoFadeTimer=setTimeout(()=>{document.getElementById('bar-slot-title').textContent=title;document.getElementById('bar-info-name').textContent=name;const amtEl=document.getElementById('bar-info-amount');amtEl.textContent=amtText;amtEl.style.color=amtColor;amtEl.style.textShadow=['-1px -1px 0 rgba(0,0,0,0.95)','1px -1px 0 rgba(0,0,0,0.95)','-1px 1px 0 rgba(0,0,0,0.95)','1px 1px 0 rgba(0,0,0,0.95)',`0 0 14px rgba(${amtRgb},0.55)`].join(', ');amtEl.classList.toggle('monthly-shimmer',!!monthly);const badge=document.getElementById('bar-plat-badge');badge.textContent=platText;badge.className='bar-plat plat-'+platClass;info.style.opacity='1';},240);}
+
+/* ══ GIFT BAR SLOT DISPLAY ══ */
+function showSlot(idx){if(!activeSlots.length)return;currentIdx=((idx%activeSlots.length)+activeSlots.length)%activeSlots.length;const slotDef=activeSlots[currentIdx],entry=leaderboard[slotDef.key]??null,plat=entry?platKey(entry.platform):'default',pc=PLAT_COLORS[plat];activePlat=plat;setBarInfo(slotDef.label.toUpperCase(),entry?.name?entry.name.toUpperCase():'—',entry?fmtAmount(entry.amount,entry.type):'',pc.edge,pc.edgeRgb,platLabel(entry?.platform),'bar-plat plat-'+plat,false);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;document.getElementById('bar-progress').style.background=pc.edge;const lineGrad=`linear-gradient(to right,transparent 0%,transparent 28%,rgba(${pc.edgeRgb},0.12) 50%,rgba(${pc.edgeRgb},0.40) 78%,rgba(${pc.edgeRgb},0.65) 100%)`;document.getElementById('line-top').style.background=document.getElementById('line-bot').style.background=lineGrad;document.getElementById('bar-bg').style.background=`linear-gradient(to right,transparent 0%,rgba(5,0,14,0.03) 18%,rgba(${pc.edgeRgb},0.03) 40%,rgba(5,0,14,0.26) 44%,rgba(5,0,14,0.68) 65%,rgba(5,0,14,0.76) 76%,rgba(5,0,14,0.76) 100%)`;document.getElementById('bar-border').style.setProperty('--bc',pc.edgeRgb);startProgress(CONFIG.ROTATE_MS);}
+
+/* ══ GIFT BAR ROTATION ══ */
+function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTimer=setInterval(()=>{if(!pinned&&!alertActive)showSlot(currentIdx+1);},CONFIG.ROTATE_MS);}
+function stopRotation(){if(rotateTimer){clearInterval(rotateTimer);rotateTimer=null;}if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}}
+
+/* ══ GIFT BAR GIFTR DATA ══ */
+function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:enabled.includes(d.key));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);startRotation();}}
 
 /* ══ TOP GIFTERS RENDER ══ */
 const TGP_MEDALS=['🥇','🥈','🥉'];
@@ -640,9 +710,16 @@ function renderTopGifters(data){
 /* ══ GIFT BAR ALERT SYSTEM ══ */
 let _lastAlertKey=null,_lastAlertTime=0;
 function onGiftAlert(data){const tier=getTier(data.amount,data.type);if(tier===0)return;const key=`${(data.name||'').toLowerCase()}|${data.amount}|${data.type}`,now=Date.now();if(key===_lastAlertKey&&now-_lastAlertTime<4000)return;_lastAlertKey=key;_lastAlertTime=now;alertQueue.push({...data,tier});if(!alertActive)runNextAlert();}
-function runNextAlert(){if(!alertQueue.length){alertActive=false;deactivateLines();return;}alertActive=true;showAlert(alertQueue.shift());}
-function showAlert(alert){const{name,amount,type,platform,tier}=alert,plat=platKey(platform),pc=PLAT_COLORS[plat],cfg=TIER_CONFIG[tier];clearTimeout(alertTimeout);activePlat=plat;document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;document.getElementById('bar-progress').style.background=pc.edge;document.getElementById('bar-border').style.setProperty('--bc',pc.edgeRgb);if(tier===1){activateLines(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);return;}const heroName=document.getElementById('bar-hero-name'),heroAmt=document.getElementById('bar-hero-amount');heroName.textContent=name.toUpperCase();heroAmt.textContent=fmtAmount(amount,type);heroAmt.style.color=pc.edge;heroAmt.style.textShadow=['0 3px 10px rgba(0,0,0,0.98)','0 6px 22px rgba(0,0,0,0.85)',`0 0 12px rgba(${pc.edgeRgb},1.0)`,`0 0 30px rgba(${pc.edgeRgb},0.85)`,`0 0 65px rgba(${pc.edgeRgb},0.55)`,`0 0 120px rgba(${pc.edgeRgb},0.25)`].join(', ');const heroImg=document.getElementById('bar-hero-gift-img');if(alert.contentImg){heroImg.src=alert.contentImg;heroImg.style.display='block';}else{heroImg.style.display='none';}document.getElementById('gift-bar').style.setProperty('--plat-rgb',pc.edgeRgb);document.getElementById('bar-hero-action').textContent=name.toUpperCase()+' JUST SENT '+fmtAmount(amount,type)+'!';document.getElementById('gift-bar').classList.add('alert-active');activateLines(plat,tier);if(cfg.pulseLines)startLinePulse(plat);emitParticles(tier,plat);triggerScreenPulse(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);}
+function runNextAlert(){if(!alertQueue.length){alertActive=false;runMonthlyMoment();return;}alertActive=true;showAlert(alertQueue.shift());}
+function showAlert(alert){const{name,amount,type,platform,tier}=alert,plat=platKey(platform),pc=PLAT_COLORS[plat],cfg=TIER_CONFIG[tier];stopRotation();clearTimeout(alertTimeout);activePlat=plat;setBarInfo('JUST GIFTED',name.toUpperCase(),fmtAmount(amount,type),pc.edge,pc.edgeRgb,platLabel(platform),'bar-plat plat-'+plat,false);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;document.getElementById('bar-progress').style.background=pc.edge;document.getElementById('bar-border').style.setProperty('--bc',pc.edgeRgb);if(tier===1){activateLines(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);return;}const heroName=document.getElementById('bar-hero-name'),heroAmt=document.getElementById('bar-hero-amount');heroName.textContent=name.toUpperCase();heroAmt.textContent=fmtAmount(amount,type);heroAmt.style.color=pc.edge;heroAmt.style.textShadow=['0 3px 10px rgba(0,0,0,0.98)','0 6px 22px rgba(0,0,0,0.85)',`0 0 12px rgba(${pc.edgeRgb},1.0)`,`0 0 30px rgba(${pc.edgeRgb},0.85)`,`0 0 65px rgba(${pc.edgeRgb},0.55)`,`0 0 120px rgba(${pc.edgeRgb},0.25)`].join(', ');const heroImg=document.getElementById('bar-hero-gift-img');if(alert.contentImg){heroImg.src=alert.contentImg;heroImg.style.display='block';}else{heroImg.style.display='none';}document.getElementById('gift-bar').style.setProperty('--plat-rgb',pc.edgeRgb);document.getElementById('bar-hero-action').textContent=name.toUpperCase()+' JUST SENT '+fmtAmount(amount,type)+'!';document.getElementById('gift-bar').classList.add('alert-active');activateLines(plat,tier);if(cfg.pulseLines)startLinePulse(plat);emitParticles(tier,plat);triggerScreenPulse(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);}
 function dismissAlert(){clearTimeout(alertTimeout);stopLinePulse();deactivateLines();clearParticles();document.getElementById('gift-bar').classList.remove('alert-active');document.getElementById('bar-hero-action').textContent='';const _img=document.getElementById('bar-hero-gift-img');_img.style.display='none';_img.src='';runNextAlert();}
+
+/* ══ GIFT BAR MONTHLY MOMENT ══ */
+function runMonthlyMoment(){const monthly=leaderboard.monthly;if(!monthly){resumeFromAlert();return;}const plat=platKey(monthly.platform),pc=PLAT_COLORS[plat];setBarInfo('MONTHLY TOTAL',monthly.name.toUpperCase(),fmtAmount(monthly.amount,monthly.type),pc.edge,pc.edgeRgb,platLabel(monthly.platform),'bar-plat plat-'+plat,true);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;const top=document.getElementById('line-top'),bot=document.getElementById('line-bot');top.style.background=bot.style.background=`rgba(${pc.edgeRgb},0.25)`;top.style.boxShadow=bot.style.boxShadow=`0 0 8px rgba(${pc.edgeRgb},0.4)`;clearTimeout(monthlyTimer);monthlyTimer=setTimeout(resumeFromAlert,CONFIG.MONTHLY_LINGER_MS);}
+function resumeFromAlert(){document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
+
+/* ══ GIFT BAR GIFTR CMD ══ */
+function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=false;if(!alertActive)startRotation();}else if(cmd.startsWith('slot:')){const key=cmd.slice(5),idx=activeSlots.findIndex(s=>s.key===key);if(idx>=0){pinned=true;stopRotation();showSlot(idx);}}}
 
 /* ══════════════════════════════════════════════════
    SPLAT OVERLAY JS
@@ -695,7 +772,10 @@ function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=p
     client.connection.on('connected',   ()=>{dot.className='connected';});
     client.connection.on('disconnected',()=>{dot.className='';});
     client.connection.on('connecting',  ()=>{dot.className='connecting';});
+    client.connection.once('connected', ()=>channel.publish('cmd','requestLeaderboard').catch(()=>{}));
     /* Gift bar */
+    channel.subscribe('giftr',        msg=>onGiftrData(msg.data));
+    channel.subscribe('giftr-cmd',    msg=>onGiftrCmd(msg.data));
     channel.subscribe('gift-alert',   msg=>onGiftAlert(msg.data));
     channel.subscribe('top-gifters',  msg=>renderTopGifters(msg.data));
     /* Splat */
