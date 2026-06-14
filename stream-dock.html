@@ -774,16 +774,35 @@ html, body {
 /* ══ EVENT PROMO SYSTEM ══ */
 .event-promo-bar {
   display: none;
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 500;
   flex-direction: column;
   gap: 8px;
-  max-height: 58vh;
+  max-height: 78vh;
   overflow-y: auto;
   padding: 8px 10px 10px;
-  border-top: 1px solid rgba(168,85,247,0.24);
-  background: rgba(16,4,34,0.92);
+  border: 1px solid rgba(168,85,247,0.42);
+  border-radius: 10px;
+  background: rgba(12,3,28,0.98);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.68), 0 0 24px rgba(168,85,247,0.28);
   flex-shrink: 0;
 }
 .event-promo-bar.open { display: flex; }
+.ep-section-title {
+  margin-top: 2px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: rgba(168,85,247,0.12);
+  border: 1px solid rgba(168,85,247,0.22);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: #E879F9;
+}
 .ep-dock-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1151,9 +1170,29 @@ html, body {
   <div class="event-promo-bar" id="event-promo-bar">
     <div class="test-bar-header">
       <span class="test-bar-title">Event Promo</span>
-      <span class="test-bar-sub">Gamers vs Battlers overlay controls</span>
+      <span class="test-bar-sub">shelf, fun drawer, and event card controls</span>
       <span class="ep-auto-state" id="ep-auto-state">auto: off</span>
     </div>
+    <div class="ep-section-title">Shelf Font Sizes</div>
+    <div class="ep-dock-grid">
+      <label class="ep-dock-field"><span class="ep-dock-label">Shelf title px</span><input class="ep-dock-input" id="ep-font-title" type="number" min="18" max="60" step="1"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Team label px</span><input class="ep-dock-input" id="ep-font-team" type="number" min="14" max="34" step="1"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Player name px</span><input class="ep-dock-input" id="ep-font-player" type="number" min="14" max="34" step="1"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Date/tagline px</span><input class="ep-dock-input" id="ep-font-meta" type="number" min="12" max="34" step="1"></label>
+    </div>
+    <div class="ep-section-title">Fun Drawer</div>
+    <div class="ep-dock-grid">
+      <label class="ep-dock-field"><span class="ep-dock-label">Small label</span><input class="ep-dock-input" id="ep-fun-eyebrow" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Main text</span><input class="ep-dock-input" id="ep-fun-title" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Sub text</span><input class="ep-dock-input" id="ep-fun-subtitle" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Image upload</span><input class="ep-dock-input" id="ep-fun-file" type="file" accept="image/*"></label>
+      <label class="ep-dock-field full"><span class="ep-dock-label">Image URL / uploaded data</span><input class="ep-dock-input" id="ep-fun-image" type="text"></label>
+    </div>
+    <div class="ep-dock-actions">
+      <button class="ep-dock-btn" onclick="eventPromoShow('fun-drawer')">Show Fun Drawer</button>
+      <button class="ep-dock-btn danger" onclick="eventPromoHide()">Hide Promo</button>
+    </div>
+    <div class="ep-section-title">Event Copy + Timing</div>
     <div class="ep-dock-grid">
       <label class="ep-dock-field ep-dock-check">
         <input id="ep-enabled" type="checkbox">
@@ -1171,11 +1210,13 @@ html, body {
       <label class="ep-dock-field"><span class="ep-dock-label">Paintball ms</span><input class="ep-dock-input" id="ep-paintball-ms" type="number" min="1000" step="500"></label>
       <label class="ep-dock-field"><span class="ep-dock-label">Auto interval ms</span><input class="ep-dock-input" id="ep-auto-ms" type="number" min="10000" step="5000"></label>
     </div>
+    <div class="ep-section-title">Event Players</div>
     <div class="ep-dock-grid" id="ep-player-fields"></div>
     <div class="ep-dock-actions">
       <button class="ep-dock-btn" onclick="eventPromoApply()">Save / Apply to Overlay</button>
       <button class="ep-dock-btn" onclick="eventPromoShow('passive')">Show Passive</button>
       <button class="ep-dock-btn" onclick="eventPromoShow('fight-card')">Show Fight Card</button>
+      <button class="ep-dock-btn" onclick="eventPromoShow('fun-drawer')">Show Fun Drawer</button>
       <button class="ep-dock-btn" onclick="eventPromoShow('paintball')">Paintball Impact Slap</button>
       <button class="ep-dock-btn danger" onclick="eventPromoHide()">Hide Promo</button>
       <button class="ep-dock-btn" onclick="eventPromoAuto(true)">Start Auto Cycle</button>
@@ -2099,6 +2140,18 @@ const EVENT_PROMO_DEFAULT_CONFIG = {
     { team: 'battlers', name: 'Battler 1', image: '' },
     { team: 'battlers', name: 'Battler 2', image: '' }
   ],
+  fun: {
+    eyebrow: 'QUICK BREAKING NEWS',
+    title: 'CHAT IS COOKING',
+    subtitle: 'send help or snacks',
+    image: ''
+  },
+  fonts: {
+    shelfTitlePx: 31,
+    teamLabelPx: 22,
+    playerNamePx: 22,
+    metaPx: 17
+  },
   durations: { passiveMs: 12000, fightCardMs: 15000, paintballMs: 60000, autoIntervalMs: 60000 }
 };
 const EVENT_PROMO_PLAYER_LABELS = ['Gamer 1', 'Gamer 2', 'Battler 1', 'Battler 2'];
@@ -2113,6 +2166,8 @@ function mergeEventPromoConfig(cfg) {
     ...EVENT_PROMO_DEFAULT_CONFIG,
     ...src,
     players: EVENT_PROMO_DEFAULT_CONFIG.players.map((p, i) => ({ ...p, ...(src.players?.[i] || {}) })),
+    fun: { ...EVENT_PROMO_DEFAULT_CONFIG.fun, ...(src.fun || {}) },
+    fonts: { ...EVENT_PROMO_DEFAULT_CONFIG.fonts, ...(src.fonts || {}) },
     durations
   };
 }
@@ -2158,6 +2213,14 @@ function eventPromoPopulateFields(config) {
   document.getElementById('ep-fight-ms').value = cfg.durations.fightCardMs;
   document.getElementById('ep-paintball-ms').value = cfg.durations.paintballMs;
   document.getElementById('ep-auto-ms').value = cfg.durations.autoIntervalMs;
+  document.getElementById('ep-font-title').value = cfg.fonts.shelfTitlePx;
+  document.getElementById('ep-font-team').value = cfg.fonts.teamLabelPx;
+  document.getElementById('ep-font-player').value = cfg.fonts.playerNamePx;
+  document.getElementById('ep-font-meta').value = cfg.fonts.metaPx;
+  document.getElementById('ep-fun-eyebrow').value = cfg.fun.eyebrow || '';
+  document.getElementById('ep-fun-title').value = cfg.fun.title || '';
+  document.getElementById('ep-fun-subtitle').value = cfg.fun.subtitle || '';
+  document.getElementById('ep-fun-image').value = cfg.fun.image || '';
   cfg.players.forEach((p, i) => {
     document.getElementById(`ep-player-${i}-name`).value = p.name || '';
     document.getElementById(`ep-player-${i}-image`).value = p.image || '';
@@ -2166,6 +2229,7 @@ function eventPromoPopulateFields(config) {
 
 function eventPromoReadConfig() {
   const num = (id, fallback) => Math.max(1000, Number(document.getElementById(id).value) || fallback);
+  const fontNum = (id, fallback, min, max) => Math.max(min, Math.min(max, Number(document.getElementById(id).value) || fallback));
   const players = EVENT_PROMO_DEFAULT_CONFIG.players.map((p, i) => ({
     team: p.team,
     name: document.getElementById(`ep-player-${i}-name`).value.trim() || EVENT_PROMO_PLAYER_LABELS[i],
@@ -2181,6 +2245,18 @@ function eventPromoReadConfig() {
     teamGamersLabel: document.getElementById('ep-gamers-label-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.teamGamersLabel,
     teamBattlersLabel: document.getElementById('ep-battlers-label-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.teamBattlersLabel,
     players,
+    fun: {
+      eyebrow: document.getElementById('ep-fun-eyebrow').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.fun.eyebrow,
+      title: document.getElementById('ep-fun-title').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.fun.title,
+      subtitle: document.getElementById('ep-fun-subtitle').value.trim(),
+      image: document.getElementById('ep-fun-image').value.trim()
+    },
+    fonts: {
+      shelfTitlePx: fontNum('ep-font-title', EVENT_PROMO_DEFAULT_CONFIG.fonts.shelfTitlePx, 18, 60),
+      teamLabelPx: fontNum('ep-font-team', EVENT_PROMO_DEFAULT_CONFIG.fonts.teamLabelPx, 14, 34),
+      playerNamePx: fontNum('ep-font-player', EVENT_PROMO_DEFAULT_CONFIG.fonts.playerNamePx, 14, 34),
+      metaPx: fontNum('ep-font-meta', EVENT_PROMO_DEFAULT_CONFIG.fonts.metaPx, 12, 34)
+    },
     durations: {
       passiveMs: num('ep-passive-ms', EVENT_PROMO_DEFAULT_CONFIG.durations.passiveMs),
       fightCardMs: num('ep-fight-ms', EVENT_PROMO_DEFAULT_CONFIG.durations.fightCardMs),
@@ -2216,6 +2292,10 @@ function eventPromoSendConfig(config) {
     }
     return player;
   });
+  if (safeConfig.fun.image && safeConfig.fun.image.startsWith('data:')) {
+    imagePayloads.push({ index: 'fun', image: safeConfig.fun.image });
+    safeConfig.fun = { ...safeConfig.fun, image: '' };
+  }
   eventPromoPublish('event-promo', { type: 'event-promo-config', config: safeConfig });
   imagePayloads.forEach(({ index, image }) => eventPromoPublishPlayerImage(index, image));
 }
@@ -2249,7 +2329,7 @@ function eventPromoApply() {
 function eventPromoShow(mode) {
   const config = eventPromoSaveLocal();
   eventPromoSendConfig(config);
-  const durationMap = { passive: config.durations.passiveMs, 'fight-card': config.durations.fightCardMs, paintball: config.durations.paintballMs };
+  const durationMap = { passive: config.durations.passiveMs, 'fight-card': config.durations.fightCardMs, 'fun-drawer': 15000, paintball: config.durations.paintballMs };
   eventPromoPublish('event-promo', { type: 'event-promo-show', mode, durationMs: durationMap[mode] });
   doFlash('green');
 }
@@ -2280,6 +2360,15 @@ function eventPromoLoadImageFile(i, evt) {
       eventPromoApply();
     };
     reader.readAsDataURL(file);
+  });
+}
+
+function eventPromoLoadFunImageFile(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  if (!file) return;
+  eventPromoFileToAvatarDataUrl(file).then(dataUrl => {
+    document.getElementById('ep-fun-image').value = dataUrl;
+    eventPromoApply();
   });
 }
 
@@ -2314,6 +2403,7 @@ function eventPromoFileToAvatarDataUrl(file) {
 (function initEventPromoDock() {
   eventPromoCreatePlayerFields();
   eventPromoPopulateFields(getEventPromoConfigFromStorage());
+  document.getElementById('ep-fun-file')?.addEventListener('change', eventPromoLoadFunImageFile);
   document.querySelectorAll('#event-promo-bar input').forEach(input => {
     input.addEventListener('change', eventPromoSaveLocal);
     input.addEventListener('input', eventPromoSaveLocal);
