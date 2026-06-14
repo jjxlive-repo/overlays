@@ -1481,6 +1481,22 @@ function disconnectSSN() {
  *   YouTube supersticker   → hasDonation = "$5.00"
  *   any     (webhook)      → hasDonation = "$50.00 USD" (Ko-Fi, Stripe, etc.)
  */
+// ── TikTok gift coin values (viewer spend: 1 coin = $0.01) ──
+// SSN sometimes sends TikTok gifts as chat messages ("sent Rose × 1") with empty hasDonation.
+// This table lets us recover the coin count so the gift still gets recorded.
+const TT_GIFT_COINS = {
+  'rose':1,'tiktok':1,'ice cream cone':1,'flower':1,'heart me':1,'thumbs up':1,
+  'paper crane':99,'finger heart':5,'sunglasses':49,'doughnut':30,'little crown':10,
+  'panda':5,'perfume':20,'diamond':20,'love you':100,'football':100,'birthday cake':100,
+  'sending strength':100,'rainbow puke':100,'love explosion':69,'interstellar':1000,
+  'concert':500,'castle':500,'rose bouquet':99,'corgi':299,'jolly roger':20,
+  'galaxy':1000,'drama queen':5000,'planet':15000,'lion':29999,'universe':34999,
+  'go popular':99,'jjx pals':1,'universe unboxing':34999,
+};
+function ttGiftCoins(name) {
+  return TT_GIFT_COINS[(name||'').toLowerCase().trim()] || 1;
+}
+
 // These events are NEVER gifts — exclude even when hasDonation is set
 // (memberships expose hasDonation = the monthly subscription cost, not a gift)
 const EXCLUDED_EVENTS = new Set([
@@ -1582,10 +1598,22 @@ function handleSSNEvent(payload) {
                         'superchat','superchatwithtext','superchatevent'].includes(ssnEvent)
                    || (ssnEvent === 'thankyou' && ssnPlatform === 'tiktok');
 
+  // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
+  // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
+  let ttEmbedCoins = 0;
+  if (ssnPlatform === 'tiktok' && !hasDonation && data.chatmessage) {
+    const m = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*(\d+)/i);
+    if (m) {
+      const giftName = stripHtml(m[1]).trim();
+      const count    = parseInt(m[2]) || 1;
+      ttEmbedCoins   = ttGiftCoins(giftName) * count;
+    }
+  }
+
   // YouTube always uses named event strings for real superchats — hasDonation alone
   // is not trustworthy for YouTube (member chat messages may have it set).
   // TikTok fallback: only when platform is explicitly 'tiktok' (not empty/unknown).
-  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube');
+  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube') || ttEmbedCoins > 0;
 
   // Route TikTok chat messages to the chat panel (badge level captured below)
   const isTikTokChat = (ssnPlatform === 'tiktok') && !isRelevant && !!data.chatmessage;
@@ -1641,6 +1669,12 @@ function handleSSNEvent(payload) {
     }
   }
 
+  if (amount === 0 && ttEmbedCoins > 0) {
+    // Gift recovered from embedded chat message pattern ("sent Rose × 1")
+    amount = ttEmbedCoins;
+    type   = 'tiktok_coins';
+  }
+
   if (amount === 0) {
     // For TikTok coins: prefer data.coins (raw count) over data.amount (may be USD)
     if (type === 'tiktok_coins' && (data.coins ?? 0) > 0) {
@@ -1668,8 +1702,17 @@ function handleSSNEvent(payload) {
   const userId = data.userid || data.channelid || data.authorId || null;
 
   // Gift image + title from SSN (TikTok CDN URL for the gift graphic)
-  const contentImg = data.contentimg || data.giftImage || null;
-  const giftTitle  = data.gifttitle  || null;
+  // For embedded gifts, pull the image URL and name from the chatmessage img tag.
+  let contentImg = data.contentimg || data.giftImage || null;
+  let giftTitle  = data.gifttitle  || null;
+  if (ttEmbedCoins > 0 && data.chatmessage) {
+    const imgM = data.chatmessage.match(/img[^>]+src=['"]([^'"]+)['"]/i);
+    if (imgM && !contentImg) contentImg = imgM[1];
+    if (!giftTitle) {
+      const nameM = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*\d+/i);
+      if (nameM) giftTitle = stripHtml(nameM[1]).trim();
+    }
+  }
 
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, badgeLevel);
   if (isRelevant && amount > 0) {

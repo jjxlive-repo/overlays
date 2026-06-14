@@ -1264,6 +1264,20 @@ function updateViewerCount(key, count) {
 }
 
 
+/* ── TikTok gift coin table (mirrors tracker.html) ── */
+const TT_GIFT_COINS = {
+  'rose':1,'tiktok':1,'ice cream cone':1,'flower':1,'heart me':1,'thumbs up':1,
+  'paper crane':99,'finger heart':5,'sunglasses':49,'doughnut':30,'little crown':10,
+  'panda':5,'perfume':20,'diamond':20,'love you':100,'football':100,'birthday cake':100,
+  'sending strength':100,'rainbow puke':100,'love explosion':69,'interstellar':1000,
+  'concert':500,'castle':500,'rose bouquet':99,'corgi':299,'jolly roger':20,
+  'galaxy':1000,'drama queen':5000,'planet':15000,'lion':29999,'universe':34999,
+  'go popular':99,'jjx pals':1,'universe unboxing':34999,
+};
+function ttGiftCoins(name) {
+  return TT_GIFT_COINS[(name||'').toLowerCase().trim()] || 1;
+}
+
 /* ── Gift-alert helpers: parse amount + map type for Ably publish ── */
 function parseDockAmount(hasDonation, donoValue, alertType, rawCoins) {
   const s = String(hasDonation || '').trim();
@@ -1344,6 +1358,19 @@ function handleMsg(data) {
   const isTT   = p.includes('tiktok');
   const isYT   = p.includes('youtube');
   const evt = (data.event || '').toLowerCase();
+
+  // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
+  // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
+  let ttEmbedMatch = null;
+  let ttEmbedCoins = 0;
+  if (isTT && !data.hasDonation && !data.gifttitle && data.chatmessage) {
+    ttEmbedMatch = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*(\d+)/i);
+    if (ttEmbedMatch) {
+      const giftName = ttEmbedMatch[1].replace(/<[^>]*>/g,'').trim();
+      ttEmbedCoins   = ttGiftCoins(giftName) * (parseInt(ttEmbedMatch[2]) || 1);
+    }
+  }
+
   // YouTube: hasDonation alone is NOT reliable — members have it set to their subscription cost.
   // Only treat YouTube messages as gifts when there is a named gift event.
   // TikTok + webhooks: hasDonation and gifttitle are reliable signals.
@@ -1352,7 +1379,8 @@ function handleMsg(data) {
   const isGift = !!(
     ytGiftEvt ||
     (!isYT && (data.hasDonation || data.gifttitle)) ||
-    evt === 'gift' || evt === 'giftredemption' || evt === 'sponsorship'
+    evt === 'gift' || evt === 'giftredemption' || evt === 'sponsorship' ||
+    ttEmbedCoins > 0
   );
 
   if (isTT)  { document.getElementById('live-tt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
@@ -1363,16 +1391,29 @@ function handleMsg(data) {
     addGift(data, isTT, isYT);
     // Publish gift-alert → gift-bar explosion animation
     const alertType   = mapAlertType(evt, isTT, isYT);
-    const alertAmount = parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
+    // For embed-parsed gifts use the coin count directly; otherwise normal parse
+    const alertAmount = ttEmbedCoins > 0
+      ? ttEmbedCoins
+      : parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
     const alertPlat   = isTT ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
+    // For embedded gifts, pull image URL and gift name from the chatmessage
+    let contentImg = data.contentimg || null;
+    let giftTitle  = data.gifttitle  || null;
+    if (ttEmbedCoins > 0 && ttEmbedMatch) {
+      if (!giftTitle) giftTitle = ttEmbedMatch[1].replace(/<[^>]*>/g,'').trim();
+      if (!contentImg) {
+        const imgM = data.chatmessage.match(/img[^>]+src=['"]([^'"]+)['"]/i);
+        if (imgM) contentImg = imgM[1];
+      }
+    }
     if (alertAmount > 0 && ablyChannel) {
       ablyChannel.publish('gift-alert', {
         name:       data.chatname  || 'Anonymous',
         amount:     alertAmount,
         type:       alertType,
         platform:   alertPlat,
-        contentImg: data.contentimg || null,
-        giftTitle:  data.gifttitle  || null,
+        contentImg,
+        giftTitle,
         _src:       'dock',
       }).catch(() => {});
     }
