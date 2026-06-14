@@ -1568,7 +1568,7 @@ function hideEventPromo(){
   root.setAttribute('aria-hidden','true');
 }
 
-function showEventPromo(mode,durationMs){
+function eventPromoShowOverlay(mode,durationMs){
   const cfg=eventPromoConfig=mergeEventPromoConfig(eventPromoConfig);
   if(!cfg.enabled)return hideEventPromo();
   const root=document.getElementById('event-promo-root');
@@ -1597,7 +1597,7 @@ function setEventPromoConfig(config){
 function handleEventPromoMessage(data){
   const d=data||{};
   if(d.type==='event-promo-config')setEventPromoConfig(d.config);
-  else if(d.type==='event-promo-show')showEventPromo(d.mode,d.durationMs);
+  else if(d.type==='event-promo-show')eventPromoShowOverlay(d.mode,d.durationMs);
   else if(d.type==='event-promo-hide')hideEventPromo();
   else if(d.type==='event-promo-auto')setEventPromoAuto(!!d.enabled,d.intervalMs);
 }
@@ -1607,10 +1607,10 @@ function setEventPromoAuto(enabled,intervalMs){
   if(!enabled)return;
   const ms=Math.max(10000,Number(intervalMs)||eventPromoConfig.durations.autoIntervalMs||600000);
   eventPromoAutoIndex=0;
-  showEventPromo(eventPromoAutoModes[eventPromoAutoIndex],undefined);
+  eventPromoShowOverlay(eventPromoAutoModes[eventPromoAutoIndex],undefined);
   eventPromoAutoTimer=setInterval(()=>{
     eventPromoAutoIndex=(eventPromoAutoIndex+1)%eventPromoAutoModes.length;
-    showEventPromo(eventPromoAutoModes[eventPromoAutoIndex],undefined);
+    eventPromoShowOverlay(eventPromoAutoModes[eventPromoAutoIndex],undefined);
   },ms);
 }
 
@@ -1620,7 +1620,7 @@ function eventPromoSetGiftAlertActive(active){
 }
 
 window.setEventPromoConfig=setEventPromoConfig;
-window.showEventPromo=showEventPromo;
+window.showEventPromo=(mode,durationMs)=>eventPromoShowOverlay(mode,durationMs);
 window.hideEventPromo=hideEventPromo;
 renderEventPromo();
 
