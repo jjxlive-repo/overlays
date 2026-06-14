@@ -72,10 +72,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #gift-bar.alert-active #bar-bg { background: rgba(5,0,14,0.76); }
 #bar-wash { position: absolute; inset: 0; transition: background 0.9s ease; pointer-events: none; }
 #bar-shimmer-flare {
-  position: absolute; inset: 0;
-  background: linear-gradient(115deg, transparent 15%, rgba(255,255,255,0.18) 50%, transparent 85%);
-  background-size: 260% 100%; background-position: -260% 0; pointer-events: none;
-  animation: barFlareSweep 5s ease-in-out infinite;
+  position: absolute; inset: 0; pointer-events: none; display: none;
 }
 @keyframes barFlareSweep {
   0%{background-position:-260% 0;opacity:0} 8%{opacity:1}
@@ -673,7 +670,7 @@ function startProgress(ms){if(progressAnim){cancelAnimationFrame(progressAnim);p
 function setBarInfo(title,name,amtText,amtColor,amtRgb,platText,platClass,monthly){const info=document.getElementById('bar-info');clearTimeout(infoFadeTimer);info.style.opacity='0';infoFadeTimer=setTimeout(()=>{document.getElementById('bar-slot-title').textContent=title;document.getElementById('bar-info-name').textContent=name;const amtEl=document.getElementById('bar-info-amount');amtEl.textContent=amtText;amtEl.style.color=amtColor;amtEl.style.textShadow=['-1px -1px 0 rgba(0,0,0,0.95)','1px -1px 0 rgba(0,0,0,0.95)','-1px 1px 0 rgba(0,0,0,0.95)','1px 1px 0 rgba(0,0,0,0.95)',`0 0 14px rgba(${amtRgb},0.55)`].join(', ');amtEl.classList.toggle('monthly-shimmer',!!monthly);const badge=document.getElementById('bar-plat-badge');badge.textContent=platText;badge.className='bar-plat plat-'+platClass;info.style.opacity='1';},240);}
 
 /* ══ GIFT BAR SLOT DISPLAY ══ */
-function showSlot(idx){if(!activeSlots.length)return;currentIdx=((idx%activeSlots.length)+activeSlots.length)%activeSlots.length;const slotDef=activeSlots[currentIdx],entry=leaderboard[slotDef.key]??null,plat=entry?platKey(entry.platform):'default',pc=PLAT_COLORS[plat];activePlat=plat;setBarInfo(slotDef.label.toUpperCase(),entry?.name?entry.name.toUpperCase():'—',entry?fmtAmount(entry.amount,entry.type):'',pc.edge,pc.edgeRgb,platLabel(entry?.platform),'bar-plat plat-'+plat,false);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;document.getElementById('bar-progress').style.background=pc.edge;const lineGrad=`linear-gradient(to right,transparent 0%,transparent 28%,rgba(${pc.edgeRgb},0.12) 50%,rgba(${pc.edgeRgb},0.40) 78%,rgba(${pc.edgeRgb},0.65) 100%)`;document.getElementById('line-top').style.background=document.getElementById('line-bot').style.background=lineGrad;document.getElementById('bar-bg').style.background=`linear-gradient(to right,transparent 0%,rgba(5,0,14,0.03) 18%,rgba(${pc.edgeRgb},0.03) 40%,rgba(5,0,14,0.26) 44%,rgba(5,0,14,0.68) 65%,rgba(5,0,14,0.76) 76%,rgba(5,0,14,0.76) 100%)`;document.getElementById('bar-border').style.setProperty('--bc',pc.edgeRgb);startProgress(CONFIG.ROTATE_MS);}
+function showSlot(idx){if(!activeSlots.length)return;currentIdx=((idx%activeSlots.length)+activeSlots.length)%activeSlots.length;const slotDef=activeSlots[currentIdx],entry=leaderboard[slotDef.key]??null,plat=entry?platKey(entry.platform):'default',pc=PLAT_COLORS[plat];activePlat=plat;setBarInfo(slotDef.label.toUpperCase(),entry?.name?entry.name.toUpperCase():'—',entry?fmtAmount(entry.amount,entry.type):'',pc.edge,pc.edgeRgb,platLabel(entry?.platform),'bar-plat plat-'+plat,false);}
 
 /* ══ GIFT BAR ROTATION ══ */
 function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTimer=setInterval(()=>{if(!pinned&&!alertActive)showSlot(currentIdx+1);},CONFIG.ROTATE_MS);}
@@ -716,7 +713,7 @@ function dismissAlert(){clearTimeout(alertTimeout);stopLinePulse();deactivateLin
 
 /* ══ GIFT BAR MONTHLY MOMENT ══ */
 function runMonthlyMoment(){const monthly=leaderboard.monthly;if(!monthly){resumeFromAlert();return;}const plat=platKey(monthly.platform),pc=PLAT_COLORS[plat];setBarInfo('MONTHLY TOTAL',monthly.name.toUpperCase(),fmtAmount(monthly.amount,monthly.type),pc.edge,pc.edgeRgb,platLabel(monthly.platform),'bar-plat plat-'+plat,true);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;const top=document.getElementById('line-top'),bot=document.getElementById('line-bot');top.style.background=bot.style.background=`rgba(${pc.edgeRgb},0.25)`;top.style.boxShadow=bot.style.boxShadow=`0 0 8px rgba(${pc.edgeRgb},0.4)`;clearTimeout(monthlyTimer);monthlyTimer=setTimeout(resumeFromAlert,CONFIG.MONTHLY_LINGER_MS);}
-function resumeFromAlert(){document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
+function resumeFromAlert(){document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');document.getElementById('bar-progress').style.width='0%';deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
 
 /* ══ GIFT BAR GIFTR CMD ══ */
 function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=false;if(!alertActive)startRotation();}else if(cmd.startsWith('slot:')){const key=cmd.slice(5),idx=activeSlots.findIndex(s=>s.key===key);if(idx>=0){pinned=true;stopRotation();showSlot(idx);}}}
