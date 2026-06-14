@@ -1171,7 +1171,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   opacity: 0;
   filter: drop-shadow(0 24px 46px rgba(0,0,0,0.62)) drop-shadow(0 0 46px rgba(168,85,247,0.70));
 }
-.ep-root.ep-paintball-mode .ep-splat { animation: epSplatPop 0.62s 0.64s cubic-bezier(.34,1.56,.64,1) forwards, epSplatClear 0.55s 3s ease forwards; }
+.ep-root.ep-paintball-mode .ep-splat { animation: epSplatPop 0.62s 0.64s cubic-bezier(.34,1.56,.64,1) forwards, epSplatClear 0.55s var(--ep-splat-clear-delay, 3s) ease forwards; }
 @keyframes epSplatPop { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes epSplatClear { to { opacity: 0; transform: translate(-50%, -52%) scale(0.64); filter: blur(3px) drop-shadow(0 0 24px rgba(168,85,247,0.32)); } }
 @keyframes epSplatExit { to { opacity: 0; transform: translate(-50%, -50%) scale(0.88); } }
@@ -1471,7 +1471,7 @@ const DEFAULT_EVENT_PROMO_CONFIG = {
     playerNamePx: 22,
     metaPx: 17
   },
-  durations: { passiveMs: 12000, fightCardMs: 15000, paintballMs: 60000, autoIntervalMs: 60000 }
+  durations: { passiveMs: 12000, fightCardMs: 15000, paintballMs: 60000, paintballSplatMs: 3000, autoIntervalMs: 60000 }
 };
 /* Overlay position presets — Y center in pixels on the 1920px canvas */
 const SPLAT_POSITIONS = { top:280, upper:600, center:960, lower:1300, bottom:1640 };
@@ -1798,6 +1798,7 @@ function mergeEventPromoConfig(cfg){
   if(durations.autoIntervalMs===600000)durations.autoIntervalMs=60000;
   if(durations.paintballMs===13000)durations.paintballMs=60000;
   if(durations.fightCardMs===10000)durations.fightCardMs=15000;
+  durations.paintballSplatMs=Math.max(1200,Number(durations.paintballSplatMs)||DEFAULT_EVENT_PROMO_CONFIG.durations.paintballSplatMs);
   return {
     ...DEFAULT_EVENT_PROMO_CONFIG,
     ...src,
@@ -1909,11 +1910,13 @@ function eventPromoShowOverlay(mode,durationMs){
   const safeMode=mode==='paintball'||mode==='fight-card'||mode==='fun-drawer'||mode==='passive'?mode:'passive';
   const durations=cfg.durations||DEFAULT_EVENT_PROMO_CONFIG.durations;
   const ms=Number(durationMs)||durations[safeMode==='fight-card'?'fightCardMs':safeMode==='paintball'?'paintballMs':safeMode==='fun-drawer'?'fightCardMs':'passiveMs']||15000;
+  const splatMs=Math.min(Math.max(1200,Number(durations.paintballSplatMs)||3000),Math.max(1200,ms-900));
   root.style.setProperty('--ep-exit-delay',Math.max(1,ms-900)+'ms');
+  root.style.setProperty('--ep-splat-clear-delay',splatMs+'ms');
   root.classList.add('ep-active',safeMode==='fight-card'?'ep-card-mode':safeMode==='fun-drawer'?'ep-fun-mode':safeMode==='paintball'?'ep-paintball-mode':'ep-passive-mode');
   if(safeMode==='passive')document.getElementById('gift-bar')?.classList.add('ep-passive-active');
   root.setAttribute('aria-hidden','false');
-  if(safeMode==='paintball')eventPromoRevealTimer=setTimeout(()=>root.classList.add('ep-reveal-card'),3000);
+  if(safeMode==='paintball')eventPromoRevealTimer=setTimeout(()=>root.classList.add('ep-reveal-card'),splatMs);
   eventPromoHideTimer=setTimeout(hideEventPromo,ms);
 }
 
