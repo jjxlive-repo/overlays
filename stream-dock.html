@@ -2188,7 +2188,8 @@ function eventPromoReadConfig() {
 
 function eventPromoSaveLocal() {
   const cfg = eventPromoReadConfig();
-  localStorage.setItem(EVENT_PROMO_STORAGE_KEY, JSON.stringify(cfg));
+  try { localStorage.setItem(EVENT_PROMO_STORAGE_KEY, JSON.stringify(cfg)); }
+  catch(e) { console.warn('[event-promo] localStorage save failed:', e); }
   return cfg;
 }
 
@@ -2200,15 +2201,50 @@ function eventPromoPublish(name, payload) {
   }
 }
 
+function eventPromoSendConfig(config) {
+  const safeConfig = mergeEventPromoConfig(config);
+  const imagePayloads = [];
+  safeConfig.players = safeConfig.players.map((player, index) => {
+    const image = player.image || '';
+    if (image.startsWith('data:')) {
+      imagePayloads.push({ index, image });
+      return { ...player, image: '' };
+    }
+    return player;
+  });
+  eventPromoPublish('event-promo', { type: 'event-promo-config', config: safeConfig });
+  imagePayloads.forEach(({ index, image }) => eventPromoPublishPlayerImage(index, image));
+}
+
+function eventPromoPublishPlayerImage(index, image) {
+  const chunkSize = 12000;
+  if (image.length <= chunkSize) {
+    eventPromoPublish('event-promo', { type: 'event-promo-image', index, image });
+    return;
+  }
+  const id = 'epimg-' + index + '-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  const total = Math.ceil(image.length / chunkSize);
+  for (let part = 0; part < total; part++) {
+    eventPromoPublish('event-promo', {
+      type: 'event-promo-image-chunk',
+      index,
+      id,
+      part,
+      total,
+      chunk: image.slice(part * chunkSize, (part + 1) * chunkSize)
+    });
+  }
+}
+
 function eventPromoApply() {
   const config = eventPromoSaveLocal();
-  eventPromoPublish('event-promo', { type: 'event-promo-config', config });
+  eventPromoSendConfig(config);
   doFlash('green');
 }
 
 function eventPromoShow(mode) {
   const config = eventPromoSaveLocal();
-  eventPromoPublish('event-promo', { type: 'event-promo-config', config });
+  eventPromoSendConfig(config);
   const durationMap = { passive: config.durations.passiveMs, 'fight-card': config.durations.fightCardMs, paintball: config.durations.paintballMs };
   eventPromoPublish('event-promo', { type: 'event-promo-show', mode, durationMs: durationMap[mode] });
   doFlash('green');
@@ -2221,7 +2257,7 @@ function eventPromoHide() {
 
 function eventPromoAuto(enabled) {
   const config = eventPromoSaveLocal();
-  eventPromoPublish('event-promo', { type: 'event-promo-config', config });
+  eventPromoSendConfig(config);
   eventPromoPublish('event-promo', { type: 'event-promo-auto', enabled: !!enabled, intervalMs: config.durations.autoIntervalMs });
   document.getElementById('ep-auto-state').textContent = enabled ? 'auto: on' : 'auto: off';
   doFlash(enabled ? 'green' : 'red');
@@ -2252,7 +2288,7 @@ function eventPromoFileToAvatarDataUrl(file) {
       const img = new Image();
       img.onerror = reject;
       img.onload = () => {
-        const size = 320;
+        const size = 180;
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = size;
@@ -2263,7 +2299,7 @@ function eventPromoFileToAvatarDataUrl(file) {
         ctx.fillStyle = '#16051f';
         ctx.fillRect(0, 0, size, size);
         ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
       };
       img.src = String(reader.result || '');
     };

@@ -1496,6 +1496,7 @@ function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=p
 /* ══ EVENT PROMO SYSTEM ══ */
 let eventPromoConfig=mergeEventPromoConfig();
 let eventPromoHideTimer=null,eventPromoRevealTimer=null,eventPromoAutoTimer=null,eventPromoAutoIndex=0;
+const eventPromoImageChunks={};
 const eventPromoAutoModes=['passive','fight-card','passive','paintball','passive'];
 
 function mergeEventPromoConfig(cfg){
@@ -1590,8 +1591,35 @@ function eventPromoShowOverlay(mode,durationMs){
 }
 
 function setEventPromoConfig(config){
-  eventPromoConfig=mergeEventPromoConfig(config);
+  const incoming=mergeEventPromoConfig(config);
+  incoming.players=incoming.players.map((player,i)=>({
+    ...player,
+    image: player.image || eventPromoConfig.players?.[i]?.image || ''
+  }));
+  eventPromoConfig=incoming;
   renderEventPromo();
+}
+
+function setEventPromoPlayerImage(index,image){
+  const i=Number(index);
+  if(!Number.isInteger(i)||i<0||i>3||!image)return;
+  eventPromoConfig=mergeEventPromoConfig(eventPromoConfig);
+  eventPromoConfig.players[i].image=image;
+  renderEventPromo();
+}
+
+function handleEventPromoImageChunk(d){
+  const i=Number(d.index);
+  const total=Number(d.total);
+  const part=Number(d.part);
+  if(!d.id||!Number.isInteger(i)||i<0||i>3||!Number.isInteger(total)||!Number.isInteger(part)||part<0||part>=total)return;
+  const key=d.id+':'+i;
+  if(!eventPromoImageChunks[key])eventPromoImageChunks[key]={parts:new Array(total),total,index:i};
+  eventPromoImageChunks[key].parts[part]=d.chunk||'';
+  if(eventPromoImageChunks[key].parts.filter(v=>v!==undefined).length===total){
+    setEventPromoPlayerImage(i,eventPromoImageChunks[key].parts.join(''));
+    delete eventPromoImageChunks[key];
+  }
 }
 
 function handleEventPromoMessage(data){
@@ -1600,6 +1628,8 @@ function handleEventPromoMessage(data){
   else if(d.type==='event-promo-show')eventPromoShowOverlay(d.mode,d.durationMs);
   else if(d.type==='event-promo-hide')hideEventPromo();
   else if(d.type==='event-promo-auto')setEventPromoAuto(!!d.enabled,d.intervalMs);
+  else if(d.type==='event-promo-image')setEventPromoPlayerImage(d.index,d.image);
+  else if(d.type==='event-promo-image-chunk')handleEventPromoImageChunk(d);
 }
 
 function setEventPromoAuto(enabled,intervalMs){
