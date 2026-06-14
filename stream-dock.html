@@ -1361,9 +1361,12 @@ function handleMsg(data) {
 
   // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
   // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
+  // NOTE: do NOT restrict to isTT — SSN sometimes omits data.type on these events
+  // (ssnPlatform ends up empty, isTT=false) even though it's a TikTok gift.
+  // The "sent X × N" pattern is TikTok-exclusive; exclude YouTube to be safe.
   let ttEmbedMatch = null;
   let ttEmbedCoins = 0;
-  if (isTT && !data.hasDonation && !data.gifttitle && data.chatmessage) {
+  if (!isYT && !data.hasDonation && !data.gifttitle && data.chatmessage) {
     ttEmbedMatch = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*(\d+)/i);
     if (ttEmbedMatch) {
       const giftName = ttEmbedMatch[1].replace(/<[^>]*>/g,'').trim();
@@ -1383,19 +1386,19 @@ function handleMsg(data) {
     ttEmbedCoins > 0
   );
 
-  if (isTT)  { document.getElementById('live-tt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
+  if (isTT || ttEmbedCoins > 0)  { document.getElementById('live-tt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
   if (isYT)  { document.getElementById('live-yt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
   document.getElementById('live-all').classList.add('on');
 
   if (isGift) {
     addGift(data, isTT, isYT);
     // Publish gift-alert → gift-bar explosion animation
-    const alertType   = mapAlertType(evt, isTT, isYT);
+    const alertType   = ttEmbedCoins > 0 ? 'tiktok_coins' : mapAlertType(evt, isTT, isYT);
     // For embed-parsed gifts use the coin count directly; otherwise normal parse
     const alertAmount = ttEmbedCoins > 0
       ? ttEmbedCoins
       : parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
-    const alertPlat   = isTT ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
+    const alertPlat   = (isTT || ttEmbedCoins > 0) ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
     // For embedded gifts, pull image URL and gift name from the chatmessage
     let contentImg = data.contentimg || null;
     let giftTitle  = data.gifttitle  || null;

@@ -1600,8 +1600,11 @@ function handleSSNEvent(payload) {
 
   // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
   // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
+  // NOTE: do NOT restrict to ssnPlatform==='tiktok' — SSN sometimes sends these events
+  // without data.type set (ssnPlatform=''), so we'd miss them. The "sent X × N" pattern
+  // is TikTok-exclusive and safe to match unconditionally.
   let ttEmbedCoins = 0;
-  if (ssnPlatform === 'tiktok' && !hasDonation && data.chatmessage) {
+  if (!hasDonation && data.chatmessage && ssnPlatform !== 'youtube') {
     const m = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*(\d+)/i);
     if (m) {
       const giftName = stripHtml(m[1]).trim();
@@ -1635,8 +1638,14 @@ function handleSSNEvent(payload) {
 
   // Determine our internal type first so parseHasDonation can use it
   let type = mapEventType(ssnEvent, ssnPlatform);
-  if (type === null) return; // excluded type slipped through (safety net)
-  const platform = ssnPlatform || typeToPlatform(type);
+  // Embed detection wins: if we recovered coins from chatmessage, force tiktok_coins
+  // even if mapEventType returned direct_donation (because data.type was empty/unknown).
+  if (ttEmbedCoins > 0) {
+    type = 'tiktok_coins';
+  } else if (type === null) {
+    return; // excluded type slipped through (safety net)
+  }
+  const platform = (ttEmbedCoins > 0 && !ssnPlatform) ? 'tiktok' : (ssnPlatform || typeToPlatform(type));
   const ts = Date.now();
 
   // Amount resolution:
