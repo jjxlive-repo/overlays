@@ -2461,4 +2461,215 @@ function publishTopGifters(visible) {
       platform:    gifterPlatform(g),
     };
   }).filter(g => g.spendTotal > 0)
-    .
+    .sort((a, b) => b.spendTotal - a.spendTotal)
+    .slice(0, 5);
+
+  ablyChannel.publish('top-gifters', { visible: true, timeFrame: tf, gifters: ranked })
+    .catch(e => console.warn('[Ably] top-gifters err:', e));
+
+  const preview = document.getElementById('tgo-preview-text');
+  if (preview) {
+    preview.textContent = ranked.length
+      ? ranked.map((g, i) => `${i + 1}. ${g.name} ${g.spendDisplay}`).join('  |  ')
+      : 'No gifters for this period.';
+  }
+}
+
+/* ── Giftr 5-slot leaderboard (for gift-bar.html) ── */
+function publishGiftrLeaderboard() {
+  if (!ablyChannel) return;
+
+  const iosPct   = DB.settings.iosPercent ?? 50;
+  const todayCut = todayStartCST();
+  const weekCut  = weekStartCST();
+  const monthCut = monthStartCST();
+
+  const rows = Object.values(DB.gifters).map(g => {
+    let dayRaw = 0, weekRaw = 0, monthRaw = 0, allRaw = 0;
+    let daySpend = 0, weekSpend = 0, monthSpend = 0, allSpend = 0;
+    for (const gift of g.gifts) {
+      const spend = computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
+      allRaw += gift.amount; allSpend += spend;
+      if (gift.timestamp >= monthCut) { monthRaw += gift.amount; monthSpend += spend; }
+      if (gift.timestamp >= weekCut)  { weekRaw += gift.amount; weekSpend += spend; }
+      if (gift.timestamp >= todayCut) { dayRaw += gift.amount; daySpend += spend; }
+    }
+    return {
+      name: g.displayName,
+      type: gifterType(g),
+      platform: gifterPlatform(g),
+      profilePic: g.profilePic || null,
+      dayRaw, weekRaw, monthRaw, allRaw,
+      daySpend, weekSpend, monthSpend, allSpend,
+    };
+  });
+
+  function topBy(rawField) {
+    const spendField = rawField.replace('Raw', 'Spend');
+    const best = rows.filter(r => r[spendField] > 0).sort((a, b) => b[spendField] - a[spendField])[0];
+    if (!best) return null;
+    return { name: best.name, amount: best[rawField], type: best.type, platform: best.platform, profilePic: best.profilePic };
+  }
+
+  function topByPlat(platform) {
+    const best = rows.filter(r => r.platform === platform && r.allSpend > 0)
+      .sort((a, b) => b.allSpend - a.allSpend)[0];
+    if (!best) return null;
+    return { name: best.name, amount: best.allRaw, type: best.type, platform: best.platform, profilePic: best.profilePic };
+  }
+
+  const payload = {
+    daily: topBy('dayRaw'),
+    weekly: topBy('weekRaw'),
+    monthly: topBy('monthRaw'),
+    youtube: topByPlat('youtube'),
+    tiktok: topByPlat('tiktok'),
+    enabledSlots: Array.isArray(DB.settings.giftrEnabledSlots)
+      ? DB.settings.giftrEnabledSlots
+      : ['daily','weekly','monthly','youtube','tiktok'],
+    custom: DB.settings.giftrCustom || null,
+  };
+
+  ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
+}
+
+/* ── Top Gifters + Giftr control events ── */
+(function initOverlayControlTail() {
+  makeCollapsible('tgo-hdr', 'tgo-body', 'tgo-toggle', true);
+  makeCollapsible('giftr-ctrl-hdr', 'giftr-ctrl-body', 'giftr-ctrl-toggle', true);
+
+  function syncTgoButtons() {
+    const tf = DB.settings.tgoTimeFrame || 'daily';
+    document.querySelectorAll('.tgo-tf').forEach(b => b.classList.toggle('active', b.dataset.tf === tf));
+  }
+
+  document.querySelectorAll('.tgo-tf').forEach(b => {
+    b.addEventListener('click', () => {
+      DB.settings.tgoTimeFrame = b.dataset.tf;
+      saveData(DB);
+      syncTgoButtons();
+      publishTopGifters(true);
+    });
+  });
+
+  document.getElementById('btn-tgo-show')?.addEventListener('click', () => {
+    publishTopGifters(true);
+    const st = document.getElementById('tgo-status');
+    if (st) { st.textContent = 'shown'; setTimeout(() => st.textContent = '', 1800); }
+  });
+  document.getElementById('btn-tgo-hide')?.addEventListener('click', () => {
+    publishTopGifters(false);
+    const st = document.getElementById('tgo-status');
+    if (st) { st.textContent = 'hidden'; setTimeout(() => st.textContent = '', 1800); }
+  });
+  document.getElementById('btn-tgo-refresh')?.addEventListener('click', () => {
+    publishTopGifters(true);
+    publishGiftrLeaderboard();
+    const st = document.getElementById('tgo-status');
+    if (st) { st.textContent = 'refreshed'; setTimeout(() => st.textContent = '', 1800); }
+  });
+
+  const allSlots = ['daily','weekly','monthly','youtube','tiktok'];
+  if (!Array.isArray(DB.settings.giftrEnabledSlots)) DB.settings.giftrEnabledSlots = [...allSlots];
+
+  function syncSlideButtons() {
+    document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
+      b.classList.toggle('active', DB.settings.giftrEnabledSlots.includes(b.dataset.gslot));
+    });
+  }
+
+  document.querySelectorAll('.btn-giftr-slot').forEach(b => {
+    b.addEventListener('click', () => {
+      const slot = b.dataset.slot;
+      document.querySelectorAll('.btn-giftr-slot').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (ablyChannel) ablyChannel.publish('giftr-cmd', slot === 'auto' ? 'auto' : 'slot:' + slot)
+        .catch(e => console.warn('[Ably] giftr-cmd err:', e));
+    });
+  });
+
+  document.querySelectorAll('#giftr-slides-grp [data-gslot]').forEach(b => {
+    b.addEventListener('click', () => {
+      const slot = b.dataset.gslot;
+      const enabled = DB.settings.giftrEnabledSlots;
+      const idx = enabled.indexOf(slot);
+      if (idx >= 0) {
+        if (enabled.length <= 1) return;
+        enabled.splice(idx, 1);
+      } else {
+        enabled.push(slot);
+      }
+      DB.settings.giftrEnabledSlots = [...enabled];
+      saveData(DB);
+      syncSlideButtons();
+      publishGiftrLeaderboard();
+    });
+  });
+
+  function populateDatalist() {
+    const dl = document.getElementById('giftr-custom-list');
+    if (!dl) return;
+    dl.innerHTML = Object.values(DB.gifters)
+      .map(g => `<option value="${g.displayName.replace(/"/g,'&quot;')}">`)
+      .join('');
+  }
+
+  function syncCustomStatus() {
+    const c = DB.settings.giftrCustom;
+    const status = document.getElementById('giftr-custom-status');
+    const badge = document.getElementById('giftr-custom-badge');
+    if (!status || !badge) return;
+    if (c) {
+      status.textContent = `Featuring: ${c.name} (${c.amount ? c.amount.toLocaleString() : '-'})`;
+      badge.textContent = '- active';
+    } else {
+      status.textContent = '';
+      badge.textContent = '';
+    }
+  }
+
+  document.getElementById('btn-giftr-feature')?.addEventListener('click', () => {
+    const input = document.getElementById('giftr-custom-input');
+    const rawName = input?.value.trim() || '';
+    if (!rawName) return;
+    const key = normKey(rawName);
+    const gifter = DB.gifters[key] || Object.values(DB.gifters).find(g => normKey(g.displayName) === key);
+    if (!gifter) {
+      const status = document.getElementById('giftr-custom-status');
+      if (status) status.textContent = 'Gifter not found in tracker.';
+      return;
+    }
+    const raw = gifterRawTotals(gifter);
+    DB.settings.giftrCustom = {
+      name: gifter.displayName,
+      amount: raw.allTime,
+      type: gifterType(gifter),
+      platform: gifterPlatform(gifter),
+      profilePic: gifter.profilePic || null,
+    };
+    input.value = '';
+    saveData(DB);
+    syncCustomStatus();
+    publishGiftrLeaderboard();
+  });
+
+  document.getElementById('btn-giftr-unfeature')?.addEventListener('click', () => {
+    DB.settings.giftrCustom = null;
+    saveData(DB);
+    syncCustomStatus();
+    publishGiftrLeaderboard();
+  });
+
+  syncTgoButtons();
+  syncSlideButtons();
+  populateDatalist();
+  syncCustomStatus();
+})();
+
+/* Publish once after the script is fully loaded so a freshly opened overlay gets data. */
+setTimeout(() => {
+  publishGiftrLeaderboard();
+}, 250);
+</script>
+</body>
+</html>
