@@ -2670,6 +2670,94 @@ function publishGiftrLeaderboard() {
 setTimeout(() => {
   publishGiftrLeaderboard();
 }, 250);
+
+/* ───────────────────────────── GIFT BATTLE / SHARED PROGRESS ──── */
+(function initGiftBattle() {
+  makeCollapsible('gbt-hdr', 'gbt-body', 'gbt-toggle', true);
+
+  let gbtSelectedMode = 'off';
+  let gbtTimerType    = 'live';
+
+  /* ── Sync mode button active states + show/hide conditional rows ── */
+  function syncModeButtons() {
+    document.querySelectorAll('.gbt-mode').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === gbtSelectedMode);
+    });
+    document.getElementById('gbt-timer-row').style.display =
+      gbtSelectedMode === 'battle'   ? 'block' : 'none';
+    document.getElementById('gbt-goal-row').style.display =
+      gbtSelectedMode === 'progress' ? 'block' : 'none';
+    document.getElementById('btn-gbt-start').disabled = (gbtSelectedMode === 'off');
+  }
+
+  document.querySelectorAll('.gbt-mode').forEach(b => {
+    b.addEventListener('click', () => {
+      gbtSelectedMode = b.dataset.mode;
+      syncModeButtons();
+    });
+  });
+
+  /* ── Timer type buttons (Full Live vs Timed) ── */
+  function syncTimerTypeButtons() {
+    document.querySelectorAll('.gbt-timer-type').forEach(b => {
+      b.classList.toggle('active', b.dataset.ttype === gbtTimerType);
+    });
+    const showMin = gbtTimerType === 'timed';
+    document.getElementById('gbt-timer-min').style.display  = showMin ? '' : 'none';
+    document.getElementById('gbt-timer-unit').style.display = showMin ? '' : 'none';
+  }
+
+  document.querySelectorAll('.gbt-timer-type').forEach(b => {
+    b.addEventListener('click', () => {
+      gbtTimerType = b.dataset.ttype;
+      syncTimerTypeButtons();
+    });
+  });
+
+  /* ── Activate ── */
+  document.getElementById('btn-gbt-start').addEventListener('click', () => {
+    const statusEl = document.getElementById('gbt-status');
+    if (!ablyChannel) {
+      statusEl.textContent = '⚠ Ably not connected';
+      return;
+    }
+    const cmd = { mode: gbtSelectedMode };
+    if (gbtSelectedMode === 'battle' && gbtTimerType === 'timed') {
+      const min = parseInt(document.getElementById('gbt-timer-min').value) || 5;
+      cmd.timerSeconds = min * 60;
+    }
+    if (gbtSelectedMode === 'progress') {
+      cmd.goalAmount = parseFloat(document.getElementById('gbt-goal-amt').value) || 100;
+    }
+    ablyChannel.publish('gift-battle-cmd', cmd)
+      .then(() => {
+        statusEl.textContent = '✅ Activated';
+        document.getElementById('gbt-active-info').style.display = 'block';
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+      })
+      .catch(e => {
+        statusEl.textContent = '❌ Publish failed';
+        console.warn('[GBT] publish error:', e);
+      });
+  });
+
+  /* ── Deactivate ── */
+  document.getElementById('btn-gbt-stop').addEventListener('click', () => {
+    const statusEl = document.getElementById('gbt-status');
+    if (!ablyChannel) return;
+    ablyChannel.publish('gift-battle-cmd', { mode: 'off' })
+      .then(() => {
+        statusEl.textContent = 'Deactivated';
+        document.getElementById('gbt-active-info').style.display = 'none';
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+      })
+      .catch(e => console.warn('[GBT] deactivate error:', e));
+  });
+
+  /* ── Init ── */
+  syncModeButtons();
+  syncTimerTypeButtons();
+})();
 </script>
 </body>
 </html>
