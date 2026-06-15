@@ -1777,8 +1777,100 @@ function splatEnterSaved(){if(splatState!==SPLAT_STATE.COUNTDOWN)return;splatSta
 function splatEnterExpired(){splatState=SPLAT_STATE.EXPIRED;clearInterval(splatTicker);playSound('expire');splatTimerNum.textContent='0';splatTimerNum.className='pulse-danger';splatProgFill.style.width='0%';setTimeout(()=>{splatCountWrap.style.display='none';splatBanner.textContent=SPLAT_CONFIG.COPY_EXPIRED;splatBanner.className='expired-text';splatTriggerCrack();},300);splatLingerTimer=setTimeout(splatEnterIdle,SPLAT_CONFIG.EXPIRED_LINGER_MS);}
 function splatUpdateDisplay(){const pct=splatTimeLeft/SPLAT_CONFIG.TIMER_SECONDS;splatTimerNum.textContent=splatTimeLeft;splatProgFill.style.width=(pct*100)+'%';splatTimerNum.classList.remove('pulse-normal','pulse-warn','pulse-danger');if(splatTimeLeft<=SPLAT_CONFIG.DANGER_THRESHOLD){splatTimerNum.classList.add('pulse-danger');splatProgFill.classList.add('danger');}else if(splatTimeLeft<=SPLAT_CONFIG.WARN_THRESHOLD){splatTimerNum.classList.add('pulse-warn');}else{splatTimerNum.classList.add('pulse-normal');}}
 
-/* Burst (save) */
-function splatTriggerBurst(){const colors=['#A855F7','#C084FC','#E879F9','#7B2FBE','#DDD6FE','#FBBF24'],cy=SPLAT_POSITIONS[currentSplatPos]||960,cx=540;for(let i=0;i<28;i++){const el=document.createElement('div');el.className='splat-particle';const sz=16+Math.random()*60,ang=(i/28)*360+Math.random()*20,r=80+Math.random()*260,dx=Math.cos(ang*Math.PI/180)*r,dy=Math.sin(ang*Math.PI/180)*r,col=colors[i%colors.length],dur=0.5+Math.random()*0.5,del=Math.random()*0.15,rot=Math.random()*360;el.style.cssText=`width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;left:${cx-sz/2}px;top:${cy-sz/2}px;background:radial-gradient(ellipse at 35% 35%,${col},${col}99);border-radius:50% 70% 50% 70% / 60% 50% 70% 50%;box-shadow:0 0 ${sz*0.4}px ${col}88;animation:splatBurst${i} ${dur}s ${del}s cubic-bezier(.2,.8,.4,1) forwards;`;addSplatStyle(`@keyframes splatBurst${i}{0%{opacity:1;transform:translate(0,0) scale(0) rotate(0deg)}40%{opacity:1}100%{opacity:0;transform:translate(${dx}px,${dy}px) scale(1) rotate(${rot}deg)}}`);splatBurstLayer.appendChild(el);}splatBg.style.filter='drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))';setTimeout(()=>{splatBg.style.filter='drop-shadow(0 0 40px rgba(168,85,247,0.6))';},600);}
+/* Burst (save) — organic 🫟 paintball splat */
+function splatTriggerBurst(){
+  splatBurstLayer.innerHTML='';
+  const cy=SPLAT_POSITIONS[currentSplatPos]||960, cx=540;
+
+  addSplatStyle(`@keyframes splatBlobIn{to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`);
+  addSplatStyle(`@keyframes splatGloss{0%,100%{opacity:0.26;transform:translateX(-28px)}50%{opacity:0.74;transform:translateX(36px)}}`);
+
+  /* ── Central organic blob ── */
+  const wrap=document.createElement('div');
+  wrap.style.cssText=`position:absolute;left:${cx}px;top:${cy}px;width:720px;height:580px;
+    transform:translate(-50%,-50%) scale(0);opacity:0;
+    filter:drop-shadow(0 32px 60px rgba(0,0,0,0.65)) drop-shadow(0 0 60px rgba(168,85,247,0.78));
+    animation:splatBlobIn 0.62s cubic-bezier(.34,1.56,.64,1) forwards;`;
+
+  const body=document.createElement('div');
+  body.style.cssText=`position:absolute;left:80px;top:60px;width:560px;height:420px;
+    border-radius:61% 39% 54% 46% / 42% 58% 44% 56%;
+    background:
+      radial-gradient(circle at 32% 26%,rgba(255,255,255,0.88) 0 8%,rgba(245,208,254,0.80) 9% 15%,transparent 16%),
+      radial-gradient(circle at 42% 40%,#F0ABFC 0 10%,#D946EF 24%,#A855F7 48%,#7E22CE 76%,#4C1D95 100%);`;
+  wrap.appendChild(body);
+
+  const sats=document.createElement('div');
+  sats.style.cssText=`position:absolute;inset:0;opacity:0.98;
+    filter:drop-shadow(0 0 16px rgba(232,121,249,0.78));
+    background:
+      radial-gradient(circle at 12% 44%,#A855F7 0 9%,transparent 10%),
+      radial-gradient(circle at 20% 22%,#C084FC 0 6%,transparent 7%),
+      radial-gradient(circle at 29% 84%,#9333EA 0 8%,transparent 9%),
+      radial-gradient(circle at 51% 9%, #E879F9 0 9%,transparent 10%),
+      radial-gradient(circle at 69% 20%,#A855F7 0 7%,transparent 8%),
+      radial-gradient(circle at 84% 51%,#C084FC 0 10%,transparent 11%),
+      radial-gradient(circle at 79% 82%,#8B5CF6 0 7%,transparent 8%),
+      radial-gradient(ellipse at 51% 55%,#B145F8 0 32%,transparent 33%);`;
+  wrap.appendChild(sats);
+
+  const gloss=document.createElement('div');
+  gloss.style.cssText=`position:absolute;left:155px;top:88px;width:200px;height:72px;border-radius:50%;
+    background:radial-gradient(ellipse at 38% 42%,rgba(255,255,255,0.88),transparent 58%),
+               radial-gradient(ellipse at 78% 28%,rgba(255,255,255,0.46),transparent 42%);
+    opacity:0;animation:splatGloss 1.4s 0.72s ease-in-out infinite;`;
+  wrap.appendChild(gloss);
+  splatBurstLayer.appendChild(wrap);
+
+  /* ── Droplets — short-range organic blobs ── */
+  const DROPS=[
+    {dx:-215,dy:-175,s:1.2,c:'#A855F7'},{dx:235,dy:-155,s:1.0,c:'#E879F9'},
+    {dx:-295,dy:55,  s:0.9,c:'#C084FC'},{dx:305,dy:75,  s:1.1,c:'#A855F7'},
+    {dx:-115,dy:-255,s:0.8,c:'#9333EA'},{dx:155,dy:-265,s:0.85,c:'#DDD6FE'},
+    {dx:-255,dy:215, s:1.0,c:'#E879F9'},{dx:275,dy:205, s:0.9,c:'#C084FC'},
+    {dx:5,   dy:-305,s:0.75,c:'#A855F7'},{dx:-75,dy:315,s:0.7,c:'#8B5CF6'},
+    {dx:95,  dy:320, s:0.8,c:'#9333EA'},{dx:-345,dy:-35,s:0.7,c:'#C084FC'},
+    {dx:365, dy:-5,  s:0.65,c:'#A855F7'},
+  ];
+  DROPS.forEach((d,i)=>{
+    const el=document.createElement('div');
+    const sz=20+Math.random()*28,ht=sz*(0.55+Math.random()*0.5);
+    el.style.cssText=`position:absolute;left:${cx-sz/2}px;top:${cy-ht/2}px;
+      width:${sz}px;height:${ht}px;
+      border-radius:62% 38% 54% 46% / 45% 57% 43% 55%;
+      background:radial-gradient(ellipse at 35% 30%,rgba(255,255,255,0.5),transparent 40%),
+                 radial-gradient(ellipse at 55% 55%,${d.c},${d.c}bb);
+      box-shadow:0 0 ${sz*0.5}px ${d.c}88;opacity:0;
+      animation:sDrop${i} 0.55s ${0.04+i*0.025}s cubic-bezier(.2,.8,.4,1) forwards;`;
+    addSplatStyle(`@keyframes sDrop${i}{0%{opacity:1;transform:translate(0,0) scale(0)}70%{opacity:0.95}100%{opacity:0.88;transform:translate(${d.dx}px,${d.dy}px) scale(${d.s})}}`);
+    splatBurstLayer.appendChild(el);
+  });
+
+  /* ── Drips hanging below blob ── */
+  [415,472,535,598,655].forEach((x,i)=>{
+    const drip=document.createElement('div');
+    const h=55+Math.random()*105,w=9+Math.random()*9;
+    drip.style.cssText=`position:absolute;left:${x}px;top:${cy+245}px;
+      width:${w}px;height:0;border-radius:0 0 ${w}px ${w}px;
+      background:linear-gradient(180deg,#C084FC,#7B2FBE);
+      box-shadow:0 0 10px rgba(168,85,247,0.55);transform-origin:top;
+      animation:sDrip${i} 0.9s ${0.58+i*0.07}s ease-out forwards;`;
+    addSplatStyle(`@keyframes sDrip${i}{to{height:${h}px}}`);
+    splatBurstLayer.appendChild(drip);
+  });
+
+  /* ── Glow surge ── */
+  splatBg.style.filter='drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.85))';
+  setTimeout(()=>{splatBg.style.filter='drop-shadow(0 0 40px rgba(168,85,247,0.6))';},700);
+
+  /* ── Fade out before idle ── */
+  setTimeout(()=>{
+    wrap.style.transition='opacity 0.55s ease,transform 0.55s ease,filter 0.55s ease';
+    wrap.style.opacity='0';
+    wrap.style.transform=`translate(-50%,-52%) scale(0.64)`;
+    wrap.style.filter='blur(3px) drop-shadow(0 0 24px rgba(168,85,247,0.32))';
+  },SPLAT_CONFIG.SAVED_LINGER_MS-650);
+}
 
 /* Crack + drips (expire) */
 function splatTriggerCrack(){splatShow(splatCrackLayer);const cy=SPLAT_POSITIONS[currentSplatPos]||960,cx=540;const crackPaths=[[[cx,cy],[cx-120,cy-280],[cx-180,cy-500],[cx-110,cy-720]],[[cx,cy],[cx+130,cy-260],[cx+200,cy-470],[cx+130,cy-680]],[[cx,cy],[cx-50,cy-420],[cx-30,cy-680],[cx-90,cy-900]],[[cx,cy],[cx+40,cy-370],[cx+60,cy-600],[cx+20,cy-830]],[[cx,cy],[cx-240,cy-180],[cx-380,cy-260],[cx-500,cy-240]],[[cx,cy],[cx+260,cy-160],[cx+400,cy-230],[cx+520,cy-210]],[[cx,cy],[cx-100,cy-130],[cx-280,cy-100],[cx-420,cy-170]],[[cx,cy],[cx+110,cy-120],[cx+300,cy-90],[cx+450,cy-155]]];crackPaths.forEach((pts,idx)=>{const path=document.createElementNS('http://www.w3.org/2000/svg','path');let d=`M ${pts[0][0]} ${pts[0][1]}`;pts.slice(1).forEach(p=>{d+=` L ${p[0]} ${p[1]}`;});path.setAttribute('d',d);path.setAttribute('stroke','#F43F5E');path.setAttribute('stroke-width',String(Math.max(1.5,4-idx*0.35)));path.setAttribute('fill','none');path.setAttribute('opacity','0.85');const len=1400;path.style.strokeDasharray=len;path.style.strokeDashoffset=len;path.style.transition=`stroke-dashoffset ${0.4+idx*0.06}s ${idx*0.04}s ease-out`;splatCrackSvg.appendChild(path);requestAnimationFrame(()=>requestAnimationFrame(()=>{path.style.strokeDashoffset='0';}));});[60,180,300,420,540,660,780,900,1020].forEach((x,i)=>{const drip=document.createElement('div');drip.className='drip';const h=80+Math.random()*200,w=8+Math.random()*14;drip.style.cssText=`left:${x}px;height:${h}px;width:${w}px;background:linear-gradient(180deg,#F43F5E,#7F1D1D);animation:splatDripDown ${0.6+Math.random()*0.4}s ${0.2+i*0.07}s ease-in forwards;`;splatCrackLayer.appendChild(drip);});addSplatStyle(`@keyframes splatDripDown{0%{opacity:0;transform:scaleY(0);transform-origin:top}30%{opacity:0.9}100%{opacity:0.7;transform:scaleY(1);transform-origin:top}}`);const flashEl=document.createElement('div');flashEl.style.cssText=`position:absolute;inset:0;z-index:30;pointer-events:none;background:radial-gradient(ellipse at center,transparent 30%,rgba(244,63,94,0.4) 100%);animation:splatVignFade 1.5s ease forwards;`;addSplatStyle(`@keyframes splatVignFade{0%{opacity:0}20%{opacity:1}100%{opacity:0}}`);splatCrackLayer.appendChild(flashEl);setTimeout(()=>flashEl.remove(),1600);}
