@@ -1,0 +1,2676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream Dock</title>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Nunito:wght@400;600;700&family=Poppins:wght@400;500;600&family=Roboto:wght@400;500&family=Ubuntu:wght@400;500&family=Rajdhani:wght@400;500;600&family=Exo+2:wght@400;500;600&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --tt:        #fe2c55;
+  --yt:        #ff4444;
+  --gift:      #f5a623;
+  --purple:    #A855F7;
+  --purple-dk: #7B2FBE;
+  --green:     #22c55e;
+  --danger:    #F43F5E;
+  --bg:        #0d0d12;
+  --bg-panel:  rgba(18,18,26,0.94);
+  --bg-card:   rgba(255,255,255,0.035);
+  --bg-hover:  rgba(255,255,255,0.06);
+  --bg-feat:   rgba(255,255,255,0.09);
+  --border:    rgba(255,255,255,0.07);
+  --border-hi: rgba(255,255,255,0.14);
+  --txt:       rgba(255,255,255,0.90);
+  --txt-dim:   rgba(255,255,255,0.42);
+  --txt-name:  rgba(255,255,255,0.72);
+  --radius:    10px;
+  --font:      'DM Sans', sans-serif;
+  --mono:      'DM Mono', monospace;
+  --boogaloo:  'Boogaloo', cursive;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  font-family: var(--font);
+  color: var(--txt);
+  overflow: hidden;
+}
+
+/* ── OUTER LAYOUT ── */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 0;
+}
+
+/* ── TOP VIEWER BAR ── */
+#top-viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 5px 14px;
+  background: rgba(0,0,0,0.35);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tvc-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+}
+.tvc-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+.tvc-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.tvc-label {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+}
+.tvc-num {
+  font-family: var(--boogaloo);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--txt-dim);
+  min-width: 38px;
+  text-align: right;
+  transition: color 0.3s;
+}
+.tvc-num.live { color: var(--txt); }
+.tvc-num.pop  { animation: vcPop 0.35s ease; }
+.tvc-icon {
+  font-size: 11px;
+  opacity: 0.4;
+}
+
+.main-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+  padding: 8px 8px 6px;
+}
+
+/* ── LEFT COLUMN (3 panels) ── */
+.col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 42%;
+  min-width: 0;
+}
+
+/* ── RIGHT COLUMN (unified + send) ── */
+.col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* ── PANEL (shared) ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex: 1;
+}
+
+.badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--txt-dim);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.live-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: #333;
+  transition: background 0.3s;
+}
+.live-dot.on { background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+/* ── VIEWER COUNT BAR ── */
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+.viewer-icon { font-size: 9px; opacity: 0.5; }
+.viewer-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex: 1;
+}
+.viewer-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--txt-dim);
+  transition: color 0.3s;
+  min-width: 24px;
+  text-align: right;
+}
+.viewer-count.live { color: var(--txt); }
+@keyframes vcPop {
+  0%  { transform: scale(1); }
+  40% { transform: scale(1.18); color: var(--green); }
+  100%{ transform: scale(1); }
+}
+.viewer-count.pop { animation: vcPop 0.35s ease; }
+
+/* ── MESSAGES SCROLLER ── */
+.msgs {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+.msgs::-webkit-scrollbar { width: 2px; }
+.msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 1px; }
+
+/* ── CHAT ROW (left panels) ── */
+.msg {
+  display: flex;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  align-items: flex-start;
+  transition: background 0.12s;
+  cursor: default;
+}
+.msg:hover { background: var(--bg-hover); }
+
+/* ── UNIFIED ROW (right panel) — clickable to feature ── */
+.umsg {
+  display: flex;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  align-items: flex-start;
+  transition: background 0.12s;
+  cursor: pointer;
+  position: relative;
+}
+.umsg:hover { background: var(--bg-hover); }
+.umsg:hover .feat-hint { opacity: 1; }
+.umsg.featuring { background: var(--bg-feat); }
+
+.feat-hint {
+  position: absolute;
+  right: 8px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: var(--txt-dim);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.platform-tag {
+  width: 3px;
+  border-radius: 2px;
+  align-self: stretch;
+  flex-shrink: 0;
+  min-height: 14px;
+}
+
+.av {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  margin-top: 1px;
+  overflow: hidden;
+}
+.av img { width:100%; height:100%; object-fit:cover; }
+
+.msg-body { flex:1; min-width:0; }
+
+.msg-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--txt-name);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.msg-text {
+  font-size: 11.5px;
+  color: var(--txt);
+  line-height: 1.42;
+  word-break: break-word;
+}
+.msg-text img { height: 16px; vertical-align: middle; margin: 0 1px; }
+
+/* ── GIFT ROW ── */
+.gift-row {
+  display: flex;
+  gap: 8px;
+  padding: 5px 10px;
+  align-items: center;
+  border-radius: 5px;
+  transition: background 0.12s;
+}
+.gift-row:hover { background: var(--bg-hover); }
+
+.gift-icon {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.gift-icon img { width:18px; height:18px; object-fit:contain; }
+
+.gift-body { flex:1; min-width:0; }
+.gift-name { font-size:10.5px; font-weight:600; color:var(--txt-name); line-height:1.3; }
+.gift-detail { font-size:10px; color:var(--txt-dim); line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gift-amt { font-family:var(--mono); font-size:11px; font-weight:500; flex-shrink:0; }
+
+/* ── EMPTY STATE ── */
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 10px;
+  color: var(--txt-dim);
+}
+
+/* ── SEND BAR (right col bottom) ── */
+.send-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.2);
+}
+
+.send-input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-hi);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--txt);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.send-input::placeholder { color: var(--txt-dim); }
+.send-input:focus { border-color: rgba(255,255,255,0.25); }
+
+.send-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--border-hi);
+  border-radius: 7px;
+  padding: 6px 14px;
+  color: var(--txt);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.send-btn:hover { background: rgba(255,255,255,0.14); }
+.send-btn:active { transform: scale(0.97); }
+
+/* ── RIGHT COL HEADER ── */
+.right-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── SPLAT BAR (bottom) ── */
+.splat-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  background: rgba(26,5,51,0.85);
+  flex-shrink: 0;
+}
+
+.splat-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.sp-pos-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sp-pos-btn {
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid rgba(168,85,247,0.25);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  background: rgba(168,85,247,0.08);
+  color: var(--txt-dim);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.sp-pos-btn:hover { background: rgba(168,85,247,0.2); color: var(--txt); border-color: rgba(168,85,247,0.5); }
+.sp-pos-btn.active {
+  background: rgba(168,85,247,0.35);
+  color: #E879F9;
+  border-color: rgba(168,85,247,0.7);
+  box-shadow: 0 0 8px rgba(168,85,247,0.4);
+}
+
+.sp-bait-label {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--txt-dim); white-space: nowrap; flex-shrink: 0;
+}
+.sp-bait-input {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border-hi);
+  border-radius: 5px; padding: 3px 7px; font-family: var(--font); font-size: 10px;
+  color: var(--txt); outline: none; transition: border-color 0.15s; min-width: 0;
+}
+.sp-bait-input::placeholder { color: var(--txt-dim); }
+.sp-bait-input:focus { border-color: rgba(168,85,247,0.55); }
+.sp-bait-set {
+  font-family: var(--boogaloo); font-size: 12px; border: none; border-radius: 6px;
+  padding: 3px 12px; cursor: pointer; background: rgba(168,85,247,0.28);
+  color: #E879F9; border: 1px solid rgba(168,85,247,0.5); white-space: nowrap; flex-shrink: 0;
+  transition: background 0.12s;
+}
+.sp-bait-set:hover { background: rgba(168,85,247,0.45); }
+
+.splat-conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--txt-dim);
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #444;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.conn-dot.connected { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.conn-dot.connecting { background: #FBBF24; animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.splat-timer {
+  font-family: var(--boogaloo);
+  font-size: 28px;
+  line-height: 1;
+  color: rgba(255,255,255,0.2);
+  min-width: 52px;
+  text-align: center;
+  transition: color 0.3s;
+  flex-shrink: 0;
+}
+.splat-timer.countdown { color: var(--txt); text-shadow: 0 0 12px var(--purple); }
+.splat-timer.warn      { color: #E879F9; text-shadow: 0 0 12px #E879F9; }
+.splat-timer.danger    { color: var(--danger); text-shadow: 0 0 12px var(--danger); }
+
+.splat-prog-wrap {
+  flex: 1;
+  height: 5px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+.splat-prog {
+  height: 100%;
+  background: linear-gradient(90deg, var(--purple-dk), var(--purple));
+  border-radius: 3px;
+  width: 100%;
+  transition: width 0.9s linear, background 0.3s;
+}
+.splat-prog.danger { background: linear-gradient(90deg, #7F1D1D, var(--danger)); }
+
+.splat-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sp-btn {
+  font-family: var(--boogaloo);
+  font-size: 14px;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: transform 0.1s, filter 0.15s, opacity 0.2s;
+  white-space: nowrap;
+}
+.sp-btn:active { transform: scale(0.95); }
+
+.sp-reset {
+  background: linear-gradient(135deg, var(--purple-dk), var(--purple));
+  color: white;
+  box-shadow: 0 3px 12px rgba(168,85,247,0.4);
+}
+.sp-reset:hover { filter: brightness(1.1); }
+.sp-reset.active-state { animation: spPulse 1s ease-in-out infinite; }
+@keyframes spPulse { 0%,100%{box-shadow:0 3px 12px rgba(168,85,247,0.4)} 50%{box-shadow:0 3px 20px rgba(168,85,247,0.8)} }
+
+.sp-save {
+  background: linear-gradient(135deg, #15803d, var(--green));
+  color: white;
+  box-shadow: 0 3px 12px rgba(34,197,94,0.35);
+  opacity: 0.3;
+  pointer-events: none;
+  transition: opacity 0.3s, filter 0.15s;
+}
+.sp-save.enabled { opacity: 1; pointer-events: auto; animation: saveReady 1.5s ease-in-out infinite; }
+.sp-save.enabled:hover { filter: brightness(1.1); }
+@keyframes saveReady { 0%,100%{box-shadow:0 3px 12px rgba(34,197,94,0.35)} 50%{box-shadow:0 3px 20px rgba(34,197,94,0.7)} }
+
+.sp-idle {
+  background: rgba(255,255,255,0.06);
+  color: var(--txt-dim);
+  border: 1px solid var(--border-hi);
+  font-size: 12px;
+}
+.sp-idle:hover { background: rgba(255,255,255,0.1); color: var(--txt); }
+
+/* ── FLASH ── */
+#flash { position:fixed; inset:0; pointer-events:none; z-index:999; opacity:0; transition:opacity 0.1s; }
+#flash.green { background:rgba(34,197,94,0.12); }
+#flash.red   { background:rgba(244,63,94,0.12); }
+#flash.show  { opacity:1; }
+
+/* ── SETTINGS PANEL ── */
+.settings-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--txt-dim);
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.settings-btn:hover { color: var(--txt); background: var(--bg-hover); }
+
+.settings-panel {
+  position: absolute;
+  top: 32px;
+  right: 8px;
+  background: rgba(18,18,28,0.98);
+  border: 1px solid var(--border-hi);
+  border-radius: 10px;
+  padding: 12px 14px;
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: none;
+}
+.settings-panel.open { display: block; }
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.settings-row:last-child { margin-bottom: 0; }
+
+.settings-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  flex-shrink: 0;
+}
+
+.settings-select {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  color: var(--txt);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.settings-select:focus { border-color: var(--purple); }
+
+.settings-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.size-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-hi);
+  border-radius: 5px;
+  color: var(--txt);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.size-btn:hover { background: rgba(255,255,255,0.13); }
+.size-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt);
+  min-width: 28px;
+  text-align: center;
+}
+
+/* ── ANIM ── */
+@keyframes fadein { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
+.msg,.umsg,.gift-row { animation: fadein 0.16s ease; }
+
+/* ── TikTok badge pills ── */
+.tt-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  letter-spacing: .3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+.tt-badge.lv0  { background: rgba(100,100,100,0.25); color:#999; }
+.tt-badge.lv1  { background: rgba(94,207,183,0.2);   color:#5ecfb7; }
+.tt-badge.lv5  { background: rgba(105,201,208,0.25); color:#69C9D0; }
+.tt-badge.lv10 { background: rgba(192,132,252,0.25); color:#c084fc; }
+.tt-badge.lv20 { background: rgba(250,204,21,0.2);   color:#facc15; }
+.tt-badge.lv50 { background: rgba(244,63,94,0.25);   color:#f43f5e; }
+.tt-badge.fan  { background: linear-gradient(135deg,rgba(250,204,21,.2),rgba(217,119,6,.2)); color:#facc15; }
+
+/* Glow on TikTok rows by badge tier */
+.msg.tt-gifter {
+  border: 1px solid rgba(105,201,208,.3);
+  box-shadow: 0 0 7px rgba(105,201,208,.18);
+  background: rgba(105,201,208,.04);
+}
+.msg.tt-top-gifter {
+  border: 1px solid rgba(192,132,252,.45);
+  box-shadow: 0 0 11px rgba(192,132,252,.28), inset 0 0 6px rgba(192,132,252,.06);
+  background: rgba(123,47,190,.07);
+}
+.msg.tt-member {
+  border: 1px solid rgba(250,204,21,.4);
+  box-shadow: 0 0 9px rgba(250,204,21,.22);
+  background: rgba(250,204,21,.04);
+}
+.msg.tt-member .msg-name { color: #facc15; }
+.msg.tt-member.tt-top-gifter {
+  border-color: rgba(250,204,21,.6);
+  box-shadow: 0 0 12px rgba(250,204,21,.3), 0 0 5px rgba(192,132,252,.25);
+}
+
+/* YouTube member highlight */
+.msg.yt-member {
+  border: 1px solid rgba(255,100,100,.35);
+  box-shadow: 0 0 9px rgba(255,68,68,.2);
+  background: rgba(255,68,68,.04);
+}
+.msg.yt-member .msg-name span:last-child { color: #ff9090; }
+.yt-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  letter-spacing: .3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-right: 2px;
+  background: rgba(255,68,68,.2);
+  color: #ff9090;
+}
+
+/* TikTok autoscroll toggle */
+.tt-scroll-btn {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05);
+  color: var(--txt-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+  line-height: 1.6;
+}
+.tt-scroll-btn.live {
+  background: rgba(105,201,208,.18);
+  border-color: rgba(105,201,208,.5);
+  color: #69C9D0;
+}
+.tt-scroll-btn:hover { opacity: .8; }
+
+/* ── TEST BAR ── */
+.test-bar {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 10px 9px;
+  border-top: 1px solid rgba(168,85,247,0.22);
+  background: rgba(14,3,30,0.8);
+  flex-shrink: 0;
+}
+.test-bar.open { display: flex; }
+
+/* ── ANNOUNCE BAR ── */
+.announce-bar {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 10px 9px;
+  border-top: 1px solid rgba(232,121,249,0.25);
+  background: rgba(16,2,36,0.85);
+  flex-shrink: 0;
+}
+.announce-bar.open { display: flex; }
+
+/* ══ EVENT PROMO SYSTEM ══ */
+.event-promo-bar {
+  display: none;
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 500;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: 8px 10px 10px;
+  border: 1px solid rgba(168,85,247,0.42);
+  border-radius: 10px;
+  background: rgba(12,3,28,0.98);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.68), 0 0 24px rgba(168,85,247,0.28);
+  flex-shrink: 0;
+}
+.event-promo-bar.open { display: flex; }
+.ep-section-title {
+  margin-top: 2px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: rgba(168,85,247,0.12);
+  border: 1px solid rgba(168,85,247,0.22);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: #E879F9;
+}
+.ep-dock-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.ep-dock-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.ep-dock-field.full { grid-column: 1 / -1; }
+.ep-dock-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+}
+.ep-dock-input {
+  width: 100%;
+  min-width: 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 6px;
+  padding: 5px 7px;
+  color: var(--txt);
+  font-family: var(--font);
+  font-size: 10px;
+  outline: none;
+}
+.ep-dock-input:focus { border-color: rgba(168,85,247,0.65); }
+.ep-dock-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  padding-top: 15px;
+}
+.ep-dock-check input { accent-color: var(--purple); }
+.ep-player-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  align-items: end;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.035);
+}
+.ep-player-card .ep-dock-field:last-child {
+  grid-column: 1 / -1;
+}
+.ep-dock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ep-dock-btn {
+  font-family: var(--boogaloo);
+  font-size: 13px;
+  border: 1px solid rgba(168,85,247,0.36);
+  border-radius: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #FAF5FF;
+  background: rgba(168,85,247,0.18);
+}
+.ep-dock-btn:hover { background: rgba(168,85,247,0.30); border-color: rgba(168,85,247,0.65); }
+.ep-dock-btn:active { transform: scale(0.97); }
+.ep-dock-btn.danger { border-color: rgba(244,63,94,0.45); background: rgba(244,63,94,0.16); }
+.ep-auto-state {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--txt-dim);
+  align-self: center;
+}
+
+.test-bar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.test-bar-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--purple);
+}
+.test-bar-sub {
+  font-size: 9px;
+  color: var(--txt-dim);
+  margin-left: auto;
+}
+
+.test-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.test-input {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--txt);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.test-input:focus { border-color: rgba(168,85,247,0.55); }
+.test-input::placeholder { color: var(--txt-dim); }
+
+.test-select {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-hi);
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 11px;
+  color: var(--txt);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.test-select:focus { border-color: rgba(168,85,247,0.55); }
+.test-select option { background: #12121a; }
+
+.test-fire {
+  font-family: var(--boogaloo);
+  font-size: 14px;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 14px;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--purple-dk), var(--purple));
+  color: white;
+  box-shadow: 0 2px 8px rgba(168,85,247,0.4);
+  white-space: nowrap;
+  transition: filter 0.12s, transform 0.1s;
+}
+.test-fire:hover { filter: brightness(1.12); }
+.test-fire:active { transform: scale(0.95); }
+
+.test-preset {
+  background: rgba(255,255,255,0.055);
+  border: 1px solid var(--border-hi);
+  color: var(--txt-dim);
+  font-family: var(--font);
+  font-size: 10px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.test-preset:hover { background: rgba(255,255,255,0.12); color: var(--txt); }
+.test-preset:active { transform: scale(0.95); }
+
+.test-clear {
+  background: rgba(244,63,94,0.1);
+  border: 1px solid rgba(244,63,94,0.28);
+  color: #F43F5E;
+  font-family: var(--font);
+  font-size: 10px;
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.test-clear:hover { background: rgba(244,63,94,0.2); }
+.test-clear:active { transform: scale(0.95); }
+
+.test-toggle-btn {
+  font-size: 11px;
+  background: rgba(168,85,247,0.1);
+  border: 1px solid rgba(168,85,247,0.28);
+  border-radius: 7px;
+  padding: 5px 10px;
+  color: rgba(168,85,247,0.8);
+  cursor: pointer;
+  font-family: var(--font);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.test-toggle-btn:hover { background: rgba(168,85,247,0.2); }
+.test-toggle-btn.active {
+  background: rgba(168,85,247,0.25);
+  border-color: rgba(168,85,247,0.55);
+  color: var(--purple);
+}
+</style>
+</head>
+<body>
+
+<div class="root">
+
+  <!-- VIEWER BAR -->
+  <div id="top-viewer-bar">
+    <div class="tvc-chip" id="tvc-tt">
+      <span class="tvc-dot" style="background:var(--tt)"></span>
+      <span class="tvc-label">TikTok</span>
+      <span class="tvc-num" id="tvcn-tt">—</span>
+      <span class="tvc-icon">👁</span>
+    </div>
+    <div class="tvc-divider"></div>
+    <div class="tvc-chip" id="tvc-yt">
+      <span class="tvc-dot" style="background:var(--yt)"></span>
+      <span class="tvc-label">YouTube</span>
+      <span class="tvc-num" id="tvcn-yt">—</span>
+      <span class="tvc-icon">👁</span>
+    </div>
+  </div>
+
+  <!-- MAIN ROW -->
+  <div class="main-row">
+
+    <!-- LEFT: unified all-chat feed + send -->
+    <div class="col-right">
+
+      <div class="right-header" style="position:relative;">
+        <div class="dot" style="background:rgba(255,255,255,0.3)"></div>
+        <span class="panel-title">All Chat</span>
+        <span class="badge" id="cnt-all">0</span>
+        <span style="font-size:9px;color:var(--txt-dim);margin-left:4px;">click to feature</span>
+        <div class="live-dot" id="live-all"></div>
+        <button class="tt-scroll-btn live" id="btn-all-scroll" onclick="toggleAllScroll(event)" title="Toggle auto-scroll">⬇ Live</button>
+        <button class="settings-btn" onclick="toggleSettings(event)" title="Font settings">⚙</button>
+        <div class="settings-panel" id="settings-panel">
+          <div class="settings-row">
+            <span class="settings-label">Font</span>
+            <select class="settings-select" id="font-select" onchange="applyFont()">
+              <option value="'DM Sans', sans-serif">DM Sans</option>
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Nunito', sans-serif">Nunito</option>
+              <option value="'Poppins', sans-serif">Poppins</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Ubuntu', sans-serif">Ubuntu</option>
+              <option value="'Rajdhani', sans-serif">Rajdhani</option>
+              <option value="'Exo 2', sans-serif">Exo 2</option>
+              <option value="'Outfit', sans-serif">Outfit</option>
+              <option value="'Boogaloo', cursive">Boogaloo</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Size</span>
+            <div class="settings-size-row">
+              <button class="size-btn" onclick="adjustSize(-1)">−</button>
+              <span class="size-val" id="size-val">12</span>
+              <button class="size-btn" onclick="adjustSize(1)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="msgs" id="msgs-all" style="flex:1;">
+        <div class="empty" id="emp-all">waiting…</div>
+      </div>
+
+      <div class="send-bar">
+        <input class="send-input" id="send-input" type="text" placeholder="Send to all chats…" maxlength="300">
+        <button class="send-btn" id="send-btn" onclick="sendChatMessage()">Send</button>
+      </div>
+
+    </div><!-- /col-right (All Chat — left side) -->
+
+    <!-- RIGHT: 3 platform panels -->
+    <div class="col-left">
+
+      <!-- TikTok -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--tt)"></div>
+          <span class="panel-title">TikTok</span>
+          <span class="badge" id="cnt-tt">0</span>
+          <button class="tt-scroll-btn live" id="btn-tt-scroll" onclick="toggleTTScroll(event)" title="Toggle auto-scroll">⬇ Live</button>
+          <div class="live-dot" id="live-tt"></div>
+        </div>
+        <div class="viewer-bar" id="vbar-tt" style="display:none;">
+          <span class="viewer-icon">👁</span>
+          <span class="viewer-label">Viewers</span>
+          <span class="viewer-count" id="vc-tt">—</span>
+        </div>
+        <div class="msgs" id="msgs-tt">
+          <div class="empty" id="emp-tt">waiting…</div>
+        </div>
+      </div>
+
+      <!-- YouTube -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--yt)"></div>
+          <span class="panel-title">YouTube</span>
+          <span class="badge" id="cnt-yt">0</span>
+          <button class="tt-scroll-btn live" id="btn-yt-scroll" onclick="toggleYTScroll(event)" title="Toggle auto-scroll">⬇ Live</button>
+          <div class="live-dot" id="live-yt"></div>
+        </div>
+        <div class="viewer-bar" id="vbar-yt" style="display:none;">
+          <span class="viewer-icon">👁</span>
+          <span class="viewer-label">Viewers</span>
+          <span class="viewer-count" id="vc-yt">—</span>
+        </div>
+        <div class="msgs" id="msgs-yt">
+          <div class="empty" id="emp-yt">waiting…</div>
+        </div>
+      </div>
+
+      <!-- Gifts -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--gift)"></div>
+          <span class="panel-title">Gifts &amp; Donations</span>
+          <span class="badge" id="cnt-gifts">0</span>
+          <div class="live-dot" id="live-gifts"></div>
+        </div>
+        <div class="msgs" id="msgs-gifts">
+          <div class="empty" id="emp-gifts">no gifts yet…</div>
+        </div>
+      </div>
+
+    </div><!-- /col-left (platform panels — right side) -->
+
+  </div><!-- /main-row -->
+
+  <!-- SPLAT BAR -->
+  <div class="splat-bar">
+    <!-- Row 1: Connection status + timer + progress -->
+    <div class="splat-bar-row">
+      <div class="splat-conn">
+        <div class="conn-dot connecting" id="conn-dot"></div>
+        <span id="conn-label" style="font-size:10px;">Connecting…</span>
+      </div>
+      <div class="splat-timer" id="splat-timer">--</div>
+      <div class="splat-prog-wrap">
+        <div class="splat-prog" id="splat-prog"></div>
+      </div>
+    </div>
+    <!-- Row 2: Primary action buttons -->
+    <div class="splat-bar-row">
+      <button class="sp-btn sp-reset" id="btn-reset" onclick="splatCmd('reset')" style="flex:1;">⚠️ Reset</button>
+      <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')"  style="flex:1;">💜 Save</button>
+      <button class="sp-btn sp-idle"                 onclick="splatCmd('idle')"  style="flex:1;">✖ Clear</button>
+    </div>
+    <!-- Row 3: Panel toggles -->
+    <div class="splat-bar-row">
+      <button class="test-toggle-btn" id="btn-test-toggle"        onclick="toggleTestBar()"        style="flex:1;">🧪 Test</button>
+      <button class="test-toggle-btn" id="btn-announce-toggle"    onclick="toggleAnnounceBar()"    style="flex:1;">📢 Live Text</button>
+      <button class="test-toggle-btn" id="btn-event-promo-toggle" onclick="toggleEventPromoBar()"  style="flex:1;">🎭 Event</button>
+    </div>
+    <!-- Row 4: Overlay position -->
+    <div class="splat-bar-row">
+      <span class="sp-pos-label">Pos:</span>
+      <button class="sp-pos-btn" data-pos="top"    onclick="setSplatPos('top')">Top</button>
+      <button class="sp-pos-btn" data-pos="upper"  onclick="setSplatPos('upper')">Upper</button>
+      <button class="sp-pos-btn active" data-pos="center" onclick="setSplatPos('center')">Center</button>
+      <button class="sp-pos-btn" data-pos="lower"  onclick="setSplatPos('lower')">Lower</button>
+      <button class="sp-pos-btn" data-pos="bottom" onclick="setSplatPos('bottom')">Bottom</button>
+    </div>
+    <!-- Row 5: Bait controls -->
+    <div class="splat-bar-row">
+      <span class="sp-bait-label">Bait:</span>
+      <input class="sp-bait-input" id="bait-img-url" type="text" placeholder="Image URL" style="flex:2;">
+      <input class="sp-bait-input" id="bait-top-txt" type="text" placeholder="Top" style="flex:1;" value="galaxy/dono">
+      <input class="sp-bait-input" id="bait-main-txt" type="text" placeholder="Main" style="flex:1;" value="RESET/SAVE">
+      <button class="sp-bait-set" onclick="setSplatBait()">Set</button>
+      <button class="sp-bait-set" id="btn-bait-visible" onclick="toggleBaitVisible()" style="background:rgba(34,197,94,0.18);border-color:rgba(34,197,94,0.4);color:#4ade80;min-width:52px;">👁 Bait</button>
+    </div>
+  </div>
+
+  <!-- EVENT PROMO SYSTEM -->
+  <div class="event-promo-bar" id="event-promo-bar">
+    <div class="test-bar-header">
+      <span class="test-bar-title">Event Promo</span>
+      <span class="test-bar-sub">shelf, fun drawer, and event card controls</span>
+      <span class="ep-auto-state" id="ep-auto-state">auto: off</span>
+      <button onclick="toggleEventPromoBar()" style="margin-left:auto;background:none;border:none;color:var(--txt-dim);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;" title="Close">✕</button>
+    </div>
+    <div class="ep-section-title">Shelf Font Sizes</div>
+    <div class="ep-dock-grid">
+      <label class="ep-dock-field"><span class="ep-dock-label">Shelf title px</span><input class="ep-dock-input" id="ep-font-title" type="number" min="18" max="60" step="1"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Team label px</span><input class="ep-dock-input" id="ep-font-team" type="number" min="14" max="34" step="1"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Player name px</span><input class="ep-dock-input" id="ep-font-player" type="number" min="14" max="34" step="1"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Date/tagline px</span><input class="ep-dock-input" id="ep-font-meta" type="number" min="12" max="34" step="1"></label>
+    </div>
+    <div class="ep-section-title">Fun Drawer</div>
+    <div class="ep-dock-grid">
+      <label class="ep-dock-field"><span class="ep-dock-label">Small label</span><input class="ep-dock-input" id="ep-fun-eyebrow" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Main text</span><input class="ep-dock-input" id="ep-fun-title" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Sub text</span><input class="ep-dock-input" id="ep-fun-subtitle" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Image upload</span><input class="ep-dock-input" id="ep-fun-file" type="file" accept="image/*"></label>
+      <label class="ep-dock-field full"><span class="ep-dock-label">Image URL / uploaded data</span><input class="ep-dock-input" id="ep-fun-image" type="text"></label>
+    </div>
+    <div class="ep-dock-actions">
+      <button class="ep-dock-btn" onclick="eventPromoShow('fun-drawer')">Show Fun Drawer</button>
+      <button class="ep-dock-btn danger" onclick="eventPromoHide()">Hide Promo</button>
+    </div>
+    <div class="ep-section-title">Event Copy + Timing</div>
+    <div class="ep-dock-grid">
+      <label class="ep-dock-field ep-dock-check">
+        <input id="ep-enabled" type="checkbox">
+        <span class="ep-dock-label">Promo enabled</span>
+      </label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Title</span><input class="ep-dock-input" id="ep-title-input" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Eyebrow</span><input class="ep-dock-input" id="ep-eyebrow-input" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Date/time</span><input class="ep-dock-input" id="ep-date-input" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Main tagline</span><input class="ep-dock-input" id="ep-tagline-input" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Gamers label</span><input class="ep-dock-input" id="ep-gamers-label-input" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Battlers label</span><input class="ep-dock-input" id="ep-battlers-label-input" type="text"></label>
+      <label class="ep-dock-field full"><span class="ep-dock-label">Passive ticker text</span><input class="ep-dock-input" id="ep-passive-input" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Passive ms</span><input class="ep-dock-input" id="ep-passive-ms" type="number" min="1000" step="500"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Fight card ms</span><input class="ep-dock-input" id="ep-fight-ms" type="number" min="1000" step="500"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Paintball total ms</span><input class="ep-dock-input" id="ep-paintball-ms" type="number" min="1000" step="500"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Paint splat ms</span><input class="ep-dock-input" id="ep-paintball-splat-ms" type="number" min="1200" step="250"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">Auto interval ms</span><input class="ep-dock-input" id="ep-auto-ms" type="number" min="10000" step="5000"></label>
+    </div>
+    <div class="ep-section-title">Event Players</div>
+    <div class="ep-dock-grid" id="ep-player-fields"></div>
+    <div class="ep-dock-actions" style="flex-direction:column;gap:5px;">
+      <button class="ep-dock-btn" onclick="eventPromoApply()" style="width:100%;font-size:14px;padding:8px 10px;background:rgba(168,85,247,0.28);border-color:rgba(168,85,247,0.6);">💾 Save / Apply to Overlay</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="ep-dock-btn" onclick="eventPromoShow('passive')">📺 Passive</button>
+        <button class="ep-dock-btn" onclick="eventPromoShow('fight-card')">⚔️ Fight Card</button>
+        <button class="ep-dock-btn" onclick="eventPromoShow('fun-drawer')">🎉 Fun Drawer</button>
+        <button class="ep-dock-btn" onclick="eventPromoShow('paintball')">🎨 Paintball</button>
+        <button class="ep-dock-btn danger" onclick="eventPromoHide()">🚫 Hide</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="ep-dock-btn" onclick="eventPromoAuto(true)" style="flex:1;background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.35);color:#4ade80;">▶ Start Auto</button>
+        <button class="ep-dock-btn danger" onclick="eventPromoAuto(false)" style="flex:1;">■ Stop Auto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP GIFTER OVERLAY TEST BAR -->
+  <div class="test-bar" id="test-bar">
+    <div class="test-bar-header">
+      <span class="test-bar-title">🧪 Giftr Overlay Test</span>
+      <span class="test-bar-sub">fires giftr + gift-alert → giftr-overlay</span>
+    </div>
+    <div class="test-row">
+      <input  class="test-input"  id="test-name"   type="text"   placeholder="Viewer name…" value="TestViewer" style="width:120px;">
+      <select class="test-select" id="test-type">
+        <option value="tiktok_coins">🎁 TikTok Coins</option>
+        <option value="youtube_jewels">💎 YT Jewels</option>
+        <option value="youtube_superchat">⭐ YT SuperChat ($)</option>
+        <option value="direct_donation">💚 Direct Donation ($)</option>
+      </select>
+      <input  class="test-input"  id="test-amount" type="number" placeholder="Amount" value="500" min="1" style="width:76px;">
+      <button class="test-fire" onclick="fireOverlayTest()">⚡ Fire</button>
+      <button class="test-clear" onclick="clearOverlayTest()">✕ Clear overlay</button>
+    </div>
+    <div class="test-row" style="gap:4px;">
+      <span style="font-size:9px;color:var(--txt-dim);margin-right:3px;flex-shrink:0;">Quick:</span>
+      <button class="test-preset" onclick="quickTest('tiktok_coins',500)">T1 500🎁</button>
+      <button class="test-preset" onclick="quickTest('tiktok_coins',2000)">T2 2k🎁</button>
+      <button class="test-preset" onclick="quickTest('tiktok_coins',10000)">T3 10k🎁</button>
+      <button class="test-preset" onclick="quickTest('tiktok_coins',50000)">T4 50k🎁</button>
+      <button class="test-preset" onclick="quickTest('tiktok_coins',150000)">T5 150k🎁</button>
+      <button class="test-preset" onclick="quickTest('tiktok_coins',300000)">T6 300k🎁</button>
+      <button class="test-preset" onclick="quickTest('youtube_superchat',5)">T1 $5⭐</button>
+      <button class="test-preset" onclick="quickTest('youtube_superchat',25)">T2 $25⭐</button>
+      <button class="test-preset" onclick="quickTest('youtube_superchat',150)">T4 $150⭐</button>
+      <button class="test-preset" onclick="quickTest('direct_donation',500)">T6 $500💚</button>
+    </div>
+  </div>
+
+  <!-- ANNOUNCE / LIVE TEXT BAR -->
+  <div class="announce-bar" id="announce-bar">
+    <div class="test-bar-header">
+      <span class="test-bar-title">📢 Live Text Overlay</span>
+      <span class="test-bar-sub">floating hype box on stream canvas</span>
+    </div>
+    <!-- Row 1: text inputs + show/hide + update -->
+    <div class="test-row">
+      <input class="test-input" id="ann-main" type="text" placeholder="Main text (e.g. PLAYING MINECRAFT)" style="flex:2;">
+      <input class="test-input" id="ann-sub"  type="text" placeholder="Subtext (optional)" style="flex:1.4;">
+      <input class="test-input" id="ann-badge" type="text" placeholder="Badge" style="width:68px;" value="● LIVE">
+      <button class="test-fire" style="min-width:76px;" onclick="sendAnnounce()">⚡ Update</button>
+      <button class="sp-bait-set" id="btn-ann-visible" onclick="toggleAnnounceVisible()" style="min-width:60px;">Show</button>
+    </div>
+    <!-- Row 2: Size -->
+    <div class="test-row" style="gap:4px;">
+      <span class="sp-pos-label" style="flex-shrink:0;">Size:</span>
+      <button class="sp-pos-btn" data-asize="micro" onclick="setAnnounceSize('micro')">Micro</button>
+      <button class="sp-pos-btn" data-asize="xxs"   onclick="setAnnounceSize('xxs')">XXS</button>
+      <button class="sp-pos-btn" data-asize="xs"    onclick="setAnnounceSize('xs')">XS</button>
+      <button class="sp-pos-btn" data-asize="sm"    onclick="setAnnounceSize('sm')">S</button>
+      <button class="sp-pos-btn" data-asize="md"  onclick="setAnnounceSize('md')">M</button>
+      <button class="sp-pos-btn active" data-asize="lg"  onclick="setAnnounceSize('lg')">L ★</button>
+      <button class="sp-pos-btn" data-asize="xl"  onclick="setAnnounceSize('xl')">XL</button>
+      <button class="sp-pos-btn" data-asize="xxl" onclick="setAnnounceSize('xxl')">XXL</button>
+    </div>
+    <!-- Row 3: X + Y position -->
+    <div class="test-row" style="gap:4px;flex-wrap:wrap;">
+      <span class="sp-pos-label" style="flex-shrink:0;">X:</span>
+      <button class="sp-pos-btn" data-ax="left"   onclick="setAnnounceX('left')">Left</button>
+      <button class="sp-pos-btn active" data-ax="center" onclick="setAnnounceX('center')">Ctr</button>
+      <button class="sp-pos-btn" data-ax="right"  onclick="setAnnounceX('right')">Right</button>
+      <span class="sp-pos-label" style="flex-shrink:0;margin-left:10px;">Y:</span>
+      <button class="sp-pos-btn active" data-ay="top"    onclick="setAnnounceY('top')">Top</button>
+      <button class="sp-pos-btn" data-ay="upper"  onclick="setAnnounceY('upper')">Upper</button>
+      <button class="sp-pos-btn" data-ay="center" onclick="setAnnounceY('center')">Center</button>
+      <button class="sp-pos-btn" data-ay="lower"  onclick="setAnnounceY('lower')">Lower</button>
+      <button class="sp-pos-btn" data-ay="bottom" onclick="setAnnounceY('bottom')">Bottom</button>
+    </div>
+  </div>
+
+</div><!-- /root -->
+
+<div id="flash"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════════ */
+const SESSION   = "usNkSpEutq";
+const MAX_MSGS  = 80;
+const ABLY_KEY  = "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0";
+const ABLY_CH   = "splat-overlay";
+const SPLAT_SEC = 60;
+const WARN_AT   = 20;
+const DANGER_AT = 10;
+
+/* ═══════════════════════════════════════════
+   WEBSOCKET — Social Stream Ninja
+   Single socket joined to session (default ch1)
+   — receives on ch4 (chat from extension)
+   — sends commands on ch1 (sendChat, extContent)
+   Feature uses HTTP GET (simplest, most reliable)
+═══════════════════════════════════════════ */
+let ws = null, wsTimer = null;
+let counts = { tt:0, yt:0, gifts:0, all:0 };
+
+function wsConnect() {
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/4`);
+
+  ws.onopen = () => {};
+
+  ws.onmessage = (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch(_){ return; }
+    if (!d) return;
+    if (d.chatname) {
+      handleMsg(d);
+    } else if (d.action === 'content' && d.value) {
+      try { handleMsg(JSON.parse(d.value)); } catch(_){}
+    } else if (d.event || d.viewers != null || d.meta != null) {
+      // System events (viewer_update, etc.) have no chatname — route them through too
+      handleMsg(d);
+    }
+  };
+
+  ws.onclose = () => { clearTimeout(wsTimer); wsTimer = setTimeout(wsConnect, 3000); };
+  ws.onerror = () => { ws.close(); };
+}
+
+/* sendChat via HTTP GET — simplest, no socket channel confusion */
+function sendChatMessage() {
+  const inp = document.getElementById('send-input');
+  const val = inp.value.trim();
+  if (!val) return;
+  const encoded = encodeURIComponent(val);
+  fetch(`https://io.socialstream.ninja/${SESSION}/sendChat/null/${encoded}`)
+    .catch(() => {});
+  inp.value = '';
+}
+
+document.getElementById('send-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendChatMessage();
+});
+
+/* Feature via HTTP GET — channel=2 targets featured.html with &server2 */
+function looksLikeMoneyDock(str) {
+  return /[$£€¥₩₹]/.test(str) || /\b(USD|EUR|GBP|CAD|AUD|JPY)\b/i.test(str);
+}
+function featureMessage(data) {
+  // Determine if this is a superchat/donation so featured-splat treats it right
+  const evt = (data.event || '').toLowerCase();
+  const isYT = (data.type || '').toLowerCase().includes('youtube');
+  const isTT = (data.type || '').toLowerCase().includes('tiktok');
+  const hasMoney = looksLikeMoneyDock(data.hasDonation || '');
+  const isScEvent = ['superchat','supersticker','superchatevent','superchatwithtext','donation','giftpurchase'].includes(evt);
+
+  // Build an augmented payload that featured-splat can unambiguously classify
+  const payload = { ...data };
+  // Only YouTube superchats get SC treatment — TikTok gifts are never superchats
+  if ((hasMoney || isScEvent) && (isYT || (!isYT && !isTT))) {
+    if (!isScEvent) payload.event = 'superchat';
+    if (!isYT)      payload._forceSuperchat = true;
+  }
+
+  if (data.mid && !payload._forceSuperchat) {
+    // SSN can replay by mid — only safe for YouTube where type/event survive replay
+    fetch(`https://io.socialstream.ninja/${SESSION}/mid/null/${data.mid}?channel=2`)
+      .catch(() => {});
+  } else {
+    fetch(`https://io.socialstream.ninja/${SESSION}/content/null/${encodeURIComponent(JSON.stringify(payload))}?channel=2`)
+      .catch(() => {});
+  }
+}
+
+/* ═══════════════════════════════════════════
+   MESSAGE HANDLING
+═══════════════════════════════════════════ */
+function updateViewerCount(key, count) {
+  const bar  = document.getElementById('vbar-' + key);
+  const el   = document.getElementById('vc-' + key);
+  const topN = document.getElementById('tvcn-' + key);
+  const formatted = count >= 1000
+    ? (count / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+    : count.toString();
+
+  // Panel sub-bar (existing)
+  if (el && bar) {
+    bar.style.display = 'flex';
+    if (el.textContent !== formatted) {
+      el.textContent = formatted;
+      el.classList.add('live');
+      el.classList.remove('pop');
+      void el.offsetWidth;
+      el.classList.add('pop');
+      setTimeout(() => el.classList.remove('pop'), 350);
+    }
+  }
+
+  // Top viewer bar (new)
+  if (topN && topN.textContent !== formatted) {
+    topN.textContent = formatted;
+    topN.classList.add('live');
+    topN.classList.remove('pop');
+    void topN.offsetWidth;
+    topN.classList.add('pop');
+    setTimeout(() => topN.classList.remove('pop'), 350);
+  }
+}
+
+
+/* ── TikTok gift coin table (mirrors tracker.html) ── */
+const TT_GIFT_COINS = {
+  'rose':1,'tiktok':1,'ice cream cone':1,'flower':1,'heart me':1,'thumbs up':1,
+  'paper crane':99,'finger heart':5,'hand heart':99,'sunglasses':49,'doughnut':30,'little crown':10,
+  'panda':5,'perfume':20,'diamond':20,'love you':100,'football':100,'birthday cake':100,
+  'sending strength':100,'rainbow puke':100,'love explosion':69,'interstellar':1000,
+  'concert':500,'castle':500,'rose bouquet':99,'corgi':299,'jolly roger':20,
+  'galaxy':1000,'drama queen':5000,'planet':15000,'lion':29999,'universe':34999,
+  'go popular':99,'jjx pals':1,'universe unboxing':34999,
+};
+function ttGiftCoins(name) {
+  return TT_GIFT_COINS[(name||'').toLowerCase().trim()] || 1;
+}
+
+/* ── Gift-alert helpers: parse amount + map type for Ably publish ── */
+function parseDockAmount(hasDonation, donoValue, alertType, rawCoins) {
+  const s = String(hasDonation || '').trim();
+
+  // For raw-unit types, parse the unit count from hasDonation first —
+  // donoValue is USD and would give a tiny number that fails the tier threshold.
+  if (alertType === 'tiktok_coins') {
+    const coins = s.match(/^([\d,]+)\s*coins?$/i);
+    if (coins) return parseFloat(coins[1].replace(/,/g, ''));
+    if (rawCoins != null && rawCoins > 0) return parseFloat(rawCoins);
+    // last resort: if donoValue is set, back-calculate coins ($0.01 each)
+    if (donoValue != null && donoValue !== '') {
+      const dv = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
+      if (dv > 0) return Math.round(dv / 0.01);
+    }
+    return 0;
+  }
+  if (alertType === 'youtube_jewels') {
+    const jewels = s.match(/^([\d,]+)\s*jewels?$/i);
+    if (jewels) return parseFloat(jewels[1].replace(/,/g, ''));
+    if (donoValue != null && donoValue !== '') {
+      const dv = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
+      if (dv > 0) return Math.round(dv / 0.005); // ~$0.005 per jewel
+    }
+    return 0;
+  }
+
+  // For USD types (superchat, direct): use donoValue then hasDonation
+  if (donoValue != null && donoValue !== '') {
+    const n = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
+    if (n > 0) return n;
+  }
+  const dollar = s.match(/\$\s*([\d,]+(?:\.\d+)?)/);
+  if (dollar) return parseFloat(dollar[1].replace(/,/g, ''));
+  const generic = s.match(/^([\d,]+(?:\.\d+)?)/);
+  if (generic) return parseFloat(generic[1].replace(/,/g, ''));
+  return 0;
+}
+function mapAlertType(evt, isTT, isYT) {
+  if (evt === 'jeweldonation') return 'youtube_jewels';
+  if (['superchat','supersticker','superchatwithtext','superchatevent',
+       'donation','giftpurchase'].includes(evt)) return 'youtube_superchat';
+  if (isTT || evt === 'gift') return 'tiktok_coins';
+  return 'direct_donation';
+}
+
+function handleMsg(data) {
+  /* ── viewer count updates (no chatname) ── */
+  if (!data.chatname) {
+    const evt = (data.event || '').toLowerCase();
+    const p   = (data.type  || '').toLowerCase();
+    if (evt === 'viewer_update' || evt === 'viewer_updates') {
+      // SSN sends viewer count in data.meta (number or object) or data.viewers
+      let count = null;
+      if (data.viewers != null) {
+        count = parseInt(data.viewers);
+      } else if (data.meta != null) {
+        if (typeof data.meta === 'object') {
+          // meta may be { viewers:N } or { viewCount:N } or { count:N }
+          const m = data.meta;
+          count = parseInt(m.viewers ?? m.viewCount ?? m.count ?? m.liveViewCount ?? 0);
+        } else {
+          count = parseInt(data.meta);
+        }
+      }
+      // Only update if we got a real positive number
+      // TikTok's API returns CONCURRENT viewers (live count), not cumulative unique —
+      // but some SSN versions may send unique instead; we can't distinguish, so just display as-is.
+      if (count != null && !isNaN(count) && count >= 0) {
+        if (p.includes('tiktok'))  updateViewerCount('tt', count);
+        if (p.includes('youtube')) updateViewerCount('yt', count);
+      }
+    }
+    return;
+  }
+
+  const p = (data.type || '').toLowerCase();
+  const isTT   = p.includes('tiktok');
+  const isYT   = p.includes('youtube');
+  const evt = (data.event || '').toLowerCase();
+
+  // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
+  // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
+  // NOTE: do NOT restrict to isTT — SSN sometimes omits data.type on these events
+  // (ssnPlatform ends up empty, isTT=false) even though it's a TikTok gift.
+  // The "sent X × N" pattern is TikTok-exclusive; exclude YouTube to be safe.
+  let ttEmbedMatch = null;
+  let ttEmbedCoins = 0;
+  if (!isYT && !data.hasDonation && !data.gifttitle && data.chatmessage) {
+    ttEmbedMatch = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*(\d+)/i);
+    if (ttEmbedMatch) {
+      const giftName = ttEmbedMatch[1].replace(/<[^>]*>/g,'').trim();
+      ttEmbedCoins   = ttGiftCoins(giftName) * (parseInt(ttEmbedMatch[2]) || 1);
+    }
+  }
+
+  // YouTube: hasDonation alone is NOT reliable — members have it set to their subscription cost.
+  // Only treat YouTube messages as gifts when there is a named gift event.
+  // TikTok + webhooks: hasDonation and gifttitle are reliable signals.
+  const ytGiftEvt = isYT && ['superchat','supersticker','superchatevent','superchatwithtext',
+                               'donation','jeweldonation','giftpurchase'].includes(evt);
+  const isGift = !!(
+    ytGiftEvt ||
+    (!isYT && (data.hasDonation || data.gifttitle)) ||
+    evt === 'gift' || evt === 'giftredemption' || evt === 'sponsorship' ||
+    ttEmbedCoins > 0
+  );
+
+  if (isTT || ttEmbedCoins > 0)  { document.getElementById('live-tt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
+  if (isYT)  { document.getElementById('live-yt').classList.add('on'); document.getElementById('live-gifts').classList.add('on'); }
+  document.getElementById('live-all').classList.add('on');
+
+  if (isGift) {
+    addGift(data, isTT, isYT);
+    // Publish gift-alert → gift-bar explosion animation
+    const alertType   = ttEmbedCoins > 0 ? 'tiktok_coins' : mapAlertType(evt, isTT, isYT);
+    // For embed-parsed gifts use the coin count directly; otherwise normal parse
+    const alertAmount = ttEmbedCoins > 0
+      ? ttEmbedCoins
+      : parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
+    const alertPlat   = (isTT || ttEmbedCoins > 0) ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
+    // For embedded gifts, pull image URL and gift name from the chatmessage
+    let contentImg = data.contentimg || null;
+    let giftTitle  = data.gifttitle  || null;
+    if (ttEmbedCoins > 0 && ttEmbedMatch) {
+      if (!giftTitle) giftTitle = ttEmbedMatch[1].replace(/<[^>]*>/g,'').trim();
+      if (!contentImg) {
+        const imgM = data.chatmessage.match(/img[^>]+src=['"]([^'"]+)['"]/i);
+        if (imgM) contentImg = imgM[1];
+      }
+    }
+    if (alertAmount > 0 && ablyChannel) {
+      ablyChannel.publish('gift-alert', {
+        name:       data.chatname  || 'Anonymous',
+        amount:     alertAmount,
+        type:       alertType,
+        platform:   alertPlat,
+        contentImg,
+        giftTitle,
+        _src:       'dock',
+      }).catch(() => {});
+    }
+  } else if (isTT) {
+    addMsg(data, 'tt');
+  } else if (isYT) {
+    addMsg(data, 'yt');
+  }
+
+  addUnified(data, p, isTT, isYT);
+}
+
+/* ── avatar helpers ── */
+function avColor(name) {
+  const ramps = [['#1e3a5c','#5aabff'],['#3a1a1a','#ff7b7b'],['#1a3a24','#5aff9e'],
+                 ['#3a2a14','#ffb84a'],['#2a1a3a','#c47bff'],['#1a3636','#5af0ee']];
+  let h = 0;
+  for (let i=0;i<(name||'').length;i++) h=(h*31+name.charCodeAt(i))&0xffff;
+  return ramps[h % ramps.length];
+}
+
+function makeAv(data) {
+  const el = document.createElement('div');
+  el.className = 'av';
+  const [bg, fg] = avColor(data.chatname);
+  el.style.background = bg;
+  el.style.color = fg;
+  el.textContent = (data.chatname||'?').slice(0,2).toUpperCase();
+  if (data.chatimg) {
+    const img = document.createElement('img');
+    img.src = data.chatimg;
+    img.onerror = () => {};
+    el.innerHTML = '';
+    el.appendChild(img);
+  }
+  return el;
+}
+
+/* ── left panel chat row ── */
+function ttBadgeClass(lv) {
+  if (!lv || lv <= 0) return 'lv0';
+  if (lv >= 50) return 'lv50';
+  if (lv >= 20) return 'lv20';
+  if (lv >= 10) return 'lv10';
+  if (lv >= 5)  return 'lv5';
+  return 'lv1';
+}
+
+let ttAutoScroll = true;
+
+function toggleTTScroll(e) {
+  e.stopPropagation();
+  ttAutoScroll = !ttAutoScroll;
+  const btn = document.getElementById('btn-tt-scroll');
+  btn.textContent  = ttAutoScroll ? '⬇ Live' : '⏸ Paused';
+  btn.classList.toggle('live', ttAutoScroll);
+  if (ttAutoScroll) {
+    const c = document.getElementById('msgs-tt');
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+(function initTTScrollPause() {
+  const msgs = document.getElementById('msgs-tt');
+  msgs.addEventListener('scroll', () => {
+    if (!ttAutoScroll) return;
+    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+    if (distFromBottom > 40) {
+      ttAutoScroll = false;
+      const btn = document.getElementById('btn-tt-scroll');
+      btn.textContent = '⏸ Paused';
+      btn.classList.remove('live');
+    }
+  });
+})();
+
+/* ── YouTube autoscroll ── */
+let ytAutoScroll = true;
+
+function toggleYTScroll(e) {
+  e.stopPropagation();
+  ytAutoScroll = !ytAutoScroll;
+  const btn = document.getElementById('btn-yt-scroll');
+  btn.textContent = ytAutoScroll ? '⬇ Live' : '⏸ Paused';
+  btn.classList.toggle('live', ytAutoScroll);
+  if (ytAutoScroll) {
+    const c = document.getElementById('msgs-yt');
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+(function initYTScrollPause() {
+  const msgs = document.getElementById('msgs-yt');
+  msgs.addEventListener('scroll', () => {
+    if (!ytAutoScroll) return;
+    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+    if (distFromBottom > 40) {
+      ytAutoScroll = false;
+      const btn = document.getElementById('btn-yt-scroll');
+      btn.textContent = '⏸ Paused';
+      btn.classList.remove('live');
+    }
+  });
+})();
+
+/* ── All Chat autoscroll ── */
+let allAutoScroll = true;
+
+function toggleAllScroll(e) {
+  e.stopPropagation();
+  allAutoScroll = !allAutoScroll;
+  const btn = document.getElementById('btn-all-scroll');
+  btn.textContent = allAutoScroll ? '⬇ Live' : '⏸ Paused';
+  btn.classList.toggle('live', allAutoScroll);
+  if (allAutoScroll) {
+    const c = document.getElementById('msgs-all');
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+(function initAllScrollPause() {
+  const msgs = document.getElementById('msgs-all');
+  msgs.addEventListener('scroll', () => {
+    if (!allAutoScroll) return;
+    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+    if (distFromBottom > 40) {
+      allAutoScroll = false;
+      const btn = document.getElementById('btn-all-scroll');
+      btn.textContent = '⏸ Paused';
+      btn.classList.remove('live');
+    }
+  });
+})();
+
+function addMsg(data, key) {
+  const container = document.getElementById('msgs-' + key);
+  document.getElementById('emp-' + key)?.remove();
+
+  const isTikTok = key === 'tt';
+
+  const isYouTube = key === 'yt';
+
+  // Extract TikTok badge info
+  const badgeLevel = isTikTok
+    ? (data.badgeLevel != null ? Number(data.badgeLevel)
+      : data.badge != null && typeof data.badge === 'number' ? data.badge
+      : null)
+    : null;
+  const isTTMember = isTikTok && !!(data.subBadge || data.isSubscriber
+    || (data.membership != null && data.badgeLevel == null));
+  const isGifter    = badgeLevel != null && badgeLevel > 0;
+  const isTopGifter = isGifter && badgeLevel >= 10;
+
+  // YouTube member: membership badge set on regular chat messages
+  const isYTMember = isYouTube && !!(data.membership || data.subBadge || data.isSubscriber || data.isMember);
+
+  const row = document.createElement('div');
+  const rowClasses = ['msg'];
+  if (isTikTok) {
+    if (isTTMember)    rowClasses.push('tt-member');
+    if (isTopGifter)   rowClasses.push('tt-top-gifter');
+    else if (isGifter) rowClasses.push('tt-gifter');
+  }
+  if (isYTMember) rowClasses.push('yt-member');
+  row.className = rowClasses.join(' ');
+  row.appendChild(makeAv(data));
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+
+  // Name line: badge pills before the name
+  const nameLine = document.createElement('div');
+  nameLine.className = 'msg-name';
+  nameLine.style.display = 'flex';
+  nameLine.style.alignItems = 'center';
+  nameLine.style.gap = '3px';
+  nameLine.style.flexWrap = 'wrap';
+
+  if (isTikTok && isTTMember) {
+    const fanPill = document.createElement('span');
+    fanPill.className = 'tt-badge fan';
+    fanPill.textContent = '♥ Fan';
+    nameLine.appendChild(fanPill);
+  }
+  if (isTikTok && isGifter) {
+    const lvPill = document.createElement('span');
+    lvPill.className = 'tt-badge ' + ttBadgeClass(badgeLevel);
+    lvPill.textContent = 'Lv.' + badgeLevel;
+    nameLine.appendChild(lvPill);
+  }
+  if (isYTMember) {
+    const memPill = document.createElement('span');
+    memPill.className = 'yt-badge';
+    memPill.textContent = '★ Member';
+    nameLine.appendChild(memPill);
+  }
+
+  const nameText = document.createElement('span');
+  nameText.textContent = data.chatname;
+  nameLine.appendChild(nameText);
+
+  const text = document.createElement('div');
+  text.className = 'msg-text';
+  text.innerHTML = data.chatmessage || '';
+  body.appendChild(nameLine);
+  body.appendChild(text);
+  row.appendChild(body);
+
+  container.appendChild(row);
+  trim(container);
+
+  // Respect per-panel autoscroll state
+  const shouldScroll = (isTikTok && ttAutoScroll) || (isYouTube && ytAutoScroll) || (!isTikTok && !isYouTube);
+  if (shouldScroll) container.scrollTop = container.scrollHeight;
+
+  counts[key]++;
+  document.getElementById('cnt-' + key).textContent = counts[key];
+}
+
+/* ── unified right panel row ── */
+function addUnified(data, platform, isTT, isYT) {
+  const container = document.getElementById('msgs-all');
+  document.getElementById('emp-all')?.remove();
+
+  const color = isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : data.hasDonation ? 'var(--gift)' : 'rgba(255,255,255,0.18)';
+
+  // Compute same membership/badge states as addMsg
+  const badgeLevel   = isTT
+    ? (data.badgeLevel != null ? Number(data.badgeLevel)
+      : data.badge != null && typeof data.badge === 'number' ? data.badge : null)
+    : null;
+  const isTTMember   = isTT && !!(data.subBadge || data.isSubscriber || (data.membership != null && data.badgeLevel == null));
+  const isGifter     = badgeLevel != null && badgeLevel > 0;
+  const isTopGifter  = isGifter && badgeLevel >= 10;
+  const isYTMember   = isYT && !!(data.membership || data.subBadge || data.isSubscriber || data.isMember);
+
+  const row = document.createElement('div');
+  const uClasses = ['umsg'];
+  if (isTT) {
+    if (isTTMember)    uClasses.push('tt-member');
+    if (isTopGifter)   uClasses.push('tt-top-gifter');
+    else if (isGifter) uClasses.push('tt-gifter');
+  }
+  if (isYTMember) uClasses.push('yt-member');
+  row.className = uClasses.join(' ');
+
+  const tag = document.createElement('div');
+  tag.className = 'platform-tag';
+  tag.style.background = color;
+  row.appendChild(tag);
+
+  row.appendChild(makeAv(data));
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  const name = document.createElement('div');
+  name.className = 'msg-name';
+  name.style.cssText = 'display:flex;align-items:center;gap:3px;flex-wrap:wrap;';
+
+  // Badge pills (same as panel view)
+  if (isTT && isTTMember) {
+    const fp = document.createElement('span'); fp.className = 'tt-badge fan'; fp.textContent = '♥ Fan'; name.appendChild(fp);
+  }
+  if (isTT && isGifter) {
+    const lp = document.createElement('span'); lp.className = 'tt-badge ' + ttBadgeClass(badgeLevel); lp.textContent = 'Lv.' + badgeLevel; name.appendChild(lp);
+  }
+  if (isYTMember) {
+    const mp = document.createElement('span'); mp.className = 'yt-badge'; mp.textContent = '★ Member'; name.appendChild(mp);
+  }
+
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = data.chatname;
+  name.appendChild(nameSpan);
+
+  if (data.hasDonation) {
+    const amt = document.createElement('span');
+    amt.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--gift);margin-left:5px;';
+    amt.textContent = data.hasDonation;
+    name.appendChild(amt);
+  }
+  const text = document.createElement('div');
+  text.className = 'msg-text';
+  text.innerHTML = data.chatmessage || data.gifttitle || '';
+  body.appendChild(name);
+  body.appendChild(text);
+  row.appendChild(body);
+
+  const hint = document.createElement('div');
+  hint.className = 'feat-hint';
+  hint.textContent = '★ feature';
+  row.appendChild(hint);
+
+  row.addEventListener('click', () => {
+    document.querySelectorAll('.umsg.featuring').forEach(el => el.classList.remove('featuring'));
+    row.classList.add('featuring');
+    featureMessage(data);
+    setTimeout(() => row.classList.remove('featuring'), 3000);
+  });
+
+  container.appendChild(row);
+  trim(container);
+  if (allAutoScroll) container.scrollTop = container.scrollHeight;
+
+  counts.all++;
+  document.getElementById('cnt-all').textContent = counts.all;
+}
+
+/* ── gift row ── */
+function buildGiftSentence(data, isTT, isYT) {
+  /* Returns e.g. "sent 65 Stars", "sent a Super Chat", "gifted 3 memberships" */
+  const evt   = (data.event || '').toLowerCase();
+  const dono  = data.hasDonation || '';   // e.g. "65 Stars", "$5.00", "500 Coins"
+  const title = data.gifttitle   || '';   // gift name from platform
+
+  /* YouTube specific */
+  function looksLikeMoney(s) { return /[$£€¥₩₹]/.test(s) || /\b(USD|EUR|GBP|CAD|AUD|JPY)\b/i.test(s); }
+  if (isYT) {
+    if (evt === 'superchat')
+      return dono ? `sent a Super Chat · ${dono}` : 'sent a Super Chat';
+    if (evt === 'supersticker')
+      return dono ? `sent a Super Sticker · ${dono}` : 'sent a Super Sticker';
+    /* donation = Super Chat only if money, otherwise Stars/Flowstate/stickers */
+    if (evt === 'donation' && looksLikeMoney(dono))
+      return `sent a Super Chat · ${dono}`;
+    if (evt === 'donation' && dono)
+      return `sent ${dono}`;
+    if (evt === 'jeweldonation')
+      return dono ? `sent ${dono}` : 'sent Jewels';
+    if (evt === 'giftpurchase')
+      return dono ? `gifted ${dono}` : 'gifted Memberships';
+    if (evt === 'giftredemption')
+      return 'received a gifted membership';
+    if (data.membership)
+      return `joined · ${data.subtitle || data.membership}`;
+    if (dono) return `sent ${dono}`;
+    if (title) return `sent ${title}`;
+  }
+
+  /* TikTok specific */
+  if (isTT) {
+    if (title && dono) return `sent ${dono} × ${title}`;
+    if (dono)          return `sent ${dono}`;
+    if (title)         return `sent a ${title}`;
+    return 'sent a gift';
+  }
+
+  /* fallback */
+  if (dono && title) return `sent ${dono} · ${title}`;
+  if (dono)          return `sent ${dono}`;
+  if (title)         return `sent ${title}`;
+  return 'sent a gift';
+}
+
+function addGift(data, isTT, isYT) {
+  const container = document.getElementById('msgs-gifts');
+  document.getElementById('emp-gifts')?.remove();
+
+  const row = document.createElement('div');
+  row.className = 'gift-row';
+
+  /* icon */
+  const icon = document.createElement('div');
+  icon.className = 'gift-icon';
+  const evt = (data.event || '').toLowerCase();
+  icon.style.background = isTT ? 'rgba(254,44,85,0.15)' : isYT ? 'rgba(255,68,68,0.13)' : 'rgba(245,166,35,0.15)';
+  if (data.contentimg) {
+    const img = document.createElement('img');
+    img.src = data.contentimg;
+    img.onerror = () => { icon.textContent = isTT ? '🎁' : evt === 'jeweldonation' ? '💎' : isYT ? '⭐' : '💝'; };
+    icon.appendChild(img);
+  } else {
+    const donoStr = (data.hasDonation || '').toLowerCase();
+    const isStars = donoStr.includes('star');
+    const isFlowstate = donoStr.includes('flowstate') || donoStr.includes('sticker');
+    icon.textContent = isTT ? '🎁'
+      : evt === 'jeweldonation' ? '💎'
+      : evt === 'superchat' ? '⭐'
+      : evt === 'supersticker' || isFlowstate ? '✨'
+      : isStars ? '⭐'
+      : evt === 'giftpurchase' ? '🎁'
+      : isYT ? '⭐' : '💝';
+  }
+  row.appendChild(icon);
+
+  /* body — two lines: NAME (bold) + sentence */
+  const body = document.createElement('div');
+  body.className = 'gift-body';
+
+  const gname = document.createElement('div');
+  gname.className = 'gift-name';
+  gname.textContent = data.chatname || 'Anonymous';
+
+  const gdetail = document.createElement('div');
+  gdetail.className = 'gift-detail';
+  gdetail.textContent = buildGiftSentence(data, isTT, isYT);
+
+  body.appendChild(gname);
+  body.appendChild(gdetail);
+  row.appendChild(body);
+
+  /* platform tag pill */
+  const pill = document.createElement('div');
+  pill.style.cssText = `font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    padding:2px 6px;border-radius:10px;flex-shrink:0;align-self:center;
+    background:${isTT ? 'rgba(254,44,85,0.15)' : isYT ? 'rgba(255,68,68,0.12)' : 'rgba(245,166,35,0.12)'};
+    color:${isTT ? 'var(--tt)' : isYT ? 'var(--yt)' : 'var(--gift)'};`;
+  pill.textContent = isTT ? 'TikTok' : isYT ? 'YT' : (data.type || '');
+  row.appendChild(pill);
+
+  container.appendChild(row);
+  trim(container);
+  container.scrollTop = container.scrollHeight;
+
+  counts.gifts++;
+  document.getElementById('cnt-gifts').textContent = counts.gifts;
+}
+
+function trim(el) {
+  const kids = el.querySelectorAll('.msg,.umsg,.gift-row');
+  if (kids.length > MAX_MSGS) for (let i=0;i<kids.length-MAX_MSGS;i++) kids[i].remove();
+}
+
+/* ═══════════════════════════════════════════
+   SPLAT CONTROLLER — Ably
+═══════════════════════════════════════════ */
+const ably = new Ably.Realtime({ key: ABLY_KEY });
+const ablyChannel = ably.channels.get(ABLY_CH);
+
+const connDot   = document.getElementById('conn-dot');
+const connLabel = document.getElementById('conn-label');
+const splatTimer = document.getElementById('splat-timer');
+const splatProg  = document.getElementById('splat-prog');
+const btnSave    = document.getElementById('btn-save');
+const btnReset   = document.getElementById('btn-reset');
+const flash      = document.getElementById('flash');
+
+ably.connection.on('connected', () => {
+  connDot.className = 'conn-dot connected';
+  connLabel.textContent = 'Splat connected ✓';
+});
+ably.connection.on('disconnected', () => {
+  connDot.className = 'conn-dot connecting';
+  connLabel.textContent = 'Reconnecting…';
+});
+
+let splatState = 'idle', timeLeft = SPLAT_SEC, ticker = null;
+
+function splatCmd(cmd) {
+  ablyChannel.publish('cmd', cmd);
+  if (cmd === 'reset') { startCountdown(); doFlash('red'); }
+  if (cmd === 'save')  { if (splatState === 'countdown') doSave(); doFlash('green'); }
+  if (cmd === 'idle')  { goIdle(); }
+}
+
+function startCountdown() {
+  clearInterval(ticker);
+  splatState = 'countdown'; timeLeft = SPLAT_SEC;
+  btnSave.classList.add('enabled');
+  btnReset.classList.add('active-state');
+  updateTimer();
+  ticker = setInterval(() => {
+    timeLeft--;
+    updateTimer();
+    if (timeLeft <= 0) {
+      clearInterval(ticker);
+      splatState = 'expired';
+      splatTimer.textContent = '💀';
+      splatTimer.className = 'splat-timer danger';
+      splatProg.style.width = '0%';
+      btnSave.classList.remove('enabled');
+      btnReset.classList.remove('active-state');
+      setTimeout(goIdle, 7000);
+    }
+  }, 1000);
+}
+
+function doSave() {
+  clearInterval(ticker);
+  splatState = 'saved';
+  splatTimer.textContent = '💜';
+  splatTimer.className = 'splat-timer';
+  splatProg.style.width = '100%';
+  splatProg.classList.remove('danger');
+  btnSave.classList.remove('enabled');
+  btnReset.classList.remove('active-state');
+  setTimeout(goIdle, 5000);
+}
+
+function goIdle() {
+  clearInterval(ticker);
+  splatState = 'idle';
+  splatTimer.textContent = '--';
+  splatTimer.className = 'splat-timer';
+  splatProg.style.width = '100%';
+  splatProg.classList.remove('danger');
+  btnSave.classList.remove('enabled');
+  btnReset.classList.remove('active-state');
+}
+
+function updateTimer() {
+  splatTimer.textContent = timeLeft;
+  splatProg.style.width = ((timeLeft / SPLAT_SEC) * 100) + '%';
+  splatTimer.classList.remove('countdown','warn','danger');
+  splatProg.classList.remove('danger');
+  if (timeLeft <= DANGER_AT) {
+    splatTimer.classList.add('danger');
+    splatProg.classList.add('danger');
+  } else if (timeLeft <= WARN_AT) {
+    splatTimer.classList.add('warn');
+  } else {
+    splatTimer.classList.add('countdown');
+  }
+}
+
+function doFlash(color) {
+  flash.className = color + ' show';
+  setTimeout(() => { flash.className = ''; }, 300);
+}
+
+document.addEventListener('keydown', e => {
+  const active = document.activeElement;
+  const typing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  if (typing) return;
+  if (e.key === '[')      splatCmd('reset');
+  if (e.key === ']')      splatCmd('save');
+  if (e.key === 'Escape') splatCmd('idle');
+});
+
+/* ═══════════════════════════════════════════
+   OVERLAY TEST — Giftr Bar
+   Publishes a 'giftr' event to Ably so you
+   can preview the giftr-overlay bar animations
+   without real stream data.
+═══════════════════════════════════════════ */
+function toggleTestBar() {
+  const bar = document.getElementById('test-bar');
+  const btn = document.getElementById('btn-test-toggle');
+  const open = bar.classList.toggle('open');
+  btn.classList.toggle('active', open);
+}
+
+/* ══ EVENT PROMO SYSTEM ══ */
+const EVENT_PROMO_STORAGE_KEY = 'jj_event_promo_config_v1';
+const EVENT_PROMO_DEFAULT_CONFIG = {
+  enabled: true,
+  title: 'Gamers vs Battlers',
+  eyebrow: 'FIRST EVER EVENT',
+  dateTime: 'June 28 • 8PM CST',
+  tagline: '5 MINUTE MAIN EVENT',
+  passiveText: '🎮 CHOOSE YOUR SIDE • GAMERS VS BATTLERS • JUNE 28 • 8PM CST • 5 MINUTE MAIN EVENT • WHO YOU GOT? ⚔️',
+  teamGamersLabel: 'TEAM GAMERS',
+  teamBattlersLabel: 'TEAM BATTLERS',
+  players: [
+    { team: 'gamers', name: 'Gamer 1', image: '' },
+    { team: 'gamers', name: 'Gamer 2', image: '' },
+    { team: 'battlers', name: 'Battler 1', image: '' },
+    { team: 'battlers', name: 'Battler 2', image: '' }
+  ],
+  fun: {
+    eyebrow: 'QUICK BREAKING NEWS',
+    title: 'CHAT IS COOKING',
+    subtitle: 'send help or snacks',
+    image: ''
+  },
+  fonts: {
+    shelfTitlePx: 31,
+    teamLabelPx: 22,
+    playerNamePx: 22,
+    metaPx: 17
+  },
+  durations: { passiveMs: 12000, fightCardMs: 15000, paintballMs: 60000, paintballSplatMs: 3000, autoIntervalMs: 60000 }
+};
+const EVENT_PROMO_PLAYER_LABELS = ['Gamer 1', 'Gamer 2', 'Battler 1', 'Battler 2'];
+
+function mergeEventPromoConfig(cfg) {
+  const src = cfg && typeof cfg === 'object' ? cfg : {};
+  const durations = { ...EVENT_PROMO_DEFAULT_CONFIG.durations, ...(src.durations || {}) };
+  if (durations.autoIntervalMs === 600000) durations.autoIntervalMs = 60000;
+  if (durations.paintballMs === 13000) durations.paintballMs = 60000;
+  if (durations.fightCardMs === 10000) durations.fightCardMs = 15000;
+  durations.paintballSplatMs = Math.max(1200, Number(durations.paintballSplatMs) || EVENT_PROMO_DEFAULT_CONFIG.durations.paintballSplatMs);
+  return {
+    ...EVENT_PROMO_DEFAULT_CONFIG,
+    ...src,
+    players: EVENT_PROMO_DEFAULT_CONFIG.players.map((p, i) => ({ ...p, ...(src.players?.[i] || {}) })),
+    fun: { ...EVENT_PROMO_DEFAULT_CONFIG.fun, ...(src.fun || {}) },
+    fonts: { ...EVENT_PROMO_DEFAULT_CONFIG.fonts, ...(src.fonts || {}) },
+    durations
+  };
+}
+
+function getEventPromoConfigFromStorage() {
+  try { return mergeEventPromoConfig(JSON.parse(localStorage.getItem(EVENT_PROMO_STORAGE_KEY) || 'null')); }
+  catch(e) { return mergeEventPromoConfig(); }
+}
+
+function toggleEventPromoBar() {
+  const bar = document.getElementById('event-promo-bar');
+  const btn = document.getElementById('btn-event-promo-toggle');
+  const open = bar.classList.toggle('open');
+  btn.classList.toggle('active', open);
+}
+
+function eventPromoCreatePlayerFields() {
+  const root = document.getElementById('ep-player-fields');
+  if (!root || root.children.length) return;
+  EVENT_PROMO_PLAYER_LABELS.forEach((label, i) => {
+    const card = document.createElement('div');
+    card.className = 'ep-player-card';
+    card.innerHTML = `
+      <label class="ep-dock-field"><span class="ep-dock-label">${label} name</span><input class="ep-dock-input" id="ep-player-${i}-name" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">${label} image URL</span><input class="ep-dock-input" id="ep-player-${i}-image" type="text"></label>
+      <label class="ep-dock-field"><span class="ep-dock-label">${label} upload</span><input class="ep-dock-input" id="ep-player-${i}-file" type="file" accept="image/*"></label>`;
+    root.appendChild(card);
+    document.getElementById(`ep-player-${i}-file`).addEventListener('change', e => eventPromoLoadImageFile(i, e));
+  });
+}
+
+function eventPromoPopulateFields(config) {
+  const cfg = mergeEventPromoConfig(config);
+  document.getElementById('ep-enabled').checked = !!cfg.enabled;
+  document.getElementById('ep-title-input').value = cfg.title;
+  document.getElementById('ep-eyebrow-input').value = cfg.eyebrow;
+  document.getElementById('ep-date-input').value = cfg.dateTime;
+  document.getElementById('ep-tagline-input').value = cfg.tagline;
+  document.getElementById('ep-passive-input').value = cfg.passiveText;
+  document.getElementById('ep-gamers-label-input').value = cfg.teamGamersLabel;
+  document.getElementById('ep-battlers-label-input').value = cfg.teamBattlersLabel;
+  document.getElementById('ep-passive-ms').value = cfg.durations.passiveMs;
+  document.getElementById('ep-fight-ms').value = cfg.durations.fightCardMs;
+  document.getElementById('ep-paintball-ms').value = cfg.durations.paintballMs;
+  document.getElementById('ep-paintball-splat-ms').value = cfg.durations.paintballSplatMs;
+  document.getElementById('ep-auto-ms').value = cfg.durations.autoIntervalMs;
+  document.getElementById('ep-font-title').value = cfg.fonts.shelfTitlePx;
+  document.getElementById('ep-font-team').value = cfg.fonts.teamLabelPx;
+  document.getElementById('ep-font-player').value = cfg.fonts.playerNamePx;
+  document.getElementById('ep-font-meta').value = cfg.fonts.metaPx;
+  document.getElementById('ep-fun-eyebrow').value = cfg.fun.eyebrow || '';
+  document.getElementById('ep-fun-title').value = cfg.fun.title || '';
+  document.getElementById('ep-fun-subtitle').value = cfg.fun.subtitle || '';
+  document.getElementById('ep-fun-image').value = cfg.fun.image || '';
+  cfg.players.forEach((p, i) => {
+    document.getElementById(`ep-player-${i}-name`).value = p.name || '';
+    document.getElementById(`ep-player-${i}-image`).value = p.image || '';
+  });
+}
+
+function eventPromoReadConfig() {
+  const num = (id, fallback) => Math.max(1000, Number(document.getElementById(id).value) || fallback);
+  const fontNum = (id, fallback, min, max) => Math.max(min, Math.min(max, Number(document.getElementById(id).value) || fallback));
+  const players = EVENT_PROMO_DEFAULT_CONFIG.players.map((p, i) => ({
+    team: p.team,
+    name: document.getElementById(`ep-player-${i}-name`).value.trim() || EVENT_PROMO_PLAYER_LABELS[i],
+    image: document.getElementById(`ep-player-${i}-image`).value.trim()
+  }));
+  return mergeEventPromoConfig({
+    enabled: document.getElementById('ep-enabled').checked,
+    title: document.getElementById('ep-title-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.title,
+    eyebrow: document.getElementById('ep-eyebrow-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.eyebrow,
+    dateTime: document.getElementById('ep-date-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.dateTime,
+    tagline: document.getElementById('ep-tagline-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.tagline,
+    passiveText: document.getElementById('ep-passive-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.passiveText,
+    teamGamersLabel: document.getElementById('ep-gamers-label-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.teamGamersLabel,
+    teamBattlersLabel: document.getElementById('ep-battlers-label-input').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.teamBattlersLabel,
+    players,
+    fun: {
+      eyebrow: document.getElementById('ep-fun-eyebrow').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.fun.eyebrow,
+      title: document.getElementById('ep-fun-title').value.trim() || EVENT_PROMO_DEFAULT_CONFIG.fun.title,
+      subtitle: document.getElementById('ep-fun-subtitle').value.trim(),
+      image: document.getElementById('ep-fun-image').value.trim()
+    },
+    fonts: {
+      shelfTitlePx: fontNum('ep-font-title', EVENT_PROMO_DEFAULT_CONFIG.fonts.shelfTitlePx, 18, 60),
+      teamLabelPx: fontNum('ep-font-team', EVENT_PROMO_DEFAULT_CONFIG.fonts.teamLabelPx, 14, 34),
+      playerNamePx: fontNum('ep-font-player', EVENT_PROMO_DEFAULT_CONFIG.fonts.playerNamePx, 14, 34),
+      metaPx: fontNum('ep-font-meta', EVENT_PROMO_DEFAULT_CONFIG.fonts.metaPx, 12, 34)
+    },
+    durations: {
+      passiveMs: num('ep-passive-ms', EVENT_PROMO_DEFAULT_CONFIG.durations.passiveMs),
+      fightCardMs: num('ep-fight-ms', EVENT_PROMO_DEFAULT_CONFIG.durations.fightCardMs),
+      paintballMs: num('ep-paintball-ms', EVENT_PROMO_DEFAULT_CONFIG.durations.paintballMs),
+      paintballSplatMs: Math.max(1200, Number(document.getElementById('ep-paintball-splat-ms').value) || EVENT_PROMO_DEFAULT_CONFIG.durations.paintballSplatMs),
+      autoIntervalMs: Math.max(10000, Number(document.getElementById('ep-auto-ms').value) || EVENT_PROMO_DEFAULT_CONFIG.durations.autoIntervalMs)
+    }
+  });
+}
+
+function eventPromoSaveLocal() {
+  const cfg = eventPromoReadConfig();
+  try { localStorage.setItem(EVENT_PROMO_STORAGE_KEY, JSON.stringify(cfg)); }
+  catch(e) { console.warn('[event-promo] localStorage save failed:', e); }
+  return cfg;
+}
+
+function eventPromoPublish(name, payload) {
+  if (!ablyChannel) return;
+  ablyChannel.publish(name, payload).catch(() => {});
+}
+
+function eventPromoSendConfig(config) {
+  const safeConfig = mergeEventPromoConfig(config);
+  const imagePayloads = [];
+  safeConfig.players = safeConfig.players.map((player, index) => {
+    const image = player.image || '';
+    if (image.startsWith('data:')) {
+      imagePayloads.push({ index, image });
+      return { ...player, image: '' };
+    }
+    return player;
+  });
+  if (safeConfig.fun.image && safeConfig.fun.image.startsWith('data:')) {
+    imagePayloads.push({ index: 'fun', image: safeConfig.fun.image });
+    safeConfig.fun = { ...safeConfig.fun, image: '' };
+  }
+  eventPromoPublish('event-promo', { type: 'event-promo-config', config: safeConfig });
+  imagePayloads.forEach(({ index, image }) => eventPromoPublishPlayerImage(index, image));
+}
+
+function eventPromoPublishPlayerImage(index, image) {
+  const chunkSize = 12000;
+  if (image.length <= chunkSize) {
+    eventPromoPublish('event-promo', { type: 'event-promo-image', index, image });
+    return;
+  }
+  const id = 'epimg-' + index + '-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  const total = Math.ceil(image.length / chunkSize);
+  for (let part = 0; part < total; part++) {
+    eventPromoPublish('event-promo', {
+      type: 'event-promo-image-chunk',
+      index,
+      id,
+      part,
+      total,
+      chunk: image.slice(part * chunkSize, (part + 1) * chunkSize)
+    });
+  }
+}
+
+function eventPromoApply() {
+  const config = eventPromoSaveLocal();
+  eventPromoSendConfig(config);
+  doFlash('green');
+}
+
+function eventPromoShow(mode) {
+  const config = eventPromoSaveLocal();
+  eventPromoSendConfig(config);
+  const durationMap = { passive: config.durations.passiveMs, 'fight-card': config.durations.fightCardMs, 'fun-drawer': 15000, paintball: config.durations.paintballMs };
+  eventPromoPublish('event-promo', { type: 'event-promo-show', mode, durationMs: durationMap[mode], config });
+  doFlash('green');
+}
+
+function eventPromoHide() {
+  eventPromoPublish('event-promo', { type: 'event-promo-hide' });
+  doFlash('red');
+}
+
+function eventPromoAuto(enabled) {
+  const config = eventPromoSaveLocal();
+  eventPromoSendConfig(config);
+  eventPromoPublish('event-promo', { type: 'event-promo-auto', enabled: !!enabled, intervalMs: config.durations.autoIntervalMs });
+  document.getElementById('ep-auto-state').textContent = enabled ? 'auto: on' : 'auto: off';
+  doFlash(enabled ? 'green' : 'red');
+}
+
+function eventPromoLoadImageFile(i, evt) {
+  const file = evt.target.files && evt.target.files[0];
+  if (!file) return;
+  eventPromoFileToAvatarDataUrl(file).then(dataUrl => {
+    document.getElementById(`ep-player-${i}-image`).value = dataUrl;
+    eventPromoApply();
+  }).catch(() => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById(`ep-player-${i}-image`).value = String(reader.result || '');
+      eventPromoApply();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function eventPromoLoadFunImageFile(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  if (!file) return;
+  const loader = file.type === 'image/gif'
+    ? eventPromoFileToDataUrl(file)
+    : eventPromoFileToAvatarDataUrl(file);
+  loader.then(dataUrl => {
+    document.getElementById('ep-fun-image').value = dataUrl;
+    eventPromoApply();
+  }).catch(() => {
+    eventPromoFileToDataUrl(file).then(dataUrl => {
+      document.getElementById('ep-fun-image').value = dataUrl;
+      eventPromoApply();
+    });
+  });
+}
+
+function eventPromoFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type || !file.type.startsWith('image/')) { reject(new Error('Not an image')); return; }
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  });
+}
+
+function eventPromoFileToAvatarDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type || !file.type.startsWith('image/')) { reject(new Error('Not an image')); return; }
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const size = 180;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = size;
+        canvas.height = size;
+        const srcSize = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
+        const sx = ((img.naturalWidth || img.width) - srcSize) / 2;
+        const sy = ((img.naturalHeight || img.height) - srcSize) / 2;
+        ctx.fillStyle = '#16051f';
+        ctx.fillRect(0, 0, size, size);
+        ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+(function initEventPromoDock() {
+  eventPromoCreatePlayerFields();
+  eventPromoPopulateFields(getEventPromoConfigFromStorage());
+  document.getElementById('ep-fun-file')?.addEventListener('change', eventPromoLoadFunImageFile);
+  document.querySelectorAll('#event-promo-bar input').forEach(input => {
+    input.addEventListener('change', eventPromoSaveLocal);
+    input.addEventListener('input', eventPromoSaveLocal);
+  });
+})();
+
+/* Build a rawDisplay string matching what the overlay expects */
+function testRawDisplay(type, amount) {
+  switch(type) {
+    case 'tiktok_coins':      return Number(amount).toLocaleString() + ' coins';
+    case 'youtube_jewels':    return Number(amount).toLocaleString() + ' jewels';
+    case 'youtube_superchat':
+    case 'direct_donation':   return '$' + parseFloat(amount).toFixed(2);
+    default:                  return String(amount);
+  }
+}
+
+function testTypeToPlatform(type) {
+  switch(type) {
+    case 'tiktok_coins':      return 'tiktok';
+    case 'youtube_jewels':
+    case 'youtube_superchat': return 'youtube';
+    case 'direct_donation':   return 'direct';
+    default:                  return 'unknown';
+  }
+}
+
+/* Build a giftr payload so all 5 slots show test data:
+   - Primary slot matches the gift type (tiktok → tiktok slot, youtube → youtube slot)
+   - Other slots show the same name at scaled amounts so you can preview every card */
+function buildTestGiftr(name, type, amount) {
+  const platform = testTypeToPlatform(type);
+  const entry    = { name, amount, type, platform, profilePic: null };
+  const mk = (mult) => ({ name, amount: Math.round(amount * mult), type, platform, profilePic: null });
+
+  return {
+    daily:        mk(1),
+    weekly:       mk(3.5),
+    monthly:      mk(12),
+    youtube:      platform === 'youtube' ? entry : { name: 'YTViewer', amount: Math.round(amount * 0.7), type: 'youtube_jewels',  platform: 'youtube', profilePic: null },
+    tiktok:       platform === 'tiktok'  ? entry : { name: 'TTViewer', amount: Math.round(amount * 0.8), type: 'tiktok_coins',    platform: 'tiktok',  profilePic: null },
+    enabledSlots: ['daily','weekly','monthly','youtube','tiktok'],
+  };
+}
+
+function fireOverlayTest() {
+  const name   = (document.getElementById('test-name').value.trim()) || 'TestViewer';
+  const type   = document.getElementById('test-type').value;
+  const amount = parseFloat(document.getElementById('test-amount').value) || 500;
+
+  // Update leaderboard bar
+  ablyChannel.publish('giftr', buildTestGiftr(name, type, amount));
+
+  // Trigger tier animation on giftr-overlay
+  ablyChannel.publish('gift-alert', {
+    name,
+    amount,
+    type,
+    platform: testTypeToPlatform(type),
+    note: type === 'youtube_superchat' ? 'Test SuperChat message from the stream!' : null,
+    userId: null,
+  });
+
+  doFlash('green');
+}
+
+function quickTest(type, amount) {
+  document.getElementById('test-type').value   = type;
+  document.getElementById('test-amount').value = amount;
+  fireOverlayTest();
+}
+
+/* Clear the overlay by sending empty slots */
+function clearOverlayTest() {
+  ablyChannel.publish('giftr', {
+    daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
+    enabledSlots: [],
+  });
+  doFlash('red');
+}
+
+/* ═══════════════════════════════════════════
+   SPLAT POSITION + BAIT CONTROL
+═══════════════════════════════════════════ */
+function setSplatBait() {
+  const img  = document.getElementById('bait-img-url').value.trim();
+  const top  = document.getElementById('bait-top-txt').value.trim();
+  const main = document.getElementById('bait-main-txt').value.trim();
+  const payload = {};
+  if (img)  payload.img  = img;
+  if (top)  payload.top  = top;
+  if (main) payload.main = main;
+  if (Object.keys(payload).length) {
+    ablyChannel.publish('splat-bait', payload).catch(() => {});
+    doFlash('green');
+  }
+}
+
+function setSplatPos(pos) {
+  ablyChannel.publish('splat-pos', pos).catch(() => {});
+  document.querySelectorAll('[data-pos]').forEach(b => {
+    b.classList.toggle('active', b.dataset.pos === pos);
+  });
+}
+
+/* ═══════════════════════════════════════════
+   BAIT VISIBLE TOGGLE
+═══════════════════════════════════════════ */
+let baitVisible = true;
+function toggleBaitVisible() {
+  baitVisible = !baitVisible;
+  ablyChannel.publish('splat-bait', { visible: baitVisible }).catch(() => {});
+  const btn = document.getElementById('btn-bait-visible');
+  btn.textContent = baitVisible ? '👁 Bait' : '🙈 Bait';
+  btn.style.background    = baitVisible ? 'rgba(34,197,94,0.18)' : 'rgba(244,63,94,0.18)';
+  btn.style.borderColor   = baitVisible ? 'rgba(34,197,94,0.40)' : 'rgba(244,63,94,0.40)';
+  btn.style.color         = baitVisible ? '#4ade80' : '#fb7185';
+  doFlash(baitVisible ? 'green' : 'red');
+}
+
+/* ═══════════════════════════════════════════
+   ANNOUNCE / LIVE TEXT BOX
+═══════════════════════════════════════════ */
+let announceVisible = false;
+let announceX = 'center', announceY = 'top', announceSize = 'lg';
+
+function toggleAnnounceBar() {
+  const bar = document.getElementById('announce-bar');
+  const btn = document.getElementById('btn-announce-toggle');
+  const open = bar.classList.toggle('open');
+  btn.classList.toggle('active', open);
+}
+
+function toggleAnnounceVisible() {
+  announceVisible = !announceVisible;
+  ablyChannel.publish('announce', { visible: announceVisible }).catch(() => {});
+  const btn = document.getElementById('btn-ann-visible');
+  btn.textContent       = announceVisible ? 'Hide' : 'Show';
+  btn.style.background  = announceVisible ? 'rgba(244,63,94,0.20)' : '';
+  btn.style.borderColor = announceVisible ? 'rgba(244,63,94,0.50)' : '';
+  btn.style.color       = announceVisible ? '#fb7185' : '';
+  doFlash(announceVisible ? 'green' : 'red');
+}
+
+function sendAnnounce() {
+  const text  = document.getElementById('ann-main').value.trim();
+  const sub   = document.getElementById('ann-sub').value.trim();
+  const badge = document.getElementById('ann-badge').value.trim();
+  const payload = { x: announceX, y: announceY, size: announceSize };
+  if (text)  payload.text  = text;
+  payload.sub   = sub;   // empty string clears sub text
+  if (badge) payload.badge = badge;
+  ablyChannel.publish('announce', payload).catch(() => {});
+  doFlash('green');
+}
+
+function setAnnounceSize(size) {
+  announceSize = size;
+  document.querySelectorAll('[data-asize]').forEach(b => b.classList.toggle('active', b.dataset.asize === size));
+  ablyChannel.publish('announce', { size }).catch(() => {});
+}
+
+function setAnnounceX(x) {
+  announceX = x;
+  document.querySelectorAll('[data-ax]').forEach(b => b.classList.toggle('active', b.dataset.ax === x));
+  ablyChannel.publish('announce', { x }).catch(() => {});
+}
+
+function setAnnounceY(y) {
+  announceY = y;
+  document.querySelectorAll('[data-ay]').forEach(b => b.classList.toggle('active', b.dataset.ay === y));
+  ablyChannel.publish('announce', { y }).catch(() => {});
+}
+
+/* ── kick it off ── */
+
+/* ── FONT / SIZE SETTINGS ── */
+const FONT_OPTIONS = [
+  "'DM Sans', sans-serif", "'Inter', sans-serif", "'Nunito', sans-serif",
+  "'Poppins', sans-serif", "'Roboto', sans-serif", "'Ubuntu', sans-serif",
+  "'Rajdhani', sans-serif", "'Exo 2', sans-serif", "'Outfit', sans-serif",
+  "'Boogaloo', cursive"
+];
+
+let currentSize = parseInt(localStorage.getItem('dock-font-size') || '12');
+let currentFont = localStorage.getItem('dock-font') || "'DM Sans', sans-serif";
+
+function applyFont() {
+  const sel = document.getElementById('font-select');
+  currentFont = sel.value;
+  localStorage.setItem('dock-font', currentFont);
+  document.documentElement.style.setProperty('--font', currentFont);
+}
+
+function applySize() {
+  localStorage.setItem('dock-font-size', currentSize);
+  document.getElementById('size-val').textContent = currentSize;
+  /* scale all message text */
+  document.querySelectorAll('.msg-text, .gift-detail, .gift-name, .msg-name, .gift-amt').forEach(el => {
+    el.style.fontSize = '';
+  });
+  const baseMap = { 'msg-name': currentSize - 1, 'msg-text': currentSize, 'gift-name': currentSize - 1, 'gift-detail': currentSize - 1, 'gift-amt': currentSize };
+  Object.entries(baseMap).forEach(([cls, sz]) => {
+    document.querySelectorAll('.' + cls).forEach(el => el.style.fontSize = sz + 'px');
+  });
+  document.documentElement.style.setProperty('--base-font-size', currentSize + 'px');
+}
+
+function adjustSize(delta) {
+  currentSize = Math.max(8, Math.min(20, currentSize + delta));
+  applySize();
+}
+
+function toggleSettings(e) {
+  e.stopPropagation();
+  document.getElementById('settings-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.remove('open');
+});
+
+/* restore saved settings */
+(function initSettings() {
+  document.documentElement.style.setProperty('--font', currentFont);
+  document.getElementById('size-val').textContent = currentSize;
+  const sel = document.getElementById('font-select');
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === currentFont) { sel.selectedIndex = i; break; }
+  }
+})();
+
+wsConnect();
+</script>
+</body>
+</html>

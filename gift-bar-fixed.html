@@ -1,0 +1,2591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gift Bar + Splat Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Boogaloo&family=DM+Sans:wght@700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
+
+/* ─── PARTICLE CANVAS (gift-bar gifts) ─── */
+#particle-canvas {
+  position: absolute; top: 0; left: 0;
+  width: 1080px; height: 1920px;
+  pointer-events: none; z-index: 50;
+}
+
+/* ─── SCREEN PULSE ─── */
+#screen-pulse {
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 8;
+  opacity: 0; transition: opacity 0.35s ease;
+}
+
+/* ══ GIFT BAR EDGE LINES ══ */
+#bar-lines {
+  position: absolute; top: 450px; left: 0;
+  width: 1080px; height: 55px; pointer-events: none; z-index: 12;
+}
+#line-top, #line-bot {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: linear-gradient(to right, transparent 0%, transparent 30%,
+    rgba(192,132,252,0.15) 55%, rgba(192,132,252,0.45) 80%, rgba(192,132,252,0.65) 100%);
+  transition: background 0.9s ease, box-shadow 0.8s ease;
+}
+#line-top { top: 0; }
+#line-bot { bottom: 0; }
+#bar-lines.active #line-top,
+#bar-lines.active #line-bot { animation: lineActivate 0.35s ease forwards; }
+@keyframes lineActivate { from{opacity:0.10} to{opacity:1.00} }
+#line-sweep-top, #line-sweep-bot {
+  position: absolute; left: 0; right: 0; height: 1px; opacity: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.0) 30%,
+    rgba(255,255,255,1.0) 50%, rgba(255,255,255,0.0) 70%, transparent 100%);
+  background-size: 40% 100%;
+}
+#line-sweep-top { top: 0; }
+#line-sweep-bot { bottom: 0; }
+#bar-lines.active #line-sweep-top,
+#bar-lines.active #line-sweep-bot { animation: lineSweep 1.1s ease-in-out var(--sweep-count, 2) forwards; }
+@keyframes lineSweep {
+  0%{background-position:-40% 0;opacity:0} 10%{opacity:1}
+  90%{opacity:0.6} 100%{background-position:140% 0;opacity:0}
+}
+#line-sweep-bot { animation-delay: 0.08s; }
+
+/* ══ GIFT BAR ══ */
+#gift-bar {
+  position: absolute; top: 450px; left: 0;
+  width: 1080px; height: 55px; overflow: visible;
+  opacity: 0; transition: opacity 0.6s ease; z-index: 10;
+}
+#gift-bar.visible { opacity: 1; }
+#gift-bar.ep-passive-active { opacity: 1; }
+#gift-bar.ep-passive-active #bar-bg {
+  background: linear-gradient(to right, transparent 0%, rgba(20,4,40,0.12) 18%,
+    rgba(20,4,40,0.44) 42%, rgba(59,7,100,0.74) 64%, rgba(10,10,28,0.82) 100%);
+}
+#gift-bar.ep-passive-active #bar-info,
+#gift-bar.ep-passive-active #bar-hero { opacity: 0; }
+#gift-bar.ep-passive-active #bar-border::before,
+#gift-bar.ep-passive-active #bar-border::after {
+  background: linear-gradient(to right,
+    transparent 0%, transparent 18%,
+    rgba(192,132,252,0.18) 36%,
+    rgba(232,121,249,0.58) 68%,
+    rgba(192,132,252,0.82) 100%);
+}
+#bar-bg-layer { position: absolute; inset: 0; overflow: hidden; }
+#bar-bg {
+  position: absolute; inset: 0;
+  background: linear-gradient(to right, transparent 0%, rgba(5,0,14,0.03) 18%,
+    rgba(5,0,14,0.26) 44%, rgba(5,0,14,0.68) 65%, rgba(5,0,14,0.76) 76%, rgba(5,0,14,0.76) 100%);
+  transition: background 0.52s cubic-bezier(.34,1.56,.64,1);
+}
+#gift-bar.alert-active #bar-bg { background: rgba(5,0,14,0.76); }
+#bar-wash { position: absolute; inset: 0; transition: background 0.9s ease; pointer-events: none; }
+#bar-shimmer-flare {
+  position: absolute; inset: 0; pointer-events: none; display: none;
+}
+@keyframes barFlareSweep {
+  0%{background-position:-260% 0;opacity:0} 8%{opacity:1}
+  50%{background-position:260% 0;opacity:0} 100%{background-position:260% 0;opacity:0}
+}
+/* Gradient border lines — transparent on left, opaque on right, matching bg */
+#bar-border { --bc: 192,132,252; position: absolute; inset: 0; pointer-events: none; }
+#bar-border::before,
+#bar-border::after {
+  content: '';
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: linear-gradient(to right,
+    transparent 0%, transparent 20%,
+    rgba(var(--bc),0.12) 38%,
+    rgba(var(--bc),0.50) 65%,
+    rgba(var(--bc),0.82) 100%);
+  transition: background 0.9s ease;
+}
+#bar-border::before { top: 0; }
+#bar-border::after  { bottom: 0; }
+#bar-progress {
+  position: absolute; bottom: 0; left: 0;
+  height: 2px; width: 0%; border-radius: 0 1px 1px 0; transition: background 0.9s ease;
+}
+#bar-hero {
+  position: absolute; left: 0; top: 0; width: 720px; height: 55px; overflow: visible;
+  display: flex; align-items: center; gap: 18px; padding: 0 20px 0 18px;
+  opacity: 0; transform: translateX(-22px); pointer-events: none;
+  transition: opacity 0.36s ease 0.08s, transform 0.46s cubic-bezier(.34,1.56,.64,1) 0.06s;
+}
+#gift-bar.alert-active #bar-hero { opacity: 1; transform: translateX(0); }
+#bar-hero-name {
+  font-family: 'Anton', sans-serif; font-size: 90px; line-height: 1;
+  text-transform: uppercase; color: #fff; letter-spacing: 1px; white-space: nowrap;
+  overflow: visible; flex-shrink: 1; min-width: 0;
+  text-shadow: 0 3px 18px rgba(0,0,0,0.95), 0 0 40px rgba(255,255,255,0.06);
+}
+#bar-hero-amount {
+  font-family: 'Bebas Neue', sans-serif; font-size: 58px; letter-spacing: 4px;
+  white-space: nowrap; flex-shrink: 0; overflow: visible;
+}
+/* ══ GIFT BAR INFO (rotating carousel slot) ══ */
+#bar-info {
+  position: absolute; right: 0; top: 0; width: auto; min-width: 260px; height: 55px; overflow: hidden;
+  background: rgba(5,0,14,0.76); border-left: 1px solid rgba(255,255,255,0.06);
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
+  padding: 9px 14px 2px 14px; gap: 1px; transition: opacity 0.28s ease;
+}
+#bar-info-top { display: flex; align-items: center; gap: 7px; }
+#bar-slot-title {
+  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.55); white-space: nowrap;
+}
+#bar-info-bot { display: flex; align-items: baseline; gap: 9px; }
+#bar-info-name {
+  font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 2px; color: #fff;
+  white-space: nowrap; flex-shrink: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+}
+#bar-info-amount {
+  font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px;
+  white-space: nowrap; flex-shrink: 0; transition: color 0.6s ease;
+  text-shadow: -1px -1px 0 rgba(0,0,0,0.95), 1px -1px 0 rgba(0,0,0,0.95),
+               -1px 1px 0 rgba(0,0,0,0.95), 1px 1px 0 rgba(0,0,0,0.95);
+}
+#bar-info-amount.monthly-shimmer { background: rgba(192,132,252,0.14); animation: monthlyGlow 1.4s ease-in-out infinite; }
+@keyframes monthlyGlow {
+  0%,100%{box-shadow:0 0 6px rgba(192,132,252,0.25)} 50%{box-shadow:0 0 22px rgba(232,121,249,0.70),0 0 40px rgba(168,85,247,0.35)}
+}
+#bar-plat-badge {
+  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.10em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+}
+.plat-tiktok  { color:#69C9D0;background:rgba(105,201,208,0.16);border:1px solid rgba(105,201,208,0.30); }
+.plat-youtube { color:#FF6B6B;background:rgba(255,80,80,0.16);  border:1px solid rgba(255,80,80,0.30);   }
+.plat-direct, .plat-default { color:#C084FC;background:rgba(192,132,252,0.16);border:1px solid rgba(192,132,252,0.30); }
+
+/* ══ GIFT BATTLE BAR — FIGHT NIGHT REDESIGN ══ */
+#gift-battle-bar {
+  position: absolute; inset: 0; z-index: 2; display: none; overflow: hidden;
+  /* subtle inner glow on the whole bar */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.6);
+}
+#gift-battle-bar.active { display: block; }
+
+/* ── YT fill: YouTube red, rich and deep, left → right ── */
+#gbb-yt-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(to right,
+    #3d0000 0%,
+    #8b0000 30%,
+    #cc1010 65%,
+    #e62020 100%);
+  transition: width 1.2s cubic-bezier(.22,1,.36,1);
+  overflow: hidden;
+}
+/* inner gloss strip — fight-night sheen on YT side */
+#gbb-yt-fill::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 45%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, transparent 100%);
+  pointer-events: none;
+}
+/* ── TT fill: charcoal, right → left ── */
+#gbb-tt-fill {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(to left,
+    #0a0a0a 0%,
+    #222222 35%,
+    #383838 70%,
+    #444444 100%);
+  transition: width 1.2s cubic-bezier(.22,1,.36,1);
+  overflow: hidden;
+}
+#gbb-tt-fill::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 45%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* ── Platform identity logos — left/right anchored inside fills ── */
+/* YT play-button SVG badge */
+#gbb-yt-logo {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none; z-index: 3; overflow: hidden;
+}
+#gbb-yt-logo svg { width: 22px; height: 16px; flex-shrink: 0; }
+#gbb-yt-logo-text {
+  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 2.5px;
+  color: rgba(255,255,255,0.90); text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+}
+/* TT music-note badge */
+#gbb-tt-logo {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px; flex-direction: row-reverse;
+  pointer-events: none; z-index: 3; overflow: hidden;
+}
+#gbb-tt-logo svg { width: 18px; height: 20px; flex-shrink: 0; }
+#gbb-tt-logo-text {
+  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 2.5px;
+  color: rgba(255,255,255,0.90); text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+}
+
+/* ── Divider — the signature element: a hot white saber line with red glow ── */
+#gbb-divider {
+  position: absolute;
+  /* starts at 50%; JS can override via left: calc(ytPct%) if desired */
+  left: 50%; top: -4px; bottom: -4px;
+  width: 3px;
+  transform: translateX(-50%);
+  background: #ffffff;
+  box-shadow:
+    0 0  6px 2px rgba(255,255,255,0.95),
+    0 0 16px 4px rgba(255,60,60,0.75),
+    0 0 36px 8px rgba(200,0,0,0.45);
+  z-index: 5; pointer-events: none;
+  transition: left 1.2s cubic-bezier(.22,1,.36,1);
+  animation: gbbDividerBreath 2.4s ease-in-out infinite;
+}
+@keyframes gbbDividerBreath {
+  0%,100% { box-shadow: 0 0 6px 2px rgba(255,255,255,0.95), 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.40); }
+  50%      { box-shadow: 0 0 8px 3px rgba(255,255,255,1.0),  0 0 24px 6px rgba(255,60,60,0.90), 0 0 52px 14px rgba(200,0,0,0.55); }
+}
+/* Surge flash when a gift tips the balance */
+#gbb-divider.surge {
+  animation: gbbDividerSurge 0.45s ease-out forwards, gbbDividerBreath 2.4s ease-in-out 0.5s infinite;
+}
+@keyframes gbbDividerSurge {
+  0%  { box-shadow: 0 0 6px 2px #fff, 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.4); }
+  30% { box-shadow: 0 0 18px 8px #fff, 0 0 50px 18px rgba(255,80,80,1.0), 0 0 90px 28px rgba(200,0,0,0.7); width: 5px; }
+  100%{ box-shadow: 0 0 6px 2px #fff, 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.4); width: 3px; }
+}
+
+/* ── VS text at center, always on top ── */
+#gbb-vs {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 3px;
+  color: #fff; text-transform: uppercase;
+  background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.15);
+  padding: 1px 7px 1px 8px; border-radius: 3px;
+  box-shadow: 0 0 14px rgba(0,0,0,0.9);
+  z-index: 6; pointer-events: none; white-space: nowrap;
+}
+
+/* ── Percentage labels floating just inside each fill near the divider ── */
+#gbb-yt-pct {
+  position: absolute; right: calc(50% + 14px); top: 50%; transform: translateY(-50%);
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px;
+  color: rgba(255,255,255,0.92); white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 20px rgba(230,32,32,0.6);
+  z-index: 4; pointer-events: none;
+  transition: right 1.2s cubic-bezier(.22,1,.36,1);
+}
+#gbb-tt-pct {
+  position: absolute; left: calc(50% + 14px); top: 50%; transform: translateY(-50%);
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px;
+  color: rgba(255,255,255,0.92); white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 20px rgba(255,255,255,0.25);
+  z-index: 4; pointer-events: none;
+  transition: left 1.2s cubic-bezier(.22,1,.36,1);
+}
+
+/* ── Content zone (keeps layout stable; timer moved to shelf) ── */
+#gbb-content {
+  position: absolute; left: 0; top: 0; bottom: 0; right: 265px; z-index: 3;
+  pointer-events: none;
+}
+#gbb-mid {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 120px; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+#gbb-mid::before, #gbb-mid::after { display: none; }
+
+/* hide old dollar-amount spans — replaced by pct labels */
+#gbb-yt-info, #gbb-tt-info { display: none; }
+.gbb-plat-lbl { display: none; }
+#gbb-yt-amt, #gbb-tt-amt { display: none; }
+
+/* ── LIVE dot — stays inside the bar at center ── */
+#gbb-timer-val {
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: #ff6b6b; white-space: nowrap;
+  background: rgba(0,0,0,0.50); padding: 2px 9px;
+  border-radius: 20px; border: 1px solid rgba(255,80,80,0.18);
+  transition: opacity 0.3s ease;
+  animation: gbbLivePulse 1.8s ease-in-out infinite;
+}
+/* hide the in-bar chip when the shelf is active */
+#gift-battle-bar.gbb-shelf-active #gbb-timer-val { opacity: 0; pointer-events: none; }
+@keyframes gbbLivePulse { 0%,100%{opacity:1} 50%{opacity:0.32} }
+
+/* ── TIMER SHELF — floats above the bar, drops into view for countdowns ── */
+#gbb-timer-shelf {
+  /* bar sits at top:450px; shelf is 28px tall, sits 4px above bar */
+  position: absolute;
+  left: 50%; top: 418px;
+  transform: translateX(-50%) translateY(-6px);
+  z-index: 15;
+  pointer-events: none;
+
+  /* collapsed/hidden by default */
+  opacity: 0;
+  transition: opacity 0.32s ease, transform 0.38s cubic-bezier(.34,1.4,.64,1);
+}
+#gbb-timer-shelf.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* pill shape */
+#gbb-shelf-pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 14px 4px 12px;
+  border-radius: 20px;
+  background: rgba(6,0,10,0.88);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow:
+    0 2px 16px rgba(0,0,0,0.75),
+    0 0 0 1px rgba(255,255,255,0.04) inset;
+  white-space: nowrap;
+}
+/* small clock icon dot */
+#gbb-shelf-icon {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ff4444;
+  box-shadow: 0 0 6px 2px rgba(255,40,40,0.6);
+  flex-shrink: 0;
+  animation: gbbShelfDot 1.2s ease-in-out infinite;
+}
+@keyframes gbbShelfDot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+#gbb-shelf-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px; letter-spacing: 2px;
+  color: #ffffff;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9);
+  transition: color 0.3s ease;
+}
+#gbb-shelf-val.gbb-warn  { color: #fbbf24; }
+#gbb-shelf-val.gbb-danger{ color: #ef4444; animation: gbbShelfDanger 0.5s ease-in-out infinite; }
+#gbb-shelf-val.gbb-ended { color: #fbbf24; font-size: 16px; letter-spacing: 1.5px; }
+@keyframes gbbShelfDanger { 0%,100%{transform:scale(1)} 50%{transform:scale(1.10)} }
+
+#gbb-shelf-label {
+  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(255,255,255,0.38);
+}
+
+/* danger state: pill border pulses red */
+#gbb-timer-shelf.shelf-danger #gbb-shelf-pill {
+  border-color: rgba(239,68,68,0.35);
+  animation: gbbShelfPillDanger 0.5s ease-in-out infinite;
+}
+@keyframes gbbShelfPillDanger {
+  0%,100%{box-shadow:0 2px 16px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04) inset}
+  50%    {box-shadow:0 2px 24px rgba(239,68,68,0.5),0 0 14px rgba(239,68,68,0.3),0 0 0 1px rgba(239,68,68,0.2) inset}
+}
+/* warn state: subtle amber glow */
+#gbb-timer-shelf.shelf-warn #gbb-shelf-pill {
+  border-color: rgba(251,191,36,0.25);
+}
+
+/* ── Shimmer for progress goal ── */
+#gbb-goal-shimmer {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 7;
+  background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.22) 50%, transparent 80%);
+  background-size: 200% 100%;
+}
+#gbb-goal-shimmer.active { opacity: 1; animation: gbbShimmer 1.0s ease-in-out infinite; }
+@keyframes gbbShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+
+/* hide old watermark text (replaced by logo badges) */
+.gbb-fill-wm { display: none; }
+
+/* ── Center goal line (progress mode) ── */
+#gbb-goal-line {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 2px; transform: translateX(-50%);
+  background: rgba(255,255,255,0.30);
+  box-shadow: 0 0 8px rgba(255,255,255,0.55), 0 0 3px rgba(255,255,255,0.90);
+  z-index: 2; pointer-events: none; display: none;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-goal-line { display: block; }
+#gift-battle-bar.gbb-mode-progress #gbb-timer-val {
+  font-size: 11px; letter-spacing: 0.14em;
+  background: rgba(0,0,0,0.52); color: rgba(255,255,255,0.85);
+}
+
+/* ── Battle-start announce ── */
+#gbb-announce {
+  position: absolute; inset: 0; z-index: 10; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  opacity: 0;
+}
+#gbb-announce.show { animation: gbbAnnounceAnim 3.5s ease forwards; }
+@keyframes gbbAnnounceAnim { 0%{opacity:0} 12%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
+.gbb-ann-logo {
+  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 3px;
+  text-transform: uppercase; padding: 2px 9px; border-radius: 3px; white-space: nowrap;
+}
+.gbb-ann-yt { color:#ff5555; background:rgba(220,0,0,0.20); border:1px solid rgba(255,50,50,0.45); }
+.gbb-ann-tt { color:#e0e0e0; background:rgba(80,80,80,0.22); border:1px solid rgba(180,180,180,0.35); }
+#gbb-ann-text {
+  font-family: 'Anton', sans-serif; font-size: 14px; letter-spacing: 4px;
+  color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.95); text-transform: uppercase;
+}
+
+/* ── Gift pop layer ── */
+#gbb-pop-layer {
+  position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden;
+}
+.gbb-pop-name {
+  position: absolute; top: 50%; left: 50%;
+  font-family: 'Anton', sans-serif; letter-spacing: 2px; color: #fff; white-space: nowrap;
+  pointer-events: none; text-shadow: 0 2px 12px rgba(0,0,0,0.98);
+  transform-origin: center center;
+}
+.gbb-pop-sm { font-size: 18px; }
+.gbb-pop-md { font-size: 26px; }
+.gbb-pop-lg { font-size: 34px; }
+.gbb-pop-yt { color: #ff7070; animation: gbbPopYT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
+.gbb-pop-tt { color: #d0d0d0; animation: gbbPopTT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
+@keyframes gbbPopYT {
+  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
+  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
+  65%  { opacity:1; transform:translate(-110%,-50%) scale(0.92); }
+  100% { opacity:0; transform:translate(-155%,-50%) scale(0.72); }
+}
+@keyframes gbbPopTT {
+  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
+  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
+  65%  { opacity:1; transform:translate(20%,-50%) scale(0.92); }
+  100% { opacity:0; transform:translate(65%,-50%) scale(0.72); }
+}
+.gbb-pop-flash {
+  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.80);
+  white-space: nowrap; pointer-events: none;
+  animation: gbbFlashFade 1.8s ease forwards;
+}
+@keyframes gbbFlashFade { 0%,12%{opacity:0} 22%,78%{opacity:1} 100%{opacity:0} }
+
+/* ══ PROGRESS MODE — unified left-to-right fill ══ */
+
+/* Hide battle-mode fills and VS chip in progress mode */
+#gift-battle-bar.gbb-mode-progress #gbb-yt-fill,
+#gift-battle-bar.gbb-mode-progress #gbb-tt-fill,
+#gift-battle-bar.gbb-mode-progress #gbb-vs,
+#gift-battle-bar.gbb-mode-progress #gbb-yt-pct,
+#gift-battle-bar.gbb-mode-progress #gbb-tt-pct,
+#gift-battle-bar.gbb-mode-progress #gbb-divider { display: none; }
+
+/* Ghost track — the empty portion of the bar */
+#gbb-prog-track {
+  display: none;
+  position: absolute; inset: 0;
+  background: #111111;
+  z-index: 1;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-track { display: block; }
+
+/* Unified fill container — grows left to right */
+#gbb-prog-fill {
+  display: none;
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+  z-index: 2; overflow: hidden;
+  transition: width 1.3s cubic-bezier(.22,1,.36,1);
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-fill { display: block; }
+
+/* YT segment — sits at the left of the fill, width = ytPct of total fill */
+#gbb-prog-yt-seg {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(to right, #3d0000, #8b0000, #cc1010, #e62020);
+  transition: width 1.3s cubic-bezier(.22,1,.36,1);
+}
+#gbb-prog-yt-seg::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, transparent 50%);
+}
+
+/* TT segment — sits immediately after YT, fills the rest of the fill */
+#gbb-prog-tt-seg {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(to right, #2a2a2a, #3c3c3c, #464646);
+  transition: width 1.3s cubic-bezier(.22,1,.36,1);
+}
+#gbb-prog-tt-seg::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 50%);
+}
+
+/* Leading edge glow — the fill frontier, always at the right edge of #gbb-prog-fill */
+#gbb-prog-edge {
+  display: none;
+  position: absolute; right: -2px; top: -4px; bottom: -4px; width: 3px;
+  background: #ffffff;
+  box-shadow:
+    0 0 6px 2px rgba(255,255,255,0.95),
+    0 0 18px 5px rgba(255,180,0,0.70),
+    0 0 40px 10px rgba(220,120,0,0.45);
+  z-index: 4; pointer-events: none;
+  animation: gbbEdgeBreath 2.2s ease-in-out infinite;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-edge { display: block; }
+@keyframes gbbEdgeBreath {
+  0%,100% { box-shadow: 0 0 6px 2px rgba(255,255,255,0.95), 0 0 18px 5px rgba(255,180,0,0.65), 0 0 40px 10px rgba(220,120,0,0.40); }
+  50%      { box-shadow: 0 0 9px 3px rgba(255,255,255,1.0),  0 0 28px 8px rgba(255,200,0,0.85), 0 0 60px 16px rgba(220,140,0,0.55); }
+}
+#gbb-prog-edge.surge {
+  animation: gbbEdgeSurge 0.5s ease-out forwards, gbbEdgeBreath 2.2s ease-in-out 0.55s infinite;
+}
+@keyframes gbbEdgeSurge {
+  0%  { box-shadow: 0 0 6px 2px #fff, 0 0 18px 5px rgba(255,180,0,0.7), 0 0 40px 10px rgba(220,120,0,0.4); }
+  30% { box-shadow: 0 0 20px 9px #fff, 0 0 55px 20px rgba(255,220,0,1.0), 0 0 100px 30px rgba(220,160,0,0.7); width: 5px; }
+  100%{ box-shadow: 0 0 6px 2px #fff, 0 0 18px 5px rgba(255,180,0,0.7), 0 0 40px 10px rgba(220,120,0,0.4); width: 3px; }
+}
+
+/* Contribution mini-pills — YT and TT share labels left of center */
+#gbb-prog-contrib {
+  display: none;
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 5; pointer-events: none;
+  display: flex; align-items: center; gap: 6px;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-contrib { display: flex; }
+.gbb-contrib-pill {
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(0,0,0,0.55); border-radius: 10px;
+  padding: 2px 7px 2px 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.gbb-contrib-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.gbb-contrib-dot.yt { background: #e62020; box-shadow: 0 0 5px rgba(230,32,32,0.7); }
+.gbb-contrib-dot.tt { background: #555555; box-shadow: 0 0 5px rgba(120,120,120,0.5); }
+.gbb-contrib-pct {
+  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; color: rgba(255,255,255,0.80); white-space: nowrap;
+}
+
+/* Prize label — right-anchored, always visible, is the goal destination */
+#gbb-prog-prize {
+  display: none;
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 5; pointer-events: none;
+  max-width: 380px; overflow: hidden;
+  display: flex; align-items: center; gap: 8px;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-prize { display: flex; }
+#gbb-prog-prize-icon {
+  font-size: 18px; flex-shrink: 0; line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(255,200,0,0.6));
+}
+#gbb-prog-prize-text {
+  font-family: 'Anton', sans-serif; font-size: 17px; letter-spacing: 2px;
+  text-transform: uppercase; color: rgba(255,255,255,0.90); white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 18px rgba(255,180,0,0.25);
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── GOAL HIT — DARE UNLOCKED sequence ── */
+/* Full-bar flash overlay */
+#gbb-prog-flash {
+  display: none;
+  position: absolute; inset: -4px; z-index: 20; pointer-events: none;
+  background: #ffffff; opacity: 0; border-radius: 0;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-flash { display: block; }
+#gbb-prog-flash.fire { animation: gbbFlashBlast 0.55s ease-out forwards; }
+@keyframes gbbFlashBlast {
+  0%   { opacity: 0; }
+  18%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Gold fill state when goal hit */
+#gift-battle-bar.gbb-goal-hit #gbb-prog-fill {
+  background: linear-gradient(to right, #78350f, #d97706, #fbbf24, #fde68a) !important;
+  transition: background 0.4s ease;
+}
+#gift-battle-bar.gbb-goal-hit #gbb-prog-yt-seg,
+#gift-battle-bar.gbb-goal-hit #gbb-prog-tt-seg { display: none; }
+
+/* DARE UNLOCKED stamp — slams into center */
+#gbb-prog-unlock {
+  display: none;
+  position: absolute; inset: 0; z-index: 18; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  opacity: 0;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-unlock { display: flex; }
+#gbb-prog-unlock.stamp { animation: gbbUnlockStamp 4.5s cubic-bezier(.22,1,.36,1) forwards; }
+@keyframes gbbUnlockStamp {
+  0%   { opacity:0; transform:scale(2.4) rotate(-3deg); }
+  12%  { opacity:1; transform:scale(0.94) rotate(0.5deg); }
+  20%  { transform:scale(1.04) rotate(0deg); }
+  30%  { transform:scale(1.0); opacity:1; }
+  78%  { opacity:1; transform:scale(1.0); }
+  100% { opacity:0; transform:scale(0.88); }
+}
+#gbb-unlock-headline {
+  font-family: 'Anton', sans-serif; font-size: 28px; letter-spacing: 5px;
+  text-transform: uppercase; color: #fbbf24;
+  text-shadow:
+    0 0 14px rgba(251,191,36,0.95),
+    0 0 40px rgba(251,191,36,0.60),
+    0 2px 0 rgba(0,0,0,1),
+    0 4px 18px rgba(0,0,0,0.95);
+  white-space: nowrap;
+}
+#gbb-unlock-prize {
+  font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 3px;
+  text-transform: uppercase; color: rgba(255,255,255,0.88);
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px;
+}
+
+/* Announce badge colors for progress mode */
+#gift-battle-bar.gbb-mode-progress .gbb-ann-yt {
+  color:#ff5555; background:rgba(220,0,0,0.20); border-color:rgba(255,50,50,0.45);
+}
+#gift-battle-bar.gbb-mode-progress .gbb-ann-tt {
+  color:#e0e0e0; background:rgba(80,80,80,0.22); border-color:rgba(180,180,180,0.35);
+}
+
+/* Gift pop — rises from center */
+.gbb-pop-prog { animation: gbbPopProg 2.0s ease-out forwards !important; }
+.gbb-pop-yt.gbb-pop-prog { color:#ef4444 !important; text-shadow:0 0 22px rgba(239,68,68,0.95),0 2px 10px rgba(0,0,0,0.98) !important; }
+.gbb-pop-tt.gbb-pop-prog { color:#d0d0d0 !important; text-shadow:0 0 22px rgba(200,200,200,0.8),0 2px 10px rgba(0,0,0,0.98) !important; }
+@keyframes gbbPopProg {
+  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.3) rotate(-4deg); }
+  22%  { opacity:1; transform:translate(-50%,-50%) scale(1.18) rotate(0deg); }
+  55%  { opacity:1; transform:translate(-50%,-50%) scale(1.02); }
+  100% { opacity:0; transform:translate(-50%,-60%) scale(0.82); }
+}
+.gbb-pop-yt .gbb-pop-flash-txt { color: #fca5a5; }
+.gbb-pop-tt .gbb-pop-flash-txt { color: #d0d0d0; }
+
+/* ══ TOP GIFTERS PANEL ══ */
+#top-gifters-panel {
+  position: absolute; left: 0; top: 505px; width: 1080px; z-index: 9;
+  overflow: hidden; max-height: 0;
+  transition: max-height 0.55s cubic-bezier(.34,1.12,.64,1);
+  background: linear-gradient(180deg,rgba(15,4,32,0.97) 0%,rgba(25,6,48,0.94) 100%);
+  border-bottom: 1px solid rgba(168,85,247,0.30);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.70);
+}
+#top-gifters-panel.open { max-height: 340px; }
+#tgp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 22px 8px 22px;
+  border-bottom: 1px solid rgba(168,85,247,0.18);
+}
+#tgp-title {
+  font-family: 'Boogaloo', sans-serif; font-size: 20px; letter-spacing: 0.15em;
+  color: #C084FC; text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(192,132,252,0.55);
+}
+#tgp-timeframe {
+  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(255,255,255,0.45); padding: 3px 10px;
+  background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.25); border-radius: 20px;
+}
+#tgp-rows { display: flex; flex-direction: column; padding: 4px 0 8px; }
+.tgp-row {
+  display: flex; align-items: center; gap: 0; padding: 8px 22px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.2s ease;
+}
+.tgp-row:last-child { border-bottom: none; }
+.tgp-medal {
+  font-size: 22px; width: 36px; flex-shrink: 0; text-align: center; line-height: 1;
+}
+.tgp-rank {
+  font-family: 'Boogaloo', sans-serif; font-size: 22px; letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.35); width: 36px; flex-shrink: 0; text-align: center;
+}
+.tgp-name {
+  font-family: 'Boogaloo', sans-serif; font-size: 26px; letter-spacing: 0.04em;
+  color: #FAF5FF; flex: 1; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; padding: 0 10px;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.80);
+}
+.tgp-row.rank-1 .tgp-name { color: #FDE68A; text-shadow: 0 0 14px rgba(253,211,77,0.55), 0 2px 8px rgba(0,0,0,0.80); }
+.tgp-row.rank-2 .tgp-name { color: #E2E8F0; }
+.tgp-row.rank-3 .tgp-name { color: #FDBA74; }
+.tgp-amount {
+  font-family: 'Boogaloo', sans-serif; font-size: 22px; letter-spacing: 0.04em;
+  color: #A855F7; white-space: nowrap; flex-shrink: 0;
+  text-shadow: 0 0 10px rgba(168,85,247,0.50);
+}
+.tgp-plat {
+  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+  margin-left: 10px;
+}
+.tgp-plat.plat-tiktok  { color:#69C9D0;background:rgba(105,201,208,0.16);border:1px solid rgba(105,201,208,0.30); }
+.tgp-plat.plat-youtube { color:#FF6B6B;background:rgba(255,80,80,0.16);  border:1px solid rgba(255,80,80,0.30);   }
+.tgp-plat.plat-direct,
+.tgp-plat.plat-default { color:#C084FC;background:rgba(192,132,252,0.16);border:1px solid rgba(192,132,252,0.30); }
+#bar-hero-action {
+  position: absolute; top: 60px; left: 18px;
+  font-family: 'DM Sans', sans-serif; font-size: 22px; font-weight: 700;
+  letter-spacing: 0.13em; text-transform: uppercase; color: rgba(255,255,255,0.92);
+  white-space: nowrap; opacity: 0; transform: translateY(10px); pointer-events: none;
+  transition: opacity 0.32s ease 0.22s, transform 0.42s cubic-bezier(.34,1.56,.64,1) 0.20s;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.97), 0 0 18px rgba(var(--plat-rgb),0.55);
+}
+#gift-bar.alert-active #bar-hero-action { opacity:1; transform:translateY(0); }
+#bar-hero-gift-img {
+  height:78px;width:78px;object-fit:contain;flex-shrink:0;display:none;
+  filter:drop-shadow(0 0 10px rgba(var(--plat-rgb),0.85));
+  animation:heroGlowPulse 1.4s ease-in-out infinite; image-rendering:-webkit-optimize-contrast;
+}
+@keyframes heroGlowPulse {
+  0%,100%{filter:drop-shadow(0 0 4px rgba(var(--plat-rgb),0.55)) drop-shadow(0 0 0px transparent)}
+  50%    {filter:drop-shadow(0 0 18px rgba(var(--plat-rgb),1.0)) drop-shadow(0 0 38px rgba(var(--plat-rgb),0.60))}
+}
+#gift-bar.alert-active #bar-hero-name  { animation:heroGlowPulse 1.4s ease-in-out infinite; }
+#gift-bar.alert-active #bar-hero-amount{ animation:heroGlowPulse 1.4s ease-in-out infinite 0.18s; }
+
+/* ─── STATUS DOT ─── */
+#status-dot {
+  position: absolute; top: 456px; left: 8px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #444; z-index: 30; transition: background 0.3s;
+}
+#status-dot.connected  { background:#22c55e; box-shadow:0 0 5px rgba(34,197,94,0.7); }
+#status-dot.connecting { background:#eab308; }
+
+/* ══════════════════════════════════════════════════════════
+   SPLAT OVERLAY
+   All elements inside #splat-root.
+   --splat-cy = vertical center Y of the splat zone (default 960px = canvas center).
+   Updated via Ably "splat-pos" command from the dock.
+══════════════════════════════════════════════════════════ */
+#splat-root {
+  --splat-cy: 960px;
+  position: absolute; left: 0; top: 0;
+  width: 1080px; height: 1920px;
+  pointer-events: none; z-index: 20; overflow: hidden;
+}
+
+/* Ambient blobs */
+.blob-layer { position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 0.6s ease; }
+.blob-layer.visible { opacity:1; }
+.blob { position:absolute;border-radius:50%;filter:blur(2px); }
+
+/* Glow ring */
+#splat-glow-ring {
+  position:absolute; left:540px; top:var(--splat-cy);
+  transform:translate(-50%,-50%); width:900px; height:900px; border-radius:50%;
+  background:radial-gradient(ellipse,rgba(168,85,247,0.15) 0%,transparent 70%);
+  z-index:8; opacity:0;
+  transition:opacity 0.6s ease, top 0.4s ease;
+  animation:splatRingPulse 2s ease-in-out infinite;
+}
+#splat-glow-ring.visible { opacity:1; }
+@keyframes splatRingPulse {
+  0%,100%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(1.06)}
+}
+
+/* Splat background SVG */
+#splat-bg {
+  position:absolute; left:540px; top:var(--splat-cy);
+  transform:translate(-50%,-50%); width:900px; height:280px;
+  z-index:9; opacity:0;
+  transition:opacity 0.5s ease, top 0.4s ease;
+  filter:drop-shadow(0 0 40px rgba(168,85,247,0.6));
+}
+#splat-bg.visible { opacity:1; }
+
+/* Panel (timer + banner) */
+#splat-panel {
+  position:absolute; left:540px; top:var(--splat-cy);
+  transform:translate(-50%,calc(-50% + 40px)) scale(0.9);
+  width:900px; display:flex; flex-direction:column; align-items:center; gap:24px;
+  z-index:10; opacity:0; pointer-events:none;
+  transition:opacity 0.5s cubic-bezier(.34,1.56,.64,1),
+             transform 0.5s cubic-bezier(.34,1.56,.64,1),
+             top 0.4s ease;
+}
+#splat-panel.visible { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+/* Timer */
+#splat-countdown-wrap { display:flex;flex-direction:column;align-items:center;gap:14px;width:100%; }
+#splat-timer-number {
+  font-family:'Boogaloo',cursive; font-size:200px; line-height:1; color:#FAF5FF;
+  text-shadow:0 0 20px #A855F7,0 0 60px #7B2FBE,0 4px 0 rgba(0,0,0,0.4); letter-spacing:-6px;
+}
+#splat-timer-number.pulse-normal { animation:splatPulseNormal 1s ease-in-out infinite; }
+#splat-timer-number.pulse-warn   { animation:splatPulseWarn 0.5s ease-in-out infinite; }
+#splat-timer-number.pulse-danger { animation:splatPulseDanger 0.25s ease-in-out infinite; }
+@keyframes splatPulseNormal { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+@keyframes splatPulseWarn   { 0%,100%{transform:scale(1);color:#FAF5FF} 50%{transform:scale(1.08);color:#E879F9} }
+@keyframes splatPulseDanger {
+  0%,100%{transform:scale(1);color:#E879F9;text-shadow:0 0 20px #F43F5E,0 0 60px #F43F5E}
+  50%    {transform:scale(1.14);color:#F43F5E;text-shadow:0 0 40px #F43F5E,0 0 100px #F43F5E}
+}
+#splat-countdown-label {
+  font-family:'Boogaloo',cursive; font-size:42px; color:#FAF5FF;
+  text-shadow:0 0 16px #A855F7,0 2px 0 rgba(0,0,0,0.5);
+  text-align:center; letter-spacing:1px; padding:0 20px;
+}
+#splat-progress-track {
+  width:800px; height:16px; background:rgba(255,255,255,0.12);
+  border-radius:8px; overflow:hidden; box-shadow:0 0 12px rgba(168,85,247,0.4);
+}
+#splat-progress-fill {
+  height:100%; background:linear-gradient(90deg,#7B2FBE,#E879F9,#C084FC);
+  border-radius:8px; width:100%; transition:width 0.9s linear,background 0.3s ease;
+}
+#splat-progress-fill.danger { background:linear-gradient(90deg,#7F1D1D,#F43F5E,#FB7185); }
+
+/* State banners */
+#splat-state-banner {
+  font-family:'Boogaloo',cursive; font-size:80px; color:#FAF5FF;
+  text-align:center; letter-spacing:2px; padding:0 40px;
+  text-shadow:0 0 30px #A855F7,0 4px 0 rgba(0,0,0,0.5);
+}
+#splat-state-banner.saved-text {
+  color:#C084FC; text-shadow:0 0 40px #E879F9,0 0 80px #A855F7,0 4px 0 rgba(0,0,0,0.5);
+  animation:splatSavedBounce 0.6s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+#splat-state-banner.expired-text {
+  color:#F43F5E; text-shadow:0 0 40px #F43F5E,0 0 80px #7F1D1D,0 4px 0 rgba(0,0,0,0.5);
+  animation:splatExpiredShake 0.6s ease forwards;
+}
+@keyframes splatSavedBounce {
+  0%{transform:scale(0.5) rotate(-6deg);opacity:0} 60%{transform:scale(1.15) rotate(2deg);opacity:1} 100%{transform:scale(1) rotate(0deg);opacity:1}
+}
+@keyframes splatExpiredShake {
+  0%,100%{transform:translateX(0) scale(1)} 15%{transform:translateX(-18px) scale(1.05)}
+  30%{transform:translateX(14px) scale(1.05)} 45%{transform:translateX(-10px)} 60%{transform:translateX(8px)} 75%{transform:translateX(-4px)}
+}
+
+/* Burst layer */
+#splat-burst-layer { position:absolute;inset:0;pointer-events:none;z-index:25;overflow:hidden; }
+.splat-particle { position:absolute;border-radius:50% 70% 50% 70% / 60% 50% 70% 50%;opacity:0;transform:scale(0); }
+
+/* Crack/drip layer */
+#splat-crack-layer { position:absolute;inset:0;pointer-events:none;z-index:22;opacity:0;transition:opacity 0.3s ease; }
+#splat-crack-layer.visible { opacity:1; }
+.drip { position:absolute;top:0;border-radius:0 0 50% 50%;opacity:0;transform-origin:top center; }
+
+/* Idle bait widget — tracks splat center Y with smooth transition */
+#idle-bait {
+  position:absolute; z-index:10;
+  left:40px; top:calc(var(--splat-cy) - 35px);
+  transform:translateX(-30px) scale(0.92);
+  width:215px; padding:9px 11px;
+  display:flex; align-items:center; justify-content:flex-start; gap:8px;
+  background:rgba(20,0,40,0.78); border:2px solid rgba(168,85,247,0.55);
+  border-radius:10px; box-shadow:0 0 24px rgba(168,85,247,0.35),inset 0 0 20px rgba(59,7,100,0.4);
+  opacity:0; pointer-events:none;
+  transition:opacity 0.55s cubic-bezier(.4,0,.2,1),
+             transform 0.55s cubic-bezier(.34,1.56,.64,1),
+             top 0.4s ease;
+}
+#idle-bait.visible { opacity:1; transform:translateX(0) scale(1); animation:baitGlow 3s ease-in-out infinite; }
+@keyframes baitGlow {
+  0%,100%{box-shadow:0 0 24px rgba(168,85,247,0.35),inset 0 0 20px rgba(59,7,100,0.4)}
+  50%    {box-shadow:0 0 55px rgba(168,85,247,0.7), inset 0 0 28px rgba(59,7,100,0.5)}
+}
+#bait-inner { display:flex;align-items:center;gap:8px;width:100%;transform-origin:center center; }
+#idle-bait.visible #bait-inner { animation:baitWiggle 15s ease-in-out 2s infinite; }
+@keyframes baitWiggle {
+  0%,92%,100%{transform:rotate(0deg) scale(1)} 93%{transform:rotate(-5deg) scale(0.97)}
+  94.5%{transform:rotate(6deg) scale(1.03)} 96%{transform:rotate(-4deg) scale(0.98)}
+  97.5%{transform:rotate(4deg) scale(1.02)} 99%{transform:rotate(-1deg) scale(1)}
+}
+#bait-galaxy-img {
+  width:45px;height:45px;object-fit:contain;flex-shrink:0;
+  filter:drop-shadow(0 0 10px rgba(232,121,249,0.8)) drop-shadow(0 0 22px rgba(168,85,247,0.6));
+  animation:baitFloat 2.6s ease-in-out infinite;
+}
+@keyframes baitFloat { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(-3px) scale(1.04)} }
+#bait-text { display:flex;flex-direction:column;align-items:flex-start;gap:1px; }
+#bait-label-send {
+  font-family:'Boogaloo',cursive; font-size:15px; color:rgba(192,132,252,0.95);
+  letter-spacing:2px; text-transform:uppercase; text-shadow:0 0 12px rgba(168,85,247,0.6); line-height:1;
+}
+#bait-label-main {
+  font-family:'Boogaloo',cursive; font-size:29px; line-height:1; color:#FAF5FF; letter-spacing:3px;
+  text-shadow:0 0 16px rgba(232,121,249,0.95),0 0 36px rgba(168,85,247,0.75),0 3px 0 rgba(0,0,0,0.55);
+  animation:baitTextGlow 3s ease-in-out infinite;
+}
+@keyframes baitTextGlow {
+  0%,100%{text-shadow:0 0 16px rgba(232,121,249,0.9),0 0 36px rgba(168,85,247,0.7),0 3px 0 rgba(0,0,0,0.55)}
+  50%    {text-shadow:0 0 28px rgba(232,121,249,1),0 0 60px rgba(168,85,247,0.9),0 3px 0 rgba(0,0,0,0.55)}
+}
+.bait-sparkle {
+  position:absolute;border-radius:50%;background:#E879F9;opacity:0;pointer-events:none;
+  animation:baitSparkle var(--dur) var(--del) ease-in-out infinite;
+}
+@keyframes baitSparkle { 0%,100%{opacity:0;transform:scale(0)} 50%{opacity:0.9;transform:scale(1)} }
+
+/* ─── ANNOUNCE BOX ─── */
+#announce-box {
+  --ax: 540px; --ay: 200px;
+  --aw: 800px; --afm: 76px; --afs: 40px; --apv: 24px; --aph: 44px;
+  position: absolute; z-index: 15; pointer-events: none;
+  /* clamp keeps box fully within 0–1080px canvas regardless of X position */
+  left: clamp(calc(var(--aw) / 2), var(--ax), calc(1080px - var(--aw) / 2));
+  top: var(--ay);
+  transform: translate(-50%, calc(-50% + 18px)) scale(0.92);
+  opacity: 0;
+  transition: opacity 0.45s cubic-bezier(.34,1.56,.64,1),
+              transform 0.45s cubic-bezier(.34,1.56,.64,1),
+              left 0.38s ease, top 0.38s ease,
+              width 0.25s ease;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: var(--apv) var(--aph);
+  width: var(--aw); text-align: center;
+  background: linear-gradient(160deg, rgba(14,0,38,0.93), rgba(6,0,20,0.90));
+  border-radius: 22px;
+  border: 2px solid rgba(168,85,247,0.75);
+  box-shadow:
+    0 0 0 1px rgba(168,85,247,0.12),
+    0 0 35px rgba(168,85,247,0.50),
+    0 0 90px rgba(168,85,247,0.22),
+    inset 0 0 30px rgba(59,7,100,0.45);
+  animation: announceGlow 3.2s ease-in-out infinite;
+  overflow: hidden;
+}
+#announce-box.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+#announce-box::after {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(232,121,249,0.06), transparent);
+  animation: announceSweep 5s ease-in-out 1s infinite;
+  pointer-events: none;
+}
+@keyframes announceSweep { 0%{left:-100%} 60%,100%{left:160%} }
+@keyframes announceGlow {
+  0%,100% {
+    box-shadow: 0 0 0 1px rgba(168,85,247,0.12), 0 0 35px rgba(168,85,247,0.50), 0 0 90px rgba(168,85,247,0.22), inset 0 0 30px rgba(59,7,100,0.45);
+    border-color: rgba(168,85,247,0.75);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(232,121,249,0.22), 0 0 60px rgba(232,121,249,0.70), 0 0 130px rgba(168,85,247,0.32), inset 0 0 45px rgba(59,7,100,0.55);
+    border-color: rgba(232,121,249,0.95);
+  }
+}
+#announce-live-badge {
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700;
+  letter-spacing: 0.20em; text-transform: uppercase;
+  color: #F43F5E; background: rgba(244,63,94,0.14);
+  border: 1px solid rgba(244,63,94,0.50); border-radius: 7px;
+  padding: 3px 11px; display: inline-block; margin-bottom: 6px;
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+@keyframes livePulse { 0%,100%{opacity:1;color:#F43F5E} 50%{opacity:0.65;color:#FB7185} }
+#announce-text {
+  font-family: 'Boogaloo', cursive; font-size: var(--afm); line-height: 1.0;
+  color: #FAF5FF; letter-spacing: 2px;
+  white-space: normal; word-break: break-word; width: 100%;
+  text-shadow: 0 0 26px rgba(168,85,247,0.95), 0 0 65px rgba(168,85,247,0.48), 0 4px 0 rgba(0,0,0,0.65);
+  transition: font-size 0.25s ease;
+}
+#announce-sub {
+  font-family: 'Boogaloo', cursive; font-size: var(--afs); line-height: 1.1;
+  color: rgba(232,121,249,0.95); letter-spacing: 1px;
+  white-space: normal; word-break: break-word; width: 100%;
+  text-shadow: 0 0 16px rgba(232,121,249,0.75), 0 2px 0 rgba(0,0,0,0.55);
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.3s ease, margin-top 0.3s ease, font-size 0.25s ease;
+}
+#announce-sub.has-text { max-height: 120px; margin-top: 2px; }
+
+/* ══ EVENT PROMO SYSTEM ══ */
+.ep-root {
+  --ep-shelf-title: 31px;
+  --ep-team-label: 22px;
+  --ep-player-name: 22px;
+  --ep-meta: 17px;
+  position: absolute;
+  inset: 0;
+  width: 1080px;
+  height: 1920px;
+  pointer-events: none;
+  z-index: 40;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+.ep-root.ep-active { opacity: 1; }
+.ep-dim {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(168,85,247,0.34), transparent 34%),
+    radial-gradient(circle at 50% 52%, rgba(232,121,249,0.18), transparent 48%),
+    rgba(6,0,18,0.48);
+  transition: opacity 0.32s ease;
+}
+.ep-root.ep-card-mode .ep-dim,
+.ep-root.ep-paintball-mode .ep-dim { opacity: 1; }
+.ep-passive {
+  position: absolute;
+  top: 450px;
+  left: 0;
+  width: 1080px;
+  height: 55px;
+  transform: translateX(36px);
+  overflow: hidden;
+  opacity: 0;
+  border-radius: 0;
+  border: 0;
+  background:
+    linear-gradient(to right, transparent 0%, rgba(59,7,100,0.16) 22%, rgba(59,7,100,0.70) 48%, rgba(5,0,14,0.84) 100%),
+    radial-gradient(ellipse at 82% 50%, rgba(232,121,249,0.28), transparent 46%);
+  box-shadow: none;
+  transition: opacity 0.34s ease, transform 0.46s cubic-bezier(.34,1.56,.64,1);
+}
+.ep-passive::before,
+.ep-passive::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 190px;
+  z-index: 2;
+  pointer-events: none;
+}
+.ep-passive::before { left: 0; background: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,0)); }
+.ep-passive::after { right: 0; background: linear-gradient(to right, transparent, rgba(5,0,14,0.92)); }
+.ep-root.ep-passive-mode .ep-passive { opacity: 1; transform: translateX(0); }
+.ep-root.ep-gift-alert .ep-passive { opacity: 0.16; }
+.ep-passive-track {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  width: max-content;
+  height: 100%;
+  padding-left: 120px;
+  animation: epTicker 24s linear infinite;
+}
+.ep-passive-track span {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 31px;
+  letter-spacing: 2.6px;
+  color: #FAF5FF;
+  white-space: nowrap;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.96), 0 0 10px rgba(192,132,252,0.68);
+}
+@keyframes epTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.ep-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 880px;
+  min-height: 900px;
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+  padding: 54px 50px 48px;
+  border-radius: 34px;
+  border: 2px solid rgba(232,121,249,0.58);
+  background:
+    linear-gradient(145deg, rgba(12,2,34,0.96), rgba(59,7,100,0.94) 54%, rgba(8,5,30,0.96)),
+    radial-gradient(circle at 50% 0%, rgba(232,121,249,0.42), transparent 44%);
+  box-shadow: 0 32px 90px rgba(0,0,0,0.72), 0 0 70px rgba(168,85,247,0.45);
+  overflow: hidden;
+  z-index: 4;
+}
+.ep-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%) skewX(-14deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.26), transparent);
+}
+.ep-root.ep-card-mode .ep-card,
+.ep-root.ep-paintball-mode.ep-reveal-card .ep-card { animation: epCardIn 0.72s cubic-bezier(.34,1.56,.64,1) forwards; }
+.ep-root.ep-card-mode .ep-card::after,
+.ep-root.ep-paintball-mode.ep-reveal-card .ep-card::after { animation: epSweep 1.1s 0.9s ease-out forwards; }
+@keyframes epCardIn { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes epSweep { to { transform: translateX(130%) skewX(-14deg); } }
+.ep-eyebrow,
+.ep-date-time,
+.ep-tagline {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.ep-eyebrow { font-size: 28px; color: #E879F9; }
+.ep-title {
+  margin-top: 8px;
+  font-family: 'Anton', sans-serif;
+  font-size: 100px;
+  line-height: 0.95;
+  text-align: center;
+  text-transform: uppercase;
+  color: #FAF5FF;
+  text-shadow: 0 5px 22px rgba(0,0,0,0.95), 0 0 34px rgba(232,121,249,0.78);
+}
+.ep-matchup {
+  display: grid;
+  grid-template-columns: 1fr 116px 1fr;
+  gap: 24px;
+  align-items: center;
+  margin: 52px 0 40px;
+}
+.ep-team { opacity: 0; }
+.ep-root.ep-card-mode .ep-team-gamers,
+.ep-root.ep-paintball-mode.ep-reveal-card .ep-team-gamers { animation: epTeamLeft 0.62s 0.16s cubic-bezier(.34,1.56,.64,1) forwards; }
+.ep-root.ep-card-mode .ep-team-battlers,
+.ep-root.ep-paintball-mode.ep-reveal-card .ep-team-battlers { animation: epTeamRight 0.62s 0.24s cubic-bezier(.34,1.56,.64,1) forwards; }
+@keyframes epTeamLeft { from { opacity: 0; transform: translateX(-120px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes epTeamRight { from { opacity: 0; transform: translateX(120px); } to { opacity: 1; transform: translateX(0); } }
+.ep-team-label {
+  margin-bottom: 18px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 42px;
+  letter-spacing: 3px;
+  text-align: center;
+  color: #C084FC;
+}
+.ep-player-row { display: flex; flex-direction: column; gap: 18px; }
+.ep-player {
+  min-height: 176px;
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: inset 0 0 26px rgba(168,85,247,0.14);
+}
+.ep-avatar {
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 35% 25%, #E879F9, #7B2FBE 58%, #3B0764);
+  border: 3px solid rgba(250,245,255,0.72);
+  box-shadow: 0 0 24px rgba(232,121,249,0.72);
+  color: #FAF5FF;
+  font-family: 'Anton', sans-serif;
+  font-size: 38px;
+}
+.ep-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ep-player-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 39px;
+  letter-spacing: 2px;
+  line-height: 1;
+  text-align: center;
+  color: #FAF5FF;
+  overflow-wrap: anywhere;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+}
+.ep-vs {
+  opacity: 0;
+  font-family: 'Anton', sans-serif;
+  font-size: 92px;
+  color: #F43F5E;
+  text-align: center;
+  text-shadow: 0 0 28px rgba(244,63,94,0.88), 0 5px 16px rgba(0,0,0,0.9);
+}
+.ep-root.ep-card-mode .ep-vs,
+.ep-root.ep-paintball-mode.ep-reveal-card .ep-vs { animation: epVsPunch 0.52s 0.46s cubic-bezier(.34,1.56,.64,1) forwards; }
+@keyframes epVsPunch { 0% { opacity: 0; transform: scale(0.2); } 70% { opacity: 1; transform: scale(1.18); } 100% { opacity: 1; transform: scale(1); } }
+.ep-date-time { margin-top: 12px; font-size: 34px; color: #FAF5FF; }
+.ep-tagline {
+  display: inline-block;
+  margin: 22px auto 0;
+  width: 100%;
+  font-family: 'Boogaloo', sans-serif;
+  font-size: 54px;
+  letter-spacing: 2px;
+  color: #E879F9;
+  text-shadow: 0 0 22px rgba(232,121,249,0.74);
+}
+
+/* Compact fight-card banner: slides out of the gift bar lane. */
+.ep-root.ep-card-mode .ep-dim { opacity: 0; }
+.ep-root.ep-card-mode .ep-card {
+  top: 505px;
+  width: 980px;
+  min-height: 150px;
+  height: auto;
+  padding: 11px 16px 12px;
+  border-radius: 0 0 16px 16px;
+  border-width: 1px;
+  background:
+    linear-gradient(135deg, rgba(12,2,34,0.98), rgba(59,7,100,0.96) 54%, rgba(8,5,30,0.98)),
+    radial-gradient(ellipse at 82% 0%, rgba(232,121,249,0.30), transparent 46%);
+  box-shadow: 0 14px 32px rgba(0,0,0,0.62), 0 0 22px rgba(168,85,247,0.30);
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  grid-template-rows: auto auto auto 1fr;
+  column-gap: 18px;
+  row-gap: 5px;
+  align-items: start;
+  transform: translate(-50%, 0) scale(1);
+  transform-origin: top center;
+  clip-path: inset(0 0 100% 0);
+  animation: epFightBannerDown 0.58s cubic-bezier(.34,1.56,.64,1) forwards !important;
+}
+.ep-root.ep-card-mode.ep-card-hiding .ep-card {
+  animation: epFightBannerUp 0.42s ease-in forwards !important;
+}
+@keyframes epFightBannerDown {
+  from { opacity: 0.98; transform: translate(-50%, -8px) scale(1); clip-path: inset(0 0 100% 0); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); clip-path: inset(0 0 0 0); }
+}
+@keyframes epFightBannerUp {
+  from { opacity: 1; transform: translate(-50%, 0) scale(1); clip-path: inset(0 0 0 0); }
+  to { opacity: 0.98; transform: translate(-50%, -8px) scale(1); clip-path: inset(0 0 100% 0); }
+}
+.ep-root.ep-card-mode .ep-eyebrow {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-align: left;
+}
+.ep-root.ep-card-mode .ep-title {
+  position: static;
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  margin: 0;
+  font-size: var(--ep-shelf-title);
+  line-height: 0.88;
+  text-align: left;
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+.ep-root.ep-card-mode .ep-matchup {
+  grid-column: 2;
+  grid-row: 1 / 5;
+  grid-template-columns: 1fr 50px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  min-width: 0;
+}
+.ep-root.ep-card-mode .ep-team { opacity: 1; animation: none !important; }
+.ep-root.ep-card-mode .ep-team-label {
+  margin-bottom: 5px;
+  font-size: var(--ep-team-label);
+  line-height: 1;
+  letter-spacing: 1.5px;
+  color: #FAF5FF;
+  text-shadow: 0 1px 7px rgba(0,0,0,0.95), 0 0 12px rgba(232,121,249,0.92);
+  background: rgba(232,121,249,0.16);
+  border: 1px solid rgba(250,245,255,0.16);
+  border-radius: 999px;
+  padding: 1px 8px 0;
+  white-space: normal;
+}
+.ep-root.ep-card-mode .ep-player-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ep-root.ep-card-mode .ep-player {
+  flex: 1;
+  min-width: 0;
+  min-height: 92px;
+  height: auto;
+  padding: 8px 5px 7px;
+  border-radius: 9px;
+}
+.ep-root.ep-card-mode .ep-avatar {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 5px;
+  border-width: 2px;
+  font-size: 19px;
+  box-shadow: 0 0 18px rgba(232,121,249,0.66), 0 0 5px rgba(255,255,255,0.35);
+}
+.ep-root.ep-card-mode .ep-player-name {
+  font-size: var(--ep-player-name);
+  line-height: 1.02;
+  letter-spacing: 1px;
+}
+.ep-root.ep-card-mode .ep-vs {
+  opacity: 1;
+  font-size: 36px;
+  animation: epVsPunch 0.42s 0.22s cubic-bezier(.34,1.56,.64,1) both !important;
+}
+.ep-root.ep-card-mode .ep-date-time {
+  position: static;
+  grid-column: 1;
+  grid-row: 3;
+  margin: 0;
+  font-size: calc(var(--ep-meta) * 0.78);
+  line-height: 1.12;
+  letter-spacing: 0.16em;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.ep-root.ep-card-mode .ep-tagline {
+  position: static;
+  grid-column: 1;
+  grid-row: 4;
+  width: auto;
+  margin: 0;
+  font-size: var(--ep-meta);
+  line-height: 1.06;
+  letter-spacing: 1px;
+  text-align: left;
+  align-self: end;
+  overflow-wrap: anywhere;
+}
+.ep-fun-drawer {
+  position: absolute;
+  top: 505px;
+  left: 50%;
+  width: 980px;
+  min-height: 150px;
+  height: auto;
+  transform: translate(-50%, -8px);
+  transform-origin: top center;
+  clip-path: inset(0 0 100% 0);
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 16px 24px;
+  border-radius: 0 0 18px 18px;
+  border: 1px solid rgba(168,85,247,0.42);
+  background:
+    radial-gradient(ellipse at 88% 12%, rgba(232,121,249,0.34), transparent 42%),
+    linear-gradient(135deg, rgba(255,255,255,0.96), rgba(250,245,255,0.94) 46%, rgba(237,233,254,0.96));
+  box-shadow: 0 14px 34px rgba(0,0,0,0.45), 0 0 30px rgba(168,85,247,0.34);
+  z-index: 5;
+}
+.ep-root.ep-fun-mode .ep-fun-drawer { animation: epFunDrawerDown 0.52s cubic-bezier(.34,1.56,.64,1) forwards; }
+.ep-root.ep-fun-mode.ep-card-hiding .ep-fun-drawer { animation: epFunDrawerUp 0.38s ease-in forwards; }
+@keyframes epFunDrawerDown {
+  from { opacity: 0.98; transform: translate(-50%, -8px); clip-path: inset(0 0 100% 0); }
+  to { opacity: 1; transform: translate(-50%, 0); clip-path: inset(0 0 0 0); }
+}
+@keyframes epFunDrawerUp {
+  from { opacity: 1; transform: translate(-50%, 0); clip-path: inset(0 0 0 0); }
+  to { opacity: 0.98; transform: translate(-50%, -8px); clip-path: inset(0 0 100% 0); }
+}
+.ep-fun-copy { flex: 1; min-width: 0; }
+.ep-fun-eyebrow {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #7B2FBE;
+}
+.ep-fun-title {
+  margin-top: 3px;
+  font-family: 'Anton', sans-serif;
+  font-size: 58px;
+  line-height: 0.96;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #3B0764;
+  text-shadow: 0 2px 0 rgba(255,255,255,0.8), 0 0 18px rgba(168,85,247,0.25);
+  overflow-wrap: anywhere;
+}
+.ep-fun-subtitle {
+  margin-top: 6px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  line-height: 1.04;
+  letter-spacing: 2px;
+  color: #A855F7;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ep-fun-image-wrap {
+  width: 116px;
+  height: 116px;
+  border-radius: 18px;
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(135deg, #FAF5FF, #E9D5FF);
+  border: 3px solid rgba(168,85,247,0.42);
+  box-shadow: 0 0 22px rgba(168,85,247,0.32);
+}
+.ep-fun-image-wrap.has-image { display: flex; }
+.ep-fun-image-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.ep-paintball {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  z-index: 3;
+}
+.ep-root.ep-paintball-mode .ep-paintball { opacity: 1; animation: epImpactShake 0.38s 0.62s ease; }
+.ep-projectile {
+  position: absolute;
+  top: 36%;
+  left: -140px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 25%, #FAF5FF 0 10%, #E879F9 18%, #A855F7 50%, #3B0764 100%);
+  box-shadow: 0 0 32px rgba(232,121,249,0.9), 70px 20px 46px rgba(168,85,247,0.30);
+}
+.ep-root.ep-paintball-mode .ep-projectile { animation: epProjectile 0.7s cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes epProjectile { to { left: 492px; top: 720px; transform: scale(0.6); opacity: 0; } }
+@keyframes epImpactShake {
+  0%,100% { transform: translate(0,0); }
+  20% { transform: translate(-16px, 8px); }
+  45% { transform: translate(14px, -10px); }
+  70% { transform: translate(-7px, 4px); }
+}
+.ep-splat {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 620px;
+  height: 500px;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  filter: drop-shadow(0 24px 46px rgba(0,0,0,0.62)) drop-shadow(0 0 46px rgba(168,85,247,0.70));
+}
+.ep-root.ep-paintball-mode .ep-splat { animation: epSplatPop 0.62s 0.64s cubic-bezier(.34,1.56,.64,1) forwards, epSplatClear 0.55s var(--ep-splat-clear-delay, 3s) ease forwards; }
+@keyframes epSplatPop { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes epSplatClear { to { opacity: 0; transform: translate(-50%, -52%) scale(0.64); filter: blur(3px) drop-shadow(0 0 24px rgba(168,85,247,0.32)); } }
+@keyframes epSplatExit { to { opacity: 0; transform: translate(-50%, -50%) scale(0.88); } }
+.ep-splat::before {
+  content: '';
+  position: absolute;
+  left: 96px;
+  top: 88px;
+  width: 430px;
+  height: 300px;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255,255,255,0.86) 0 8%, rgba(245,208,254,0.78) 9% 15%, transparent 16%),
+    radial-gradient(circle at 42% 40%, #F0ABFC 0 10%, #D946EF 24%, #A855F7 48%, #7E22CE 76%, #4C1D95 100%);
+  border-radius: 61% 39% 54% 46% / 42% 58% 44% 56%;
+}
+.ep-splat::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 17% 47%, #A855F7 0 9%, transparent 10%),
+    radial-gradient(circle at 24% 28%, #C084FC 0 6%, transparent 7%),
+    radial-gradient(circle at 32% 78%, #9333EA 0 8%, transparent 9%),
+    radial-gradient(circle at 49% 18%, #E879F9 0 9%, transparent 10%),
+    radial-gradient(circle at 63% 27%, #A855F7 0 7%, transparent 8%),
+    radial-gradient(circle at 76% 47%, #C084FC 0 10%, transparent 11%),
+    radial-gradient(circle at 72% 75%, #8B5CF6 0 7%, transparent 8%),
+    radial-gradient(ellipse at 51% 55%, #B145F8 0 32%, transparent 33%);
+  opacity: 0.98;
+  filter: drop-shadow(0 0 16px rgba(232,121,249,0.78));
+}
+.ep-splat-gloss {
+  position: absolute;
+  left: 188px;
+  top: 118px;
+  width: 150px;
+  height: 58px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 38% 42%, rgba(255,255,255,0.86), transparent 58%),
+    radial-gradient(ellipse at 78% 28%, rgba(255,255,255,0.44), transparent 42%);
+  opacity: 0;
+  z-index: 2;
+}
+.ep-root.ep-paintball-mode .ep-splat-gloss { animation: epGloss 1.4s 1s ease-in-out infinite; }
+@keyframes epGloss { 0%,100% { opacity: 0.24; transform: translateX(-20px); } 50% { opacity: 0.72; transform: translateX(28px); } }
+.ep-droplets span,
+.ep-drips span {
+  position: absolute;
+  display: block;
+  background: #A855F7;
+  box-shadow: 0 0 18px rgba(232,121,249,0.72);
+}
+.ep-droplets span { width: 30px; height: 24px; border-radius: 62% 38% 54% 46% / 45% 57% 43% 55%; left: 295px; top: 235px; opacity: 0; }
+.ep-root.ep-paintball-mode .ep-droplets span { animation: epDroplet 0.72s 0.78s ease-out forwards; }
+@keyframes epDroplet { to { opacity: 1; transform: translate(var(--dx), var(--dy)) scale(var(--s)); } }
+.ep-drips span { top: 296px; width: 18px; height: 0; border-radius: 0 0 18px 18px; opacity: 0.82; transform-origin: top; }
+.ep-root.ep-paintball-mode .ep-drips span { animation: epDrip 1s 0.9s ease-out forwards; }
+@keyframes epDrip { to { height: var(--h); } }
+.ep-splat-title,
+.ep-splat-date {
+  position: absolute;
+  left: 70px;
+  right: 70px;
+  text-align: center;
+  opacity: 0;
+  color: #FAF5FF;
+  text-shadow: 0 4px 18px rgba(0,0,0,0.94), 0 0 24px rgba(255,255,255,0.28);
+}
+.ep-splat-title { top: 162px; font-family: 'Anton', sans-serif; font-size: 52px; line-height: 0.95; text-transform: uppercase; z-index: 3; }
+.ep-splat-date { top: 284px; font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: 3px; z-index: 3; }
+.ep-root.ep-paintball-mode .ep-splat-title,
+.ep-root.ep-paintball-mode .ep-splat-date { animation: epTextPop 0.42s 1.08s cubic-bezier(.34,1.56,.64,1) forwards; }
+@keyframes epTextPop { from { transform: scale(0.55); } to { opacity: 1; transform: scale(1); } }
+</style>
+</head>
+<body>
+
+<canvas id="particle-canvas" width="1080" height="1920"></canvas>
+<div id="screen-pulse"></div>
+
+<div id="bar-lines">
+  <div id="line-top"></div><div id="line-bot"></div>
+  <div id="line-sweep-top"></div><div id="line-sweep-bot"></div>
+</div>
+
+<div id="gift-bar">
+  <div id="bar-bg-layer">
+    <div id="bar-bg"></div><div id="bar-wash"></div>
+    <div id="bar-shimmer-flare"></div><div id="bar-border"></div>
+    <div id="bar-progress"></div>
+  </div>
+  <!-- ══ GIFT BATTLE BAR — overlays bar when battle/progress mode is active ══ -->
+  <div id="gift-battle-bar">
+    <!-- fills -->
+    <div id="gbb-yt-fill">
+      <span class="gbb-fill-wm">▶ YOUTUBE</span>
+      <!-- YouTube logo badge -->
+      <div id="gbb-yt-logo">
+        <svg viewBox="0 0 90 63" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="90" height="63" rx="14" fill="#fff" fill-opacity="0.92"/>
+          <path d="M36 20 L64 31.5 L36 43 Z" fill="#cc1010"/>
+        </svg>
+        <span id="gbb-yt-logo-text">YouTube</span>
+      </div>
+    </div>
+    <div id="gbb-tt-fill">
+      <span class="gbb-fill-wm">TIKTOK ♪</span>
+      <!-- TikTok logo badge -->
+      <div id="gbb-tt-logo">
+        <svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M29 0C29.8 6.2 33.2 9.6 39 10v7c-3.4-.3-6.4-1.4-9-3.2V28c0 9.4-10.4 14.6-18 9.2-5.4-3.8-6.6-11.4-2.6-16.6 3-4 7.8-5.6 12.2-4.4v7.4c-4.2-1.6-7.6 1.2-7.2 5 .4 3 3 5.2 6 5 4-.2 6.6-3.2 6.6-7.2V0h3Z" fill="white" fill-opacity="0.90"/>
+        </svg>
+        <span id="gbb-tt-logo-text">TikTok</span>
+      </div>
+    </div>
+
+    <!-- shimmer / goal line -->
+    <div id="gbb-goal-shimmer"></div>
+    <div id="gbb-goal-line"></div>
+
+    <!-- ── PROGRESS MODE elements ── -->
+    <!-- ghost track (empty portion) -->
+    <div id="gbb-prog-track"></div>
+    <!-- unified fill, grows left→right -->
+    <div id="gbb-prog-fill">
+      <div id="gbb-prog-yt-seg"></div>
+      <div id="gbb-prog-tt-seg"></div>
+      <!-- leading-edge saber glow -->
+      <div id="gbb-prog-edge"></div>
+    </div>
+    <!-- contribution pills (bottom-left) -->
+    <div id="gbb-prog-contrib">
+      <div class="gbb-contrib-pill">
+        <div class="gbb-contrib-dot yt"></div>
+        <span class="gbb-contrib-pct" id="gbb-prog-yt-pct">0%</span>
+      </div>
+      <div class="gbb-contrib-pill">
+        <div class="gbb-contrib-dot tt"></div>
+        <span class="gbb-contrib-pct" id="gbb-prog-tt-pct">0%</span>
+      </div>
+    </div>
+    <!-- prize destination label (right) -->
+    <div id="gbb-prog-prize">
+      <span id="gbb-prog-prize-icon">🎯</span>
+      <span id="gbb-prog-prize-text">DARE</span>
+    </div>
+    <!-- goal-hit flash overlay -->
+    <div id="gbb-prog-flash"></div>
+    <!-- DARE UNLOCKED stamp -->
+    <div id="gbb-prog-unlock">
+      <div id="gbb-unlock-headline">DARE UNLOCKED</div>
+      <div id="gbb-unlock-prize"></div>
+    </div>
+
+    <!-- hot divider saber line -->
+    <div id="gbb-divider"></div>
+
+    <!-- percentage labels flanking the divider -->
+    <div id="gbb-yt-pct">50%</div>
+    <div id="gbb-tt-pct">50%</div>
+
+    <!-- VS chip — center, z above everything -->
+    <div id="gbb-vs">VS</div>
+
+    <!-- content zone keeps the timer chip -->
+    <div id="gbb-content">
+      <div id="gbb-yt-info">
+        <span id="gbb-yt-lbl" class="gbb-plat-lbl">▶ YT</span>
+        <span id="gbb-yt-amt">$0.00</span>
+      </div>
+      <div id="gbb-mid">
+        <span id="gbb-timer-val" class="gbb-live">● LIVE</span>
+      </div>
+      <div id="gbb-tt-info">
+        <span id="gbb-tt-amt">$0.00</span>
+        <span id="gbb-tt-lbl" class="gbb-plat-lbl">TT ♪</span>
+      </div>
+    </div>
+
+    <div id="gbb-pop-layer"></div>
+    <div id="gbb-announce">
+      <span class="gbb-ann-logo gbb-ann-yt">▶ YouTube</span>
+      <span id="gbb-ann-text">⚔ GIFT BATTLE!</span>
+      <span class="gbb-ann-logo gbb-ann-tt">TikTok</span>
+    </div>
+  </div>
+  <div id="bar-hero">
+    <img id="bar-hero-gift-img" src="" alt="">
+    <span id="bar-hero-name"></span>
+    <span id="bar-hero-amount"></span>
+  </div>
+  <div id="bar-hero-action"></div>
+  <div id="bar-info">
+    <div id="bar-info-top">
+      <span id="bar-slot-title"></span>
+      <span id="bar-plat-badge"></span>
+    </div>
+    <div id="bar-info-bot">
+      <span id="bar-info-name"></span>
+      <span id="bar-info-amount"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GBB TIMER SHELF — floats above the battle bar for countdown display ══ -->
+<div id="gbb-timer-shelf">
+  <div id="gbb-shelf-pill">
+    <div id="gbb-shelf-icon"></div>
+    <div id="gbb-shelf-val">0:00</div>
+    <div id="gbb-shelf-label">remaining</div>
+  </div>
+</div>
+
+<!-- ══ TOP GIFTERS PANEL — slides down from bottom of gift bar ══ -->
+<div id="top-gifters-panel">
+  <div id="tgp-header">
+    <span id="tgp-title">🏆 Top Gifters</span>
+    <span id="tgp-timeframe">All Time</span>
+  </div>
+  <div id="tgp-rows"></div>
+</div>
+
+<div id="status-dot"></div>
+
+<!-- ══ EVENT PROMO SYSTEM ══ -->
+<div id="event-promo-root" class="ep-root" aria-hidden="true">
+  <div id="ep-dim" class="ep-dim"></div>
+  <div id="ep-passive" class="ep-passive">
+    <div class="ep-passive-track">
+      <span id="ep-passive-text-a"></span>
+      <span id="ep-passive-text-b"></span>
+    </div>
+  </div>
+  <div id="ep-card" class="ep-card">
+    <div id="ep-eyebrow" class="ep-eyebrow"></div>
+    <div id="ep-title" class="ep-title"></div>
+    <div class="ep-matchup">
+      <div class="ep-team ep-team-gamers">
+        <div id="ep-gamers-label" class="ep-team-label"></div>
+        <div class="ep-player-row">
+          <div id="ep-player-0" class="ep-player"></div>
+          <div id="ep-player-1" class="ep-player"></div>
+        </div>
+      </div>
+      <div class="ep-vs">VS</div>
+      <div class="ep-team ep-team-battlers">
+        <div id="ep-battlers-label" class="ep-team-label"></div>
+        <div class="ep-player-row">
+          <div id="ep-player-2" class="ep-player"></div>
+          <div id="ep-player-3" class="ep-player"></div>
+        </div>
+      </div>
+    </div>
+    <div id="ep-date-time" class="ep-date-time"></div>
+    <div id="ep-tagline" class="ep-tagline"></div>
+  </div>
+  <div id="ep-paintball" class="ep-paintball">
+    <div class="ep-projectile"></div>
+    <div class="ep-splat">
+      <div class="ep-splat-gloss"></div>
+      <div class="ep-droplets" id="ep-droplets"></div>
+      <div class="ep-drips" id="ep-drips"></div>
+      <div class="ep-splat-title"></div>
+      <div class="ep-splat-date"></div>
+    </div>
+  </div>
+  <div id="ep-fun-drawer" class="ep-fun-drawer">
+    <div class="ep-fun-copy">
+      <div id="ep-fun-eyebrow" class="ep-fun-eyebrow"></div>
+      <div id="ep-fun-title" class="ep-fun-title"></div>
+      <div id="ep-fun-subtitle" class="ep-fun-subtitle"></div>
+    </div>
+    <div id="ep-fun-image-wrap" class="ep-fun-image-wrap"></div>
+  </div>
+</div>
+
+<!-- ══ SPLAT OVERLAY ROOT — position controlled by --splat-cy variable ══ -->
+<div id="splat-root">
+  <div class="blob-layer" id="blob-layer"></div>
+  <div id="splat-glow-ring"></div>
+
+  <svg id="splat-bg" viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <radialGradient id="splatGrad" cx="50%" cy="60%" r="60%">
+        <stop offset="0%"   stop-color="#A855F7" stop-opacity="0.95"/>
+        <stop offset="50%"  stop-color="#7B2FBE" stop-opacity="0.90"/>
+        <stop offset="100%" stop-color="#3B0764" stop-opacity="0.85"/>
+      </radialGradient>
+      <radialGradient id="splatShine" cx="35%" cy="25%" r="40%">
+        <stop offset="0%"   stop-color="#E879F9" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#A855F7" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <path d="M80,200 C40,180 20,150 30,110 C40,70 80,50 120,60 C130,30 160,10 200,20 C220,-5 260,5 270,35 C300,10 350,15 360,50 C400,20 450,30 455,70 C490,40 540,55 535,95 C575,70 620,90 610,130 C650,110 700,135 690,175 C730,160 770,185 755,220 C790,210 820,240 800,270 C770,290 720,280 700,255 C670,280 630,275 620,250 C590,270 550,260 545,235 C510,255 470,245 470,220 C440,240 400,230 405,205 C370,220 330,205 335,180 C300,195 260,178 270,155 C230,168 190,150 200,125 C160,138 120,118 130,95 C95,105 70,135 80,200 Z" fill="url(#splatGrad)"/>
+    <path d="M150,80 C160,50 210,40 240,55 C260,30 310,35 320,60 C340,40 380,48 375,75 C360,55 320,52 305,72 C295,48 255,43 240,65 C218,47 170,52 150,80 Z" fill="url(#splatShine)" opacity="0.7"/>
+    <ellipse cx="30"  cy="215" rx="24" ry="17" fill="#7B2FBE" opacity="0.8"/>
+    <ellipse cx="870" cy="200" rx="28" ry="19" fill="#7B2FBE" opacity="0.8"/>
+    <ellipse cx="450" cy="270" rx="20" ry="13" fill="#A855F7" opacity="0.7"/>
+    <ellipse cx="90"  cy="255" rx="16" ry="11" fill="#9333EA" opacity="0.6"/>
+    <ellipse cx="810" cy="250" rx="18" ry="12" fill="#9333EA" opacity="0.6"/>
+  </svg>
+
+  <div id="splat-panel">
+    <div id="splat-countdown-wrap">
+      <div id="splat-timer-number">60</div>
+      <div id="splat-countdown-label"></div>
+      <div id="splat-progress-track"><div id="splat-progress-fill"></div></div>
+    </div>
+    <div id="splat-state-banner"></div>
+  </div>
+
+  <div id="idle-bait">
+    <div id="bait-inner">
+      <img id="bait-galaxy-img"
+           src="https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/resource/79a02148079526539f7599150da9fd28.png~tplv-obj.webp"
+           alt="Galaxy">
+      <div id="bait-text">
+        <span id="bait-label-send">galaxy/dono</span>
+        <span id="bait-label-main">RESET/SAVE</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="splat-burst-layer"></div>
+  <div id="splat-crack-layer">
+    <svg id="splat-crack-svg" width="1080" height="1920" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
+
+<!-- ══ ANNOUNCE BOX — floats freely at (--ax, --ay), outside splat-root ══ -->
+<div id="announce-box">
+  <div id="announce-live-badge">● LIVE</div>
+  <div id="announce-text">NOW STREAMING</div>
+  <div id="announce-sub"></div>
+</div>
+
+<script>
+/* ══ CONFIG ══ */
+const CONFIG = {
+  ROTATE_MS: 5000, MONTHLY_LINGER_MS: 3500,
+  ABLY_KEY: 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+  ABLY_CHANNEL: 'splat-overlay',
+};
+const SPLAT_CONFIG = {
+  TIMER_SECONDS: 60, WARN_THRESHOLD: 20, DANGER_THRESHOLD: 10,
+  COPY_COUNTDOWN: "⚠️ Galaxy/DONO to SAVE",
+  COPY_SAVED: "💜 SAVED! !W", COPY_EXPIRED: "💀 RESET. GG.",
+  SAVED_LINGER_MS: 5000, EXPIRED_LINGER_MS: 7000,
+};
+const DEFAULT_EVENT_PROMO_CONFIG = {
+  enabled: true,
+  title: "Gamers vs Battlers",
+  eyebrow: "FIRST EVER EVENT",
+  dateTime: "June 28 • 8PM CST",
+  tagline: "5 MINUTE MAIN EVENT",
+  passiveText: "🎮 CHOOSE YOUR SIDE • GAMERS VS BATTLERS • JUNE 28 • 8PM CST • 5 MINUTE MAIN EVENT • WHO YOU GOT? ⚔️",
+  teamGamersLabel: "TEAM GAMERS",
+  teamBattlersLabel: "TEAM BATTLERS",
+  players: [
+    { team: "gamers", name: "Gamer 1", image: "" },
+    { team: "gamers", name: "Gamer 2", image: "" },
+    { team: "battlers", name: "Battler 1", image: "" },
+    { team: "battlers", name: "Battler 2", image: "" }
+  ],
+  fun: {
+    eyebrow: "QUICK BREAKING NEWS",
+    title: "CHAT IS COOKING",
+    subtitle: "send help or snacks",
+    image: ""
+  },
+  fonts: {
+    shelfTitlePx: 31,
+    teamLabelPx: 22,
+    playerNamePx: 22,
+    metaPx: 17
+  },
+  durations: { passiveMs: 12000, fightCardMs: 15000, paintballMs: 60000, paintballSplatMs: 3000, autoIntervalMs: 60000 }
+};
+/* Overlay position presets — Y center in pixels on the 1920px canvas */
+const SPLAT_POSITIONS = { top:280, upper:600, center:960, lower:1300, bottom:1640 };
+let currentSplatPos = 'center';
+
+/* ══ GIFT BAR: TIERS / PLATFORMS ══ */
+const TIER_CONFIG = [
+  null,
+  { duration:5000,  particles:0,   sweeps:1, pulseLines:false },
+  { duration:6500,  particles:30,  sweeps:2, pulseLines:false },
+  { duration:7500,  particles:60,  sweeps:3, pulseLines:false },
+  { duration:9000,  particles:120, sweeps:4, pulseLines:true  },
+  { duration:11000, particles:200, sweeps:5, pulseLines:true  },
+  { duration:13000, particles:350, sweeps:6, pulseLines:true  },
+];
+
+const PLAT_COLORS = {
+  tiktok:  {wash:'rgba(105,201,208,0.08)',edge:'#69C9D0',edgeRgb:'105,201,208',particles:['#69C9D0','#EE1D52','#fff','#ff80ab','#00eeff'],pulse:'rgba(105,201,208,0.24)'},
+  youtube: {wash:'rgba(255,80,80,0.08)',  edge:'#FF6B6B',edgeRgb:'255,107,107',particles:['#FF6B6B','#FF0000','#fff','#ffcc00','#ff4444'],pulse:'rgba(255,80,80,0.24)'  },
+  direct:  {wash:'rgba(192,132,252,0.08)',edge:'#C084FC',edgeRgb:'192,132,252',particles:['#C084FC','#E879F9','#fff','#A855F7','#FAF5FF'],pulse:'rgba(192,132,252,0.24)'},
+  default: {wash:'rgba(192,132,252,0.08)',edge:'#C084FC',edgeRgb:'192,132,252',particles:['#C084FC','#E879F9','#fff','#A855F7','#FAF5FF'],pulse:'rgba(192,132,252,0.24)'},
+};
+
+const SLOT_DEFS = [
+  {key:'daily',  label:'Daily Top Gifter'  },{key:'weekly', label:'Weekly Top Gifter' },
+  {key:'monthly',label:'Monthly Top Gifter'},{key:'youtube',label:'Top YouTube Gifter'},
+  {key:'tiktok', label:'Top TikTok Gifter' },{key:'custom', label:'Featured Gifter'   },
+];
+
+/* ══ GIFT BAR STATE ══ */
+let leaderboard={}, activeSlots=SLOT_DEFS.slice(0,5);
+let currentIdx=0, rotateTimer=null, progressAnim=null;
+let pinned=false, alertQueue=[], alertActive=false;
+let alertTimeout=null, infoFadeTimer=null, monthlyTimer=null, activePlat='default';
+
+/* ══ GIFT BAR UTILS ══ */
+function fmtAmount(a,t){const n=Number(a)||0;if(t==='tiktok_coins')return n.toLocaleString()+' COINS';if(t==='youtube_jewels')return n.toLocaleString()+' JEWELS';if(t==='youtube_superchat'||t==='direct_donation')return '$'+(Number.isInteger(n)?n.toLocaleString():n.toFixed(2));return n.toLocaleString();}
+function platKey(p){return['tiktok','youtube','direct'].includes(p)?p:'default';}
+function platLabel(p){if(p==='tiktok')return'♪ TikTok';if(p==='youtube')return'▶ YouTube';if(p==='direct')return'💚 Direct';return'🎁 Gift';}
+function getTier(a,t){const n=Number(a)||0;if(t==='tiktok_coins'||t==='youtube_jewels'){if(n<50)return 0;if(n<1000)return 1;if(n<5000)return 2;if(n<25000)return 3;if(n<100000)return 4;if(n<250000)return 5;return 6;}if(n<1)return 0;if(n<10)return 1;if(n<50)return 2;if(n<100)return 3;if(n<250)return 4;if(n<400)return 5;return 6;}
+
+/* ══ GIFT BAR PARTICLES ══ */
+const pCanvas=document.getElementById('particle-canvas'),pCtx=pCanvas.getContext('2d');
+let pList=[],pRaf=null;
+function emitParticles(tier,plat){const cfg=TIER_CONFIG[tier];if(!cfg||cfg.particles===0)return;const colors=PLAT_COLORS[plat].particles;for(let i=0;i<cfg.particles;i++){const a=Math.random()*Math.PI*2,sp=(3+Math.random()*tier*3.2)*(0.6+Math.random()*0.8);pList.push({x:200+Math.random()*680,y:455+Math.random()*20,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-1,color:colors[Math.floor(Math.random()*colors.length)],size:2+Math.random()*tier*1.5,life:0.7+Math.random()*0.3,decay:0.003+Math.random()*(0.007/Math.max(tier,1)),type:Math.random()<0.5?'rect':'circle',rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.12});}if(!pRaf)pTick();}
+function pTick(){pCtx.clearRect(0,0,1080,1920);pList=pList.filter(p=>p.life>0.01);for(const p of pList){p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.vx*=0.993;p.life-=p.decay;p.rot+=p.rotV;pCtx.save();pCtx.globalAlpha=Math.max(0,Math.min(1,p.life));pCtx.fillStyle=p.color;pCtx.translate(p.x,p.y);pCtx.rotate(p.rot);if(p.type==='rect'){pCtx.fillRect(-p.size*.5,-p.size,p.size,p.size*2);}else{pCtx.beginPath();pCtx.arc(0,0,p.size/2,0,Math.PI*2);pCtx.fill();}pCtx.restore();}pCtx.globalAlpha=1;pRaf=pList.length?requestAnimationFrame(pTick):null;}
+function clearParticles(){pList=[];if(pRaf){cancelAnimationFrame(pRaf);pRaf=null;}pCtx.clearRect(0,0,1080,1920);}
+
+/* ══ GIFT BAR SCREEN PULSE ══ */
+function triggerScreenPulse(plat,tier){if(tier<4)return;const pc=PLAT_COLORS[plat],sp=document.getElementById('screen-pulse'),sz=(tier-3)*65;function pulse(d){setTimeout(()=>{sp.style.boxShadow=`inset 0 0 ${sz}px ${sz*.55}px ${pc.pulse}`;sp.style.opacity='1';setTimeout(()=>{sp.style.opacity='0';},700);},d);}pulse(0);if(tier>=5)pulse(1300);if(tier>=6)pulse(2500);}
+
+/* ══ GIFT BAR EDGE LINES ══ */
+function activateLines(plat,tier){const pc=PLAT_COLORS[plat],rgb=pc.edgeRgb,lines=document.getElementById('bar-lines'),top=document.getElementById('line-top'),bot=document.getElementById('line-bot'),sweepCount=TIER_CONFIG[tier]?.sweeps??2;const glow=tier>=4?`0 0 ${6+tier*3}px rgba(${rgb},0.9),0 0 ${14+tier*6}px rgba(${rgb},0.5)`:`0 0 6px rgba(${rgb},0.7)`;top.style.background=bot.style.background=`rgba(${rgb},1)`;top.style.boxShadow=bot.style.boxShadow=glow;lines.style.setProperty('--sweep-count',sweepCount);lines.classList.remove('active');void lines.offsetWidth;lines.classList.add('active');}
+function deactivateLines(){const lines=document.getElementById('bar-lines'),top=document.getElementById('line-top'),bot=document.getElementById('line-bot');lines.classList.remove('active');top.style.background=bot.style.background='rgba(192,132,252,0.10)';top.style.boxShadow=bot.style.boxShadow='none';}
+let linePulseInterval=null;
+function startLinePulse(plat){stopLinePulse();const pc=PLAT_COLORS[plat],rgb=pc.edgeRgb,top=document.getElementById('line-top'),bot=document.getElementById('line-bot');let bright=true;linePulseInterval=setInterval(()=>{const glow=bright?`0 0 18px rgba(${rgb},1),0 0 40px rgba(${rgb},0.7)`:`0 0 6px rgba(${rgb},0.6)`;top.style.boxShadow=bot.style.boxShadow=glow;bright=!bright;},500);}
+function stopLinePulse(){if(linePulseInterval){clearInterval(linePulseInterval);linePulseInterval=null;}}
+
+
+/* ══ GIFT BAR PROGRESS LINE ══ */
+function startProgress(ms){if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}const bar=document.getElementById('bar-progress'),start=performance.now();bar.style.width='0%';function tick(now){const pct=Math.min(100,((now-start)/ms)*100);bar.style.width=pct+'%';progressAnim=pct<100?requestAnimationFrame(tick):null;}progressAnim=requestAnimationFrame(tick);}
+
+/* ══ GIFT BAR INFO ══ */
+function setBarInfo(title,name,amtText,amtColor,amtRgb,platText,platClass,monthly){const info=document.getElementById('bar-info');clearTimeout(infoFadeTimer);info.style.opacity='0';infoFadeTimer=setTimeout(()=>{document.getElementById('bar-slot-title').textContent=title;document.getElementById('bar-info-name').textContent=name;const amtEl=document.getElementById('bar-info-amount');amtEl.textContent=amtText;amtEl.style.color=amtColor;amtEl.style.textShadow=['-1px -1px 0 rgba(0,0,0,0.95)','1px -1px 0 rgba(0,0,0,0.95)','-1px 1px 0 rgba(0,0,0,0.95)','1px 1px 0 rgba(0,0,0,0.95)',`0 0 14px rgba(${amtRgb},0.55)`].join(', ');amtEl.classList.toggle('monthly-shimmer',!!monthly);const badge=document.getElementById('bar-plat-badge');badge.textContent=platText;badge.className='bar-plat plat-'+platClass;info.style.opacity='1';},240);}
+
+/* ══ GIFT BAR SLOT DISPLAY ══ */
+function showSlot(idx){if(!activeSlots.length)return;currentIdx=((idx%activeSlots.length)+activeSlots.length)%activeSlots.length;const slotDef=activeSlots[currentIdx],entry=leaderboard[slotDef.key]??null,plat=entry?platKey(entry.platform):'default',pc=PLAT_COLORS[plat];activePlat=plat;setBarInfo(slotDef.label.toUpperCase(),entry?.name?entry.name.toUpperCase():'—',entry?fmtAmount(entry.amount,entry.type):'',pc.edge,pc.edgeRgb,platLabel(entry?.platform),'bar-plat plat-'+plat,false);}
+
+/* ══ GIFT BAR ROTATION ══ */
+function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTimer=setInterval(()=>{if(!pinned&&!alertActive)showSlot(currentIdx+1);},CONFIG.ROTATE_MS);}
+function stopRotation(){if(rotateTimer){clearInterval(rotateTimer);rotateTimer=null;}if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}}
+
+/* ══ GIFT BAR GIFTR DATA ══ */
+function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:enabled.includes(d.key));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);startRotation();}}
+
+/* ══ TOP GIFTERS RENDER ══ */
+const TGP_MEDALS=['🥇','🥈','🥉'];
+const TGP_LABELS={daily:'Today',weekly:'This Week',monthly:'This Month',allTime:'All Time'};
+function renderTopGifters(data){
+  const panel=document.getElementById('top-gifters-panel');
+  if(!data.visible){panel.classList.remove('open');return;}
+  document.getElementById('tgp-timeframe').textContent=TGP_LABELS[data.timeFrame]||data.timeFrame||'';
+  const rows=document.getElementById('tgp-rows');
+  rows.innerHTML='';
+  (data.gifters||[]).slice(0,5).forEach((g,i)=>{
+    const rank=g.rank||(i+1);
+    const plat=(g.platform||'default').toLowerCase();
+    const platCls=['tiktok','youtube','direct'].includes(plat)?plat:'default';
+    const row=document.createElement('div');
+    row.className=`tgp-row rank-${rank}`;
+    row.innerHTML=`<span class="tgp-medal">${rank<=3?TGP_MEDALS[rank-1]:''}</span>`
+      +`<span class="tgp-rank">${rank>3?'#'+rank:''}</span>`
+      +`<span class="tgp-name">${(g.name||'').toUpperCase()}</span>`
+      +`<span class="tgp-amount">${g.platform==='tiktok'?(g.rawDisplay||g.spendDisplay||''):(g.spendDisplay||g.rawDisplay||'')}</span>`
+      +`<span class="tgp-plat plat-${platCls}">${platLabel(plat)}</span>`;
+    rows.appendChild(row);
+  });
+  panel.classList.add('open');
+}
+
+/* ══ GIFT BAR ALERT SYSTEM ══ */
+let _lastAlertKey=null,_lastAlertTime=0;
+function onGiftAlert(data){const tier=getTier(data.amount,data.type);if(tier===0)return;const key=`${(data.name||'').toLowerCase()}|${data.amount}|${data.type}`,now=Date.now();if(key===_lastAlertKey&&now-_lastAlertTime<4000)return;_lastAlertKey=key;_lastAlertTime=now;alertQueue.push({...data,tier});if(!alertActive)runNextAlert();}
+function runNextAlert(){if(!alertQueue.length){alertActive=false;runMonthlyMoment();return;}alertActive=true;showAlert(alertQueue.shift());}
+function showAlert(alert){eventPromoSetGiftAlertActive(true);const{name,amount,type,platform,tier}=alert,plat=platKey(platform),pc=PLAT_COLORS[plat],cfg=TIER_CONFIG[tier];stopRotation();clearTimeout(alertTimeout);activePlat=plat;setBarInfo('JUST GIFTED',name.toUpperCase(),fmtAmount(amount,type),pc.edge,pc.edgeRgb,platLabel(platform),'bar-plat plat-'+plat,false);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;document.getElementById('bar-progress').style.background=pc.edge;document.getElementById('bar-border').style.setProperty('--bc',pc.edgeRgb);if(tier===1){activateLines(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);return;}const heroName=document.getElementById('bar-hero-name'),heroAmt=document.getElementById('bar-hero-amount');heroName.textContent=name.toUpperCase();heroAmt.textContent=fmtAmount(amount,type);heroAmt.style.color=pc.edge;heroAmt.style.textShadow=['0 3px 10px rgba(0,0,0,0.98)','0 6px 22px rgba(0,0,0,0.85)',`0 0 12px rgba(${pc.edgeRgb},1.0)`,`0 0 30px rgba(${pc.edgeRgb},0.85)`,`0 0 65px rgba(${pc.edgeRgb},0.55)`,`0 0 120px rgba(${pc.edgeRgb},0.25)`].join(', ');const heroImg=document.getElementById('bar-hero-gift-img');if(alert.contentImg){heroImg.src=alert.contentImg;heroImg.style.display='block';}else{heroImg.style.display='none';}document.getElementById('gift-bar').style.setProperty('--plat-rgb',pc.edgeRgb);document.getElementById('bar-hero-action').textContent=name.toUpperCase()+' JUST SENT '+fmtAmount(amount,type)+'!';document.getElementById('gift-bar').classList.add('alert-active');activateLines(plat,tier);if(cfg.pulseLines)startLinePulse(plat);emitParticles(tier,plat);triggerScreenPulse(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);}
+function dismissAlert(){clearTimeout(alertTimeout);stopLinePulse();deactivateLines();clearParticles();document.getElementById('gift-bar').classList.remove('alert-active');eventPromoSetGiftAlertActive(false);document.getElementById('bar-hero-action').textContent='';const _img=document.getElementById('bar-hero-gift-img');_img.style.display='none';_img.src='';runNextAlert();}
+
+/* ══ GIFT BAR MONTHLY MOMENT ══ */
+function runMonthlyMoment(){const monthly=leaderboard.monthly;if(!monthly){resumeFromAlert();return;}const plat=platKey(monthly.platform),pc=PLAT_COLORS[plat];setBarInfo('MONTHLY TOTAL',monthly.name.toUpperCase(),fmtAmount(monthly.amount,monthly.type),pc.edge,pc.edgeRgb,platLabel(monthly.platform),'bar-plat plat-'+plat,true);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;const top=document.getElementById('line-top'),bot=document.getElementById('line-bot');top.style.background=bot.style.background=`rgba(${pc.edgeRgb},0.25)`;top.style.boxShadow=bot.style.boxShadow=`0 0 8px rgba(${pc.edgeRgb},0.4)`;clearTimeout(monthlyTimer);monthlyTimer=setTimeout(resumeFromAlert,CONFIG.MONTHLY_LINGER_MS);}
+function resumeFromAlert(){document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');document.getElementById('bar-progress').style.width='0%';deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
+
+/* ══ GIFT BAR GIFTR CMD ══ */
+function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=false;if(!alertActive)startRotation();}else if(cmd.startsWith('slot:')){const key=cmd.slice(5),idx=activeSlots.findIndex(s=>s.key===key);if(idx>=0){pinned=true;stopRotation();showSlot(idx);}}}
+
+/* ══ GIFT BATTLE BAR ══ */
+let gbbMode='off';
+let gbbYtSpend=0,gbbTtSpend=0,gbbTtCoins=0,gbbGoalAmount=100;
+let gbbTimerLeft=null;   // null = full live, number = seconds remaining
+let gbbTimerInterval=null;
+let gbbGoalHit=false;
+
+function gbbFmt(usd){return'$'+usd.toFixed(2);}
+function gbbFmtCoins(n){
+  if(n>=1000000)return(n/1000000).toFixed(1).replace(/\.0$/,'')+'M coins';
+  if(n>=10000)return(n/1000).toFixed(1).replace(/\.0$/,'')+'K coins';
+  return n.toLocaleString()+' coins';
+}
+
+function gbbComputeSpend(amount,type){
+  const n=Number(amount)||0;
+  if(type==='tiktok_coins')return n*0.01;         // $0.01/coin viewer spend
+  if(type==='youtube_jewels')return n*0.05;        // ~$0.05/jewel
+  if(type==='youtube_superchat'||type==='direct_donation'||type==='direct')return n;
+  return 0;
+}
+
+function gbbTrackGift(data){
+  if(gbbMode==='off')return;
+  const plat=(data.platform||'').toLowerCase();
+  const spend=gbbComputeSpend(data.amount,data.type);
+  if(spend<=0)return;
+  if(plat==='youtube')gbbYtSpend+=spend;
+  else if(plat==='tiktok'){
+    gbbTtSpend+=spend;
+    // accumulate raw coins for display; non-coin gifts approximate via rate
+    if(data.type==='tiktok_coins') gbbTtCoins+=(Number(data.amount)||0);
+    else gbbTtCoins+=Math.round(spend/0.01);
+  }
+  gbbUpdateDisplay(true);
+}
+
+function gbbUpdateDisplay(triggerSurge){
+  if(gbbMode==='off')return;
+  const yt=gbbYtSpend,tt=gbbTtSpend;
+  const ytFill=document.getElementById('gbb-yt-fill');
+  const ttFill=document.getElementById('gbb-tt-fill');
+  const ytAmt =document.getElementById('gbb-yt-amt');
+  const ttAmt =document.getElementById('gbb-tt-amt');
+  const timerEl=document.getElementById('gbb-timer-val');
+  const divider=document.getElementById('gbb-divider');
+  const ytPctEl=document.getElementById('gbb-yt-pct');
+  const ttPctEl=document.getElementById('gbb-tt-pct');
+  const shelf    =document.getElementById('gbb-timer-shelf');
+  const shelfVal =document.getElementById('gbb-shelf-val');
+  const bar      =document.getElementById('gift-battle-bar');
+  function updateShelf(text,valClass,shelfClass){
+    if(!shelf||!shelfVal)return;
+    shelfVal.textContent=text; shelfVal.className=valClass||'';
+    shelf.className=shelfClass?'visible '+shelfClass:'visible';
+    bar&&bar.classList.add('gbb-shelf-active');
+  }
+  function hideShelf(){
+    if(!shelf)return;
+    shelf.className='';
+    bar&&bar.classList.remove('gbb-shelf-active');
+  }
+  function updateSplit(ytPct){
+    const ttPct=100-ytPct;
+    ytFill.style.width=ytPct+'%'; ttFill.style.width=ttPct+'%';
+    if(divider) divider.style.left=ytPct+'%';
+    if(ytPctEl){ytPctEl.textContent=Math.round(ytPct)+'%';ytPctEl.style.right='calc('+(100-ytPct)+'% + 14px)';}
+    if(ttPctEl){ttPctEl.textContent=Math.round(ttPct)+'%';ttPctEl.style.left='calc('+ytPct+'% + 14px)';}
+    if(triggerSurge&&divider){divider.classList.remove('surge');void divider.offsetWidth;divider.classList.add('surge');}
+  }
+  if(gbbMode==='battle'){
+    const total=(yt+tt)||0.001;
+    updateSplit((yt/total)*100);
+    ytAmt.textContent=gbbFmt(yt); ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
+    if(gbbTimerLeft===null){
+      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
+      hideShelf();
+    }else if(gbbTimerLeft<=0){
+      const winner=yt>tt?'▶ YT WINS':tt>yt?'TT WINS':'DRAW';
+      timerEl.textContent=''; timerEl.className='';
+      updateShelf(winner,'gbb-ended','shelf-ended');
+    }else{
+      const m=Math.floor(gbbTimerLeft/60),s=gbbTimerLeft%60;
+      const timeStr=m+':'+String(s).padStart(2,'0');
+      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
+      updateShelf(timeStr, gbbTimerLeft<=10?'gbb-danger':gbbTimerLeft<=60?'gbb-warn':'', gbbTimerLeft<=10?'shelf-danger':gbbTimerLeft<=60?'shelf-warn':'');
+    }
+  }else if(gbbMode==='progress'){
+    const goal=gbbGoalAmount||100;
+    const totalSpend=yt+tt;
+    const totalPct=Math.min(totalSpend/goal*100,100);
+    // Unified fill width = total progress
+    const progFill=document.getElementById('gbb-prog-fill');
+    const progYtSeg=document.getElementById('gbb-prog-yt-seg');
+    const progTtSeg=document.getElementById('gbb-prog-tt-seg');
+    const progEdge=document.getElementById('gbb-prog-edge');
+    const progYtPct=document.getElementById('gbb-prog-yt-pct');
+    const progTtPct=document.getElementById('gbb-prog-tt-pct');
+    if(progFill) progFill.style.width=totalPct+'%';
+    // Inside the fill, YT takes its share of the filled region
+    const ytShareOfFill=totalSpend>0?(yt/totalSpend)*100:50;
+    const ttShareOfFill=100-ytShareOfFill;
+    if(progYtSeg) progYtSeg.style.width=ytShareOfFill+'%';
+    if(progTtSeg) progTtSeg.style.width=ttShareOfFill+'%';
+    // Edge surge
+    if(triggerSurge&&progEdge){progEdge.classList.remove('surge');void progEdge.offsetWidth;progEdge.classList.add('surge');}
+    // Contribution pill labels (% of total spend each team did)
+    if(progYtPct) progYtPct.textContent=totalSpend>0?Math.round(yt/totalSpend*100)+'%':'0%';
+    if(progTtPct) progTtPct.textContent=totalSpend>0?Math.round(tt/totalSpend*100)+'%':'0%';
+    ytAmt.textContent=gbbFmt(yt); ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
+    if(!gbbGoalHit&&totalSpend>=goal){
+      gbbGoalHit=true;
+      gbbFireDareUnlock();
+      timerEl.textContent=''; timerEl.className='';
+      updateShelf('DARE UNLOCKED','gbb-ended','shelf-ended');
+    }else if(!gbbGoalHit){
+      const rem=Math.max(0,goal-totalSpend);
+      const pct=totalPct;
+      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
+      updateShelf('$'+rem.toFixed(0)+' to go', pct>=90?'gbb-danger':pct>=70?'gbb-warn':'', pct>=90?'shelf-danger':pct>=70?'shelf-warn':'');
+    }
+  }
+}
+
+function gbbFireDareUnlock(){
+  const bar=document.getElementById('gift-battle-bar');
+  const flash=document.getElementById('gbb-prog-flash');
+  const stamp=document.getElementById('gbb-prog-unlock');
+  const prizeName=document.getElementById('gbb-unlock-prize');
+  const progFill=document.getElementById('gbb-prog-fill');
+  // 1. fill to 100%
+  if(progFill) progFill.style.width='100%';
+  // 2. gold fill state
+  bar&&bar.classList.add('gbb-goal-hit');
+  // 3. screen flash
+  if(flash){flash.classList.remove('fire');void flash.offsetWidth;flash.classList.add('fire');}
+  // 4. stamp the prize name then DARE UNLOCKED
+  if(prizeName) prizeName.textContent=gbbPrizeName||'';
+  if(stamp){stamp.classList.remove('stamp');void stamp.offsetWidth;stamp.classList.add('stamp');}
+  // 5. screen pulse
+  const sp=document.getElementById('screen-pulse');
+  [0,600,1200].forEach(d=>setTimeout(()=>{
+    sp.style.boxShadow='inset 0 0 180px 80px rgba(251,191,36,0.45)';
+    sp.style.opacity='1';
+    setTimeout(()=>{sp.style.opacity='0';},700);
+  },d));
+  // 6. clean up after animation
+  setTimeout(()=>{
+    bar&&bar.classList.remove('gbb-goal-hit');
+    if(stamp) stamp.classList.remove('stamp');
+  },5000);
+}
+
+function gbbStartTimer(){
+  gbbStopTimer();
+  if(gbbTimerLeft===null||gbbTimerLeft<=0)return;
+  gbbTimerInterval=setInterval(()=>{
+    if(gbbTimerLeft>0){gbbTimerLeft--;gbbUpdateDisplay();}
+    if(gbbTimerLeft<=0)gbbStopTimer();
+  },1000);
+}
+
+function gbbStopTimer(){
+  if(gbbTimerInterval){clearInterval(gbbTimerInterval);gbbTimerInterval=null;}
+}
+
+function gbbShowAnnounce(mode){
+  const el=document.getElementById('gbb-announce');
+  const txt=document.getElementById('gbb-ann-text');
+  txt.textContent=mode==='progress'?'🎯 SHARED PROGRESS!':'⚔ GIFT BATTLE!';
+  el.classList.remove('show');
+  void el.offsetWidth; // force reflow to restart animation
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),3600);
+}
+
+function gbbGiftPop(data){
+  if(gbbMode==='off')return;
+  const plat=(data.platform||'').toLowerCase();
+  const spend=gbbComputeSpend(data.amount,data.type);
+  const tier=spend>=50?'lg':spend>=8?'md':'sm';
+  const dir=plat==='youtube'?'yt':'tt';
+  const isProgress=gbbMode==='progress';
+  const layer=document.getElementById('gbb-pop-layer');
+  // Name pop — battle shoots sideways, progress bursts and floats
+  const nameEl=document.createElement('div');
+  nameEl.className=`gbb-pop-name gbb-pop-${tier} gbb-pop-${dir}${isProgress?' gbb-pop-prog':''}`;
+  nameEl.textContent=(data.name||'').toUpperCase();
+  layer.appendChild(nameEl);
+  // Flash text
+  const flashEl=document.createElement('div');
+  flashEl.className='gbb-pop-flash';
+  flashEl.textContent=(data.name||'')+' sent '+fmtAmount(data.amount,data.type);
+  layer.appendChild(flashEl);
+  setTimeout(()=>{nameEl.remove();flashEl.remove();},2100);
+}
+
+let gbbPrizeName='';
+function gbbHandleCmd(data){
+  const{mode,timerSeconds,goalAmount,prizeName}=data||{};
+  gbbPrizeName=prizeName||'';
+  gbbStopTimer();
+  const bar=document.getElementById('gift-battle-bar');
+  if(!mode||mode==='off'){
+    gbbMode='off';
+    bar.classList.remove('active','gbb-mode-battle','gbb-mode-progress','gbb-shelf-active','gbb-goal-hit');
+    document.getElementById('gbb-goal-shimmer').classList.remove('active');
+    const offShelf=document.getElementById('gbb-timer-shelf');
+    if(offShelf)offShelf.className='';
+    const offPf=document.getElementById('gbb-prog-fill');
+    if(offPf){offPf.style.width='0%';offPf.style.background='';}
+    const offPu=document.getElementById('gbb-prog-unlock');
+    if(offPu) offPu.classList.remove('stamp');
+    return;
+  }
+  // Reset and activate
+  gbbMode=mode;
+  gbbYtSpend=0;gbbTtSpend=0;gbbTtCoins=0;gbbGoalHit=false;
+  gbbGoalAmount=Number(goalAmount)||100;
+  gbbTimerLeft=timerSeconds?Number(timerSeconds):null;
+  document.getElementById('gbb-goal-shimmer').classList.remove('active');
+  // Initial fills + divider reset
+  const divEl=document.getElementById('gbb-divider');
+  const ytPctEl2=document.getElementById('gbb-yt-pct');
+  const ttPctEl2=document.getElementById('gbb-tt-pct');
+  if(mode==='battle'){
+    document.getElementById('gbb-yt-fill').style.width='50%';
+    document.getElementById('gbb-tt-fill').style.width='50%';
+    if(divEl){divEl.style.left='50%';divEl.classList.remove('surge');}
+    if(ytPctEl2){ytPctEl2.textContent='50%';ytPctEl2.style.right='calc(50% + 14px)';}
+    if(ttPctEl2){ttPctEl2.textContent='50%';ttPctEl2.style.left='calc(50% + 14px)';}
+  }else{
+    document.getElementById('gbb-yt-fill').style.width='0%';
+    document.getElementById('gbb-tt-fill').style.width='0%';
+    if(divEl){divEl.style.left='0%';divEl.classList.remove('surge');}
+    if(ytPctEl2){ytPctEl2.textContent='0%';ytPctEl2.style.right='calc(100% + 14px)';}
+    if(ttPctEl2){ttPctEl2.textContent='0%';ttPctEl2.style.left='calc(0% + 14px)';}
+    // Reset progress mode elements
+    const pf=document.getElementById('gbb-prog-fill');
+    if(pf){pf.style.width='0%';pf.style.background='';}
+    const pe=document.getElementById('gbb-prog-edge');
+    if(pe) pe.classList.remove('surge');
+    const pu=document.getElementById('gbb-prog-unlock');
+    if(pu) pu.classList.remove('stamp');
+    const pfl=document.getElementById('gbb-prog-flash');
+    if(pfl) pfl.classList.remove('fire');
+    bar.classList.remove('gbb-goal-hit');
+    // Set prize text
+    const pt=document.getElementById('gbb-prog-prize-text');
+    if(pt) pt.textContent=(gbbPrizeName||'DARE').toUpperCase();
+    const up=document.getElementById('gbb-unlock-prize');
+    if(up) up.textContent=(gbbPrizeName||'').toUpperCase();
+    // Reset contribution pills
+    const pyp=document.getElementById('gbb-prog-yt-pct');
+    const ptp=document.getElementById('gbb-prog-tt-pct');
+    if(pyp) pyp.textContent='0%';
+    if(ptp) ptp.textContent='0%';
+    const pys=document.getElementById('gbb-prog-yt-seg');
+    const pts=document.getElementById('gbb-prog-tt-seg');
+    if(pys) pys.style.width='50%';
+    if(pts) pts.style.width='50%';
+  }
+  bar.classList.remove('gbb-mode-battle','gbb-mode-progress');
+  bar.classList.add('active','gbb-mode-'+mode);
+  gbbUpdateDisplay();
+  gbbShowAnnounce(mode);
+  if(gbbTimerLeft!==null)gbbStartTimer();
+}
+
+/* ══════════════════════════════════════════════════
+   SPLAT OVERLAY JS
+══════════════════════════════════════════════════ */
+function addSplatStyle(css){const s=document.createElement('style');s.textContent=css;document.head.appendChild(s);}
+
+/* DOM refs */
+const splatRoot=document.getElementById('splat-root'),splatPanel=document.getElementById('splat-panel'),splatBg=document.getElementById('splat-bg'),splatBlobLayer=document.getElementById('blob-layer'),splatGlowRing=document.getElementById('splat-glow-ring'),splatTimerNum=document.getElementById('splat-timer-number'),splatCountLabel=document.getElementById('splat-countdown-label'),splatProgFill=document.getElementById('splat-progress-fill'),splatBanner=document.getElementById('splat-state-banner'),splatBurstLayer=document.getElementById('splat-burst-layer'),splatCrackLayer=document.getElementById('splat-crack-layer'),splatCrackSvg=document.getElementById('splat-crack-svg'),splatCountWrap=document.getElementById('splat-countdown-wrap'),idleBait=document.getElementById('idle-bait');
+splatCountLabel.textContent=SPLAT_CONFIG.COPY_COUNTDOWN;
+
+/* Sparkles */
+[{size:5,top:"12%",left:"8%",dur:"2.1s",del:"0s"},{size:4,top:"80%",left:"14%",dur:"2.8s",del:"0.4s"},{size:6,top:"20%",left:"90%",dur:"2.4s",del:"0.9s"},{size:3,top:"70%",left:"82%",dur:"1.9s",del:"1.3s"},{size:4,top:"50%",left:"4%",dur:"3.1s",del:"0.6s"},{size:5,top:"88%",left:"55%",dur:"2.2s",del:"1.8s"}].forEach(s=>{const el=document.createElement('div');el.className='bait-sparkle';el.style.cssText=`width:${s.size}px;height:${s.size}px;top:${s.top};left:${s.left};--dur:${s.dur};--del:${s.del};`;idleBait.appendChild(el);});
+
+/* Ambient blobs */
+[{w:300,h:240,x:54,y:672,c:"#7B2FBE",o:0.22,d:8},{w:240,h:180,x:702,y:1056,c:"#A855F7",o:0.18,d:11},{w:160,h:130,x:432,y:288,c:"#9333EA",o:0.14,d:7},{w:110,h:90,x:108,y:1152,c:"#C084FC",o:0.16,d:9},{w:140,h:100,x:756,y:480,c:"#6D28D9",o:0.14,d:13}].forEach((b,i)=>{const el=document.createElement('div');el.className='blob';el.style.cssText=`width:${b.w}px;height:${b.h}px;left:${b.x}px;top:${b.y}px;background:radial-gradient(ellipse,${b.c} 0%,transparent 70%);opacity:${b.o};animation:splatBlobDrift${i} ${b.d}s ease-in-out infinite alternate;`;splatBlobLayer.appendChild(el);const dx=(i%2===0?1:-1)*25,dy=(i%3===0?-1:1)*18,dr=(i%2===0?3:-3);addSplatStyle(`@keyframes splatBlobDrift${i}{from{transform:translate(0,0) scale(1) rotate(0deg)}to{transform:translate(${dx}px,${dy}px) scale(1.08) rotate(${dr}deg)}}`);});
+
+/* Audio */
+let audioCtx=null;
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
+function playSound(type){try{ensureAudio();const ctx=audioCtx,now=ctx.currentTime;if(type==='reset'){[0,0.12].forEach((delay,i)=>{const osc=ctx.createOscillator(),g=ctx.createGain();osc.connect(g);g.connect(ctx.destination);osc.type='sawtooth';osc.frequency.setValueAtTime(220*(i===0?1.5:1),now+delay);g.gain.setValueAtTime(0.3,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.18);osc.start(now+delay);osc.stop(now+delay+0.2);});}else if(type==='save'){[0,0.10,0.22,0.36].forEach((delay,i)=>{const freq=880*[1,1.25,1.5,2][i],osc=ctx.createOscillator(),g=ctx.createGain();osc.connect(g);g.connect(ctx.destination);osc.type='sine';osc.frequency.setValueAtTime(freq,now+delay);g.gain.setValueAtTime(0.35,now+delay);g.gain.exponentialRampToValueAtTime(0.001,now+delay+0.4);osc.start(now+delay);osc.stop(now+delay+0.45);});}else if(type==='expire'){const osc=ctx.createOscillator(),g=ctx.createGain();osc.connect(g);g.connect(ctx.destination);osc.type='sawtooth';osc.frequency.setValueAtTime(220,now);osc.frequency.exponentialRampToValueAtTime(55,now+0.8);g.gain.setValueAtTime(0.4,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.9);osc.start(now);osc.stop(now+1.0);}}catch(e){}}
+
+/* State machine */
+const SPLAT_STATE={IDLE:'idle',COUNTDOWN:'countdown',SAVED:'saved',EXPIRED:'expired'};
+let splatState=SPLAT_STATE.IDLE,splatTimeLeft=SPLAT_CONFIG.TIMER_SECONDS,splatTicker=null,splatLingerTimer=null;
+let baitEnabled=true;
+function splatShow(...els){els.forEach(e=>e.classList.add('visible'));}
+function splatHide(...els){els.forEach(e=>e.classList.remove('visible'));}
+
+function splatEnterIdle(){splatState=SPLAT_STATE.IDLE;clearInterval(splatTicker);clearTimeout(splatLingerTimer);splatHide(splatPanel,splatBg,splatBlobLayer,splatGlowRing,splatCrackLayer);splatTimerNum.className='';splatBanner.className='';splatProgFill.classList.remove('danger');splatBurstLayer.innerHTML='';splatCrackSvg.innerHTML='';splatCrackLayer.querySelectorAll('.drip').forEach(d=>d.remove());if(baitEnabled)splatShow(idleBait);}
+function splatEnterCountdown(){splatState=SPLAT_STATE.COUNTDOWN;clearInterval(splatTicker);clearTimeout(splatLingerTimer);splatHide(idleBait);splatTimeLeft=SPLAT_CONFIG.TIMER_SECONDS;splatHide(splatCrackLayer);splatCrackSvg.innerHTML='';splatBurstLayer.innerHTML='';splatCrackLayer.querySelectorAll('.drip').forEach(d=>d.remove());splatBanner.className='';splatBanner.textContent='';splatCountWrap.style.display='flex';splatProgFill.classList.remove('danger');splatProgFill.style.transition='none';splatProgFill.style.width='100%';requestAnimationFrame(()=>{splatProgFill.style.transition='width 0.9s linear,background 0.3s ease';});splatUpdateDisplay();splatShow(splatPanel,splatBg,splatBlobLayer,splatGlowRing);playSound('reset');splatTicker=setInterval(()=>{splatTimeLeft--;splatUpdateDisplay();if(splatTimeLeft<=0)splatEnterExpired();},1000);}
+function splatEnterSaved(){if(splatState!==SPLAT_STATE.COUNTDOWN)return;splatState=SPLAT_STATE.SAVED;clearInterval(splatTicker);playSound('save');splatCountWrap.style.display='none';splatBanner.textContent=SPLAT_CONFIG.COPY_SAVED;splatBanner.className='saved-text';splatTriggerBurst();splatLingerTimer=setTimeout(splatEnterIdle,SPLAT_CONFIG.SAVED_LINGER_MS);}
+function splatEnterExpired(){splatState=SPLAT_STATE.EXPIRED;clearInterval(splatTicker);playSound('expire');splatTimerNum.textContent='0';splatTimerNum.className='pulse-danger';splatProgFill.style.width='0%';setTimeout(()=>{splatCountWrap.style.display='none';splatBanner.textContent=SPLAT_CONFIG.COPY_EXPIRED;splatBanner.className='expired-text';splatTriggerCrack();},300);splatLingerTimer=setTimeout(splatEnterIdle,SPLAT_CONFIG.EXPIRED_LINGER_MS);}
+function splatUpdateDisplay(){const pct=splatTimeLeft/SPLAT_CONFIG.TIMER_SECONDS;splatTimerNum.textContent=splatTimeLeft;splatProgFill.style.width=(pct*100)+'%';splatTimerNum.classList.remove('pulse-normal','pulse-warn','pulse-danger');if(splatTimeLeft<=SPLAT_CONFIG.DANGER_THRESHOLD){splatTimerNum.classList.add('pulse-danger');splatProgFill.classList.add('danger');}else if(splatTimeLeft<=SPLAT_CONFIG.WARN_THRESHOLD){splatTimerNum.classList.add('pulse-warn');}else{splatTimerNum.classList.add('pulse-normal');}}
+
+/* Burst (save) */
+function splatTriggerBurst(){const colors=['#A855F7','#C084FC','#E879F9','#7B2FBE','#DDD6FE','#FBBF24'],cy=SPLAT_POSITIONS[currentSplatPos]||960,cx=540;for(let i=0;i<28;i++){const el=document.createElement('div');el.className='splat-particle';const sz=16+Math.random()*60,ang=(i/28)*360+Math.random()*20,r=80+Math.random()*260,dx=Math.cos(ang*Math.PI/180)*r,dy=Math.sin(ang*Math.PI/180)*r,col=colors[i%colors.length],dur=0.5+Math.random()*0.5,del=Math.random()*0.15,rot=Math.random()*360;el.style.cssText=`width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;left:${cx-sz/2}px;top:${cy-sz/2}px;background:radial-gradient(ellipse at 35% 35%,${col},${col}99);border-radius:50% 70% 50% 70% / 60% 50% 70% 50%;box-shadow:0 0 ${sz*0.4}px ${col}88;animation:splatBurst${i} ${dur}s ${del}s cubic-bezier(.2,.8,.4,1) forwards;`;addSplatStyle(`@keyframes splatBurst${i}{0%{opacity:1;transform:translate(0,0) scale(0) rotate(0deg)}40%{opacity:1}100%{opacity:0;transform:translate(${dx}px,${dy}px) scale(1) rotate(${rot}deg)}}`);splatBurstLayer.appendChild(el);}splatBg.style.filter='drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))';setTimeout(()=>{splatBg.style.filter='drop-shadow(0 0 40px rgba(168,85,247,0.6))';},600);}
+
+/* Crack + drips (expire) */
+function splatTriggerCrack(){splatShow(splatCrackLayer);const cy=SPLAT_POSITIONS[currentSplatPos]||960,cx=540;const crackPaths=[[[cx,cy],[cx-120,cy-280],[cx-180,cy-500],[cx-110,cy-720]],[[cx,cy],[cx+130,cy-260],[cx+200,cy-470],[cx+130,cy-680]],[[cx,cy],[cx-50,cy-420],[cx-30,cy-680],[cx-90,cy-900]],[[cx,cy],[cx+40,cy-370],[cx+60,cy-600],[cx+20,cy-830]],[[cx,cy],[cx-240,cy-180],[cx-380,cy-260],[cx-500,cy-240]],[[cx,cy],[cx+260,cy-160],[cx+400,cy-230],[cx+520,cy-210]],[[cx,cy],[cx-100,cy-130],[cx-280,cy-100],[cx-420,cy-170]],[[cx,cy],[cx+110,cy-120],[cx+300,cy-90],[cx+450,cy-155]]];crackPaths.forEach((pts,idx)=>{const path=document.createElementNS('http://www.w3.org/2000/svg','path');let d=`M ${pts[0][0]} ${pts[0][1]}`;pts.slice(1).forEach(p=>{d+=` L ${p[0]} ${p[1]}`;});path.setAttribute('d',d);path.setAttribute('stroke','#F43F5E');path.setAttribute('stroke-width',String(Math.max(1.5,4-idx*0.35)));path.setAttribute('fill','none');path.setAttribute('opacity','0.85');const len=1400;path.style.strokeDasharray=len;path.style.strokeDashoffset=len;path.style.transition=`stroke-dashoffset ${0.4+idx*0.06}s ${idx*0.04}s ease-out`;splatCrackSvg.appendChild(path);requestAnimationFrame(()=>requestAnimationFrame(()=>{path.style.strokeDashoffset='0';}));});[60,180,300,420,540,660,780,900,1020].forEach((x,i)=>{const drip=document.createElement('div');drip.className='drip';const h=80+Math.random()*200,w=8+Math.random()*14;drip.style.cssText=`left:${x}px;height:${h}px;width:${w}px;background:linear-gradient(180deg,#F43F5E,#7F1D1D);animation:splatDripDown ${0.6+Math.random()*0.4}s ${0.2+i*0.07}s ease-in forwards;`;splatCrackLayer.appendChild(drip);});addSplatStyle(`@keyframes splatDripDown{0%{opacity:0;transform:scaleY(0);transform-origin:top}30%{opacity:0.9}100%{opacity:0.7;transform:scaleY(1);transform-origin:top}}`);const flashEl=document.createElement('div');flashEl.style.cssText=`position:absolute;inset:0;z-index:30;pointer-events:none;background:radial-gradient(ellipse at center,transparent 30%,rgba(244,63,94,0.4) 100%);animation:splatVignFade 1.5s ease forwards;`;addSplatStyle(`@keyframes splatVignFade{0%{opacity:0}20%{opacity:1}100%{opacity:0}}`);splatCrackLayer.appendChild(flashEl);setTimeout(()=>flashEl.remove(),1600);}
+
+/* Position control — called by Ably splat-pos message */
+function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=pos;splatRoot.style.setProperty('--splat-cy',SPLAT_POSITIONS[pos]+'px');}
+
+/* ══ EVENT PROMO SYSTEM ══ */
+let eventPromoConfig=mergeEventPromoConfig();
+let eventPromoHideTimer=null,eventPromoRevealTimer=null,eventPromoAutoTimer=null,eventPromoAutoIndex=0;
+const eventPromoImageChunks={};
+const eventPromoAutoModes=['fight-card'];
+
+function mergeEventPromoConfig(cfg){
+  const src=cfg&&typeof cfg==='object'?cfg:{};
+  const durations={...DEFAULT_EVENT_PROMO_CONFIG.durations,...(src.durations||{})};
+  if(durations.autoIntervalMs===600000)durations.autoIntervalMs=60000;
+  if(durations.paintballMs===13000)durations.paintballMs=60000;
+  if(durations.fightCardMs===10000)durations.fightCardMs=15000;
+  durations.paintballSplatMs=Math.max(1200,Number(durations.paintballSplatMs)||DEFAULT_EVENT_PROMO_CONFIG.durations.paintballSplatMs);
+  return {
+    ...DEFAULT_EVENT_PROMO_CONFIG,
+    ...src,
+    players: DEFAULT_EVENT_PROMO_CONFIG.players.map((p,i)=>({...p,...((src.players&&src.players[i])||{})})),
+    fun: {...DEFAULT_EVENT_PROMO_CONFIG.fun,...(src.fun||{})},
+    fonts: {...DEFAULT_EVENT_PROMO_CONFIG.fonts,...(src.fonts||{})},
+    durations
+  };
+}
+
+function epText(id,value){const el=document.getElementById(id);if(el)el.textContent=value||'';}
+function epInitials(name){return String(name||'?').trim().split(/\s+/).slice(0,2).map(s=>s[0]||'').join('').toUpperCase()||'?';}
+function epEscape(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function renderEventPromo(){
+  const cfg=eventPromoConfig;
+  const root=document.getElementById('event-promo-root');
+  if(root&&cfg.fonts){
+    root.style.setProperty('--ep-shelf-title',(Number(cfg.fonts.shelfTitlePx)||31)+'px');
+    root.style.setProperty('--ep-team-label',(Number(cfg.fonts.teamLabelPx)||22)+'px');
+    root.style.setProperty('--ep-player-name',(Number(cfg.fonts.playerNamePx)||22)+'px');
+    root.style.setProperty('--ep-meta',(Number(cfg.fonts.metaPx)||17)+'px');
+  }
+  epText('ep-eyebrow',cfg.eyebrow);
+  epText('ep-title',cfg.title);
+  epText('ep-date-time',cfg.dateTime);
+  epText('ep-tagline',cfg.tagline);
+  epText('ep-gamers-label',cfg.teamGamersLabel);
+  epText('ep-battlers-label',cfg.teamBattlersLabel);
+  epText('ep-passive-text-a',(cfg.passiveText||'')+'   ');
+  epText('ep-passive-text-b',(cfg.passiveText||'')+'   ');
+  const splatTitle=document.querySelector('.ep-splat-title');
+  const splatDate=document.querySelector('.ep-splat-date');
+  if(splatTitle)splatTitle.textContent=cfg.title;
+  if(splatDate)splatDate.textContent=cfg.dateTime;
+  epText('ep-fun-eyebrow',cfg.fun?.eyebrow||'');
+  epText('ep-fun-title',cfg.fun?.title||'');
+  epText('ep-fun-subtitle',cfg.fun?.subtitle||'');
+  const funImgWrap=document.getElementById('ep-fun-image-wrap');
+  if(funImgWrap){
+    const image=cfg.fun?.image||'';
+    funImgWrap.classList.toggle('has-image',!!image);
+    funImgWrap.innerHTML=image?`<img src="${epEscape(image)}" alt="">`:'';
+  }
+  cfg.players.forEach((player,i)=>{
+    const el=document.getElementById('ep-player-'+i);
+    if(!el)return;
+    const name=player.name||DEFAULT_EVENT_PROMO_CONFIG.players[i]?.name||'Player';
+    const image=player.image||'';
+    el.innerHTML=`<div class="ep-avatar">${image?`<img src="${epEscape(image)}" alt="">`:epInitials(name)}</div><div class="ep-player-name">${epEscape(name)}</div>`;
+  });
+}
+
+function buildEventPromoPaint(){
+  const drops=document.getElementById('ep-droplets');
+  const drips=document.getElementById('ep-drips');
+  if(drops&&!drops.children.length){
+    for(let i=0;i<18;i++){
+      const span=document.createElement('span');
+      const angle=(i/18)*Math.PI*2;
+      const radius=170+Math.random()*130;
+      span.style.setProperty('--dx',Math.cos(angle)*radius+'px');
+      span.style.setProperty('--dy',Math.sin(angle)*radius+'px');
+      span.style.setProperty('--s',(0.55+Math.random()*1.0).toFixed(2));
+      drops.appendChild(span);
+    }
+  }
+  if(drips&&!drips.children.length){
+    [210,265,320,382,438].forEach((left,i)=>{
+      const span=document.createElement('span');
+      span.style.left=left+'px';
+      span.style.setProperty('--h',(76+i*18)+'px');
+      drips.appendChild(span);
+    });
+  }
+}
+
+function hideEventPromo(){
+  const root=document.getElementById('event-promo-root');
+  if(!root)return;
+  clearTimeout(eventPromoHideTimer);
+  clearTimeout(eventPromoRevealTimer);
+  if((root.classList.contains('ep-card-mode')||root.classList.contains('ep-fun-mode'))&&!root.classList.contains('ep-card-hiding')){
+    root.classList.add('ep-card-hiding');
+    setTimeout(()=>{
+      root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding');
+      document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
+      root.setAttribute('aria-hidden','true');
+    },430);
+    return;
+  }
+  root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding');
+  document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
+  root.setAttribute('aria-hidden','true');
+}
+
+function eventPromoShowOverlay(mode,durationMs){
+  const cfg=eventPromoConfig=mergeEventPromoConfig(eventPromoConfig);
+  if(!cfg.enabled)return hideEventPromo();
+  const root=document.getElementById('event-promo-root');
+  if(!root)return;
+  renderEventPromo();
+  buildEventPromoPaint();
+  clearTimeout(eventPromoHideTimer);
+  clearTimeout(eventPromoRevealTimer);
+  document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
+  root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding');
+  void root.offsetWidth;
+  const safeMode=mode==='paintball'||mode==='fight-card'||mode==='fun-drawer'||mode==='passive'?mode:'passive';
+  const durations=cfg.durations||DEFAULT_EVENT_PROMO_CONFIG.durations;
+  const ms=Number(durationMs)||durations[safeMode==='fight-card'?'fightCardMs':safeMode==='paintball'?'paintballMs':safeMode==='fun-drawer'?'fightCardMs':'passiveMs']||15000;
+  const splatMs=Math.min(Math.max(1200,Number(durations.paintballSplatMs)||3000),Math.max(1200,ms-900));
+  root.style.setProperty('--ep-exit-delay',Math.max(1,ms-900)+'ms');
+  root.style.setProperty('--ep-splat-clear-delay',splatMs+'ms');
+  root.classList.add('ep-active',safeMode==='fight-card'?'ep-card-mode':safeMode==='fun-drawer'?'ep-fun-mode':safeMode==='paintball'?'ep-paintball-mode':'ep-passive-mode');
+  if(safeMode==='passive')document.getElementById('gift-bar')?.classList.add('ep-passive-active');
+  root.setAttribute('aria-hidden','false');
+  if(safeMode==='paintball')eventPromoRevealTimer=setTimeout(()=>root.classList.add('ep-reveal-card'),splatMs);
+  eventPromoHideTimer=setTimeout(hideEventPromo,ms);
+}
+
+function setEventPromoConfig(config){
+  console.log('[event-promo] config received, players:', JSON.stringify((config&&config.players||[]).map(p=>p.name)));
+  const incoming=mergeEventPromoConfig(config);
+  incoming.players=incoming.players.map((player,i)=>({
+    ...player,
+    image: player.image || eventPromoConfig.players?.[i]?.image || ''
+  }));
+  incoming.fun={
+    ...incoming.fun,
+    image: incoming.fun?.image || eventPromoConfig.fun?.image || ''
+  };
+  eventPromoConfig=incoming;
+  renderEventPromo();
+}
+
+function setEventPromoPlayerImage(index,image){
+  if(index==='fun'){setEventPromoFunImage(image);return;}
+  const i=Number(index);
+  if(!Number.isInteger(i)||i<0||i>3||!image)return;
+  eventPromoConfig=mergeEventPromoConfig(eventPromoConfig);
+  eventPromoConfig.players[i].image=image;
+  renderEventPromo();
+}
+
+function setEventPromoFunImage(image){
+  if(!image)return;
+  eventPromoConfig=mergeEventPromoConfig(eventPromoConfig);
+  eventPromoConfig.fun.image=image;
+  renderEventPromo();
+}
+
+function handleEventPromoImageChunk(d){
+  if(d.index==='fun'){
+    const total=Number(d.total),part=Number(d.part);
+    if(!d.id||!Number.isInteger(total)||!Number.isInteger(part)||part<0||part>=total)return;
+    const key=d.id+':fun';
+    if(!eventPromoImageChunks[key])eventPromoImageChunks[key]={parts:new Array(total),total,index:'fun'};
+    eventPromoImageChunks[key].parts[part]=d.chunk||'';
+    if(eventPromoImageChunks[key].parts.filter(v=>v!==undefined).length===total){
+      setEventPromoFunImage(eventPromoImageChunks[key].parts.join(''));
+      delete eventPromoImageChunks[key];
+    }
+    return;
+  }
+  const i=Number(d.index);
+  const total=Number(d.total);
+  const part=Number(d.part);
+  if(!d.id||!Number.isInteger(i)||i<0||i>3||!Number.isInteger(total)||!Number.isInteger(part)||part<0||part>=total)return;
+  const key=d.id+':'+i;
+  if(!eventPromoImageChunks[key])eventPromoImageChunks[key]={parts:new Array(total),total,index:i};
+  eventPromoImageChunks[key].parts[part]=d.chunk||'';
+  if(eventPromoImageChunks[key].parts.filter(v=>v!==undefined).length===total){
+    setEventPromoPlayerImage(i,eventPromoImageChunks[key].parts.join(''));
+    delete eventPromoImageChunks[key];
+  }
+}
+
+function handleEventPromoMessage(data){
+  const d=data||{};
+  if(d.type==='event-promo-config')setEventPromoConfig(d.config);
+  else if(d.type==='event-promo-show'){if(d.config)setEventPromoConfig(d.config);eventPromoShowOverlay(d.mode,d.durationMs);}
+  else if(d.type==='event-promo-hide')hideEventPromo();
+  else if(d.type==='event-promo-auto')setEventPromoAuto(!!d.enabled,d.intervalMs);
+  else if(d.type==='event-promo-image')setEventPromoPlayerImage(d.index,d.image);
+  else if(d.type==='event-promo-image-chunk')handleEventPromoImageChunk(d);
+}
+
+function setEventPromoAuto(enabled,intervalMs){
+  if(eventPromoAutoTimer){clearInterval(eventPromoAutoTimer);eventPromoAutoTimer=null;}
+  if(!enabled)return;
+  const ms=Math.max(10000,Number(intervalMs)||eventPromoConfig.durations.autoIntervalMs||600000);
+  eventPromoAutoIndex=0;
+  eventPromoShowOverlay(eventPromoAutoModes[eventPromoAutoIndex],undefined);
+  eventPromoAutoTimer=setInterval(()=>{
+    eventPromoAutoIndex=(eventPromoAutoIndex+1)%eventPromoAutoModes.length;
+    eventPromoShowOverlay(eventPromoAutoModes[eventPromoAutoIndex],undefined);
+  },ms);
+}
+
+function eventPromoSetGiftAlertActive(active){
+  const root=document.getElementById('event-promo-root');
+  if(root)root.classList.toggle('ep-gift-alert',!!active);
+}
+
+window.setEventPromoConfig=setEventPromoConfig;
+window.showEventPromo=(mode,durationMs)=>eventPromoShowOverlay(mode,durationMs);
+window.hideEventPromo=hideEventPromo;
+renderEventPromo();
+
+/* ══ ABLY — UNIFIED INIT ══ */
+(function initAbly(){
+  try{
+    const client=new Ably.Realtime({key:CONFIG.ABLY_KEY});
+    const channel=client.channels.get(CONFIG.ABLY_CHANNEL);
+    const dot=document.getElementById('status-dot');
+    client.connection.on('connected',   ()=>{dot.className='connected';});
+    client.connection.on('disconnected',()=>{dot.className='';});
+    client.connection.on('connecting',  ()=>{dot.className='connecting';});
+    client.connection.once('connected', ()=>channel.publish('cmd','requestLeaderboard').catch(()=>{}));
+    /* Gift bar */
+    channel.subscribe('giftr',        msg=>onGiftrData(msg.data));
+    channel.subscribe('giftr-cmd',    msg=>onGiftrCmd(msg.data));
+    channel.subscribe('gift-alert', msg=>{
+      try { gbbTrackGift(msg.data); } catch(e){ console.warn('[gbb] gbbTrackGift err',e); }
+      if(gbbMode!=='off'){
+        try { gbbGiftPop(msg.data); } catch(e){ console.warn('[gbb] gbbGiftPop err',e); }
+      } else {
+        try { onGiftAlert(msg.data); } catch(e){ console.warn('[gbb] onGiftAlert err',e); }
+      }
+    });
+    channel.subscribe('top-gifters',  msg=>renderTopGifters(msg.data));
+    channel.subscribe('gift-battle-cmd', msg=>gbbHandleCmd(msg.data));
+    channel.subscribe('event-promo', msg=>handleEventPromoMessage(msg.data));
+    /* Splat */
+    channel.subscribe('cmd', msg=>{
+      const cmd=msg.data;
+      if(cmd&&typeof cmd==='object'&&String(cmd.type||'').indexOf('event-promo-')===0){handleEventPromoMessage(cmd);return;}
+      if     (cmd==='reset') splatEnterCountdown();
+      else if(cmd==='save' ){if(splatState===SPLAT_STATE.COUNTDOWN)splatEnterSaved();}
+      else if(cmd==='idle' ) splatEnterIdle();
+    });
+    channel.subscribe('splat-pos',  msg=>setSplatPosition(msg.data));
+    /* Bait widget content — {img, top, main, visible} any field optional */
+    channel.subscribe('splat-bait', msg=>{
+      const d=msg.data||{};
+      if(d.img     !== undefined) document.getElementById('bait-galaxy-img').src        = d.img;
+      if(d.top     !== undefined) document.getElementById('bait-label-send').textContent = d.top;
+      if(d.main    !== undefined) document.getElementById('bait-label-main').textContent = d.main;
+      if(d.visible !== undefined){
+        baitEnabled=!!d.visible;
+        if(splatState===SPLAT_STATE.IDLE){
+          if(baitEnabled) splatShow(idleBait); else splatHide(idleBait);
+        }
+      }
+    });
+    /* Announce box — {text, badge, sub, x, y, size, visible} any field optional */
+    const ANNOUNCE_X={left:160, center:540, right:920};
+    const ANNOUNCE_Y={top:130, upper:400, center:750, lower:1250, bottom:1770};
+    const ANNOUNCE_SIZES={
+      micro:{w:160, fm:18,  fs:10, apv:'6px',  aph:'12px'},
+      xxs:  {w:260, fm:28,  fs:15, apv:'10px', aph:'18px'},
+      xs:   {w:360, fm:38,  fs:20, apv:'14px', aph:'26px'},
+      sm:   {w:500, fm:50,  fs:26, apv:'18px', aph:'34px'},
+      md:   {w:640, fm:62,  fs:33, apv:'20px', aph:'38px'},
+      lg:   {w:800, fm:76,  fs:40, apv:'24px', aph:'44px'},
+      xl:   {w:920, fm:90,  fs:48, apv:'26px', aph:'46px'},
+      xxl:  {w:1040,fm:106, fs:56, apv:'28px', aph:'50px'},
+    };
+    const announceBox=document.getElementById('announce-box');
+    channel.subscribe('announce', msg=>{
+      const d=msg.data||{};
+      if(d.text   !== undefined) document.getElementById('announce-text').textContent=d.text;
+      if(d.badge  !== undefined) document.getElementById('announce-live-badge').textContent=d.badge;
+      if(d.sub    !== undefined){
+        const subEl=document.getElementById('announce-sub');
+        subEl.textContent=d.sub;
+        subEl.classList.toggle('has-text',!!d.sub);
+      }
+      if(d.size !== undefined){
+        const s=ANNOUNCE_SIZES[d.size]||ANNOUNCE_SIZES.lg;
+        announceBox.style.setProperty('--aw',  s.w+'px');
+        announceBox.style.setProperty('--afm', s.fm+'px');
+        announceBox.style.setProperty('--afs', s.fs+'px');
+        announceBox.style.setProperty('--apv', s.apv);
+        announceBox.style.setProperty('--aph', s.aph);
+      }
+      if(d.x !== undefined){
+        const px=ANNOUNCE_X[d.x]??parseInt(d.x)??540;
+        announceBox.style.setProperty('--ax', px+'px');
+      }
+      if(d.y !== undefined){
+        const py=ANNOUNCE_Y[d.y]??parseInt(d.y)??130;
+        announceBox.style.setProperty('--ay', py+'px');
+      }
+      if(d.visible !== undefined) announceBox.classList.toggle('visible',!!d.visible);
+    });
+  }catch(e){console.warn('[Ably] init failed:',e);}
+})();
+
+splatEnterIdle();
+</script>
+</body>
+</html>
