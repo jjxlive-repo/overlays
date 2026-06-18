@@ -164,220 +164,517 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .plat-youtube { color:#FF6B6B;background:rgba(255,80,80,0.16);  border:1px solid rgba(255,80,80,0.30);   }
 .plat-direct, .plat-default { color:#C084FC;background:rgba(192,132,252,0.16);border:1px solid rgba(192,132,252,0.30); }
 
-/* ══ GIFT BATTLE BAR ══ */
+/* ══ GIFT BATTLE BAR — FIGHT NIGHT REDESIGN ══ */
 #gift-battle-bar {
   position: absolute; inset: 0; z-index: 2; display: none; overflow: hidden;
+  /* subtle inner glow on the whole bar */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.6);
 }
 #gift-battle-bar.active { display: block; }
-/* YouTube fill — red from left */
+
+/* ── YT fill: YouTube red, rich and deep, left → right ── */
 #gbb-yt-fill {
   position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
-  background: linear-gradient(to right, #7f1d1d, #dc2626, #ef4444);
-  transition: width 1.1s cubic-bezier(.4,0,.2,1); overflow: hidden;
+  background: linear-gradient(to right,
+    #3d0000 0%,
+    #8b0000 30%,
+    #cc1010 65%,
+    #e62020 100%);
+  transition: width 1.2s cubic-bezier(.22,1,.36,1);
+  overflow: hidden;
 }
-/* TikTok fill — dark from right */
+/* inner gloss strip — fight-night sheen on YT side */
+#gbb-yt-fill::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 45%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, transparent 100%);
+  pointer-events: none;
+}
+/* ── TT fill: charcoal, right → left ── */
 #gbb-tt-fill {
   position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
-  background: linear-gradient(to left, #0c0c1a, #16213e, #1a1a40);
-  transition: width 1.1s cubic-bezier(.4,0,.2,1); overflow: hidden;
+  background: linear-gradient(to left,
+    #0a0a0a 0%,
+    #222222 35%,
+    #383838 70%,
+    #444444 100%);
+  transition: width 1.2s cubic-bezier(.22,1,.36,1);
+  overflow: hidden;
 }
-/* Shimmer — activates when shared-progress goal is hit */
-#gbb-goal-shimmer {
-  position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 1;
-  background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.30) 50%, transparent 80%);
-  background-size: 200% 100%;
+#gbb-tt-fill::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 45%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 100%);
+  pointer-events: none;
 }
-#gbb-goal-shimmer.active { opacity: 1; animation: gbbShimmer 1.0s ease-in-out infinite; }
-@keyframes gbbShimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+
+/* ── Platform identity logos — left/right anchored inside fills ── */
+/* YT play-button SVG badge */
+#gbb-yt-logo {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none; z-index: 3; overflow: hidden;
 }
-/* Background logo watermarks — clipped inside their fill div so they never overflow */
-.gbb-fill-wm {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  font-family: 'Anton', sans-serif; font-size: 18px; letter-spacing: 3px;
-  color: rgba(255,255,255,0.22); pointer-events: none; white-space: nowrap;
+#gbb-yt-logo svg { width: 22px; height: 16px; flex-shrink: 0; }
+#gbb-yt-logo-text {
+  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 2.5px;
+  color: rgba(255,255,255,0.90); text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
 }
-#gbb-yt-fill .gbb-fill-wm { right: 10px; }
-#gbb-tt-fill .gbb-fill-wm { left: 10px; }
-/* Main content area — stops before carousel.
-   Uses absolute sub-layout so #gbb-mid is ALWAYS at 50% of this zone. */
+/* TT music-note badge */
+#gbb-tt-logo {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px; flex-direction: row-reverse;
+  pointer-events: none; z-index: 3; overflow: hidden;
+}
+#gbb-tt-logo svg { width: 18px; height: 20px; flex-shrink: 0; }
+#gbb-tt-logo-text {
+  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 2.5px;
+  color: rgba(255,255,255,0.90); text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+}
+
+/* ── Divider — the signature element: a hot white saber line with red glow ── */
+#gbb-divider {
+  position: absolute;
+  /* starts at 50%; JS can override via left: calc(ytPct%) if desired */
+  left: 50%; top: -4px; bottom: -4px;
+  width: 3px;
+  transform: translateX(-50%);
+  background: #ffffff;
+  box-shadow:
+    0 0  6px 2px rgba(255,255,255,0.95),
+    0 0 16px 4px rgba(255,60,60,0.75),
+    0 0 36px 8px rgba(200,0,0,0.45);
+  z-index: 5; pointer-events: none;
+  transition: left 1.2s cubic-bezier(.22,1,.36,1);
+  animation: gbbDividerBreath 2.4s ease-in-out infinite;
+}
+@keyframes gbbDividerBreath {
+  0%,100% { box-shadow: 0 0 6px 2px rgba(255,255,255,0.95), 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.40); }
+  50%      { box-shadow: 0 0 8px 3px rgba(255,255,255,1.0),  0 0 24px 6px rgba(255,60,60,0.90), 0 0 52px 14px rgba(200,0,0,0.55); }
+}
+/* Surge flash when a gift tips the balance */
+#gbb-divider.surge {
+  animation: gbbDividerSurge 0.45s ease-out forwards, gbbDividerBreath 2.4s ease-in-out 0.5s infinite;
+}
+@keyframes gbbDividerSurge {
+  0%  { box-shadow: 0 0 6px 2px #fff, 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.4); }
+  30% { box-shadow: 0 0 18px 8px #fff, 0 0 50px 18px rgba(255,80,80,1.0), 0 0 90px 28px rgba(200,0,0,0.7); width: 5px; }
+  100%{ box-shadow: 0 0 6px 2px #fff, 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.4); width: 3px; }
+}
+
+/* ── VS text at center, always on top ── */
+#gbb-vs {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 3px;
+  color: #fff; text-transform: uppercase;
+  background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.15);
+  padding: 1px 7px 1px 8px; border-radius: 3px;
+  box-shadow: 0 0 14px rgba(0,0,0,0.9);
+  z-index: 6; pointer-events: none; white-space: nowrap;
+}
+
+/* ── Percentage labels floating just inside each fill near the divider ── */
+#gbb-yt-pct {
+  position: absolute; right: calc(50% + 14px); top: 50%; transform: translateY(-50%);
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px;
+  color: rgba(255,255,255,0.92); white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 20px rgba(230,32,32,0.6);
+  z-index: 4; pointer-events: none;
+  transition: right 1.2s cubic-bezier(.22,1,.36,1);
+}
+#gbb-tt-pct {
+  position: absolute; left: calc(50% + 14px); top: 50%; transform: translateY(-50%);
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px;
+  color: rgba(255,255,255,0.92); white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 20px rgba(255,255,255,0.25);
+  z-index: 4; pointer-events: none;
+  transition: left 1.2s cubic-bezier(.22,1,.36,1);
+}
+
+/* ── Content zone (keeps layout stable; timer moved to shelf) ── */
 #gbb-content {
   position: absolute; left: 0; top: 0; bottom: 0; right: 265px; z-index: 3;
+  pointer-events: none;
 }
-/* Timer: pinned to the exact horizontal center of the content zone */
 #gbb-mid {
   position: absolute; left: 50%; top: 0; bottom: 0;
   width: 120px; transform: translateX(-50%);
   display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
 }
-#gbb-mid::before, #gbb-mid::after {
-  content: ''; position: absolute; top: 18%; bottom: 18%;
-  width: 1px; background: rgba(255,255,255,0.15);
-}
-#gbb-mid::before { left: 0; }
-#gbb-mid::after  { right: 0; }
-/* YT info: left half, right-aligned toward timer */
-#gbb-yt-info {
-  position: absolute; left: 0; top: 0; bottom: 0; right: calc(50% + 60px);
-  display: flex; align-items: center; justify-content: flex-end; gap: 7px;
-  padding: 0 14px 0 12px; overflow: hidden;
-}
-/* TT info: right half, left-aligned away from timer */
-#gbb-tt-info {
-  position: absolute; left: calc(50% + 60px); top: 0; right: 0; bottom: 0;
-  display: flex; align-items: center; justify-content: flex-start; gap: 7px;
-  padding: 0 12px 0 14px; overflow: hidden;
-}
-.gbb-plat-lbl {
-  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
-  letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap;
-  opacity: 0.82; flex-shrink: 0;
-}
-#gbb-yt-lbl { color: #fca5a5; }
-#gbb-tt-lbl { color: #93c5fd; }
-#gbb-yt-amt, #gbb-tt-amt {
-  font-family: 'Boogaloo', sans-serif; font-size: 19px; letter-spacing: 0.03em;
-  color: rgba(255,255,255,0.58); white-space: nowrap; flex-shrink: 0;
-  text-shadow: 0 1px 5px rgba(0,0,0,0.90);
-}
-/* Timer — normal, warn (last 60s), danger (last 10s), live, ended */
+#gbb-mid::before, #gbb-mid::after { display: none; }
+
+/* hide old dollar-amount spans — replaced by pct labels */
+#gbb-yt-info, #gbb-tt-info { display: none; }
+.gbb-plat-lbl { display: none; }
+#gbb-yt-amt, #gbb-tt-amt { display: none; }
+
+/* ── LIVE dot — stays inside the bar at center ── */
 #gbb-timer-val {
-  font-family: 'Boogaloo', sans-serif; font-size: 20px; letter-spacing: 0.06em;
-  color: rgba(255,255,255,0.95); white-space: nowrap;
-  background: rgba(0,0,0,0.42); padding: 2px 10px; border-radius: 20px;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
-  transition: font-size 0.3s ease, color 0.4s ease;
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: #ff6b6b; white-space: nowrap;
+  background: rgba(0,0,0,0.50); padding: 2px 9px;
+  border-radius: 20px; border: 1px solid rgba(255,80,80,0.18);
+  transition: opacity 0.3s ease;
+  animation: gbbLivePulse 1.8s ease-in-out infinite;
 }
-#gbb-timer-val.gbb-live {
-  font-size: 10px; letter-spacing: 0.18em; color: #f87171;
-  animation: gbbLivePulse 1.6s ease-in-out infinite;
+/* hide the in-bar chip when the shelf is active */
+#gift-battle-bar.gbb-shelf-active #gbb-timer-val { opacity: 0; pointer-events: none; }
+@keyframes gbbLivePulse { 0%,100%{opacity:1} 50%{opacity:0.32} }
+
+/* ── TIMER SHELF — floats above the bar, drops into view for countdowns ── */
+#gbb-timer-shelf {
+  /* bar sits at top:450px; shelf is 28px tall, sits 4px above bar */
+  position: absolute;
+  left: 50%; top: 418px;
+  transform: translateX(-50%) translateY(-6px);
+  z-index: 15;
+  pointer-events: none;
+
+  /* collapsed/hidden by default */
+  opacity: 0;
+  transition: opacity 0.32s ease, transform 0.38s cubic-bezier(.34,1.4,.64,1);
 }
-#gbb-timer-val.gbb-warn {
-  color: #fbbf24; font-size: 22px;
-  animation: gbbTimerWarn 1.2s ease-in-out infinite;
+#gbb-timer-shelf.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
-#gbb-timer-val.gbb-danger {
-  color: #ef4444; font-size: 26px; background: rgba(239,68,68,0.15);
-  animation: gbbTimerDanger 0.5s ease-in-out infinite;
+
+/* pill shape */
+#gbb-shelf-pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 14px 4px 12px;
+  border-radius: 20px;
+  background: rgba(6,0,10,0.88);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow:
+    0 2px 16px rgba(0,0,0,0.75),
+    0 0 0 1px rgba(255,255,255,0.04) inset;
+  white-space: nowrap;
 }
-#gbb-timer-val.gbb-ended {
-  font-size: 13px; letter-spacing: 0.08em; color: #fbbf24; padding: 2px 8px;
+/* small clock icon dot */
+#gbb-shelf-icon {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ff4444;
+  box-shadow: 0 0 6px 2px rgba(255,40,40,0.6);
+  flex-shrink: 0;
+  animation: gbbShelfDot 1.2s ease-in-out infinite;
 }
-@keyframes gbbLivePulse   { 0%,100%{opacity:1} 50%{opacity:0.42} }
-@keyframes gbbTimerWarn   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.8;transform:scale(1.06)} }
-@keyframes gbbTimerDanger { 0%,100%{opacity:1;transform:scale(1);text-shadow:0 0 14px rgba(239,68,68,0.9)} 50%{opacity:0.6;transform:scale(1.12);text-shadow:0 0 28px rgba(239,68,68,1.0),0 0 50px rgba(239,68,68,0.6)} }
-/* Battle-start announce banner */
+@keyframes gbbShelfDot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+#gbb-shelf-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px; letter-spacing: 2px;
+  color: #ffffff;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9);
+  transition: color 0.3s ease;
+}
+#gbb-shelf-val.gbb-warn  { color: #fbbf24; }
+#gbb-shelf-val.gbb-danger{ color: #ef4444; animation: gbbShelfDanger 0.5s ease-in-out infinite; }
+#gbb-shelf-val.gbb-ended { color: #fbbf24; font-size: 16px; letter-spacing: 1.5px; }
+@keyframes gbbShelfDanger { 0%,100%{transform:scale(1)} 50%{transform:scale(1.10)} }
+
+#gbb-shelf-label {
+  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(255,255,255,0.38);
+}
+
+/* danger state: pill border pulses red */
+#gbb-timer-shelf.shelf-danger #gbb-shelf-pill {
+  border-color: rgba(239,68,68,0.35);
+  animation: gbbShelfPillDanger 0.5s ease-in-out infinite;
+}
+@keyframes gbbShelfPillDanger {
+  0%,100%{box-shadow:0 2px 16px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04) inset}
+  50%    {box-shadow:0 2px 24px rgba(239,68,68,0.5),0 0 14px rgba(239,68,68,0.3),0 0 0 1px rgba(239,68,68,0.2) inset}
+}
+/* warn state: subtle amber glow */
+#gbb-timer-shelf.shelf-warn #gbb-shelf-pill {
+  border-color: rgba(251,191,36,0.25);
+}
+
+/* ── Shimmer for progress goal ── */
+#gbb-goal-shimmer {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 7;
+  background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.22) 50%, transparent 80%);
+  background-size: 200% 100%;
+}
+#gbb-goal-shimmer.active { opacity: 1; animation: gbbShimmer 1.0s ease-in-out infinite; }
+@keyframes gbbShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+
+/* hide old watermark text (replaced by logo badges) */
+.gbb-fill-wm { display: none; }
+
+/* ── Center goal line (progress mode) ── */
+#gbb-goal-line {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 2px; transform: translateX(-50%);
+  background: rgba(255,255,255,0.30);
+  box-shadow: 0 0 8px rgba(255,255,255,0.55), 0 0 3px rgba(255,255,255,0.90);
+  z-index: 2; pointer-events: none; display: none;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-goal-line { display: block; }
+#gift-battle-bar.gbb-mode-progress #gbb-timer-val {
+  font-size: 11px; letter-spacing: 0.14em;
+  background: rgba(0,0,0,0.52); color: rgba(255,255,255,0.85);
+}
+
+/* ── Battle-start announce ── */
 #gbb-announce {
   position: absolute; inset: 0; z-index: 10; pointer-events: none;
-  display: flex; align-items: center; justify-content: center; gap: 16px;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
   opacity: 0;
 }
 #gbb-announce.show { animation: gbbAnnounceAnim 3.5s ease forwards; }
-@keyframes gbbAnnounceAnim {
-  0%  { opacity:0; } 12%{ opacity:1; } 75%{ opacity:1; } 100%{ opacity:0; }
-}
+@keyframes gbbAnnounceAnim { 0%{opacity:0} 12%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
 .gbb-ann-logo {
-  font-family: 'Anton', sans-serif; font-size: 14px; letter-spacing: 2px;
-  text-transform: uppercase; padding: 3px 9px; border-radius: 4px; white-space: nowrap;
+  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 3px;
+  text-transform: uppercase; padding: 2px 9px; border-radius: 3px; white-space: nowrap;
 }
-.gbb-ann-yt { color:#ef4444; background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.40); }
-.gbb-ann-tt { color:#93c5fd; background:rgba(147,197,253,0.18); border:1px solid rgba(147,197,253,0.40); }
+.gbb-ann-yt { color:#ff5555; background:rgba(220,0,0,0.20); border:1px solid rgba(255,50,50,0.45); }
+.gbb-ann-tt { color:#e0e0e0; background:rgba(80,80,80,0.22); border:1px solid rgba(180,180,180,0.35); }
 #gbb-ann-text {
-  font-family: 'Boogaloo', sans-serif; font-size: 17px; letter-spacing: 0.12em;
-  color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.95); text-transform: uppercase;
+  font-family: 'Anton', sans-serif; font-size: 14px; letter-spacing: 4px;
+  color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.95); text-transform: uppercase;
 }
-/* Gift pop animation layer */
+
+/* ── Gift pop layer ── */
 #gbb-pop-layer {
   position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden;
 }
 .gbb-pop-name {
   position: absolute; top: 50%; left: 50%;
   font-family: 'Anton', sans-serif; letter-spacing: 2px; color: #fff; white-space: nowrap;
-  pointer-events: none; text-shadow: 0 2px 12px rgba(0,0,0,0.98), 0 0 6px rgba(0,0,0,0.8);
+  pointer-events: none; text-shadow: 0 2px 12px rgba(0,0,0,0.98);
   transform-origin: center center;
 }
-.gbb-pop-sm { font-size: 20px; }
-.gbb-pop-md { font-size: 28px; }
-.gbb-pop-lg { font-size: 36px; }
-.gbb-pop-yt { animation: gbbPopYT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
-.gbb-pop-tt { animation: gbbPopTT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
+.gbb-pop-sm { font-size: 18px; }
+.gbb-pop-md { font-size: 26px; }
+.gbb-pop-lg { font-size: 34px; }
+.gbb-pop-yt { color: #ff7070; animation: gbbPopYT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
+.gbb-pop-tt { color: #d0d0d0; animation: gbbPopTT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
 @keyframes gbbPopYT {
   0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
-  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.05); }
-  65%  { opacity:1; transform:translate(-120%,-50%) scale(0.9); }
-  100% { opacity:0; transform:translate(-160%,-50%) scale(0.7); }
+  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
+  65%  { opacity:1; transform:translate(-110%,-50%) scale(0.92); }
+  100% { opacity:0; transform:translate(-155%,-50%) scale(0.72); }
 }
 @keyframes gbbPopTT {
   0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
-  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.05); }
-  65%  { opacity:1; transform:translate(30%,-50%) scale(0.9); }
-  100% { opacity:0; transform:translate(70%,-50%) scale(0.7); }
+  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
+  65%  { opacity:1; transform:translate(20%,-50%) scale(0.92); }
+  100% { opacity:0; transform:translate(65%,-50%) scale(0.72); }
 }
 .gbb-pop-flash {
   position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
   font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.85);
+  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.80);
   white-space: nowrap; pointer-events: none;
   animation: gbbFlashFade 1.8s ease forwards;
 }
 @keyframes gbbFlashFade { 0%,12%{opacity:0} 22%,78%{opacity:1} 100%{opacity:0} }
 
-/* ── SHARED PROGRESS MODE overrides ──────────────────────── */
-/* Fills: warm amber (YT) and cyan (TT) instead of red/dark */
-#gift-battle-bar.gbb-mode-progress #gbb-yt-fill {
-  background: linear-gradient(to right, #78350f, #d97706, #fbbf24);
+/* ══ PROGRESS MODE — unified left-to-right fill ══ */
+
+/* Hide battle-mode fills and VS chip in progress mode */
+#gift-battle-bar.gbb-mode-progress #gbb-yt-fill,
+#gift-battle-bar.gbb-mode-progress #gbb-tt-fill,
+#gift-battle-bar.gbb-mode-progress #gbb-vs,
+#gift-battle-bar.gbb-mode-progress #gbb-yt-pct,
+#gift-battle-bar.gbb-mode-progress #gbb-tt-pct,
+#gift-battle-bar.gbb-mode-progress #gbb-divider { display: none; }
+
+/* Ghost track — the empty portion of the bar */
+#gbb-prog-track {
+  display: none;
+  position: absolute; inset: 0;
+  background: #111111;
+  z-index: 1;
 }
-#gift-battle-bar.gbb-mode-progress #gbb-tt-fill {
-  background: linear-gradient(to left, #164e63, #0891b2, #22d3ee);
+#gift-battle-bar.gbb-mode-progress #gbb-prog-track { display: block; }
+
+/* Unified fill container — grows left to right */
+#gbb-prog-fill {
+  display: none;
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+  z-index: 2; overflow: hidden;
+  transition: width 1.3s cubic-bezier(.22,1,.36,1);
 }
-/* Platform color shifts for labels and watermarks */
-#gift-battle-bar.gbb-mode-progress #gbb-yt-lbl { color: #fde68a; }
-#gift-battle-bar.gbb-mode-progress #gbb-tt-lbl { color: #67e8f9; }
-#gift-battle-bar.gbb-mode-progress #gbb-yt-fill .gbb-fill-wm { color: rgba(255,255,255,0.18); }
-#gift-battle-bar.gbb-mode-progress #gbb-tt-fill .gbb-fill-wm { color: rgba(255,255,255,0.18); }
+#gift-battle-bar.gbb-mode-progress #gbb-prog-fill { display: block; }
+
+/* YT segment — sits at the left of the fill, width = ytPct of total fill */
+#gbb-prog-yt-seg {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(to right, #3d0000, #8b0000, #cc1010, #e62020);
+  transition: width 1.3s cubic-bezier(.22,1,.36,1);
+}
+#gbb-prog-yt-seg::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, transparent 50%);
+}
+
+/* TT segment — sits immediately after YT, fills the rest of the fill */
+#gbb-prog-tt-seg {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(to right, #2a2a2a, #3c3c3c, #464646);
+  transition: width 1.3s cubic-bezier(.22,1,.36,1);
+}
+#gbb-prog-tt-seg::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 50%);
+}
+
+/* Leading edge glow — the fill frontier, always at the right edge of #gbb-prog-fill */
+#gbb-prog-edge {
+  display: none;
+  position: absolute; right: -2px; top: -4px; bottom: -4px; width: 3px;
+  background: #ffffff;
+  box-shadow:
+    0 0 6px 2px rgba(255,255,255,0.95),
+    0 0 18px 5px rgba(255,180,0,0.70),
+    0 0 40px 10px rgba(220,120,0,0.45);
+  z-index: 4; pointer-events: none;
+  animation: gbbEdgeBreath 2.2s ease-in-out infinite;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-edge { display: block; }
+@keyframes gbbEdgeBreath {
+  0%,100% { box-shadow: 0 0 6px 2px rgba(255,255,255,0.95), 0 0 18px 5px rgba(255,180,0,0.65), 0 0 40px 10px rgba(220,120,0,0.40); }
+  50%      { box-shadow: 0 0 9px 3px rgba(255,255,255,1.0),  0 0 28px 8px rgba(255,200,0,0.85), 0 0 60px 16px rgba(220,140,0,0.55); }
+}
+#gbb-prog-edge.surge {
+  animation: gbbEdgeSurge 0.5s ease-out forwards, gbbEdgeBreath 2.2s ease-in-out 0.55s infinite;
+}
+@keyframes gbbEdgeSurge {
+  0%  { box-shadow: 0 0 6px 2px #fff, 0 0 18px 5px rgba(255,180,0,0.7), 0 0 40px 10px rgba(220,120,0,0.4); }
+  30% { box-shadow: 0 0 20px 9px #fff, 0 0 55px 20px rgba(255,220,0,1.0), 0 0 100px 30px rgba(220,160,0,0.7); width: 5px; }
+  100%{ box-shadow: 0 0 6px 2px #fff, 0 0 18px 5px rgba(255,180,0,0.7), 0 0 40px 10px rgba(220,120,0,0.4); width: 3px; }
+}
+
+/* Contribution mini-pills — YT and TT share labels left of center */
+#gbb-prog-contrib {
+  display: none;
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 5; pointer-events: none;
+  display: flex; align-items: center; gap: 6px;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-contrib { display: flex; }
+.gbb-contrib-pill {
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(0,0,0,0.55); border-radius: 10px;
+  padding: 2px 7px 2px 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.gbb-contrib-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.gbb-contrib-dot.yt { background: #e62020; box-shadow: 0 0 5px rgba(230,32,32,0.7); }
+.gbb-contrib-dot.tt { background: #555555; box-shadow: 0 0 5px rgba(120,120,120,0.5); }
+.gbb-contrib-pct {
+  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; color: rgba(255,255,255,0.80); white-space: nowrap;
+}
+
+/* Prize label — right-anchored, always visible, is the goal destination */
+#gbb-prog-prize {
+  display: none;
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 5; pointer-events: none;
+  max-width: 380px; overflow: hidden;
+  display: flex; align-items: center; gap: 8px;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-prize { display: flex; }
+#gbb-prog-prize-icon {
+  font-size: 18px; flex-shrink: 0; line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(255,200,0,0.6));
+}
+#gbb-prog-prize-text {
+  font-family: 'Anton', sans-serif; font-size: 17px; letter-spacing: 2px;
+  text-transform: uppercase; color: rgba(255,255,255,0.90); white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 18px rgba(255,180,0,0.25);
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── GOAL HIT — DARE UNLOCKED sequence ── */
+/* Full-bar flash overlay */
+#gbb-prog-flash {
+  display: none;
+  position: absolute; inset: -4px; z-index: 20; pointer-events: none;
+  background: #ffffff; opacity: 0; border-radius: 0;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-flash { display: block; }
+#gbb-prog-flash.fire { animation: gbbFlashBlast 0.55s ease-out forwards; }
+@keyframes gbbFlashBlast {
+  0%   { opacity: 0; }
+  18%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Gold fill state when goal hit */
+#gift-battle-bar.gbb-goal-hit #gbb-prog-fill {
+  background: linear-gradient(to right, #78350f, #d97706, #fbbf24, #fde68a) !important;
+  transition: background 0.4s ease;
+}
+#gift-battle-bar.gbb-goal-hit #gbb-prog-yt-seg,
+#gift-battle-bar.gbb-goal-hit #gbb-prog-tt-seg { display: none; }
+
+/* DARE UNLOCKED stamp — slams into center */
+#gbb-prog-unlock {
+  display: none;
+  position: absolute; inset: 0; z-index: 18; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  opacity: 0;
+}
+#gift-battle-bar.gbb-mode-progress #gbb-prog-unlock { display: flex; }
+#gbb-prog-unlock.stamp { animation: gbbUnlockStamp 4.5s cubic-bezier(.22,1,.36,1) forwards; }
+@keyframes gbbUnlockStamp {
+  0%   { opacity:0; transform:scale(2.4) rotate(-3deg); }
+  12%  { opacity:1; transform:scale(0.94) rotate(0.5deg); }
+  20%  { transform:scale(1.04) rotate(0deg); }
+  30%  { transform:scale(1.0); opacity:1; }
+  78%  { opacity:1; transform:scale(1.0); }
+  100% { opacity:0; transform:scale(0.88); }
+}
+#gbb-unlock-headline {
+  font-family: 'Anton', sans-serif; font-size: 28px; letter-spacing: 5px;
+  text-transform: uppercase; color: #fbbf24;
+  text-shadow:
+    0 0 14px rgba(251,191,36,0.95),
+    0 0 40px rgba(251,191,36,0.60),
+    0 2px 0 rgba(0,0,0,1),
+    0 4px 18px rgba(0,0,0,0.95);
+  white-space: nowrap;
+}
+#gbb-unlock-prize {
+  font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 3px;
+  text-transform: uppercase; color: rgba(255,255,255,0.88);
+  text-shadow: 0 1px 8px rgba(0,0,0,0.95);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px;
+}
+
 /* Announce badge colors for progress mode */
 #gift-battle-bar.gbb-mode-progress .gbb-ann-yt {
-  color:#fbbf24; background:rgba(251,191,36,0.16); border-color:rgba(251,191,36,0.40);
+  color:#ff5555; background:rgba(220,0,0,0.20); border-color:rgba(255,50,50,0.45);
 }
 #gift-battle-bar.gbb-mode-progress .gbb-ann-tt {
-  color:#22d3ee; background:rgba(34,211,238,0.16); border-color:rgba(34,211,238,0.40);
+  color:#e0e0e0; background:rgba(80,80,80,0.22); border-color:rgba(180,180,180,0.35);
 }
-/* Center goal line — visible marker where fills converge */
-#gbb-goal-line {
-  position: absolute; left: 50%; top: 0; bottom: 0;
-  width: 2px; transform: translateX(-50%);
-  background: rgba(255,255,255,0.28);
-  box-shadow: 0 0 8px rgba(255,255,255,0.55), 0 0 3px rgba(255,255,255,0.90);
-  z-index: 2; pointer-events: none; display: none;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-goal-line { display: block; }
-/* "to go" center label uses softer style in progress mode */
-#gift-battle-bar.gbb-mode-progress #gbb-timer-val {
-  font-size: 13px; letter-spacing: 0.08em; background: rgba(0,0,0,0.48);
-  color: rgba(255,255,255,0.90);
-}
-/* Progress pop: platform-colored central burst, no sideways fly */
-.gbb-pop-prog {
-  animation: gbbPopProg 2.0s ease-out forwards !important;
-}
-.gbb-pop-yt.gbb-pop-prog {
-  color: #fbbf24 !important;
-  text-shadow: 0 0 22px rgba(251,191,36,0.95), 0 2px 10px rgba(0,0,0,0.98) !important;
-}
-.gbb-pop-tt.gbb-pop-prog {
-  color: #22d3ee !important;
-  text-shadow: 0 0 22px rgba(34,211,238,0.95), 0 2px 10px rgba(0,0,0,0.98) !important;
-}
+
+/* Gift pop — rises from center */
+.gbb-pop-prog { animation: gbbPopProg 2.0s ease-out forwards !important; }
+.gbb-pop-yt.gbb-pop-prog { color:#ef4444 !important; text-shadow:0 0 22px rgba(239,68,68,0.95),0 2px 10px rgba(0,0,0,0.98) !important; }
+.gbb-pop-tt.gbb-pop-prog { color:#d0d0d0 !important; text-shadow:0 0 22px rgba(200,200,200,0.8),0 2px 10px rgba(0,0,0,0.98) !important; }
 @keyframes gbbPopProg {
   0%   { opacity:0; transform:translate(-50%,-50%) scale(0.3) rotate(-4deg); }
   22%  { opacity:1; transform:translate(-50%,-50%) scale(1.18) rotate(0deg); }
   55%  { opacity:1; transform:translate(-50%,-50%) scale(1.02); }
-  100% { opacity:0; transform:translate(-50%,-56%) scale(0.82); }
+  100% { opacity:0; transform:translate(-50%,-60%) scale(0.82); }
 }
-/* Progress flash text uses platform color tint */
-.gbb-pop-yt .gbb-pop-flash-txt { color: #fde68a; }
-.gbb-pop-tt .gbb-pop-flash-txt { color: #67e8f9; }
+.gbb-pop-yt .gbb-pop-flash-txt { color: #fca5a5; }
+.gbb-pop-tt .gbb-pop-flash-txt { color: #d0d0d0; }
 
 /* ══ TOP GIFTERS PANEL ══ */
 #top-gifters-panel {
@@ -1266,10 +1563,78 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   </div>
   <!-- ══ GIFT BATTLE BAR — overlays bar when battle/progress mode is active ══ -->
   <div id="gift-battle-bar">
-    <div id="gbb-yt-fill"><span class="gbb-fill-wm">▶ YOUTUBE</span></div>
-    <div id="gbb-tt-fill"><span class="gbb-fill-wm">TIKTOK ♪</span></div>
+    <!-- fills -->
+    <div id="gbb-yt-fill">
+      <span class="gbb-fill-wm">▶ YOUTUBE</span>
+      <!-- YouTube logo badge -->
+      <div id="gbb-yt-logo">
+        <svg viewBox="0 0 90 63" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="90" height="63" rx="14" fill="#fff" fill-opacity="0.92"/>
+          <path d="M36 20 L64 31.5 L36 43 Z" fill="#cc1010"/>
+        </svg>
+        <span id="gbb-yt-logo-text">YouTube</span>
+      </div>
+    </div>
+    <div id="gbb-tt-fill">
+      <span class="gbb-fill-wm">TIKTOK ♪</span>
+      <!-- TikTok logo badge -->
+      <div id="gbb-tt-logo">
+        <svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M29 0C29.8 6.2 33.2 9.6 39 10v7c-3.4-.3-6.4-1.4-9-3.2V28c0 9.4-10.4 14.6-18 9.2-5.4-3.8-6.6-11.4-2.6-16.6 3-4 7.8-5.6 12.2-4.4v7.4c-4.2-1.6-7.6 1.2-7.2 5 .4 3 3 5.2 6 5 4-.2 6.6-3.2 6.6-7.2V0h3Z" fill="white" fill-opacity="0.90"/>
+        </svg>
+        <span id="gbb-tt-logo-text">TikTok</span>
+      </div>
+    </div>
+
+    <!-- shimmer / goal line -->
     <div id="gbb-goal-shimmer"></div>
     <div id="gbb-goal-line"></div>
+
+    <!-- ── PROGRESS MODE elements ── -->
+    <!-- ghost track (empty portion) -->
+    <div id="gbb-prog-track"></div>
+    <!-- unified fill, grows left→right -->
+    <div id="gbb-prog-fill">
+      <div id="gbb-prog-yt-seg"></div>
+      <div id="gbb-prog-tt-seg"></div>
+      <!-- leading-edge saber glow -->
+      <div id="gbb-prog-edge"></div>
+    </div>
+    <!-- contribution pills (bottom-left) -->
+    <div id="gbb-prog-contrib">
+      <div class="gbb-contrib-pill">
+        <div class="gbb-contrib-dot yt"></div>
+        <span class="gbb-contrib-pct" id="gbb-prog-yt-pct">0%</span>
+      </div>
+      <div class="gbb-contrib-pill">
+        <div class="gbb-contrib-dot tt"></div>
+        <span class="gbb-contrib-pct" id="gbb-prog-tt-pct">0%</span>
+      </div>
+    </div>
+    <!-- prize destination label (right) -->
+    <div id="gbb-prog-prize">
+      <span id="gbb-prog-prize-icon">🎯</span>
+      <span id="gbb-prog-prize-text">DARE</span>
+    </div>
+    <!-- goal-hit flash overlay -->
+    <div id="gbb-prog-flash"></div>
+    <!-- DARE UNLOCKED stamp -->
+    <div id="gbb-prog-unlock">
+      <div id="gbb-unlock-headline">DARE UNLOCKED</div>
+      <div id="gbb-unlock-prize"></div>
+    </div>
+
+    <!-- hot divider saber line -->
+    <div id="gbb-divider"></div>
+
+    <!-- percentage labels flanking the divider -->
+    <div id="gbb-yt-pct">50%</div>
+    <div id="gbb-tt-pct">50%</div>
+
+    <!-- VS chip — center, z above everything -->
+    <div id="gbb-vs">VS</div>
+
+    <!-- content zone keeps the timer chip -->
     <div id="gbb-content">
       <div id="gbb-yt-info">
         <span id="gbb-yt-lbl" class="gbb-plat-lbl">▶ YT</span>
@@ -1283,11 +1648,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
         <span id="gbb-tt-lbl" class="gbb-plat-lbl">TT ♪</span>
       </div>
     </div>
+
     <div id="gbb-pop-layer"></div>
     <div id="gbb-announce">
       <span class="gbb-ann-logo gbb-ann-yt">▶ YouTube</span>
       <span id="gbb-ann-text">⚔ GIFT BATTLE!</span>
-      <span class="gbb-ann-logo gbb-ann-tt">TikTok ♪</span>
+      <span class="gbb-ann-logo gbb-ann-tt">TikTok</span>
     </div>
   </div>
   <div id="bar-hero">
@@ -1305,6 +1671,15 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
       <span id="bar-info-name"></span>
       <span id="bar-info-amount"></span>
     </div>
+  </div>
+</div>
+
+<!-- ══ GBB TIMER SHELF — floats above the battle bar for countdown display ══ -->
+<div id="gbb-timer-shelf">
+  <div id="gbb-shelf-pill">
+    <div id="gbb-shelf-icon"></div>
+    <div id="gbb-shelf-val">0:00</div>
+    <div id="gbb-shelf-label">remaining</div>
   </div>
 </div>
 
@@ -1545,7 +1920,7 @@ function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTime
 function stopRotation(){if(rotateTimer){clearInterval(rotateTimer);rotateTimer=null;}if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}}
 
 /* ══ GIFT BAR GIFTR DATA ══ */
-function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:enabled.includes(d.key));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);startRotation();}}
+function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:enabled.includes(d.key));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
 
 /* ══ TOP GIFTERS RENDER ══ */
 const TGP_MEDALS=['🥇','🥈','🥉'];
@@ -1603,7 +1978,7 @@ function gbbFmtCoins(n){
 function gbbComputeSpend(amount,type){
   const n=Number(amount)||0;
   if(type==='tiktok_coins')return n*0.01;         // $0.01/coin viewer spend
-  if(type==='youtube_jewels')return n*0.05;        // ~$0.05/jewel
+  if(type==='youtube_jewels')return n*0.005;       // ~$0.005/jewel (matches tracker.html rate)
   if(type==='youtube_superchat'||type==='direct_donation'||type==='direct')return n;
   return 0;
 }
@@ -1620,10 +1995,10 @@ function gbbTrackGift(data){
     if(data.type==='tiktok_coins') gbbTtCoins+=(Number(data.amount)||0);
     else gbbTtCoins+=Math.round(spend/0.01);
   }
-  gbbUpdateDisplay();
+  gbbUpdateDisplay(true);
 }
 
-function gbbUpdateDisplay(){
+function gbbUpdateDisplay(triggerSurge){
   if(gbbMode==='off')return;
   const yt=gbbYtSpend,tt=gbbTtSpend;
   const ytFill=document.getElementById('gbb-yt-fill');
@@ -1631,42 +2006,112 @@ function gbbUpdateDisplay(){
   const ytAmt =document.getElementById('gbb-yt-amt');
   const ttAmt =document.getElementById('gbb-tt-amt');
   const timerEl=document.getElementById('gbb-timer-val');
+  const divider=document.getElementById('gbb-divider');
+  const ytPctEl=document.getElementById('gbb-yt-pct');
+  const ttPctEl=document.getElementById('gbb-tt-pct');
+  const shelf    =document.getElementById('gbb-timer-shelf');
+  const shelfVal =document.getElementById('gbb-shelf-val');
+  const bar      =document.getElementById('gift-battle-bar');
+  function updateShelf(text,valClass,shelfClass){
+    if(!shelf||!shelfVal)return;
+    shelfVal.textContent=text; shelfVal.className=valClass||'';
+    shelf.className=shelfClass?'visible '+shelfClass:'visible';
+    bar&&bar.classList.add('gbb-shelf-active');
+  }
+  function hideShelf(){
+    if(!shelf)return;
+    shelf.className='';
+    bar&&bar.classList.remove('gbb-shelf-active');
+  }
+  function updateSplit(ytPct){
+    const ttPct=100-ytPct;
+    ytFill.style.width=ytPct+'%'; ttFill.style.width=ttPct+'%';
+    if(divider) divider.style.left=ytPct+'%';
+    if(ytPctEl){ytPctEl.textContent=Math.round(ytPct)+'%';ytPctEl.style.right='calc('+(100-ytPct)+'% + 14px)';}
+    if(ttPctEl){ttPctEl.textContent=Math.round(ttPct)+'%';ttPctEl.style.left='calc('+ytPct+'% + 14px)';}
+    if(triggerSurge&&divider){divider.classList.remove('surge');void divider.offsetWidth;divider.classList.add('surge');}
+  }
   if(gbbMode==='battle'){
     const total=(yt+tt)||0.001;
-    const ytPct=(yt/total)*100;
-    ytFill.style.width=ytPct+'%';
-    ttFill.style.width=(100-ytPct)+'%';
-    ytAmt.textContent=gbbFmt(yt);
-    ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
+    updateSplit((yt/total)*100);
+    ytAmt.textContent=gbbFmt(yt); ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
     if(gbbTimerLeft===null){
-      timerEl.textContent='● LIVE';timerEl.className='gbb-live';
+      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
+      hideShelf();
     }else if(gbbTimerLeft<=0){
-      const winner=yt>tt?'▶ YT WINS!':tt>yt?'♪ TT WINS!':'🤝 DRAW!';
-      timerEl.textContent=winner;timerEl.className='gbb-ended';
+      const winner=yt>tt?'▶ YT WINS':tt>yt?'TT WINS':'DRAW';
+      timerEl.textContent=''; timerEl.className='';
+      updateShelf(winner,'gbb-ended','shelf-ended');
     }else{
       const m=Math.floor(gbbTimerLeft/60),s=gbbTimerLeft%60;
-      timerEl.textContent=m+':'+String(s).padStart(2,'0');
-      timerEl.className=gbbTimerLeft<=10?'gbb-danger':gbbTimerLeft<=60?'gbb-warn':'';
+      const timeStr=m+':'+String(s).padStart(2,'0');
+      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
+      updateShelf(timeStr, gbbTimerLeft<=10?'gbb-danger':gbbTimerLeft<=60?'gbb-warn':'', gbbTimerLeft<=10?'shelf-danger':gbbTimerLeft<=60?'shelf-warn':'');
     }
   }else if(gbbMode==='progress'){
     const goal=gbbGoalAmount||100;
-    const ytPct=Math.min((yt/goal)*100,100);
-    const ttPct=Math.min((tt/goal)*100,100);
-    ytFill.style.width=ytPct+'%';
-    ttFill.style.width=ttPct+'%';
-    ytAmt.textContent=gbbFmt(yt);
-    ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
-    if(!gbbGoalHit&&(yt+tt)>=goal){
+    const totalSpend=yt+tt;
+    const totalPct=Math.min(totalSpend/goal*100,100);
+    // Unified fill width = total progress
+    const progFill=document.getElementById('gbb-prog-fill');
+    const progYtSeg=document.getElementById('gbb-prog-yt-seg');
+    const progTtSeg=document.getElementById('gbb-prog-tt-seg');
+    const progEdge=document.getElementById('gbb-prog-edge');
+    const progYtPct=document.getElementById('gbb-prog-yt-pct');
+    const progTtPct=document.getElementById('gbb-prog-tt-pct');
+    if(progFill) progFill.style.width=totalPct+'%';
+    // Inside the fill, YT takes its share of the filled region
+    const ytShareOfFill=totalSpend>0?(yt/totalSpend)*100:50;
+    const ttShareOfFill=100-ytShareOfFill;
+    if(progYtSeg) progYtSeg.style.width=ytShareOfFill+'%';
+    if(progTtSeg) progTtSeg.style.width=ttShareOfFill+'%';
+    // Edge surge
+    if(triggerSurge&&progEdge){progEdge.classList.remove('surge');void progEdge.offsetWidth;progEdge.classList.add('surge');}
+    // Contribution pill labels (% of total spend each team did)
+    if(progYtPct) progYtPct.textContent=totalSpend>0?Math.round(yt/totalSpend*100)+'%':'0%';
+    if(progTtPct) progTtPct.textContent=totalSpend>0?Math.round(tt/totalSpend*100)+'%':'0%';
+    ytAmt.textContent=gbbFmt(yt); ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
+    if(!gbbGoalHit&&totalSpend>=goal){
       gbbGoalHit=true;
-      document.getElementById('gbb-goal-shimmer').classList.add('active');
-      timerEl.textContent='🎯 GOAL!';timerEl.className='gbb-ended';
+      gbbFireDareUnlock();
+      timerEl.textContent=''; timerEl.className='';
+      updateShelf('DARE UNLOCKED','gbb-ended','shelf-ended');
     }else if(!gbbGoalHit){
-      const rem=Math.max(0,goal-yt-tt);
-      const pct=(yt+tt)/goal*100;
-      timerEl.textContent='$'+rem.toFixed(0)+' to go';
-      timerEl.className=pct>=90?'gbb-danger':pct>=70?'gbb-warn':'';
+      const rem=Math.max(0,goal-totalSpend);
+      const pct=totalPct;
+      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
+      updateShelf('$'+rem.toFixed(0)+' to go', pct>=90?'gbb-danger':pct>=70?'gbb-warn':'', pct>=90?'shelf-danger':pct>=70?'shelf-warn':'');
     }
   }
+}
+
+function gbbFireDareUnlock(){
+  const bar=document.getElementById('gift-battle-bar');
+  const flash=document.getElementById('gbb-prog-flash');
+  const stamp=document.getElementById('gbb-prog-unlock');
+  const prizeName=document.getElementById('gbb-unlock-prize');
+  const progFill=document.getElementById('gbb-prog-fill');
+  // 1. fill to 100%
+  if(progFill) progFill.style.width='100%';
+  // 2. gold fill state
+  bar&&bar.classList.add('gbb-goal-hit');
+  // 3. screen flash
+  if(flash){flash.classList.remove('fire');void flash.offsetWidth;flash.classList.add('fire');}
+  // 4. stamp the prize name then DARE UNLOCKED
+  if(prizeName) prizeName.textContent=gbbPrizeName||'';
+  if(stamp){stamp.classList.remove('stamp');void stamp.offsetWidth;stamp.classList.add('stamp');}
+  // 5. screen pulse
+  const sp=document.getElementById('screen-pulse');
+  [0,600,1200].forEach(d=>setTimeout(()=>{
+    sp.style.boxShadow='inset 0 0 180px 80px rgba(251,191,36,0.45)';
+    sp.style.opacity='1';
+    setTimeout(()=>{sp.style.opacity='0';},700);
+  },d));
+  // 6. clean up after animation
+  setTimeout(()=>{
+    bar&&bar.classList.remove('gbb-goal-hit');
+    if(stamp) stamp.classList.remove('stamp');
+  },5000);
 }
 
 function gbbStartTimer(){
@@ -1713,14 +2158,22 @@ function gbbGiftPop(data){
   setTimeout(()=>{nameEl.remove();flashEl.remove();},2100);
 }
 
+let gbbPrizeName='';
 function gbbHandleCmd(data){
-  const{mode,timerSeconds,goalAmount}=data||{};
+  const{mode,timerSeconds,goalAmount,prizeName}=data||{};
+  gbbPrizeName=prizeName||'';
   gbbStopTimer();
   const bar=document.getElementById('gift-battle-bar');
   if(!mode||mode==='off'){
     gbbMode='off';
-    bar.classList.remove('active','gbb-mode-battle','gbb-mode-progress');
+    bar.classList.remove('active','gbb-mode-battle','gbb-mode-progress','gbb-shelf-active','gbb-goal-hit');
     document.getElementById('gbb-goal-shimmer').classList.remove('active');
+    const offShelf=document.getElementById('gbb-timer-shelf');
+    if(offShelf)offShelf.className='';
+    const offPf=document.getElementById('gbb-prog-fill');
+    if(offPf){offPf.style.width='0%';offPf.style.background='';}
+    const offPu=document.getElementById('gbb-prog-unlock');
+    if(offPu) offPu.classList.remove('stamp');
     return;
   }
   // Reset and activate
@@ -1729,13 +2182,46 @@ function gbbHandleCmd(data){
   gbbGoalAmount=Number(goalAmount)||100;
   gbbTimerLeft=timerSeconds?Number(timerSeconds):null;
   document.getElementById('gbb-goal-shimmer').classList.remove('active');
-  // Initial fills
+  // Initial fills + divider reset
+  const divEl=document.getElementById('gbb-divider');
+  const ytPctEl2=document.getElementById('gbb-yt-pct');
+  const ttPctEl2=document.getElementById('gbb-tt-pct');
   if(mode==='battle'){
     document.getElementById('gbb-yt-fill').style.width='50%';
     document.getElementById('gbb-tt-fill').style.width='50%';
+    if(divEl){divEl.style.left='50%';divEl.classList.remove('surge');}
+    if(ytPctEl2){ytPctEl2.textContent='50%';ytPctEl2.style.right='calc(50% + 14px)';}
+    if(ttPctEl2){ttPctEl2.textContent='50%';ttPctEl2.style.left='calc(50% + 14px)';}
   }else{
     document.getElementById('gbb-yt-fill').style.width='0%';
     document.getElementById('gbb-tt-fill').style.width='0%';
+    if(divEl){divEl.style.left='0%';divEl.classList.remove('surge');}
+    if(ytPctEl2){ytPctEl2.textContent='0%';ytPctEl2.style.right='calc(100% + 14px)';}
+    if(ttPctEl2){ttPctEl2.textContent='0%';ttPctEl2.style.left='calc(0% + 14px)';}
+    // Reset progress mode elements
+    const pf=document.getElementById('gbb-prog-fill');
+    if(pf){pf.style.width='0%';pf.style.background='';}
+    const pe=document.getElementById('gbb-prog-edge');
+    if(pe) pe.classList.remove('surge');
+    const pu=document.getElementById('gbb-prog-unlock');
+    if(pu) pu.classList.remove('stamp');
+    const pfl=document.getElementById('gbb-prog-flash');
+    if(pfl) pfl.classList.remove('fire');
+    bar.classList.remove('gbb-goal-hit');
+    // Set prize text
+    const pt=document.getElementById('gbb-prog-prize-text');
+    if(pt) pt.textContent=(gbbPrizeName||'DARE').toUpperCase();
+    const up=document.getElementById('gbb-unlock-prize');
+    if(up) up.textContent=(gbbPrizeName||'').toUpperCase();
+    // Reset contribution pills
+    const pyp=document.getElementById('gbb-prog-yt-pct');
+    const ptp=document.getElementById('gbb-prog-tt-pct');
+    if(pyp) pyp.textContent='0%';
+    if(ptp) ptp.textContent='0%';
+    const pys=document.getElementById('gbb-prog-yt-seg');
+    const pts=document.getElementById('gbb-prog-tt-seg');
+    if(pys) pys.style.width='50%';
+    if(pts) pts.style.width='50%';
   }
   bar.classList.remove('gbb-mode-battle','gbb-mode-progress');
   bar.classList.add('active','gbb-mode-'+mode);
@@ -1921,6 +2407,7 @@ function eventPromoShowOverlay(mode,durationMs){
 }
 
 function setEventPromoConfig(config){
+  console.log('[event-promo] config received, players:', JSON.stringify((config&&config.players||[]).map(p=>p.name)));
   const incoming=mergeEventPromoConfig(config);
   incoming.players=incoming.players.map((player,i)=>({
     ...player,
@@ -1979,7 +2466,7 @@ function handleEventPromoImageChunk(d){
 function handleEventPromoMessage(data){
   const d=data||{};
   if(d.type==='event-promo-config')setEventPromoConfig(d.config);
-  else if(d.type==='event-promo-show')eventPromoShowOverlay(d.mode,d.durationMs);
+  else if(d.type==='event-promo-show'){if(d.config)setEventPromoConfig(d.config);eventPromoShowOverlay(d.mode,d.durationMs);}
   else if(d.type==='event-promo-hide')hideEventPromo();
   else if(d.type==='event-promo-auto')setEventPromoAuto(!!d.enabled,d.intervalMs);
   else if(d.type==='event-promo-image')setEventPromoPlayerImage(d.index,d.image);
