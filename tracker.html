@@ -759,6 +759,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
             style="width:90px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px">
           <span class="dim">combined YT + TT spend to fill bar</span>
         </div>
+        <div style="margin-top:8px">
+          <label style="margin-bottom:6px;display:block">Prize / Dare Text <span class="dim">(shown on overlay)</span></label>
+          <input type="text" id="gbt-prize-name" maxlength="60" placeholder="e.g. DO 50 PUSHUPS"
+            style="width:100%;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;box-sizing:border-box;text-transform:uppercase;letter-spacing:0.05em">
+        </div>
       </div>
 
       <!-- Actions -->
@@ -1572,7 +1577,9 @@ function handleTikfinityGift(data) {
   const name        = (data.nickname || data.uniqueId || 'Unknown').trim() || 'Unknown';
   const userId      = data.userId    || data.uniqueId || null;
   const giftName    = data.giftName  || (data.gift && data.gift.name) || '';
-  const diamondCount = data.diamondCount || (data.gift && data.gift.diamond_count) || 1;
+  // Use explicit null check so diamondCount:0 doesn't fall through to 1
+  const diamondCount = data.diamondCount != null ? data.diamondCount
+    : (data.gift && data.gift.diamond_count != null ? data.gift.diamond_count : 1);
   const repeatCount  = data.repeatCount || 1;
   const repeatEnd    = data.repeatEnd !== false; // default true when field is missing
   const giftType     = data.giftType || (data.gift && data.gift.gift_type) || 1;
@@ -1584,15 +1591,29 @@ function handleTikfinityGift(data) {
     return;
   }
 
+  // Tikfinity's diamondCount IS the authoritative per-gift coin value from TikTok's API.
+  // Cache it so SSN embedded messages ("sent Rose × 1") can use the correct value too.
+  const lowerGiftName = (giftName || '').toLowerCase().trim();
+  if (lowerGiftName && diamondCount > 0) {
+    ttGiftCache[lowerGiftName] = diamondCount;
+  }
   const coins = diamondCount * repeatCount;
   const ts    = Date.now();
 
-  console.log('[Tikfinity] gift:', name, giftName, '×', repeatCount, '=', coins, 'coins/diamonds');
+  console.log('[Tikfinity] gift:', name, giftName, '×', repeatCount, '=', coins, 'coins (diamondCount:', diamondCount, ')');
 
   addLogEntry(name, coins, 'tiktok_coins', 'tiktok', ts, false, null);
   if (coins > 0) {
     const key = upsertGift(name, coins, 'tiktok_coins', 'tiktok', '', userId);
-    if (key) flashRow(key);
+    if (key) { renderTable(); flashRow(key); }
+    // Publish gift-alert so gift-bar.html shows the explosion animation
+    if (ablyChannel) {
+      ablyChannel.publish('gift-alert', {
+        name, amount: coins, type: 'tiktok_coins', platform: 'tiktok',
+        contentImg: null, giftTitle: giftName,
+        _src: 'tikfinity',
+      }).catch(() => {});
+    }
   }
 }
 
@@ -1608,20 +1629,13 @@ document.getElementById('tikf-btn-disconnect').addEventListener('click', disconn
  *   YouTube supersticker   → hasDonation = "$5.00"
  *   any     (webhook)      → hasDonation = "$50.00 USD" (Ko-Fi, Stripe, etc.)
  */
-// ── TikTok gift coin values (viewer spend: 1 coin = $0.01) ──
-// SSN sometimes sends TikTok gifts as chat messages ("sent Rose × 1") with empty hasDonation.
-// This table lets us recover the coin count so the gift still gets recorded.
-const TT_GIFT_COINS = {
-  'rose':1,'tiktok':1,'ice cream cone':1,'flower':1,'heart me':1,'thumbs up':1,
-  'paper crane':99,'finger heart':5,'hand heart':99,'sunglasses':49,'doughnut':30,'little crown':10,
-  'panda':5,'perfume':20,'diamond':20,'love you':100,'football':100,'birthday cake':100,
-  'sending strength':100,'rainbow puke':100,'love explosion':69,'interstellar':1000,
-  'concert':500,'castle':500,'rose bouquet':99,'corgi':299,'jolly roger':20,
-  'galaxy':1000,'drama queen':5000,'planet':15000,'lion':29999,'universe':34999,
-  'go popular':99,'jjx pals':1,'universe unboxing':34999,
-};
+// ── TikTok gift coin cache — populated live from Tikfinity events ──
+// Tikfinity is the authoritative source for per-gift coin values.
+// This cache is built as gifts arrive so SSN embedded messages ("sent Rose × 1")
+// get the correct coin count. Starts empty; falls back to 1 for unseen gift types.
+const ttGiftCache = {};
 function ttGiftCoins(name) {
-  return TT_GIFT_COINS[(name||'').toLowerCase().trim()] || 1;
+  return ttGiftCache[(name||'').toLowerCase().trim()] || 1;
 }
 
 // These events are NEVER gifts — exclude even when hasDonation is set
@@ -1700,6 +1714,20 @@ function parseHasDonation(str, knownType) {
   return null;
 }
 
+// ── SSN dedup cache — prevents double-fires (same name+amount+type within 3 s) ──
+const _ssnSeen = new Map();
+function ssnIsDupe(name, amount, type) {
+  const key = name + '|' + amount + '|' + type;
+  const now = Date.now();
+  const last = _ssnSeen.get(key) || 0;
+  if (now - last < 3000) return true;
+  _ssnSeen.set(key, now);
+  if (_ssnSeen.size > 200) {
+    for (const [k, t] of _ssnSeen) { if (now - t > 10000) _ssnSeen.delete(k); }
+  }
+  return false;
+}
+
 function handleSSNEvent(payload) {
   const data = Array.isArray(payload) ? payload[1] : payload;
   if (!data || typeof data !== 'object') return;
@@ -1749,8 +1777,12 @@ function handleSSNEvent(payload) {
 
   // YouTube always uses named event strings for real superchats — hasDonation alone
   // is not trustworthy for YouTube (member chat messages may have it set).
+  // EXCEPTION: YouTube jewel donations — SSN sometimes omits data.event, sending only
+  // hasDonation = "N Jewels". Detect them explicitly so they still count.
+  const isYTJewels = ssnPlatform === 'youtube' && /^\d[\d,]*\s*jewels?$/i.test(hasDonationStr);
+
   // TikTok fallback: only when platform is explicitly 'tiktok' (not empty/unknown).
-  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube') || ttEmbedCoins > 0;
+  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube') || ttEmbedCoins > 0 || isYTJewels;
 
   // Route TikTok chat messages to the chat panel (badge level captured below)
   const isTikTokChat = (ssnPlatform === 'tiktok') && !isRelevant && !!data.chatmessage;
@@ -1777,7 +1809,11 @@ function handleSSNEvent(payload) {
   if (ttEmbedCoins > 0) {
     type = 'tiktok_coins';
   } else if (type === null) {
-    return; // excluded type slipped through (safety net)
+    if (isYTJewels) {
+      type = 'youtube_jewels'; // SSN jewel donation arrived without a named event string
+    } else {
+      return; // excluded type slipped through (safety net)
+    }
   }
   const platform = (ttEmbedCoins > 0 && !ssnPlatform) ? 'tiktok' : (ssnPlatform || typeToPlatform(type));
   const ts = Date.now();
@@ -1795,6 +1831,19 @@ function handleSSNEvent(payload) {
       amount = parsed.amount;
       if (parsed.type) type = parsed.type;
       console.log('[SSN] raw unit amount from hasDonation:', hasDonationStr, '→', amount, type);
+    }
+  }
+
+  // For tiktok_coins: if Tikfinity has already seen this gift, its cached per-gift value
+  // is authoritative over SSN's hasDonation (SSN misreports some values).
+  if (amount > 0 && type === 'tiktok_coins') {
+    const giftKey = (data.gifttitle || '').toLowerCase().trim();
+    if (giftKey && Object.prototype.hasOwnProperty.call(ttGiftCache, giftKey)) {
+      const corrected = ttGiftCache[giftKey];
+      if (corrected !== amount) {
+        console.log('[SSN] Tikfinity cache override:', giftKey, '→', corrected, 'coins (SSN said:', hasDonationStr, ')');
+      }
+      amount = corrected;
     }
   }
 
@@ -1858,7 +1907,7 @@ function handleSSNEvent(payload) {
   }
 
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, badgeLevel);
-  if (isRelevant && amount > 0) {
+  if (isRelevant && amount > 0 && !ssnIsDupe(name, amount, type)) {
     const key = upsertGift(name, amount, type, platform, '', userId);
     renderTable();
     flashRow(key);
@@ -2728,6 +2777,7 @@ setTimeout(() => {
     }
     if (gbtSelectedMode === 'progress') {
       cmd.goalAmount = parseFloat(document.getElementById('gbt-goal-amt').value) || 100;
+      cmd.prizeName  = (document.getElementById('gbt-prize-name').value || '').trim().toUpperCase();
     }
     ablyChannel.publish('gift-battle-cmd', cmd)
       .then(() => {
