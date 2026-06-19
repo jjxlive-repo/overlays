@@ -309,7 +309,7 @@ html, body {
   line-height: 1.42;
   word-break: break-word;
 }
-.msg-text img { height: 16px; vertical-align: middle; margin: 0 1px; }
+.msg-text img { height: 16px !important; max-height: 16px !important; width: auto !important; max-width: 80px; vertical-align: middle; margin: 0 1px; }
 
 /* ── GIFT ROW ── */
 .gift-row {
@@ -1445,18 +1445,13 @@ function updateViewerCount(key, count) {
 }
 
 
-/* ── TikTok gift coin table (mirrors tracker.html) ── */
-const TT_GIFT_COINS = {
-  'rose':1,'tiktok':1,'ice cream cone':1,'flower':1,'heart me':1,'thumbs up':1,
-  'paper crane':99,'finger heart':5,'hand heart':99,'sunglasses':49,'doughnut':30,'little crown':10,
-  'panda':5,'perfume':20,'diamond':20,'love you':100,'football':100,'birthday cake':100,
-  'sending strength':100,'rainbow puke':100,'love explosion':69,'interstellar':1000,
-  'concert':500,'castle':500,'rose bouquet':99,'corgi':299,'jolly roger':20,
-  'galaxy':1000,'drama queen':5000,'planet':15000,'lion':29999,'universe':34999,
-  'go popular':99,'jjx pals':1,'universe unboxing':34999,
-};
+/* ── TikTok gift coin cache (populated by tracker.html via Tikfinity events) ──
+   stream-dock doesn't connect to Tikfinity directly, so this cache stays empty
+   until tracker has seen a gift type. SSN hasDonation (parseDockAmount) is the
+   primary amount source for this file; ttGiftCoins is only the embedded-msg fallback. */
+const ttGiftCache = {};
 function ttGiftCoins(name) {
-  return TT_GIFT_COINS[(name||'').toLowerCase().trim()] || 1;
+  return ttGiftCache[(name||'').toLowerCase().trim()] || 1;
 }
 
 /* ── Gift-alert helpers: parse amount + map type for Ably publish ── */
@@ -2295,9 +2290,6 @@ function eventPromoSaveLocal() {
 function eventPromoPublish(name, payload) {
   if (!ablyChannel) return;
   ablyChannel.publish(name, payload).catch(() => {});
-  if (name === 'event-promo') {
-    ablyChannel.publish('cmd', payload).catch(() => {});
-  }
 }
 
 function eventPromoSendConfig(config) {
@@ -2349,7 +2341,7 @@ function eventPromoShow(mode) {
   const config = eventPromoSaveLocal();
   eventPromoSendConfig(config);
   const durationMap = { passive: config.durations.passiveMs, 'fight-card': config.durations.fightCardMs, 'fun-drawer': 15000, paintball: config.durations.paintballMs };
-  eventPromoPublish('event-promo', { type: 'event-promo-show', mode, durationMs: durationMap[mode] });
+  eventPromoPublish('event-promo', { type: 'event-promo-show', mode, durationMs: durationMap[mode], config });
   doFlash('green');
 }
 
