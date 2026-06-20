@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>👁 Deuteranopia Filter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100vh;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* ── Canvas — fills the window, game video renders here ──────────────── */
+    #c {
+      display: block;
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Start screen (shown before capture) ─────────────────────────────── */
+    #prompt {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background: #0d0015;
+      font-family: 'DM Sans', sans-serif;
+      text-align: center;
+      padding: 40px;
+      z-index: 100;
+    }
+
+    #prompt h2 {
+      font-family: 'Boogaloo', cursive;
+      font-size: 36px;
+      color: #E879F9;
+      letter-spacing: 2px;
+    }
+
+    #prompt p {
+      font-size: 15px;
+      color: #C084FC;
+      max-width: 420px;
+      line-height: 1.7;
+    }
+
+    #prompt .steps {
+      background: #1a0030;
+      border: 2px solid #3B0764;
+      border-radius: 16px;
+      padding: 20px 28px;
+      text-align: left;
+      max-width: 420px;
+      width: 100%;
+    }
+
+    #prompt .steps ol {
+      list-style: none;
+      counter-reset: step;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #prompt .steps ol li {
+      counter-increment: step;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 14px;
+      color: #C084FC;
+      line-height: 1.5;
+    }
+
+    #prompt .steps ol li::before {
+      content: counter(step);
+      background: #7B2FBE;
+      color: #FAF5FF;
+      font-family: 'Boogaloo', cursive;
+      font-size: 13px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    #start-btn {
+      padding: 18px 48px;
+      background: linear-gradient(135deg, #7B2FBE, #A855F7);
+      color: #FAF5FF;
+      border: none;
+      border-radius: 16px;
+      font-family: 'Boogaloo', cursive;
+      font-size: 22px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 0 30px #A855F766;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    #start-btn:hover { box-shadow: 0 0 50px #A855F7aa; }
+    #start-btn:active { transform: scale(0.97); }
+
+    /* ── HUD (shown while running) ───────────────────────────────────────── */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: none;  /* shown after capture starts */
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      background: rgba(13, 0, 21, 0.75);
+      backdrop-filter: blur(8px);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: #C084FC;
+      z-index: 50;
+      gap: 12px;
+    }
+
+    #hud .hud-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #hud-strength {
+      font-family: 'Boogaloo', cursive;
+      font-size: 16px;
+      color: #E879F9;
+    }
+
+    #hud-cells {
+      font-size: 12px;
+      color: #7B2FBE;
+    }
+
+    #hud-recapture {
+      background: #1a0030;
+      border: 1px solid #3B0764;
+      border-radius: 8px;
+      padding: 4px 12px;
+      color: #C084FC;
+      font-size: 12px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #hud-recapture:hover { border-color: #7B2FBE; }
+
+    /* ── Connection dot ──────────────────────────────────────────────────── */
+    #dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+      transition: background 0.3s ease, box-shadow 0.3s ease;
+    }
+    #dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 5px #22c55e;
+    }
+
+    /* ── Grid guide lines (drawn via canvas, but this is a subtle CSS hint) */
+    #grid-hint {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+      /* actual grid lines drawn on canvas for pixel accuracy */
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── SVG filter: Machado 2009 deuteranopia, interpolated by JS ───────── -->
+  <svg xmlns="http://www.w3.org/2000/svg"
+       style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <filter id="deut" x="0%" y="0%" width="100%" height="100%"
+              color-interpolation-filters="linearRGB">
+        <feColorMatrix id="cbMatrix" type="matrix"
+          values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- Canvas: game video rendered here with per-cell filter applied -->
+  <canvas id="c"></canvas>
+
+  <!-- HUD bar (visible while running) -->
+  <div id="hud">
+    <div class="hud-left">
+      <div id="dot"></div>
+      <span id="hud-strength">100%</span>
+      <span id="hud-cells">60/60 cells active</span>
+    </div>
+    <button id="hud-recapture" onclick="startCapture()">↺ Change source</button>
+  </div>
+
+  <!-- Start prompt -->
+  <div id="prompt">
+    <h2>👁 Deuteranopia Filter</h2>
+    <p>
+      This window captures your game and shows it with your colorblindness
+      filter applied. TikTok Studio's display capture will pick up the filtered version.
+    </p>
+
+    <div class="steps">
+      <ol>
+        <li>Click the button below and pick your <strong>game window</strong> (or whole screen)</li>
+        <li>Resize + position this Chrome window over where your game was</li>
+        <li>Control which areas get filtered using the controller tab</li>
+        <li>TikTok Studio display capture sees the result automatically</li>
+      </ol>
+    </div>
+
+    <button id="start-btn" onclick="startCapture()">📹 Select source to filter</button>
+    <p style="font-size:12px;opacity:0.4">Chrome will ask which window or screen to capture</p>
+  </div>
+
+  <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+  <script>
+    // ── CONFIG ──────────────────────────────────────────────────────────────
+    const CONFIG = {
+      GRID_COLS:        6,
+      GRID_ROWS:        10,
+      DEFAULT_STRENGTH: 1.0,
+      ABLY_KEY:         'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+      ABLY_CHANNEL:     'splat-overlay',
+    };
+
+    const COLS  = CONFIG.GRID_COLS;
+    const ROWS  = CONFIG.GRID_ROWS;
+    const TOTAL = COLS * ROWS;
+
+    // ── State ────────────────────────────────────────────────────────────────
+    const activeSet = new Set([...Array(TOTAL).keys()]); // default: all active
+    let strength    = CONFIG.DEFAULT_STRENGTH;
+
+    // ── Elements ─────────────────────────────────────────────────────────────
+    const canvas   = document.getElementById('c');
+    const ctx      = canvas.getContext('2d');
+    const hud      = document.getElementById('hud');
+    const prompt   = document.getElementById('prompt');
+    const dot      = document.getElementById('dot');
+    const cbMatrix = document.getElementById('cbMatrix');
+
+    // ── Color matrix interpolation ───────────────────────────────────────────
+    const IDENTITY = [1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
+    const DEUT     = [0.367,0.861,-0.228,0,0, 0.280,0.673,0.047,0,0,
+                     -0.012,0.043,0.969,0,0, 0,0,0,1,0];
+
+    function updateMatrix() {
+      const values = IDENTITY.map((v, i) => v + strength * (DEUT[i] - v));
+      cbMatrix.setAttribute('values', values.join(' '));
+      document.getElementById('hud-strength').textContent =
+        Math.round(strength * 100) + '%';
+    }
+
+    updateMatrix();
+
+    // ── Video source ─────────────────────────────────────────────────────────
+    const video = document.createElement('video');
+    video.autoplay    = true;
+    video.muted       = true;
+    video.playsInline = true;
+
+    let rafId = null;
+
+    async function startCapture() {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            frameRate:   { ideal: 60 },
+            cursor:      'never',
+          },
+          audio: false,
+        });
+
+        // Stop any existing capture
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(t => t.stop());
+        }
+
+        video.srcObject = stream;
+        await video.play();
+
+        video.addEventListener('loadedmetadata', () => {
+          // Set canvas to match captured video resolution
+          canvas.width  = video.videoWidth;
+          canvas.height = video.videoHeight;
+
+          // Switch from prompt to live view
+          prompt.style.display = 'none';
+          hud.style.display    = 'flex';
+
+          // Start render loop
+          if (rafId) cancelAnimationFrame(rafId);
+          render();
+        }, { once: true });
+
+        // If the user stops sharing
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          prompt.style.display = 'flex';
+          hud.style.display    = 'none';
+          if (rafId) cancelAnimationFrame(rafId);
+        });
+
+      } catch (e) {
+        if (e.name !== 'NotAllowedError') {
+          alert('Could not start capture: ' + e.message);
+        }
+      }
+    }
+
+    // ── Render loop ───────────────────────────────────────────────────────────
+    function render() {
+      rafId = requestAnimationFrame(render);
+      if (!video.videoWidth || video.paused || video.ended) return;
+
+      const W     = canvas.width;
+      const H     = canvas.height;
+      const cellW = W / COLS;
+      const cellH = H / ROWS;
+
+      // ── Pass 1: draw all inactive cells without filter ────────────────────
+      // Batch these together to avoid per-cell filter state changes
+      ctx.filter = 'none';
+      for (let i = 0; i < TOTAL; i++) {
+        if (activeSet.has(i)) continue;
+        const col = i % COLS;
+        const row = Math.floor(i / COLS);
+        const sx = col * cellW, sy = row * cellH;
+        ctx.drawImage(video, sx, sy, cellW, cellH, sx, sy, cellW, cellH);
+      }
+
+      // ── Pass 2: draw all active cells with deuteranopia filter ────────────
+      if (activeSet.size > 0) {
+        ctx.filter = 'url(#deut)';
+        for (let i = 0; i < TOTAL; i++) {
+          if (!activeSet.has(i)) continue;
+          const col = i % COLS;
+          const row = Math.floor(i / COLS);
+          const sx = col * cellW, sy = row * cellH;
+          ctx.drawImage(video, sx, sy, cellW, cellH, sx, sy, cellW, cellH);
+        }
+        ctx.filter = 'none';
+      }
+
+      // ── Draw faint grid lines when mix of active/inactive ─────────────────
+      if (activeSet.size > 0 && activeSet.size < TOTAL) {
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+        ctx.lineWidth   = 1;
+        for (let r = 1; r < ROWS; r++) {
+          ctx.beginPath();
+          ctx.moveTo(0, r * cellH);
+          ctx.lineTo(W, r * cellH);
+          ctx.stroke();
+        }
+        for (let c = 1; c < COLS; c++) {
+          ctx.beginPath();
+          ctx.moveTo(c * cellW, 0);
+          ctx.lineTo(c * cellW, H);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // ── HUD cell count ────────────────────────────────────────────────────────
+    function updateHudCells() {
+      document.getElementById('hud-cells').textContent =
+        `${activeSet.size}/${TOTAL} cells active`;
+    }
+
+    // ── Ably ─────────────────────────────────────────────────────────────────
+    const ably    = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+    const channel = ably.channels.get(CONFIG.ABLY_CHANNEL);
+
+    ably.connection.on('connected',    () => dot.classList.add('connected'));
+    ably.connection.on('disconnected', () => dot.classList.remove('connected'));
+    ably.connection.on('failed',       () => dot.classList.remove('connected'));
+
+    channel.subscribe('cmd', (msg) => {
+      const d = msg.data;
+      if (!d) return;
+
+      if (d.type === 'grid-state') {
+        activeSet.clear();
+        (d.active || []).forEach(i => activeSet.add(i));
+        updateHudCells();
+        return;
+      }
+
+      if (d.type === 'set-strength') {
+        strength = Math.max(0, Math.min(1, d.value));
+        updateMatrix();
+        return;
+      }
+
+      if (d === 'cb-on') {
+        [...Array(TOTAL).keys()].forEach(i => activeSet.add(i));
+        updateHudCells();
+      }
+      if (d === 'cb-off') {
+        activeSet.clear();
+        updateHudCells();
+      }
+    });
+
+    // ── Init HUD ──────────────────────────────────────────────────────────────
+    updateHudCells();
+  </script>
+</body>
+</html>
