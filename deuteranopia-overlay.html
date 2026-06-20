@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Deuteranopia Grid Overlay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    /* ── Grid container ─────────────────────────────────────────────────── */
+    #grid {
+      position: absolute;
+      top: 0; left: 0;
+      width: 1080px;
+      height: 1920px;
+      display: grid;
+      /* columns and rows injected by JS from CONFIG */
+    }
+
+    /* ── Individual cells ───────────────────────────────────────────────── */
+    .cell {
+      position: relative;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      /* No border by default — invisible */
+    }
+
+    /* When the grid has ANY active cell, show faint guide lines */
+    #grid.has-active .cell {
+      outline: 1px solid rgba(168, 85, 247, 0.12);
+    }
+
+    /* Active cell: apply the deuteranopia transform + visible border */
+    .cell.active {
+      backdrop-filter: url(#deuteranopia);
+      -webkit-backdrop-filter: url(#deuteranopia);
+      outline: 1.5px solid rgba(168, 85, 247, 0.45) !important;
+    }
+
+    /* ── Connection dot ─────────────────────────────────────────────────── */
+    #dot {
+      position: absolute;
+      top: 24px; right: 24px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.3s ease, box-shadow 0.3s ease;
+      z-index: 10;
+    }
+    #dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Deuteranopia SVG filter (Machado 2009, interpolated by severity) -->
+  <!-- severity=0 → identity (no change)                                  -->
+  <!-- severity=1 → full deuteranopia simulation                          -->
+  <!-- JS updates the values attribute in real-time via setStrength()     -->
+  <svg xmlns="http://www.w3.org/2000/svg"
+       style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <filter id="deuteranopia"
+              x="0%" y="0%" width="100%" height="100%"
+              color-interpolation-filters="linearRGB">
+        <feColorMatrix id="cbMatrix" type="matrix" values="
+           0.367  0.861 -0.228  0  0
+           0.280  0.673  0.047  0  0
+          -0.012  0.043  0.969  0  0
+           0      0      0      1  0
+        "/>
+      </filter>
+    </defs>
+  </svg>
+
+  <div id="grid"></div>
+  <div id="dot"></div>
+
+  <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+  <script>
+    // ── CONFIG ──────────────────────────────────────────────────────────────
+    const CONFIG = {
+      GRID_COLS:       6,
+      GRID_ROWS:       10,
+      DEFAULT_STRENGTH: 1.0,   // 0 = no effect, 1 = full deuteranopia
+      ABLY_KEY:        'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+      ABLY_CHANNEL:    'splat-overlay',
+    };
+
+    // ── Color matrix interpolation ──────────────────────────────────────────
+    // Identity matrix (no colour change)
+    const IDENTITY = [
+      1, 0, 0, 0, 0,
+      0, 1, 0, 0, 0,
+      0, 0, 1, 0, 0,
+      0, 0, 0, 1, 0,
+    ];
+    // Full deuteranopia — Machado et al. 2009, severity = 1.0
+    const DEUTERANOPIA = [
+       0.367,  0.861, -0.228, 0, 0,
+       0.280,  0.673,  0.047, 0, 0,
+      -0.012,  0.043,  0.969, 0, 0,
+       0,      0,      0,     1, 0,
+    ];
+
+    const cbMatrix = document.getElementById('cbMatrix');
+
+    function setStrength(severity) {
+      // Lerp each matrix coefficient between identity and full deuteranopia
+      const values = IDENTITY.map((v, i) => v + severity * (DEUTERANOPIA[i] - v));
+      cbMatrix.setAttribute('values', values.join(' '));
+    }
+
+    // Apply default on load
+    setStrength(CONFIG.DEFAULT_STRENGTH);
+
+    // ── Build grid ──────────────────────────────────────────────────────────
+    const COLS  = CONFIG.GRID_COLS;
+    const ROWS  = CONFIG.GRID_ROWS;
+    const TOTAL = COLS * ROWS;
+
+    const gridEl = document.getElementById('grid');
+    gridEl.style.gridTemplateColumns = `repeat(${COLS}, ${1080 / COLS}px)`;
+    gridEl.style.gridTemplateRows    = `repeat(${ROWS}, ${1920 / ROWS}px)`;
+
+    const cells = Array.from({ length: TOTAL }, () => {
+      const el = document.createElement('div');
+      el.className = 'cell';
+      gridEl.appendChild(el);
+      return el;
+    });
+
+    // ── Apply state ─────────────────────────────────────────────────────────
+    function applyState(activeIndices) {
+      const activeSet = new Set(activeIndices);
+      cells.forEach((cell, i) => cell.classList.toggle('active', activeSet.has(i)));
+      gridEl.classList.toggle('has-active', activeIndices.length > 0);
+    }
+
+    // ── Ably ────────────────────────────────────────────────────────────────
+    const dot     = document.getElementById('dot');
+    const ably    = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+    const channel = ably.channels.get(CONFIG.ABLY_CHANNEL);
+
+    ably.connection.on('connected',    () => dot.classList.add('connected'));
+    ably.connection.on('disconnected', () => dot.classList.remove('connected'));
+    ably.connection.on('failed',       () => dot.classList.remove('connected'));
+
+    channel.subscribe('cmd', (msg) => {
+      const d = msg.data;
+      // Grid state message from controller
+      if (d && typeof d === 'object' && d.type === 'grid-state') {
+        applyState(d.active || []);
+        return;
+      }
+      // Strength adjustment
+      if (d.type === 'set-strength') {
+        setStrength(Math.max(0, Math.min(1, d.value)));
+        return;
+      }
+      // Legacy / quick commands
+      if (d === 'cb-on')  applyState([...Array(TOTAL).keys()]);
+      if (d === 'cb-off') applyState([]);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Deuteranopia Grid Controller</title>
+  <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0015;
+      color: #FAF5FF;
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 36px;
+      padding: 36px 28px;
+    }
+
+    /* ── Left column: grid ────────────────────────────────────────────────── */
+    #left-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    h1 {
+      font-family: 'Boogaloo', cursive;
+      font-size: 28px;
+      color: #C084FC;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+    h1 span { color: #E879F9; }
+
+    /* Phone-shaped container */
+    #phone-shell {
+      background: #1a0030;
+      border: 3px solid #3B0764;
+      border-radius: 28px;
+      padding: 14px;
+      box-shadow: 0 0 40px #7B2FBE33;
+    }
+
+    /* The actual clickable grid */
+    #ctrl-grid {
+      display: grid;
+      /* set by JS */
+      gap: 3px;
+      cursor: crosshair;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .ctrl-cell {
+      border-radius: 4px;
+      background: #2a004a;
+      border: 1.5px solid #3B0764;
+      transition: background 0.08s ease, border-color 0.08s ease;
+    }
+
+    .ctrl-cell:hover {
+      border-color: #7B2FBE;
+    }
+
+    .ctrl-cell.active {
+      background: linear-gradient(135deg, #7B2FBE, #A855F7);
+      border-color: #C084FC;
+      box-shadow: 0 0 8px #A855F766;
+    }
+
+    /* ── Right column: controls ───────────────────────────────────────────── */
+    #right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 48px;
+      min-width: 220px;
+    }
+
+    /* ── Button group ─────────────────────────────────────────────────────── */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-group-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #7B2FBE;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 14px 20px;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.1s ease;
+    }
+    button:active { transform: scale(0.96); }
+
+    #btn-fill-all {
+      background: linear-gradient(135deg, #7B2FBE, #A855F7);
+      color: #FAF5FF;
+      box-shadow: 0 0 20px #A855F755;
+    }
+    #btn-fill-all:hover { box-shadow: 0 0 30px #A855F788; }
+
+    #btn-clear-all {
+      background: #1a0030;
+      color: #C084FC;
+      border: 2px solid #3B0764;
+    }
+    #btn-clear-all:hover { border-color: #7B2FBE; }
+
+    #btn-invert {
+      background: #1a0030;
+      color: #C084FC;
+      border: 2px solid #3B0764;
+    }
+    #btn-invert:hover { border-color: #7B2FBE; }
+
+    /* ── Row/column selectors ─────────────────────────────────────────────── */
+    .rc-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .rc-btn {
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      background: #1a0030;
+      color: #A855F7;
+      border: 1.5px solid #3B0764;
+      border-radius: 8px;
+    }
+    .rc-btn:hover { border-color: #7B2FBE; }
+
+    /* ── Status ───────────────────────────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 18px;
+      background: #1a0030;
+      border-radius: 12px;
+      border: 2px solid #3B0764;
+      font-size: 13px;
+      font-weight: 600;
+      color: #C084FC;
+    }
+    #status-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+    }
+    #status-dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+    }
+
+    /* ── Count badge ──────────────────────────────────────────────────────── */
+    #count-badge {
+      font-family: 'Boogaloo', cursive;
+      font-size: 15px;
+      color: #7B2FBE;
+      text-align: center;
+    }
+
+    /* ── Keyboard shortcut chips ──────────────────────────────────────────── */
+    #shortcuts {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .key-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #7B2FBE;
+    }
+    .key-row kbd {
+      background: #1a0030;
+      border: 1.5px solid #3B0764;
+      border-radius: 5px;
+      padding: 2px 7px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #C084FC;
+    }
+
+    /* ── Strength slider ──────────────────────────────────────────────────── */
+    #strength-block {
+      background: #1a0030;
+      border: 2px solid #3B0764;
+      border-radius: 16px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #strength-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    #strength-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #7B2FBE;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    #strength-value {
+      font-family: 'Boogaloo', cursive;
+      font-size: 22px;
+      color: #E879F9;
+    }
+
+    #strength-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(to right, #A855F7 var(--pct, 100%), #3B0764 var(--pct, 100%));
+      outline: none;
+      cursor: pointer;
+    }
+
+    #strength-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #C084FC, #7B2FBE);
+      border: 2px solid #E879F9;
+      box-shadow: 0 0 10px #A855F766;
+      cursor: grab;
+    }
+
+    #strength-slider::-webkit-slider-thumb:active { cursor: grabbing; }
+
+    #strength-hint {
+      font-size: 11px;
+      color: #3B0764;
+      line-height: 1.5;
+    }
+
+    /* ── Feedback toast ───────────────────────────────────────────────────── */
+    #feedback {
+      font-size: 13px;
+      color: #7B2FBE;
+      min-height: 18px;
+      transition: color 0.2s ease;
+    }
+    #feedback.ok  { color: #22c55e; }
+    #feedback.err { color: #F43F5E; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Left: phone preview grid ─────────────────────────────────────────── -->
+  <div id="left-col">
+    <h1>👁 <span>Colorblind</span> Grid</h1>
+
+    <div id="phone-shell">
+      <div id="ctrl-grid"></div>
+    </div>
+
+    <div id="count-badge">0 / 0 cells active</div>
+    <div id="feedback">Click or drag cells to select</div>
+  </div>
+
+  <!-- ── Right: action panel ───────────────────────────────────────────────── -->
+  <div id="right-col">
+
+    <div id="status-bar">
+      <div id="status-dot"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
+
+    <div class="btn-group">
+      <div class="btn-group-label">Selection</div>
+      <button id="btn-fill-all"  onclick="fillAll()">👁 Fill All</button>
+      <button id="btn-clear-all" onclick="clearAll()">✕ Clear All</button>
+      <button id="btn-invert"    onclick="invertAll()">⇄ Invert</button>
+    </div>
+
+    <div class="btn-group">
+      <div class="btn-group-label">Select Row</div>
+      <div class="rc-group" id="row-btns"></div>
+    </div>
+
+    <div class="btn-group">
+      <div class="btn-group-label">Select Column</div>
+      <div class="rc-group" id="col-btns"></div>
+    </div>
+
+    <!-- ── Strength slider ────────────────────────────────────────────────── -->
+    <div id="strength-block">
+      <div id="strength-header">
+        <div id="strength-title">Filter Strength</div>
+        <div id="strength-value">100%</div>
+      </div>
+      <input id="strength-slider" type="range" min="0" max="100" value="100"
+             oninput="onStrengthInput(this.value)">
+      <div id="strength-hint">
+        Scrub until the overlay and raw feed look identical to you — that's your match point.
+      </div>
+    </div>
+
+    <div id="shortcuts">
+      <div class="btn-group-label">Keyboard</div>
+      <div class="key-row"><kbd>[</kbd> Fill all</div>
+      <div class="key-row"><kbd>]</kbd> Clear all</div>
+      <div class="key-row"><kbd>Esc</kbd> Clear all</div>
+      <div class="key-row"><kbd>I</kbd> Invert</div>
+      <div class="key-row"><kbd>↑↓</kbd> Strength ±1%</div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+  <script>
+    // ── CONFIG ──────────────────────────────────────────────────────────────
+    const CONFIG = {
+      GRID_COLS:        6,
+      GRID_ROWS:        10,
+      CTRL_CELL_W:      52,
+      CTRL_CELL_H:      56,
+      DEFAULT_STRENGTH: 100,   // percent, 0–100
+      ABLY_KEY:         'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+      ABLY_CHANNEL:     'splat-overlay',
+      DEBOUNCE_MS:      120,
+    };
+
+    const COLS  = CONFIG.GRID_COLS;
+    const ROWS  = CONFIG.GRID_ROWS;
+    const TOTAL = COLS * ROWS;
+
+    // ── State ────────────────────────────────────────────────────────────────
+    const activeSet = new Set();  // set of active cell indices
+    let currentStrength = CONFIG.DEFAULT_STRENGTH;  // 0–100 percent
+
+    // ── Strength slider ───────────────────────────────────────────────────────
+    const strengthSlider = document.getElementById('strength-slider');
+    const strengthValue  = document.getElementById('strength-value');
+
+    let strengthDebounce = null;
+
+    function onStrengthInput(pct) {
+      currentStrength = parseInt(pct, 10);
+      strengthValue.textContent = currentStrength + '%';
+      // Update slider gradient fill
+      strengthSlider.style.setProperty('--pct', currentStrength + '%');
+      // Debounce publish
+      clearTimeout(strengthDebounce);
+      strengthDebounce = setTimeout(() => publishStrength(currentStrength), 80);
+    }
+
+    async function publishStrength(pct) {
+      if (!connected) return;
+      try {
+        await channel.publish('cmd', { type: 'set-strength', value: pct / 100 });
+      } catch (e) {
+        flash('Strength send failed', 'err');
+      }
+    }
+
+    // Init slider display
+    strengthSlider.value = CONFIG.DEFAULT_STRENGTH;
+    onStrengthInput(CONFIG.DEFAULT_STRENGTH);
+
+    // ── Build controller grid ────────────────────────────────────────────────
+    const ctrlGrid = document.getElementById('ctrl-grid');
+    ctrlGrid.style.gridTemplateColumns = `repeat(${COLS}, ${CONFIG.CTRL_CELL_W}px)`;
+    ctrlGrid.style.gridTemplateRows    = `repeat(${ROWS}, ${CONFIG.CTRL_CELL_H}px)`;
+    ctrlGrid.style.gap = '3px';
+
+    const ctrlCells = Array.from({ length: TOTAL }, (_, i) => {
+      const el = document.createElement('div');
+      el.className   = 'ctrl-cell';
+      el.dataset.idx = i;
+      ctrlGrid.appendChild(el);
+      return el;
+    });
+
+    // ── UI sync ──────────────────────────────────────────────────────────────
+    function syncUI() {
+      ctrlCells.forEach((el, i) => el.classList.toggle('active', activeSet.has(i)));
+      document.getElementById('count-badge').textContent =
+        `${activeSet.size} / ${TOTAL} cells active`;
+    }
+
+    // ── Publish (debounced) ──────────────────────────────────────────────────
+    let debounceTimer = null;
+
+    function schedulePublish() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(publishState, CONFIG.DEBOUNCE_MS);
+    }
+
+    async function publishState() {
+      if (!connected) { flash('Not connected', 'err'); return; }
+      try {
+        await channel.publish('cmd', {
+          type:   'grid-state',
+          active: [...activeSet],
+        });
+        flash(`✓ Synced — ${activeSet.size} cells active`, 'ok');
+      } catch (e) {
+        flash('Send failed: ' + e.message, 'err');
+      }
+    }
+
+    // ── Cell operations ──────────────────────────────────────────────────────
+    function setCells(indices, on) {
+      indices.forEach(i => on ? activeSet.add(i) : activeSet.delete(i));
+      syncUI();
+      schedulePublish();
+    }
+
+    function fillAll()   { setCells([...Array(TOTAL).keys()], true);  }
+    function clearAll()  { setCells([...Array(TOTAL).keys()], false); }
+    function invertAll() { setCells([...Array(TOTAL).keys()], null);
+      // invert is a special case
+      const all = [...Array(TOTAL).keys()];
+      all.forEach(i => activeSet.has(i) ? activeSet.delete(i) : activeSet.add(i));
+      syncUI();
+      schedulePublish();
+    }
+
+    // Fix invertAll — rewrite to avoid the broken null above
+    function invertAll() {
+      [...Array(TOTAL).keys()].forEach(i => {
+        if (activeSet.has(i)) activeSet.delete(i);
+        else activeSet.add(i);
+      });
+      syncUI();
+      schedulePublish();
+    }
+
+    function toggleRow(row) {
+      const indices = [...Array(COLS).keys()].map(c => row * COLS + c);
+      // If all in row are active, deactivate; otherwise activate all
+      const allOn = indices.every(i => activeSet.has(i));
+      setCells(indices, !allOn);
+    }
+
+    function toggleCol(col) {
+      const indices = [...Array(ROWS).keys()].map(r => r * COLS + col);
+      const allOn = indices.every(i => activeSet.has(i));
+      setCells(indices, !allOn);
+    }
+
+    // ── Drag selection ───────────────────────────────────────────────────────
+    let isDragging  = false;
+    let dragMode    = null;   // true = activating, false = deactivating
+
+    function getCellIdx(el) {
+      const d = el.closest('.ctrl-cell');
+      return d ? parseInt(d.dataset.idx, 10) : -1;
+    }
+
+    ctrlGrid.addEventListener('mousedown', (e) => {
+      const idx = getCellIdx(e.target);
+      if (idx < 0) return;
+      e.preventDefault();
+      isDragging = true;
+      // Determine mode from the first cell touched
+      dragMode = !activeSet.has(idx);
+      if (dragMode) activeSet.add(idx); else activeSet.delete(idx);
+      syncUI();
+    });
+
+    ctrlGrid.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const idx = getCellIdx(e.target);
+      if (idx < 0) return;
+      if (dragMode) activeSet.add(idx); else activeSet.delete(idx);
+      syncUI();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        schedulePublish();
+      }
+    });
+
+    // Touch support
+    function touchIdx(e) {
+      const touch = e.touches[0] || e.changedTouches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      return el ? getCellIdx(el) : -1;
+    }
+
+    ctrlGrid.addEventListener('touchstart', (e) => {
+      const idx = touchIdx(e);
+      if (idx < 0) return;
+      e.preventDefault();
+      isDragging = true;
+      dragMode   = !activeSet.has(idx);
+      if (dragMode) activeSet.add(idx); else activeSet.delete(idx);
+      syncUI();
+    }, { passive: false });
+
+    ctrlGrid.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const idx = touchIdx(e);
+      if (idx < 0) return;
+      if (dragMode) activeSet.add(idx); else activeSet.delete(idx);
+      syncUI();
+    }, { passive: false });
+
+    ctrlGrid.addEventListener('touchend', () => {
+      if (isDragging) { isDragging = false; schedulePublish(); }
+    });
+
+    // ── Row/column quick-select buttons ──────────────────────────────────────
+    const rowBtns = document.getElementById('row-btns');
+    const colBtns = document.getElementById('col-btns');
+
+    for (let r = 0; r < ROWS; r++) {
+      const b = document.createElement('button');
+      b.className   = 'rc-btn';
+      b.textContent = `R${r + 1}`;
+      b.onclick     = () => toggleRow(r);
+      rowBtns.appendChild(b);
+    }
+
+    for (let c = 0; c < COLS; c++) {
+      const b = document.createElement('button');
+      b.className   = 'rc-btn';
+      b.textContent = `C${c + 1}`;
+      b.onclick     = () => toggleCol(c);
+      colBtns.appendChild(b);
+    }
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '[')       fillAll();
+      if (e.key === ']')       clearAll();
+      if (e.key === 'Escape')  clearAll();
+      if (e.key === 'i' || e.key === 'I') invertAll();
+      // Arrow keys for fine-grained strength control
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const v = Math.min(100, currentStrength + 1);
+        strengthSlider.value = v;
+        onStrengthInput(v);
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const v = Math.max(0, currentStrength - 1);
+        strengthSlider.value = v;
+        onStrengthInput(v);
+      }
+    });
+
+    // ── Feedback ─────────────────────────────────────────────────────────────
+    const feedbackEl = document.getElementById('feedback');
+    let feedbackTimer;
+
+    function flash(msg, type = '') {
+      feedbackEl.textContent = msg;
+      feedbackEl.className   = type;
+      clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => {
+        feedbackEl.textContent = 'Click or drag cells to select';
+        feedbackEl.className   = '';
+      }, 2000);
+    }
+
+    // ── Ably ─────────────────────────────────────────────────────────────────
+    let connected = false;
+
+    const statusDot  = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const ably       = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+    const channel    = ably.channels.get(CONFIG.ABLY_CHANNEL);
+
+    ably.connection.on('connected', () => {
+      connected = true;
+      statusDot.classList.add('connected');
+      statusText.textContent = 'Connected to overlay';
+    });
+    ably.connection.on('disconnected', () => {
+      connected = false;
+      statusDot.classList.remove('connected');
+      statusText.textContent = 'Disconnected — retrying…';
+    });
+    ably.connection.on('failed', () => {
+      connected = false;
+      statusDot.classList.remove('connected');
+      statusText.textContent = 'Connection failed';
+    });
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    syncUI();
+  </script>
+</body>
+</html>
