@@ -1060,7 +1060,16 @@ html, body {
         <button class="tt-scroll-btn live" id="btn-all-scroll" onclick="toggleAllScroll(event)" title="Toggle auto-scroll">⬇ Live</button>
         <button class="settings-btn" onclick="toggleSettings(event)" title="Font settings">⚙</button>
         <div class="settings-panel" id="settings-panel">
-          <div class="settings-row">
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:5px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:5px;">
+            <span class="settings-label">GitHub Gist sync</span>
+            <input type="password" class="settings-select" id="gist-token" placeholder="ghp_… personal access token" style="width:100%;" oninput="gistCredentialChanged()">
+            <div style="display:flex;gap:5px;width:100%;">
+              <input type="text" class="settings-select" id="gist-id" placeholder="Gist ID (auto-filled on create)" style="flex:1;font-family:monospace;font-size:10px;" oninput="gistCredentialChanged()">
+              <button class="size-btn" id="gist-create-btn" onclick="gistCreate()" style="white-space:nowrap;font-size:10px;">Create</button>
+            </div>
+            <div id="gist-status" style="font-size:9px;color:var(--txt-dim);min-height:12px;"></div>
+          </div>
+        <div class="settings-row">
             <span class="settings-label">Font</span>
             <select class="settings-select" id="font-select" onchange="applyFont()">
               <option value="'DM Sans', sans-serif">DM Sans</option>
@@ -2403,6 +2412,7 @@ function eventPromoSaveLocal() {
   const cfg = eventPromoReadConfig();
   try { localStorage.setItem(EVENT_PROMO_STORAGE_KEY, JSON.stringify(cfg)); }
   catch(e) { console.warn('[event-promo] localStorage save failed:', e); }
+  scheduleGistSave();
   return cfg;
 }
 
@@ -2787,6 +2797,7 @@ function cpAddPreset() {
   if (!text) return;
   cpPresets.push({ text, sub });
   localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
+  scheduleGistSave();
   document.getElementById('cp-preset-add-text').value = '';
   document.getElementById('cp-preset-add-sub').value  = '';
   cpRenderPresetList();
@@ -2795,6 +2806,7 @@ function cpAddPreset() {
 function cpRemovePreset(idx) {
   cpPresets.splice(idx, 1);
   localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
+  scheduleGistSave();
   cpRenderPresetList();
 }
 
@@ -2853,10 +2865,12 @@ function applyFont() {
   currentFont = sel.value;
   localStorage.setItem('dock-font', currentFont);
   document.documentElement.style.setProperty('--font', currentFont);
+  scheduleGistSave();
 }
 
 function applySize() {
   localStorage.setItem('dock-font-size', currentSize);
+  scheduleGistSave();
   document.getElementById('size-val').textContent = currentSize;
   /* scale all message text */
   document.querySelectorAll('.msg-text, .gift-detail, .gift-name, .msg-name, .gift-amt').forEach(el => {
@@ -2883,6 +2897,114 @@ document.addEventListener('click', () => {
   document.getElementById('settings-panel').classList.remove('open');
 });
 
+/* ═══════════════════════════════════════════
+   GITHUB GIST SYNC
+═══════════════════════════════════════════ */
+const GIST_FILENAME = 'jjx-dock-settings.json';
+let _gistId    = localStorage.getItem('gist-id')    || '';
+let _gistToken = localStorage.getItem('gist-token') || '';
+let _gistSaveTimer = null;
+let _gistSaving = false;
+
+function gistCredentialChanged() {
+  _gistToken = document.getElementById('gist-token').value.trim();
+  _gistId    = document.getElementById('gist-id').value.trim();
+  localStorage.setItem('gist-token', _gistToken);
+  localStorage.setItem('gist-id',    _gistId);
+}
+
+function gistSetStatus(msg, color) {
+  const el = document.getElementById('gist-status');
+  if (el) { el.textContent = msg; el.style.color = color || 'var(--txt-dim)'; }
+}
+
+function gistBundle() {
+  return JSON.stringify({
+    cpPresets,
+    eventPromo: (() => { try { return JSON.parse(localStorage.getItem(EVENT_PROMO_STORAGE_KEY) || 'null'); } catch(e) { return null; } })(),
+    dockFont:     currentFont,
+    dockFontSize: currentSize,
+  }, null, 2);
+}
+
+async function gistSave() {
+  if (!_gistToken || !_gistId) return;
+  if (_gistSaving) return;
+  _gistSaving = true;
+  gistSetStatus('Saving…', '#FBBF24');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${_gistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${_gistToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: gistBundle() } } }),
+    });
+    if (!res.ok) throw new Error(res.status);
+    gistSetStatus('✓ Saved ' + new Date().toLocaleTimeString(), '#4ade80');
+  } catch(e) {
+    gistSetStatus('✗ Save failed: ' + e.message, '#f87171');
+  } finally { _gistSaving = false; }
+}
+
+function scheduleGistSave() {
+  clearTimeout(_gistSaveTimer);
+  _gistSaveTimer = setTimeout(gistSave, 1500);
+}
+
+async function gistCreate() {
+  if (!_gistToken) { gistSetStatus('Enter a token first', '#f87171'); return; }
+  gistSetStatus('Creating…', '#FBBF24');
+  try {
+    const res = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_gistToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: 'JJx Stream Dock Settings',
+        public: false,
+        files: { [GIST_FILENAME]: { content: gistBundle() } },
+      }),
+    });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    _gistId = data.id;
+    localStorage.setItem('gist-id', _gistId);
+    document.getElementById('gist-id').value = _gistId;
+    gistSetStatus('✓ Created & saved', '#4ade80');
+  } catch(e) {
+    gistSetStatus('✗ Create failed: ' + e.message, '#f87171');
+  }
+}
+
+async function gistLoad() {
+  if (!_gistToken || !_gistId) return false;
+  gistSetStatus('Loading…', '#FBBF24');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${_gistId}`, {
+      headers: { Authorization: `Bearer ${_gistToken}` },
+    });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const raw  = data.files?.[GIST_FILENAME]?.content;
+    if (!raw) throw new Error('file missing');
+    const settings = JSON.parse(raw);
+
+    if (Array.isArray(settings.cpPresets)) {
+      cpPresets = settings.cpPresets;
+      localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
+    }
+    if (settings.eventPromo) {
+      try { localStorage.setItem(EVENT_PROMO_STORAGE_KEY, JSON.stringify(settings.eventPromo)); } catch(e){}
+    }
+    if (settings.dockFont)     { currentFont = settings.dockFont;     localStorage.setItem('dock-font', currentFont); }
+    if (settings.dockFontSize) { currentSize = settings.dockFontSize; localStorage.setItem('dock-font-size', currentSize); }
+
+    gistSetStatus('✓ Loaded ' + new Date().toLocaleTimeString(), '#4ade80');
+    return true;
+  } catch(e) {
+    gistSetStatus('✗ Load failed: ' + e.message, '#f87171');
+    return false;
+  }
+}
+
 /* restore saved settings */
 (function initSettings() {
   document.documentElement.style.setProperty('--font', currentFont);
@@ -2891,6 +3013,22 @@ document.addEventListener('click', () => {
   for (let i = 0; i < sel.options.length; i++) {
     if (sel.options[i].value === currentFont) { sel.selectedIndex = i; break; }
   }
+  // Restore gist credentials into UI
+  if (_gistToken) document.getElementById('gist-token').value = _gistToken;
+  if (_gistId)    document.getElementById('gist-id').value    = _gistId;
+  // Load from gist on startup, then re-apply settings that may have changed
+  gistLoad().then(loaded => {
+    if (loaded) {
+      document.documentElement.style.setProperty('--font', currentFont);
+      document.getElementById('size-val').textContent = currentSize;
+      const sel = document.getElementById('font-select');
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === currentFont) { sel.selectedIndex = i; break; }
+      }
+      cpRenderPresetList();
+      eventPromoPopulateFields(getEventPromoConfigFromStorage());
+    }
+  });
 })();
 
 wsConnect();
