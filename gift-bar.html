@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
 <title>Gift Bar + Splat Overlay</title>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Boogaloo&family=DM+Sans:wght@700&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
@@ -1543,6 +1544,140 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ep-root.ep-paintball-mode .ep-splat-title,
 .ep-root.ep-paintball-mode .ep-splat-date { animation: epTextPop 0.42s 1.08s cubic-bezier(.34,1.56,.64,1) forwards; }
 @keyframes epTextPop { from { transform: scale(0.55); } to { opacity: 1; transform: scale(1); } }
+
+/* ══ HYPE METER — community engagement notch row ══ */
+#hype-meter {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 5px;
+  pointer-events: none; z-index: 13; display: flex; gap: 2px; padding: 0 2px; align-items: flex-end;
+}
+.hm-seg {
+  flex: 1; height: 5px; border-radius: 1.5px;
+  background: rgba(168,85,247,0.06);
+  transition: background 0.35s ease, box-shadow 0.35s ease, height 0.18s ease;
+}
+.hm-seg.ember {
+  background: rgba(168,85,247,0.22);
+  box-shadow: 0 0 4px rgba(168,85,247,0.28);
+}
+.hm-seg.active {
+  background: rgba(192,132,252,0.80);
+  box-shadow: 0 0 6px 1px rgba(192,132,252,0.55), 0 0 12px rgba(168,85,247,0.35);
+  height: 6px;
+}
+.hm-seg.hot {
+  background: #E879F9;
+  box-shadow: 0 0 10px 3px rgba(232,121,249,0.85), 0 0 22px rgba(168,85,247,0.55);
+  height: 7px;
+  animation: hmSegHot 0.55s ease-in-out infinite alternate;
+}
+@keyframes hmSegHot {
+  from { box-shadow: 0 0 8px 2px rgba(232,121,249,0.75), 0 0 18px rgba(168,85,247,0.45); }
+  to   { box-shadow: 0 0 16px 5px rgba(232,121,249,1.0),  0 0 34px rgba(168,85,247,0.75); }
+}
+.hm-seg.surge {
+  animation: hmSegSurge 0.14s ease-in-out infinite alternate;
+  height: 7px;
+}
+@keyframes hmSegSurge {
+  from { background: #fff; box-shadow: 0 0 8px 3px rgba(255,255,255,0.85); }
+  to   { background: #E879F9; box-shadow: 0 0 18px 6px rgba(232,121,249,1.0); }
+}
+#gift-bar.hm-surge-active #bar-border::before,
+#gift-bar.hm-surge-active #bar-border::after {
+  animation: hmBorderSurge 0.14s ease-in-out infinite alternate;
+}
+@keyframes hmBorderSurge {
+  from { background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.10) 30%, rgba(232,121,249,0.75) 70%, rgba(255,255,255,0.85) 100%); }
+  to   { background: linear-gradient(to right, transparent 0%, rgba(232,121,249,0.25) 30%, rgba(255,255,255,0.65) 70%, rgba(232,121,249,1.0)    100%); }
+}
+#hm-surge-badge {
+  position: absolute; top: 432px; left: 50%;
+  transform: translateX(-50%) scale(0);
+  font-family: 'Anton', sans-serif; font-size: 10px; letter-spacing: 3px;
+  text-transform: uppercase; color: #fff;
+  background: rgba(232,121,249,0.24); border: 1px solid rgba(232,121,249,0.60);
+  padding: 2px 10px; border-radius: 12px; white-space: nowrap;
+  pointer-events: none; z-index: 14;
+  transition: transform 0.32s cubic-bezier(.34,1.56,.64,1);
+}
+#hm-surge-badge.visible {
+  transform: translateX(-50%) scale(1);
+  animation: hmSurgeBadge 0.5s ease-in-out infinite alternate;
+}
+@keyframes hmSurgeBadge {
+  from { box-shadow: 0 0 6px rgba(232,121,249,0.38); }
+  to   { box-shadow: 0 0 18px rgba(232,121,249,0.88), 0 0 30px rgba(232,121,249,0.45); }
+}
+#hm-first-gifter-flash {
+  position: absolute; inset: 0; pointer-events: none; z-index: 14; opacity: 0;
+  background: linear-gradient(to right, transparent 0%, rgba(255,215,0,0.05) 25%, rgba(255,215,0,0.16) 60%, rgba(255,215,0,0.26) 100%);
+}
+#hm-first-gifter-flash.fire { animation: hmFirstFlash 2.8s ease forwards; }
+@keyframes hmFirstFlash {
+  0%,100%{opacity:0} 10%,80%{opacity:1}
+}
+
+/* ══ COMMENT PROMPT — free-floating engagement CTA ══ */
+#comment-prompt {
+  --cpx: 540px; --cpy: 1620px; --cpw: 720px; --cpfm: 44px; --cpfs: 22px;
+  position: absolute;
+  left: clamp(calc(var(--cpw) / 2), var(--cpx), calc(1080px - var(--cpw) / 2));
+  top: var(--cpy);
+  transform: translate(-50%, -50%) scale(0.92);
+  opacity: 0;
+  width: var(--cpw);
+  text-align: center;
+  pointer-events: none; z-index: 16;
+  transition: opacity 0.42s ease, transform 0.42s cubic-bezier(.34,1.56,.64,1),
+              left 0.38s ease, top 0.38s ease;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 16px 30px 14px;
+  background: linear-gradient(160deg, rgba(6,0,18,0.90), rgba(20,4,40,0.87));
+  border-radius: 18px;
+  border: 1px solid rgba(192,132,252,0.52);
+  box-shadow: 0 0 28px rgba(168,85,247,0.32), 0 0 64px rgba(168,85,247,0.10),
+              inset 0 0 22px rgba(59,7,100,0.32);
+  animation: cpGlow 3.2s ease-in-out infinite;
+  overflow: hidden;
+}
+#comment-prompt.visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+#comment-prompt::after {
+  content: ''; position: absolute; top: 0; left: -100%; width: 55%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(192,132,252,0.04), transparent);
+  animation: cpSweep 5.5s ease-in-out 1s infinite; pointer-events: none;
+}
+@keyframes cpSweep { 0%{left:-100%} 60%,100%{left:155%} }
+@keyframes cpGlow {
+  0%,100% { border-color: rgba(192,132,252,0.52); box-shadow: 0 0 28px rgba(168,85,247,0.32), 0 0 64px rgba(168,85,247,0.10), inset 0 0 22px rgba(59,7,100,0.32); }
+  50%     { border-color: rgba(232,121,249,0.78); box-shadow: 0 0 46px rgba(232,121,249,0.52), 0 0 95px rgba(168,85,247,0.20), inset 0 0 32px rgba(59,7,100,0.42); }
+}
+#cp-eyebrow {
+  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.24em; text-transform: uppercase; color: rgba(232,121,249,0.70);
+  white-space: nowrap;
+}
+#cp-text {
+  font-family: 'Boogaloo', cursive; font-size: var(--cpfm); line-height: 1.0;
+  color: #FAF5FF; letter-spacing: 2px;
+  white-space: normal; word-break: break-word; width: 100%;
+  text-shadow: 0 0 24px rgba(168,85,247,0.88), 0 0 56px rgba(168,85,247,0.42), 0 3px 0 rgba(0,0,0,0.65);
+  transition: font-size 0.25s ease;
+}
+#cp-sub {
+  font-family: 'Boogaloo', cursive; font-size: var(--cpfs); line-height: 1.1;
+  color: rgba(192,132,252,0.82); letter-spacing: 1px;
+  white-space: normal; word-break: break-word; width: 100%;
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+#cp-sub.has-text { max-height: 90px; }
+#cp-dots { display: flex; gap: 5px; align-items: center; margin-top: 3px; }
+.cp-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(192,132,252,0.28);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.cp-dot.active { background: #C084FC; transform: scale(1.5); }
 </style>
 </head>
 <body>
@@ -1672,7 +1807,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
       <span id="bar-info-amount"></span>
     </div>
   </div>
+  <!-- ══ HYPE METER — segmented notch row at bar bottom ══ -->
+  <div id="hype-meter"></div>
 </div>
+
+<!-- ══ HYPE: surge badge + first-gifter flash layer (outside gift-bar so they can overflow) ══ -->
+<div id="hm-surge-badge">⚡ 2X SURGE ⚡</div>
+<div id="hm-first-gifter-flash"></div>
 
 <!-- ══ GBB TIMER SHELF — floats above the battle bar for countdown display ══ -->
 <div id="gbb-timer-shelf">
@@ -1804,6 +1945,14 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="announce-live-badge">● LIVE</div>
   <div id="announce-text">NOW STREAMING</div>
   <div id="announce-sub"></div>
+</div>
+
+<!-- ══ COMMENT PROMPT — rotating engagement call-to-action ══ -->
+<div id="comment-prompt">
+  <div id="cp-eyebrow">COMMENT TO INTERACT</div>
+  <div id="cp-text">Comment 🔵 or 🔴</div>
+  <div id="cp-sub"></div>
+  <div id="cp-dots"></div>
 </div>
 
 <script>
@@ -2519,6 +2668,8 @@ renderEventPromo();
     channel.subscribe('top-gifters',  msg=>renderTopGifters(msg.data));
     channel.subscribe('gift-battle-cmd', msg=>gbbHandleCmd(msg.data));
     channel.subscribe('event-promo', msg=>handleEventPromoMessage(msg.data));
+    channel.subscribe('hype-event',  msg=>{ try{ hmAddPoints(msg.data); }catch(e){} });
+    channel.subscribe('comment-prompt', msg=>{ try{ handleCommentPromptMsg(msg.data); }catch(e){} });
     /* Splat */
     channel.subscribe('cmd', msg=>{
       const cmd=msg.data;
@@ -2583,6 +2734,152 @@ renderEventPromo();
       if(d.visible !== undefined) announceBox.classList.toggle('visible',!!d.visible);
     });
   }catch(e){console.warn('[Ably] init failed:',e);}
+})();
+
+/* ══ HYPE METER ENGINE ══ */
+(function initHypeMeter(){
+  const HM = {
+    rawPoints: 0,
+    displayPct: 30,
+    surgeActive: false,
+    surgeTimer: null,
+    nextSurgeTimeout: null,
+    decayInterval: null,
+    NUM_SEGS: 24,
+    FLOOR_PCT: 30,
+    MAX_EXPECTED: 800,
+    K: 0.005,
+    segs: [],
+  };
+
+  function logScale(raw) {
+    const {K,MAX_EXPECTED,FLOOR_PCT}=HM;
+    return FLOOR_PCT+(100-FLOOR_PCT)*(Math.log(1+raw*K)/Math.log(1+MAX_EXPECTED*K));
+  }
+
+  function renderSegs() {
+    const {NUM_SEGS,FLOOR_PCT,displayPct,surgeActive,segs}=HM;
+    const floorSegs =Math.ceil(FLOOR_PCT/100*NUM_SEGS);
+    const activeSegs=Math.ceil(displayPct/100*NUM_SEGS);
+    const hotStart  =Math.max(activeSegs-3,floorSegs);
+    segs.forEach((seg,i)=>{
+      if(surgeActive){seg.className='hm-seg surge';}
+      else if(i<activeSegs){
+        if(i>=hotStart&&activeSegs>floorSegs+2){seg.className='hm-seg hot';}
+        else if(i>=floorSegs||activeSegs>floorSegs){seg.className='hm-seg active';}
+        else{seg.className='hm-seg ember';}
+      }else if(i<floorSegs){seg.className='hm-seg ember';}
+      else{seg.className='hm-seg';}
+    });
+  }
+
+  window.hmAddPoints=function(eventData){
+    const type=(eventData||{}).type;
+    const mult=HM.surgeActive?2:1;
+    const pts=({join:1,like_batch:1,comment_match:3,heart_me:15,heart_me_first:50,yt_sub:40}[type]||0)*mult;
+    if(!pts)return;
+    HM.rawPoints=Math.min(HM.rawPoints+pts,HM.MAX_EXPECTED*2.5);
+    HM.displayPct=logScale(HM.rawPoints);
+    renderSegs();
+    if(type==='heart_me_first')triggerFirstGifterFlash();
+    if(type==='yt_sub')triggerYTSubCelebration();
+  };
+
+  function triggerFirstGifterFlash(){
+    const el=document.getElementById('hm-first-gifter-flash');
+    if(!el)return;
+    el.classList.remove('fire');void el.offsetWidth;el.classList.add('fire');
+    const bar=document.getElementById('gift-bar');
+    bar.style.transition='transform 0.18s cubic-bezier(.34,1.56,.64,1)';
+    bar.style.transform='scaleY(1.06)';
+    setTimeout(()=>{bar.style.transform='';setTimeout(()=>{bar.style.transition='';},200);},180);
+  }
+
+  function triggerYTSubCelebration(){
+    try{emitParticles(3,'youtube');triggerScreenPulse('youtube',3);}catch(e){}
+  }
+
+  function startDecay(){
+    clearInterval(HM.decayInterval);
+    HM.decayInterval=setInterval(()=>{
+      HM.rawPoints=Math.max(0,HM.rawPoints-HM.MAX_EXPECTED*0.04);
+      HM.displayPct=logScale(HM.rawPoints);
+      renderSegs();
+    },10000);
+  }
+
+  function scheduleSurge(){
+    clearTimeout(HM.nextSurgeTimeout);
+    HM.nextSurgeTimeout=setTimeout(triggerSurge,60000+Math.random()*30000);
+  }
+
+  function triggerSurge(){
+    HM.surgeActive=true;
+    const bar=document.getElementById('gift-bar'),badge=document.getElementById('hm-surge-badge');
+    bar.classList.remove('hm-surge-active');void bar.offsetWidth;bar.classList.add('hm-surge-active');
+    if(badge)badge.classList.add('visible');
+    renderSegs();
+    clearTimeout(HM.surgeTimer);
+    HM.surgeTimer=setTimeout(()=>{
+      HM.surgeActive=false;
+      bar.classList.remove('hm-surge-active');
+      if(badge)badge.classList.remove('visible');
+      renderSegs();scheduleSurge();
+    },5000);
+  }
+
+  const container=document.getElementById('hype-meter');
+  if(container){
+    for(let i=0;i<HM.NUM_SEGS;i++){
+      const s=document.createElement('div');s.className='hm-seg ember';
+      container.appendChild(s);HM.segs.push(s);
+    }
+  }
+  startDecay();scheduleSurge();renderSegs();
+})();
+
+/* ══ COMMENT PROMPT ENGINE ══ */
+(function initCommentPrompt(){
+  let cpRotateTimer=null,cpPresets=[],cpIdx=0,cpRotateMs=30000;
+  const CP_SIZES={xs:{w:360,fm:28,fs:15},sm:{w:500,fm:36,fs:20},md:{w:650,fm:44,fs:23},lg:{w:780,fm:54,fs:28},xl:{w:920,fm:64,fs:34}};
+  const CP_X={left:160,center:540,right:920};
+  const CP_Y={top:200,upper:480,center:960,lower:1380,bottom:1700};
+
+  function updateDots(){
+    const el=document.getElementById('cp-dots');if(!el)return;
+    if(cpPresets.length<=1){el.innerHTML='';return;}
+    el.innerHTML=cpPresets.map((_,i)=>`<div class="cp-dot${i===cpIdx?' active':''}"></div>`).join('');
+  }
+
+  function applyPreset(p){
+    const t=document.getElementById('cp-text'),s=document.getElementById('cp-sub');
+    if(t&&p.text!==undefined)t.textContent=p.text;
+    if(s){s.textContent=p.sub||'';s.classList.toggle('has-text',!!(p.sub));}
+  }
+
+  function startRotation(){
+    clearInterval(cpRotateTimer);
+    if(cpPresets.length<=1)return;
+    cpRotateTimer=setInterval(()=>{
+      cpIdx=(cpIdx+1)%cpPresets.length;
+      applyPreset(cpPresets[cpIdx]);updateDots();
+    },cpRotateMs);
+  }
+
+  window.handleCommentPromptMsg=function(d){
+    if(!d)return;
+    const el=document.getElementById('comment-prompt');if(!el)return;
+    if(d.text!==undefined)document.getElementById('cp-text').textContent=d.text;
+    if(d.eyebrow!==undefined)document.getElementById('cp-eyebrow').textContent=d.eyebrow||'COMMENT TO INTERACT';
+    if(d.sub!==undefined){const s=document.getElementById('cp-sub');s.textContent=d.sub;s.classList.toggle('has-text',!!d.sub);}
+    if(d.size!==undefined){const s=CP_SIZES[d.size]||CP_SIZES.md;el.style.setProperty('--cpw',s.w+'px');el.style.setProperty('--cpfm',s.fm+'px');el.style.setProperty('--cpfs',s.fs+'px');}
+    if(d.x!==undefined)el.style.setProperty('--cpx',(CP_X[d.x]??parseInt(d.x)??540)+'px');
+    if(d.y!==undefined)el.style.setProperty('--cpy',(CP_Y[d.y]??parseInt(d.y)??1620)+'px');
+    if(d.visible!==undefined)el.classList.toggle('visible',!!d.visible);
+    if(d.presets!==undefined){cpPresets=d.presets||[];cpIdx=0;if(cpPresets.length)applyPreset(cpPresets[0]);updateDots();}
+    if(d.rotateMs!==undefined)cpRotateMs=d.rotateMs;
+    if(d.presets!==undefined||d.rotateMs!==undefined)startRotation();
+  };
 })();
 
 splatEnterIdle();
