@@ -781,6 +781,39 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════ CLOUD SYNC ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="sync-hdr">
+      <h2>☁️ Cloud Sync (GitHub Gist)</h2>
+      <span id="sync-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;flex-shrink:0"></span>
+      <span class="panel-toggle" id="sync-toggle">▼</span>
+    </div>
+    <div class="panel-body hidden" id="sync-body">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label>GitHub Personal Access Token <span class="dim">(needs <code>gist</code> scope)</span></label>
+          <input type="password" id="gist-pat-input" placeholder="ghp_…" style="width:100%;box-sizing:border-box">
+        </div>
+        <div>
+          <label>Gist ID <span class="dim">(auto-filled after first save)</span></label>
+          <input type="text" id="gist-id-input" placeholder="leave blank to create a new Gist" style="width:100%;box-sizing:border-box">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn-primary btn-sm" id="btn-gist-connect">💾 Save &amp; Sync Now</button>
+          <button class="btn-secondary btn-sm" id="btn-gist-pull">⬇ Pull from Gist</button>
+          <button class="btn-secondary btn-sm" id="btn-gist-clear" style="color:var(--red)">✕ Disconnect</button>
+        </div>
+        <div id="gist-status" class="dim" style="font-size:12px"></div>
+        <div class="dim" style="font-size:11px;line-height:1.5">
+          Data auto-syncs to a private Gist 2 seconds after every change. Survives browser clears, works across machines.<br>
+          Get a token at <strong>github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</strong> — tick the <code>gist</code> scope only.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TOP 10 ══ -->
 <section>
   <div class="panel">
@@ -1034,6 +1067,8 @@ function saveData(data) {
   renderLastUpdated(data.lastUpdated);
   // Publish giftr leaderboard after data change (deferred so DB is current)
   setTimeout(publishGiftrLeaderboard, 80);
+  // Auto-sync to GitHub Gist (debounced)
+  scheduleGistSync();
 }
 
 let DB = loadData();
@@ -1581,22 +1616,24 @@ function handleTikfinityGift(data) {
   const diamondCount = data.diamondCount != null ? data.diamondCount
     : (data.gift && data.gift.diamond_count != null ? data.gift.diamond_count : 1);
   const repeatCount  = data.repeatCount || 1;
-  const repeatEnd    = data.repeatEnd !== false; // default true when field is missing
+  // BUG FIX: Use strict === true check, NOT `!== false`.
+  // If Tikfinity sends combo-in-progress events without a repeatEnd field at all,
+  // `undefined !== false` evaluates to true — causing every incremental combo update
+  // to be recorded separately (e.g. ×3 combo → three calls: 99, 198, 297).
+  // Instant gifts (giftType 2) always pass through since repeatEnd is irrelevant for them.
+  const repeatEnd    = data.repeatEnd === true || data.repeatEnd == null; // null/undefined = standalone (no combo field)
   const giftType     = data.giftType || (data.gift && data.gift.gift_type) || 1;
 
   // giftType 1 = streakable (rose, etc.) — only record when the combo ends (repeatEnd === true)
   // giftType 2 = instant — always record immediately
-  if (giftType === 1 && !repeatEnd) {
-    console.log('[Tikfinity] combo in progress:', name, giftName, '×', repeatCount);
+  // For giftType 1: require an EXPLICIT repeatEnd:true signal; if repeatEnd field is missing
+  // AND giftType is 1, it's a mid-combo event — skip it.
+  if (giftType === 1 && data.repeatEnd !== true) {
+    console.log('[Tikfinity] combo in progress (skipping):', name, giftName, '×', repeatCount, 'repeatEnd:', data.repeatEnd);
     return;
   }
 
-  // Tikfinity's diamondCount IS the authoritative per-gift coin value from TikTok's API.
-  // Cache it so SSN embedded messages ("sent Rose × 1") can use the correct value too.
   const lowerGiftName = (giftName || '').toLowerCase().trim();
-  if (lowerGiftName && diamondCount > 0) {
-    ttGiftCache[lowerGiftName] = diamondCount;
-  }
   const coins = diamondCount * repeatCount;
   const ts    = Date.now();
 
@@ -1614,6 +1651,16 @@ function handleTikfinityGift(data) {
         _src: 'tikfinity',
       }).catch(() => {});
     }
+    // ── HYPE: Heart Me gift detection ──
+    if (lowerGiftName === 'heart me' || lowerGiftName.includes('heart me')) {
+      const gifterKey = (userId || name).toLowerCase();
+      if (!heartMeFirstTimers.has(gifterKey)) {
+        heartMeFirstTimers.add(gifterKey);
+        publishHypeEvent('heart_me_first');
+      } else {
+        publishHypeEvent('heart_me');
+      }
+    }
   }
 }
 
@@ -1629,14 +1676,6 @@ document.getElementById('tikf-btn-disconnect').addEventListener('click', disconn
  *   YouTube supersticker   → hasDonation = "$5.00"
  *   any     (webhook)      → hasDonation = "$50.00 USD" (Ko-Fi, Stripe, etc.)
  */
-// ── TikTok gift coin cache — populated live from Tikfinity events ──
-// Tikfinity is the authoritative source for per-gift coin values.
-// This cache is built as gifts arrive so SSN embedded messages ("sent Rose × 1")
-// get the correct coin count. Starts empty; falls back to 1 for unseen gift types.
-const ttGiftCache = {};
-function ttGiftCoins(name) {
-  return ttGiftCache[(name||'').toLowerCase().trim()] || 1;
-}
 
 // These events are NEVER gifts — exclude even when hasDonation is set
 // (memberships expose hasDonation = the monthly subscription cost, not a gift)
@@ -1714,7 +1753,7 @@ function parseHasDonation(str, knownType) {
   return null;
 }
 
-// ── SSN dedup cache — prevents double-fires (same name+amount+type within 3 s) ──
+// ── SSN dedup cache — prevents double-fires within SSN itself (same name+amount+type within 3 s) ──
 const _ssnSeen = new Map();
 function ssnIsDupe(name, amount, type) {
   const key = name + '|' + amount + '|' + type;
@@ -1744,106 +1783,77 @@ function handleSSNEvent(payload) {
   const ssnEvent    = (data.event && data.event !== true) ? String(data.event).toLowerCase() : '';
   const ssnPlatform = (data.type  || '').toLowerCase();
 
-  // Bail early on explicitly excluded event types (memberships, follows, etc.)
-  // These sometimes have hasDonation set (e.g. membership cost) but are NOT gifts
-  if (EXCLUDED_EVENTS.has(ssnEvent)) return;
-
-  // DIAGNOSTIC: log full gift-relevant fields for TikTok messages so we can see what SSN sends
-  if (ssnPlatform === 'tiktok' || (data.chatmessage && /sent\s+.*[×x✕]/i.test(data.chatmessage))) {
-    console.log('[SSN:TT] name=%s | event=%s | hasDonation=%o | donoValue=%o | coins=%o | gifttitle=%o | chatmsg=%s',
-      data.chatname, data.event, data.hasDonation, data.donoValue, data.coins, data.gifttitle,
-      (data.chatmessage||'').slice(0,120));
-  }
-
-  // 'thankyou' is TikTok-only — restrict it in the event list too
-  const isGiftEvent = ['gift','donation','supersticker','jeweldonation','giftpurchase',
-                        'superchat','superchatwithtext','superchatevent'].includes(ssnEvent)
-                   || (ssnEvent === 'thankyou' && ssnPlatform === 'tiktok');
-
-  // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
-  // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
-  // NOTE: do NOT restrict to ssnPlatform==='tiktok' — SSN sometimes sends these events
-  // without data.type set (ssnPlatform=''), so we'd miss them. The "sent X × N" pattern
-  // is TikTok-exclusive and safe to match unconditionally.
-  let ttEmbedCoins = 0;
-  if (!hasDonation && data.chatmessage && ssnPlatform !== 'youtube') {
-    const m = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*(\d+)/i);
-    if (m) {
-      const giftName = stripHtml(m[1]).trim();
-      const count    = parseInt(m[2]) || 1;
-      ttEmbedCoins   = ttGiftCoins(giftName) * count;
-    }
-  }
-
-  // YouTube always uses named event strings for real superchats — hasDonation alone
-  // is not trustworthy for YouTube (member chat messages may have it set).
-  // EXCEPTION: YouTube jewel donations — SSN sometimes omits data.event, sending only
-  // hasDonation = "N Jewels". Detect them explicitly so they still count.
-  const isYTJewels = ssnPlatform === 'youtube' && /^\d[\d,]*\s*jewels?$/i.test(hasDonationStr);
-
-  // TikTok fallback: only when platform is explicitly 'tiktok' (not empty/unknown).
-  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform !== 'youtube') || ttEmbedCoins > 0 || isYTJewels;
-
-  // Route TikTok chat messages to the chat panel (badge level captured below)
-  const isTikTokChat = (ssnPlatform === 'tiktok') && !isRelevant && !!data.chatmessage;
-  if (isTikTokChat) {
-    const chatName = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
-    const chatBadge = data.badgeLevel != null ? Number(data.badgeLevel)
-      : typeof data.badge === 'number' ? data.badge
-      : null;
-    // Fan club / subscriber: subBadge URL present, isSubscriber flag, or membership field without a gifter badgeLevel
-    const chatIsMember = !!(data.subBadge || data.isSubscriber
-      || (data.membership != null && data.badgeLevel == null));
-    addChatEntry(chatName, data.chatmessage, chatBadge, chatIsMember, Date.now());
+  // ── HYPE: join events (TikTok roomuser/join, YouTube join) ──
+  if (ssnEvent === 'join' || ssnEvent === 'roomuser' || ssnEvent === 'viewercount') {
+    publishHypeEvent('join');
     return;
   }
+
+  // ── HYPE: like events — batch every 150 into one tick ──
+  if (ssnEvent === 'like') {
+    likeAccumulator++;
+    if (likeAccumulator >= 150) { likeAccumulator = 0; publishHypeEvent('like_batch'); }
+    return;
+  }
+
+  // Bail early on explicitly excluded event types (memberships, follows, etc.)
+  if (EXCLUDED_EVENTS.has(ssnEvent)) return;
+
+  // TikTok gifts are handled exclusively by Tikfinity (accurate coin values, correct combo tracking).
+  // SSN is only used for TikTok chat messages (badge levels, hype events) and YouTube gifts.
+  if (ssnPlatform === 'tiktok') {
+    if (data.chatmessage) {
+      const chatName = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
+      const chatBadge = data.badgeLevel != null ? Number(data.badgeLevel)
+        : typeof data.badge === 'number' ? data.badge
+        : null;
+      const chatIsMember = !!(data.subBadge || data.isSubscriber
+        || (data.membership != null && data.badgeLevel == null));
+      addChatEntry(chatName, data.chatmessage, chatBadge, chatIsMember, Date.now());
+      if (currentPromptPatterns.length) {
+        const msg = (data.chatmessage || '').toLowerCase();
+        if (currentPromptPatterns.some(p => msg.includes(p.toLowerCase()))) {
+          publishHypeEvent('comment_match');
+        }
+      }
+    }
+    return;
+  }
+
+  // ── YouTube / direct donation handling only below this point ──
+
+  const isGiftEvent = ['donation','supersticker','jeweldonation','giftpurchase',
+                        'superchat','superchatwithtext','superchatevent'].includes(ssnEvent);
+
+  // YouTube jewel donations — SSN sometimes omits data.event, sending only hasDonation = "N Jewels"
+  const isYTJewels = ssnPlatform === 'youtube' && /^\d[\d,]*\s*jewels?$/i.test(hasDonationStr);
+
+  const isRelevant = isGiftEvent || (hasDonation && ssnPlatform === 'youtube') || isYTJewels
+    || (hasDonation && ['direct_donation','stripe','kofi','paypal'].includes(ssnEvent));
 
   if (!debugAll && !isRelevant) return;
 
   const name = (data.chatname || data.name || data.displayName || 'Unknown').trim() || 'Unknown';
 
-  // Determine our internal type first so parseHasDonation can use it
   let type = mapEventType(ssnEvent, ssnPlatform);
-  // Embed detection wins: if we recovered coins from chatmessage, force tiktok_coins
-  // even if mapEventType returned direct_donation (because data.type was empty/unknown).
-  if (ttEmbedCoins > 0) {
-    type = 'tiktok_coins';
-  } else if (type === null) {
+  if (type === null) {
     if (isYTJewels) {
-      type = 'youtube_jewels'; // SSN jewel donation arrived without a named event string
+      type = 'youtube_jewels';
     } else {
-      return; // excluded type slipped through (safety net)
+      return;
     }
   }
-  const platform = (ttEmbedCoins > 0 && !ssnPlatform) ? 'tiktok' : (ssnPlatform || typeToPlatform(type));
+  const platform = ssnPlatform || typeToPlatform(type);
   const ts = Date.now();
 
-  // Amount resolution:
-  // For jewels: use hasDonation first (preserves jewel count for display).
-  // For others: use donoValue (USD) then hasDonation fallback.
   let amount = 0;
 
-  // For jewels and TikTok coins, hasDonation gives the raw unit count ("150 coins", "500 Jewels")
-  // which is what we want to store. donoValue is USD and would be wrong for these types.
-  if (hasDonationStr && (type === 'youtube_jewels' || type === 'tiktok_coins')) {
+  // For jewels, hasDonation gives the raw unit count ("500 Jewels") — use it directly.
+  if (hasDonationStr && type === 'youtube_jewels') {
     const parsed = parseHasDonation(hasDonationStr, type);
     if (parsed && parsed.amount > 0) {
       amount = parsed.amount;
       if (parsed.type) type = parsed.type;
-      console.log('[SSN] raw unit amount from hasDonation:', hasDonationStr, '→', amount, type);
-    }
-  }
-
-  // For tiktok_coins: if Tikfinity has already seen this gift, its cached per-gift value
-  // is authoritative over SSN's hasDonation (SSN misreports some values).
-  if (amount > 0 && type === 'tiktok_coins') {
-    const giftKey = (data.gifttitle || '').toLowerCase().trim();
-    if (giftKey && Object.prototype.hasOwnProperty.call(ttGiftCache, giftKey)) {
-      const corrected = ttGiftCache[giftKey];
-      if (corrected !== amount) {
-        console.log('[SSN] Tikfinity cache override:', giftKey, '→', corrected, 'coins (SSN said:', hasDonationStr, ')');
-      }
-      amount = corrected;
     }
   }
 
@@ -1857,61 +1867,27 @@ function handleSSNEvent(payload) {
     if (parsed && parsed.amount > 0) {
       amount = parsed.amount;
       if (parsed.type) type = parsed.type;
-      console.log('[SSN] amount from hasDonation:', hasDonationStr, '→', amount, type);
     }
-  }
-
-  if (amount === 0 && ttEmbedCoins > 0) {
-    // Gift recovered from embedded chat message pattern ("sent Rose × 1")
-    amount = ttEmbedCoins;
-    type   = 'tiktok_coins';
   }
 
   if (amount === 0) {
-    // For TikTok coins: prefer data.coins (raw count) over data.amount (may be USD)
-    if (type === 'tiktok_coins' && (data.coins ?? 0) > 0) {
-      amount = parseAmount(data.coins);
-    } else {
-      amount = parseAmount(data.amount ?? data.value ?? data.donationAmount ?? data.coins ?? 0);
-    }
+    amount = parseAmount(data.amount ?? data.value ?? data.donationAmount ?? 0);
   }
 
   if (isRelevant && amount === 0) {
     console.warn('[SSN] amount=0 | event:', ssnEvent, '| platform:', ssnPlatform,
-      '| hasDonation:', rawHasDonation, '| donoValue:', data.donoValue,
-      '| chatmessage:', (data.chatmessage || '').slice(0, 80));
+      '| hasDonation:', rawHasDonation, '| donoValue:', data.donoValue);
   }
 
-  // Extract TikTok gifter badge level
-  const badgeLevel = (ssnPlatform === 'tiktok')
-    ? (data.badgeLevel != null ? Number(data.badgeLevel)
-      : data.membership != null ? Number(data.membership)
-      : typeof data.badge === 'number' ? data.badge
-      : null)
-    : null;
-
-  // Extract platform user ID for deduplication (two "Justin"s on different platforms stay separate)
   const userId = data.userid || data.channelid || data.authorId || null;
+  const contentImg = data.contentimg || data.giftImage || null;
+  const giftTitle  = data.gifttitle  || null;
 
-  // Gift image + title from SSN (TikTok CDN URL for the gift graphic)
-  // For embedded gifts, pull the image URL and name from the chatmessage img tag.
-  let contentImg = data.contentimg || data.giftImage || null;
-  let giftTitle  = data.gifttitle  || null;
-  if (ttEmbedCoins > 0 && data.chatmessage) {
-    const imgM = data.chatmessage.match(/img[^>]+src=['"]([^'"]+)['"]/i);
-    if (imgM && !contentImg) contentImg = imgM[1];
-    if (!giftTitle) {
-      const nameM = data.chatmessage.match(/sent\s+(.*?)\s*(?:<img[^>]*>)?\s*[×x✕]\s*\d+/i);
-      if (nameM) giftTitle = stripHtml(nameM[1]).trim();
-    }
-  }
-
-  addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, badgeLevel);
+  addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, null);
   if (isRelevant && amount > 0 && !ssnIsDupe(name, amount, type)) {
     const key = upsertGift(name, amount, type, platform, '', userId);
     renderTable();
     flashRow(key);
-    // Publish gift-alert to Ably → triggers gift-bar explosion animation
     if (ablyChannel) {
       ablyChannel.publish('gift-alert', {
         name, amount, type, platform,
@@ -2336,6 +2312,165 @@ document.getElementById('btn-import').addEventListener('change', e => {
   reader.readAsText(file);
 });
 
+/* ───────────────────────────── GITHUB GIST SYNC ──── */
+const GIST_PAT_KEY = 'gift-tracker-gh-pat';
+const GIST_ID_KEY  = 'gift-tracker-gist-id';
+
+let gistPAT      = localStorage.getItem(GIST_PAT_KEY) || '';
+let gistId       = localStorage.getItem(GIST_ID_KEY)  || '';
+let gistSyncTmr  = null;
+let gistBusy     = false;
+
+// Populate inputs from saved values
+document.getElementById('gist-pat-input').value = gistPAT;
+document.getElementById('gist-id-input').value  = gistId;
+if (gistPAT) setGistDot('idle');
+
+function setGistDot(state) {
+  const dot = document.getElementById('sync-dot');
+  dot.style.background = state === 'ok' ? 'var(--green)' : state === 'err' ? 'var(--red)' : state === 'busy' ? 'var(--yellow)' : 'var(--muted)';
+  dot.title = state;
+}
+
+function setGistStatus(msg, state) {
+  const el = document.getElementById('gist-status');
+  if (el) el.textContent = msg;
+  if (state) setGistDot(state);
+}
+
+function scheduleGistSync() {
+  if (!gistPAT) return;
+  clearTimeout(gistSyncTmr);
+  gistSyncTmr = setTimeout(pushToGist, 2000);
+}
+
+async function pushToGist() {
+  if (!gistPAT || gistBusy) return;
+  gistBusy = true;
+  setGistStatus('Syncing…', 'busy');
+  try {
+    const payload = { files: { 'gift-tracker-data.json': { content: JSON.stringify(DB, null, 2) } } };
+    let url = 'https://api.github.com/gists';
+    let method = 'POST';
+    if (gistId) {
+      url    = `https://api.github.com/gists/${gistId}`;
+      method = 'PATCH';
+    } else {
+      payload.description = 'JJxLive Gift Tracker Data';
+      payload.public      = false;
+    }
+    const res = await fetch(url, {
+      method,
+      headers: { 'Authorization': `Bearer ${gistPAT}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    const json = await res.json();
+    if (!gistId) {
+      gistId = json.id;
+      localStorage.setItem(GIST_ID_KEY, gistId);
+      document.getElementById('gist-id-input').value = gistId;
+    }
+    setGistStatus(`✅ Synced at ${new Date().toLocaleTimeString()}`, 'ok');
+  } catch(e) {
+    setGistStatus(`❌ Sync failed: ${e.message}`, 'err');
+  }
+  gistBusy = false;
+}
+
+async function pullFromGist() {
+  if (!gistPAT || !gistId) { setGistStatus('❌ Enter PAT and Gist ID first', 'err'); return; }
+  setGistStatus('Loading from Gist…', 'busy');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { 'Authorization': `Bearer ${gistPAT}` }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const file = json.files['gift-tracker-data.json'];
+    if (!file) throw new Error('gift-tracker-data.json not found in Gist');
+    const imported = JSON.parse(file.content);
+    if (!imported.gifters) throw new Error('Invalid data format');
+    if (!DB.lastUpdated || (imported.lastUpdated && imported.lastUpdated > DB.lastUpdated)) {
+      if (!confirm(`⬇ Gist data is newer (${new Date(imported.lastUpdated).toLocaleString()}).\n\nOverwrite local data?`)) {
+        setGistStatus('Pull cancelled', 'idle'); return;
+      }
+      DB = imported;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+      applySettings();
+      renderTable();
+      setGistStatus(`✅ Loaded from Gist (${Object.keys(DB.gifters).length} gifters)`, 'ok');
+    } else {
+      setGistStatus('✅ Local data is already up to date', 'ok');
+    }
+  } catch(e) {
+    setGistStatus(`❌ Pull failed: ${e.message}`, 'err');
+  }
+}
+
+// Collapsible toggle
+document.getElementById('sync-hdr').addEventListener('click', () => {
+  const body   = document.getElementById('sync-body');
+  const toggle = document.getElementById('sync-toggle');
+  body.classList.toggle('hidden');
+  toggle.classList.toggle('open');
+});
+
+document.getElementById('btn-gist-connect').addEventListener('click', async () => {
+  const pat    = document.getElementById('gist-pat-input').value.trim();
+  const id     = document.getElementById('gist-id-input').value.trim();
+  if (!pat) { setGistStatus('❌ Enter your PAT first', 'err'); return; }
+  gistPAT = pat;
+  gistId  = id;
+  localStorage.setItem(GIST_PAT_KEY, gistPAT);
+  if (gistId) localStorage.setItem(GIST_ID_KEY, gistId);
+  else        localStorage.removeItem(GIST_ID_KEY);
+  await pushToGist();
+});
+
+document.getElementById('btn-gist-pull').addEventListener('click', pullFromGist);
+
+document.getElementById('btn-gist-clear').addEventListener('click', () => {
+  if (!confirm('Disconnect Gist sync? Your local data is kept.')) return;
+  gistPAT = ''; gistId = '';
+  localStorage.removeItem(GIST_PAT_KEY);
+  localStorage.removeItem(GIST_ID_KEY);
+  document.getElementById('gist-pat-input').value = '';
+  document.getElementById('gist-id-input').value  = '';
+  setGistStatus('Disconnected', 'idle');
+});
+
+// Auto-pull on startup if configured
+if (gistPAT && gistId) {
+  setTimeout(async () => {
+    setGistStatus('Checking Gist for newer data…', 'busy');
+    try {
+      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: { 'Authorization': `Bearer ${gistPAT}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const file = json.files['gift-tracker-data.json'];
+      if (!file) throw new Error('no file');
+      const remote = JSON.parse(file.content);
+      if (remote.gifters && remote.lastUpdated && (!DB.lastUpdated || remote.lastUpdated > DB.lastUpdated)) {
+        DB = remote;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+        applySettings();
+        renderTable();
+        setGistStatus(`✅ Auto-loaded from Gist (${new Date(DB.lastUpdated).toLocaleString()})`, 'ok');
+      } else {
+        setGistStatus(`✅ In sync (${new Date().toLocaleTimeString()})`, 'ok');
+      }
+    } catch(e) {
+      setGistStatus(`⚠️ Startup sync check failed: ${e.message}`, 'err');
+    }
+  }, 800);
+}
+
 /* ───────────────────────────── CLOSE MODALS ON OVERLAY CLICK ──── */
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => {
@@ -2353,6 +2488,11 @@ document.addEventListener('keydown', e => {
 /* ───────────────────────────── ABLY LEADERBOARD ──── */
 const ABLY_KEY     = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
 const ABLY_CHANNEL = 'splat-overlay';
+
+/* ── Community hype state ── */
+const heartMeFirstTimers = new Set();  // tracks userids who've sent Heart Me this session
+let   likeAccumulator    = 0;          // batches TT likes; fires every 150
+let   currentPromptPatterns = [];      // strings to match in TT chat comments
 
 let ablyClient  = null;
 let ablyChannel = null;
@@ -2464,6 +2604,17 @@ function formatRawAmount(rawAmount, type) {
     ablyChannel.subscribe('cmd', msg => {
       if (msg.data === 'requestLeaderboard') {
         publishGiftrLeaderboard();
+      }
+    });
+
+    // Keep comment-prompt patterns in sync so chat matching works
+    ablyChannel.subscribe('comment-prompt', msg => {
+      const d = msg.data || {};
+      if (Array.isArray(d.patterns)) {
+        currentPromptPatterns = d.patterns;
+      } else if (typeof d.text === 'string' && d.text) {
+        // Fall back: use the prompt text itself as a pattern
+        currentPromptPatterns = [d.text];
       }
     });
 
@@ -2580,6 +2731,34 @@ function publishGiftrLeaderboard() {
   };
 
   ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
+}
+
+/* ── Community hype event publisher ── */
+function publishHypeEvent(type) {
+  if (!ablyChannel) return;
+  ablyChannel.publish('hype-event', { type }).catch(() => {});
+}
+
+/* ── YouTube Live concurrentViewers polling ──
+   Call startYTViewerPoll(videoId, apiKey) to enable.
+   Positive delta in viewer count → join events. */
+let _ytLastViewers = 0, _ytPollTimer = null;
+function startYTViewerPoll(videoId, apiKey) {
+  if (_ytPollTimer) clearInterval(_ytPollTimer);
+  _ytPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`
+      );
+      const d = await r.json();
+      const count = parseInt(d?.items?.[0]?.liveStreamingDetails?.concurrentViewers || '0', 10);
+      if (!isNaN(count) && count > _ytLastViewers) {
+        const delta = Math.min(count - _ytLastViewers, 5);
+        for (let i = 0; i < delta; i++) publishHypeEvent('join');
+      }
+      if (!isNaN(count)) _ytLastViewers = count;
+    } catch(e) { console.warn('[YT poll]', e); }
+  }, 30000);
 }
 
 /* ── Top Gifters + Giftr control events ── */
