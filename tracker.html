@@ -1213,7 +1213,27 @@ function typeLabel(type) {
 /* ───────────────────────────── UPSERT GIFT ──── */
 function upsertGift(rawName, amount, type, platform, note, userId) {
   const plat = platform || typeToPlatform(type) || 'unknown';
-  const key  = gifterKey(rawName, plat, userId);
+  let key = gifterKey(rawName, plat, userId);
+
+  // ── Dedup guard: if we'd create a new userId-keyed entry but a name-keyed
+  // entry already exists for this person, merge into it instead of splitting. ──
+  if (userId && !DB.gifters[key]) {
+    const nameKey = gifterKey(rawName, plat, null);
+    if (DB.gifters[nameKey]) {
+      // Absorb: update the name-keyed entry with the userId and use it going forward
+      DB.gifters[nameKey].userId = userId;
+      key = nameKey;
+    }
+  }
+  // Also check reverse: if a userId-keyed entry exists and we come in with a name key,
+  // find the userId entry and redirect to it.
+  if (!userId && !DB.gifters[key]) {
+    const existing = Object.keys(DB.gifters).find(k =>
+      k.startsWith(plat + ':') &&
+      DB.gifters[k].displayName?.trim().toLowerCase() === rawName.trim().toLowerCase()
+    );
+    if (existing) key = existing;
+  }
 
   if (!DB.gifters[key]) {
     DB.gifters[key] = { displayName: rawName.trim(), platform: plat, userId: userId || null, gifts: [] };

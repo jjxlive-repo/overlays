@@ -572,6 +572,30 @@ html, body {
 #flash.red   { background:rgba(244,63,94,0.12); }
 #flash.show  { opacity:1; }
 
+/* ── GIFT GLOW — entire dock blazes gold ── */
+#gift-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0;
+  border-radius: 0;
+  box-shadow: inset 0 0 120px 60px rgba(251,191,36,0.75),
+              inset 0 0 40px  20px rgba(253,224,71,0.55);
+  border: 3px solid rgba(251,191,36,0.0);
+}
+@keyframes giftGlow {
+  0%   { opacity:0; border-color:rgba(251,191,36,0.0); }
+  6%   { opacity:1; border-color:rgba(251,191,36,0.9); }
+  40%  { opacity:1; border-color:rgba(251,191,36,0.9); }
+  55%  { opacity:0.25; border-color:rgba(251,191,36,0.3); }
+  65%  { opacity:0.85; border-color:rgba(251,191,36,0.7); }
+  100% { opacity:0; border-color:rgba(251,191,36,0.0); }
+}
+#gift-glow.active {
+  animation: giftGlow 2.8s ease forwards;
+}
+
 /* ── SETTINGS PANEL ── */
 .settings-btn {
   background: none;
@@ -1154,6 +1178,7 @@ html, body {
     <div class="splat-bar-row">
       <button class="test-toggle-btn" id="btn-test-toggle"        onclick="toggleTestBar()"        style="flex:1;">🧪 Test</button>
       <button class="test-toggle-btn" id="btn-announce-toggle"    onclick="toggleAnnounceBar()"    style="flex:1;">📢 Live Text</button>
+      <button class="test-toggle-btn" id="btn-cp-toggle"          onclick="toggleCPBar()"          style="flex:1;">💬 Prompt</button>
       <button class="test-toggle-btn" id="btn-event-promo-toggle" onclick="toggleEventPromoBar()"  style="flex:1;">🎭 Event</button>
     </div>
     <!-- Row 4: Overlay position -->
@@ -1314,8 +1339,76 @@ html, body {
     </div>
   </div>
 
+  <!-- COMMENT PROMPT BAR -->
+  <div class="announce-bar" id="cp-bar">
+    <div class="test-bar-header">
+      <span class="test-bar-title">💬 Comment Prompt</span>
+      <span class="test-bar-sub">rotating CTA on overlay • chat matches → +3 hype pts</span>
+    </div>
+    <!-- Row 1: prompt text + show/hide + update -->
+    <div class="test-row">
+      <input class="test-input" id="cp-main"   type="text" placeholder="Prompt text (e.g. Comment 🔵 or 🔴)" style="flex:2;">
+      <input class="test-input" id="cp-sub-in" type="text" placeholder="Subtext (optional)" style="flex:1.2;">
+      <button class="test-fire" style="min-width:76px;" onclick="sendCP()">⚡ Update</button>
+      <button class="sp-bait-set" id="btn-cp-visible" onclick="toggleCPVisible()" style="min-width:60px;">Show</button>
+    </div>
+    <!-- Row 2: match patterns -->
+    <div class="test-row" style="gap:6px;">
+      <span class="sp-pos-label" style="flex-shrink:0;">Match:</span>
+      <input class="test-input" id="cp-patterns" type="text" placeholder="Comma-separated: 🔵,🔴,blue,red" style="flex:1;">
+    </div>
+    <!-- Row 3: preset list + rotation interval -->
+    <div class="test-row" style="gap:6px;flex-wrap:wrap;align-items:flex-start;">
+      <span class="sp-pos-label" style="flex-shrink:0;">Presets:</span>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+        <div id="cp-preset-list" style="display:flex;flex-direction:column;gap:3px;"></div>
+        <div style="display:flex;gap:4px;margin-top:2px;">
+          <input class="test-input" id="cp-preset-add-text" type="text" placeholder="New preset text…" style="flex:2;">
+          <input class="test-input" id="cp-preset-add-sub"  type="text" placeholder="Subtext…" style="flex:1;">
+          <button class="sp-bait-set" onclick="cpAddPreset()" style="min-width:44px;">+ Add</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+          <span class="sp-pos-label" style="flex-shrink:0;">Rotate every</span>
+          <select class="test-input" id="cp-rotate-ms" style="width:auto;">
+            <option value="15000">15 s</option>
+            <option value="20000">20 s</option>
+            <option value="30000" selected>30 s</option>
+            <option value="45000">45 s</option>
+            <option value="60000">60 s</option>
+            <option value="90000">90 s</option>
+            <option value="120000">2 min</option>
+          </select>
+          <button class="sp-bait-set" onclick="cpSendPresets()" style="min-width:70px;">▶ Push All</button>
+        </div>
+      </div>
+    </div>
+    <!-- Row 4: Size -->
+    <div class="test-row" style="gap:4px;">
+      <span class="sp-pos-label" style="flex-shrink:0;">Size:</span>
+      <button class="sp-pos-btn" data-cpsize="xs"  onclick="setCPSize('xs')">XS</button>
+      <button class="sp-pos-btn" data-cpsize="sm"  onclick="setCPSize('sm')">S</button>
+      <button class="sp-pos-btn active" data-cpsize="md" onclick="setCPSize('md')">M ★</button>
+      <button class="sp-pos-btn" data-cpsize="lg"  onclick="setCPSize('lg')">L</button>
+      <button class="sp-pos-btn" data-cpsize="xl"  onclick="setCPSize('xl')">XL</button>
+    </div>
+    <!-- Row 5: X + Y position -->
+    <div class="test-row" style="gap:4px;flex-wrap:wrap;">
+      <span class="sp-pos-label" style="flex-shrink:0;">X:</span>
+      <button class="sp-pos-btn" data-cpx="left"   onclick="setCPX('left')">Left</button>
+      <button class="sp-pos-btn active" data-cpx="center" onclick="setCPX('center')">Ctr</button>
+      <button class="sp-pos-btn" data-cpx="right"  onclick="setCPX('right')">Right</button>
+      <span class="sp-pos-label" style="flex-shrink:0;margin-left:10px;">Y:</span>
+      <button class="sp-pos-btn" data-cpy="top"    onclick="setCPY('top')">Top</button>
+      <button class="sp-pos-btn" data-cpy="upper"  onclick="setCPY('upper')">Upper</button>
+      <button class="sp-pos-btn" data-cpy="center" onclick="setCPY('center')">Center</button>
+      <button class="sp-pos-btn" data-cpy="lower"  onclick="setCPY('lower')">Lower</button>
+      <button class="sp-pos-btn active" data-cpy="bottom" onclick="setCPY('bottom')">Bottom ★</button>
+    </div>
+  </div>
+
 </div><!-- /root -->
 
+<div id="gift-glow"></div>
 <div id="flash"></div>
 
 <script>
@@ -1505,11 +1598,24 @@ function handleMsg(data) {
   if (!data.chatname) {
     const evt = (data.event || '').toLowerCase();
     const p   = (data.type  || '').toLowerCase();
-    if (evt === 'viewer_update' || evt === 'viewer_updates') {
+    const isViewerEvt =
+      evt === 'viewer_update' || evt === 'viewer_updates' ||
+      evt === 'viewercount'   || evt === 'viewers'        ||
+      evt === 'roomstats'     || evt === 'liveviewers'    ||
+      data.viewers != null    || data.viewerCount != null  ||
+      (data.meta != null && (
+        typeof data.meta === 'number' ||
+        (typeof data.meta === 'object' && (
+          data.meta.viewers != null || data.meta.viewCount != null || data.meta.liveViewCount != null
+        ))
+      ));
+    if (isViewerEvt) {
       // SSN sends viewer count in data.meta (number or object) or data.viewers
       let count = null;
       if (data.viewers != null) {
         count = parseInt(data.viewers);
+      } else if (data.viewerCount != null) {
+        count = parseInt(data.viewerCount);
       } else if (data.meta != null) {
         if (typeof data.meta === 'object') {
           // meta may be { viewers:N } or { viewCount:N } or { count:N }
@@ -1520,8 +1626,6 @@ function handleMsg(data) {
         }
       }
       // Only update if we got a real positive number
-      // TikTok's API returns CONCURRENT viewers (live count), not cumulative unique —
-      // but some SSN versions may send unique instead; we can't distinguish, so just display as-is.
       if (count != null && !isNaN(count) && count >= 0) {
         if (p.includes('tiktok'))  updateViewerCount('tt', count);
         if (p.includes('youtube')) updateViewerCount('yt', count);
@@ -2008,6 +2112,9 @@ function addGift(data, isTT, isYT) {
 
   counts.gifts++;
   document.getElementById('cnt-gifts').textContent = counts.gifts;
+
+  // Alert JJ — gold glow + bell (local audio only)
+  triggerGiftAlert();
 }
 
 function trim(el) {
@@ -2110,6 +2217,18 @@ function updateTimer() {
 function doFlash(color) {
   flash.className = color + ' show';
   setTimeout(() => { flash.className = ''; }, 300);
+}
+
+/* ── Gift glow alert ── */
+const giftGlowEl = document.getElementById('gift-glow');
+let giftGlowTimer = null;
+
+function triggerGiftAlert() {
+  giftGlowEl.classList.remove('active');
+  void giftGlowEl.offsetWidth; // force reflow so animation restarts on rapid gifts
+  giftGlowEl.classList.add('active');
+  clearTimeout(giftGlowTimer);
+  giftGlowTimer = setTimeout(() => giftGlowEl.classList.remove('active'), 3000);
 }
 
 document.addEventListener('keydown', e => {
@@ -2605,6 +2724,115 @@ function setAnnounceY(y) {
   announceY = y;
   document.querySelectorAll('[data-ay]').forEach(b => b.classList.toggle('active', b.dataset.ay === y));
   ablyChannel.publish('announce', { y }).catch(() => {});
+}
+
+/* ═══════════════════════════════════════════
+   COMMENT PROMPT
+═══════════════════════════════════════════ */
+let cpVisible = false;
+let cpX = 'center', cpY = 'bottom', cpSize = 'md';
+let cpPresets = JSON.parse(localStorage.getItem('cp-presets') || '[]');
+
+function toggleCPBar() {
+  const bar = document.getElementById('cp-bar');
+  const btn = document.getElementById('btn-cp-toggle');
+  const open = bar.classList.toggle('open');
+  btn.classList.toggle('active', open);
+  if (open) cpRenderPresetList();
+}
+
+function toggleCPVisible() {
+  cpVisible = !cpVisible;
+  ablyChannel.publish('comment-prompt', { visible: cpVisible }).catch(() => {});
+  const btn = document.getElementById('btn-cp-visible');
+  btn.textContent       = cpVisible ? 'Hide' : 'Show';
+  btn.style.background  = cpVisible ? 'rgba(244,63,94,0.20)' : '';
+  btn.style.borderColor = cpVisible ? 'rgba(244,63,94,0.50)' : '';
+  btn.style.color       = cpVisible ? '#fb7185' : '';
+  doFlash(cpVisible ? 'green' : 'red');
+}
+
+function sendCP() {
+  const text     = document.getElementById('cp-main').value.trim();
+  const sub      = document.getElementById('cp-sub-in').value.trim();
+  const patsRaw  = document.getElementById('cp-patterns').value;
+  const patterns = patsRaw.split(',').map(p => p.trim()).filter(Boolean);
+  const payload  = { x: cpX, y: cpY, size: cpSize, sub, patterns };
+  if (text) payload.text = text;
+  ablyChannel.publish('comment-prompt', payload).catch(() => {});
+  doFlash('green');
+}
+
+function setCPSize(size) {
+  cpSize = size;
+  document.querySelectorAll('[data-cpsize]').forEach(b => b.classList.toggle('active', b.dataset.cpsize === size));
+  ablyChannel.publish('comment-prompt', { size }).catch(() => {});
+}
+
+function setCPX(x) {
+  cpX = x;
+  document.querySelectorAll('[data-cpx]').forEach(b => b.classList.toggle('active', b.dataset.cpx === x));
+  ablyChannel.publish('comment-prompt', { x }).catch(() => {});
+}
+
+function setCPY(y) {
+  cpY = y;
+  document.querySelectorAll('[data-cpy]').forEach(b => b.classList.toggle('active', b.dataset.cpy === y));
+  ablyChannel.publish('comment-prompt', { y }).catch(() => {});
+}
+
+function cpAddPreset() {
+  const text = document.getElementById('cp-preset-add-text').value.trim();
+  const sub  = document.getElementById('cp-preset-add-sub').value.trim();
+  if (!text) return;
+  cpPresets.push({ text, sub });
+  localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
+  document.getElementById('cp-preset-add-text').value = '';
+  document.getElementById('cp-preset-add-sub').value  = '';
+  cpRenderPresetList();
+}
+
+function cpRemovePreset(idx) {
+  cpPresets.splice(idx, 1);
+  localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
+  cpRenderPresetList();
+}
+
+function cpRenderPresetList() {
+  const list = document.getElementById('cp-preset-list');
+  if (!list) return;
+  if (!cpPresets.length) {
+    list.innerHTML = '<span style="color:var(--muted);font-size:11px;font-style:italic">No presets yet — add one below.</span>';
+    return;
+  }
+  list.innerHTML = cpPresets.map((p, i) => `
+    <div style="display:flex;align-items:center;gap:5px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;padding:3px 6px;">
+      <span style="flex:1;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.text}${p.sub ? ' <span style="color:var(--muted)">/ '+p.sub+'</span>' : ''}</span>
+      <button class="sp-bait-set" onclick="cpSendSingle(${i})" style="min-width:38px;font-size:10px;">▶</button>
+      <button class="sp-bait-set" onclick="cpRemovePreset(${i})" style="min-width:28px;font-size:10px;background:rgba(239,68,68,0.18);border-color:rgba(239,68,68,0.4);color:#fca5a5;">✕</button>
+    </div>
+  `).join('');
+}
+
+function cpSendSingle(idx) {
+  const p = cpPresets[idx];
+  if (!p) return;
+  const patsRaw  = document.getElementById('cp-patterns').value;
+  const patterns = patsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  ablyChannel.publish('comment-prompt', { text: p.text, sub: p.sub || '', patterns }).catch(() => {});
+  doFlash('green');
+}
+
+function cpSendPresets() {
+  if (!cpPresets.length) { doFlash('red'); return; }
+  const patsRaw  = document.getElementById('cp-patterns').value;
+  const patterns = patsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const rotateMs = parseInt(document.getElementById('cp-rotate-ms').value) || 30000;
+  ablyChannel.publish('comment-prompt', {
+    presets: cpPresets, rotateMs, patterns,
+    text: cpPresets[0].text, sub: cpPresets[0].sub || '',
+  }).catch(() => {});
+  doFlash('green');
 }
 
 /* ── kick it off ── */
