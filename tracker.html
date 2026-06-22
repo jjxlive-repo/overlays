@@ -2624,7 +2624,18 @@ function formatRawAmount(rawAmount, type) {
     ablyChannel.subscribe('cmd', msg => {
       if (msg.data === 'requestLeaderboard') {
         publishGiftrLeaderboard();
+        return;
       }
+      // Handle showTopGifters / hideTopGifters from stream-dock quick controls
+      try {
+        const cmd = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
+        if (cmd?.action === 'showTopGifters') {
+          if (cmd.timeFrame) DB.settings.tgoTimeFrame = cmd.timeFrame;
+          publishTopGifters(true);
+        } else if (cmd?.action === 'hideTopGifters') {
+          publishTopGifters(false);
+        }
+      } catch(e) {}
     });
 
     // Keep comment-prompt patterns in sync so chat matching works

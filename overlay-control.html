@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overlay Controller</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:      #0d0d12;
+  --surf:    #16161e;
+  --surf2:   #1e1e2a;
+  --surf3:   #252535;
+  --border:  #2e2e42;
+  --txt:     #e2e2f0;
+  --muted:   #7a7a9a;
+  --accent:  #a855f7;
+  --green:   #22c55e;
+  --red:     #ef4444;
+  --gold:    #f59e0b;
+}
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  padding: 12px 14px 40px;
+  min-height: 100vh;
+}
+h1 { font-size: 16px; font-weight: 700; color: var(--accent); }
+h2 { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); }
+
+/* ── panels ── */
+.panel {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.ph {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; user-select: none;
+  background: var(--surf2);
+}
+.ph:hover { background: var(--surf3); }
+.ph h2 { flex: 1; }
+.ph-chevron { color: var(--muted); font-size: 11px; transition: transform .2s; }
+.ph-chevron.open { transform: rotate(180deg); }
+.pb { padding: 12px; }
+.pb.hidden { display: none; }
+
+/* ── form rows ── */
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.row:last-child { margin-bottom: 0; }
+.col { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 100px; }
+.col.fixed { flex: 0 0 auto; }
+label { font-size: 11px; color: var(--muted); }
+
+/* ── inputs ── */
+input[type=text], input[type=number], select, textarea {
+  background: var(--surf2); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--txt); font-size: 12px;
+  padding: 5px 8px; outline: none; width: 100%;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+select option { background: var(--surf2); }
+textarea { resize: vertical; min-height: 52px; }
+
+/* ── buttons ── */
+button {
+  border: none; border-radius: 5px; cursor: pointer;
+  font-size: 12px; font-weight: 600; padding: 5px 12px;
+  transition: opacity .15s, transform .1s; white-space: nowrap;
+}
+button:hover { opacity: .85; }
+button:active { transform: scale(.97); }
+.btn-p  { background: var(--accent); color: #fff; }
+.btn-s  { background: var(--surf3); color: var(--txt); border: 1px solid var(--border); }
+.btn-g  { background: rgba(34,197,94,.18); color: #4ade80; border: 1px solid rgba(34,197,94,.4); }
+.btn-r  { background: rgba(239,68,68,.15); color: #f87171; border: 1px solid rgba(239,68,68,.35); }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+
+/* ── pos button groups ── */
+.pos-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.pos-btn {
+  background: var(--surf3); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--muted); font-size: 11px;
+  font-weight: 600; padding: 3px 10px; cursor: pointer;
+  transition: all .12s;
+}
+.pos-btn:hover { border-color: var(--accent); color: var(--txt); }
+.pos-btn.active { background: rgba(168,85,247,.28); border-color: rgba(168,85,247,.65); color: #E879F9; }
+
+/* ── mode group ── */
+.mode-group { display: flex; gap: 4px; }
+.mode-btn {
+  background: var(--surf3); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--muted); font-size: 11px;
+  padding: 4px 10px; cursor: pointer; transition: all .12s;
+}
+.mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── tooltips ── */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 0;
+  background: #111; color: #ddd; border: 1px solid var(--border);
+  border-radius: 5px; padding: 5px 8px; font-size: 11px;
+  white-space: pre-line; width: max-content; max-width: 260px;
+  pointer-events: none; opacity: 0; transition: opacity .15s;
+  z-index: 200; font-weight: 400;
+}
+[data-tip]:hover::after { opacity: 1; }
+
+/* ── preset list ── */
+.preset-item {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--surf2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 6px; font-size: 11px;
+}
+.preset-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── status / ably ── */
+.page-header {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); flex-shrink: 0; transition: background .3s;
+}
+.conn-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.conn-dot.connecting { background: var(--gold); animation: blink .8s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+#ably-label { font-size: 11px; color: var(--muted); }
+
+/* ── gist status ── */
+#gist-status-oc { font-size: 10px; color: var(--muted); }
+
+hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+.dim { color: var(--muted); font-size: 11px; }
+.status-line { font-size: 11px; color: var(--muted); min-height: 14px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>🎛 Overlay Controller</h1>
+  <div class="conn-dot connecting" id="ably-dot"></div>
+  <span id="ably-label">connecting…</span>
+  <span style="flex:1"></span>
+  <span id="gist-status-oc"></span>
+</div>
+
+<!-- ══ LIVE TEXT ══ -->
+<div class="panel" id="p-lt">
+  <div class="ph" onclick="togglePanel('lt')">
+    <h2>📢 Live Text Overlay</h2>
+    <span class="ph-chevron open" id="ch-lt">▼</span>
+  </div>
+  <div class="pb" id="pb-lt">
+    <div class="row">
+      <div class="col" data-tip="Main headline shown on stream. Use ALL CAPS for impact.">
+        <label>Main text</label>
+        <input type="text" id="lt-main" placeholder="e.g. PLAYING MINECRAFT">
+      </div>
+      <div class="col" data-tip="Smaller line below main text. Optional.">
+        <label>Subtext</label>
+        <input type="text" id="lt-sub" placeholder="optional subtext">
+      </div>
+      <div class="col fixed" data-tip="Small badge/label in top-left corner of the box.">
+        <label>Badge</label>
+        <input type="text" id="lt-badge" style="width:80px;" value="● LIVE">
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-p" onclick="sendLT()">⚡ Update</button>
+      <button class="btn-g" onclick="ltVisible(true)">Show</button>
+      <button class="btn-r" onclick="ltVisible(false)">Hide</button>
+    </div>
+    <hr>
+    <div class="row" style="gap:4px;">
+      <span class="dim" style="flex-shrink:0;" data-tip="Controls the overall size of the Live Text box.">Size:</span>
+      <div class="pos-group">
+        <button class="pos-btn" data-ltsize="micro" onclick="setLTSize('micro')">Micro</button>
+        <button class="pos-btn" data-ltsize="xxs"   onclick="setLTSize('xxs')">XXS</button>
+        <button class="pos-btn" data-ltsize="xs"    onclick="setLTSize('xs')">XS</button>
+        <button class="pos-btn" data-ltsize="sm"    onclick="setLTSize('sm')">S</button>
+        <button class="pos-btn" data-ltsize="md"    onclick="setLTSize('md')">M</button>
+        <button class="pos-btn active" data-ltsize="lg" onclick="setLTSize('lg')">L ★</button>
+        <button class="pos-btn" data-ltsize="xl"    onclick="setLTSize('xl')">XL</button>
+        <button class="pos-btn" data-ltsize="xxl"   onclick="setLTSize('xxl')">XXL</button>
+      </div>
+    </div>
+    <div class="row" style="gap:4px;margin-top:4px;">
+      <span class="dim" style="flex-shrink:0;" data-tip="Horizontal position on the stream canvas (1080px wide).">X:</span>
+      <div class="pos-group">
+        <button class="pos-btn" data-ltx="left"   onclick="setLTX('left')">Left</button>
+        <button class="pos-btn active" data-ltx="center" onclick="setLTX('center')">Ctr ★</button>
+        <button class="pos-btn" data-ltx="right"  onclick="setLTX('right')">Right</button>
+      </div>
+      <span class="dim" style="flex-shrink:0;margin-left:8px;" data-tip="Vertical position on the stream canvas (1920px tall).">Y:</span>
+      <div class="pos-group">
+        <button class="pos-btn active" data-lty="top"    onclick="setLTY('top')">Top ★</button>
+        <button class="pos-btn" data-lty="upper"  onclick="setLTY('upper')">Upper</button>
+        <button class="pos-btn" data-lty="center" onclick="setLTY('center')">Center</button>
+        <button class="pos-btn" data-lty="lower"  onclick="setLTY('lower')">Lower</button>
+        <button class="pos-btn" data-lty="bottom" onclick="setLTY('bottom')">Bottom</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ COMMENT PROMPT ══ -->
+<div class="panel" id="p-cp">
+  <div class="ph" onclick="togglePanel('cp')">
+    <h2>💬 Comment Prompt</h2>
+    <span class="ph-chevron open" id="ch-cp">▼</span>
+  </div>
+  <div class="pb" id="pb-cp">
+    <div class="row">
+      <div class="col" data-tip="The call-to-action text shown on stream.\nE.g. 'Comment 🔵 or 🔴'">
+        <label>Prompt text</label>
+        <input type="text" id="cp-main" placeholder="Comment 🔵 or 🔴">
+      </div>
+      <div class="col" data-tip="Optional smaller line below the prompt.">
+        <label>Subtext</label>
+        <input type="text" id="cp-sub" placeholder="optional subtext">
+      </div>
+    </div>
+    <div class="row" data-tip="Comma-separated words/emoji to match in incoming TikTok chat.\nMatching comments add +3 hype meter points.\nE.g. 🔵,🔴,blue,red">
+      <div class="col">
+        <label>Match patterns (comma-separated)</label>
+        <input type="text" id="cp-patterns" placeholder="🔵,🔴,blue,red">
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-p" onclick="sendCP()">⚡ Update</button>
+      <button class="btn-g" onclick="cpVisible(true)">Show</button>
+      <button class="btn-r" onclick="cpVisible(false)">Hide</button>
+    </div>
+    <hr>
+    <div class="row" style="align-items:flex-start;gap:6px;">
+      <div style="flex:1;display:flex;flex-direction:column;gap:5px;">
+        <span class="dim" data-tip="Saved prompts that auto-rotate on a timer.\n▶ sends a single preset now.\n▶▶ Push All starts auto-rotation.">Presets (auto-rotate)</span>
+        <div id="cp-preset-list" style="display:flex;flex-direction:column;gap:3px;"></div>
+        <div class="row" style="gap:4px;margin-top:2px;">
+          <input type="text" id="cp-add-text" placeholder="New preset text…" style="flex:2;">
+          <input type="text" id="cp-add-sub"  placeholder="Subtext…" style="flex:1;">
+          <button class="btn-s btn-sm" onclick="cpAddPreset()">+ Add</button>
+        </div>
+        <div class="row" style="gap:6px;margin-top:2px;" data-tip="How often the prompt auto-cycles to the next preset when Push All is active.">
+          <span class="dim" style="flex-shrink:0;">Rotate every</span>
+          <select id="cp-rotate-ms" style="width:auto;">
+            <option value="15000">15 s</option>
+            <option value="20000">20 s</option>
+            <option value="30000" selected>30 s</option>
+            <option value="45000">45 s</option>
+            <option value="60000">60 s</option>
+            <option value="90000">90 s</option>
+            <option value="120000">2 min</option>
+          </select>
+          <button class="btn-p" onclick="cpSendAll()">▶▶ Push All</button>
+        </div>
+      </div>
+    </div>
+    <hr>
+    <div class="row" style="gap:4px;" data-tip="Controls the size of the comment prompt box on stream.">
+      <span class="dim" style="flex-shrink:0;">Size:</span>
+      <div class="pos-group">
+        <button class="pos-btn" data-cpsize="xs" onclick="setCPSize('xs')">XS</button>
+        <button class="pos-btn" data-cpsize="sm" onclick="setCPSize('sm')">S</button>
+        <button class="pos-btn active" data-cpsize="md" onclick="setCPSize('md')">M ★</button>
+        <button class="pos-btn" data-cpsize="lg" onclick="setCPSize('lg')">L</button>
+        <button class="pos-btn" data-cpsize="xl" onclick="setCPSize('xl')">XL</button>
+      </div>
+    </div>
+    <div class="row" style="gap:4px;margin-top:4px;">
+      <span class="dim" style="flex-shrink:0;" data-tip="Horizontal position of the prompt box.">X:</span>
+      <div class="pos-group">
+        <button class="pos-btn" data-cpx="left"   onclick="setCPX('left')">Left</button>
+        <button class="pos-btn active" data-cpx="center" onclick="setCPX('center')">Ctr ★</button>
+        <button class="pos-btn" data-cpx="right"  onclick="setCPX('right')">Right</button>
+      </div>
+      <span class="dim" style="flex-shrink:0;margin-left:8px;" data-tip="Vertical position of the prompt box.\nBottom = near bottom of stream canvas.">Y:</span>
+      <div class="pos-group">
+        <button class="pos-btn" data-cpy="top"    onclick="setCPY('top')">Top</button>
+        <button class="pos-btn" data-cpy="upper"  onclick="setCPY('upper')">Upper</button>
+        <button class="pos-btn" data-cpy="center" onclick="setCPY('center')">Center</button>
+        <button class="pos-btn" data-cpy="lower"  onclick="setCPY('lower')">Lower</button>
+        <button class="pos-btn active" data-cpy="bottom" onclick="setCPY('bottom')">Bottom ★</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EVENT PROMO ══ -->
+<div class="panel" id="p-ep">
+  <div class="ph" onclick="togglePanel('ep')">
+    <h2>🎭 Event Promo</h2>
+    <span class="ph-chevron" id="ch-ep">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-ep">
+
+    <div class="row">
+      <div class="col" data-tip="Main event title shown in fight cards and shelves.">
+        <label>Title</label>
+        <input type="text" id="ep-title" placeholder="JJx Fight Night">
+      </div>
+      <div class="col" data-tip="Small label above the title (e.g. 'LIVE EVENT').">
+        <label>Eyebrow</label>
+        <input type="text" id="ep-eyebrow" placeholder="LIVE EVENT">
+      </div>
+    </div>
+    <div class="row">
+      <div class="col" data-tip="Date/time shown on fight card and shelves.">
+        <label>Date / time</label>
+        <input type="text" id="ep-date" placeholder="SAT JAN 18 · 8PM CST">
+      </div>
+      <div class="col" data-tip="Main marketing tagline shown on event graphics.">
+        <label>Tagline</label>
+        <input type="text" id="ep-tagline" placeholder="WHO WILL WIN?">
+      </div>
+    </div>
+    <div class="row">
+      <div class="col" data-tip="Scrolling ticker text for passive/idle mode.\nKeep it short and punchy.">
+        <label>Passive ticker text</label>
+        <input type="text" id="ep-passive" placeholder="TUNE IN TONIGHT · GIFT TO PLAY">
+      </div>
+    </div>
+    <div class="row">
+      <div class="col" data-tip="Label shown above Team 1's player list on fight cards.">
+        <label>Team 1 label</label>
+        <input type="text" id="ep-team1" placeholder="GAMERS">
+      </div>
+      <div class="col" data-tip="Label shown above Team 2's player list on fight cards.">
+        <label>Team 2 label</label>
+        <input type="text" id="ep-team2" placeholder="BATTLERS">
+      </div>
+    </div>
+
+    <hr>
+    <h2 style="margin-bottom:6px;">Font Sizes</h2>
+    <div class="row">
+      <div class="col" data-tip="Font size (px) for the main shelf/event title.">
+        <label>Shelf title px</label>
+        <input type="number" id="ep-font-title" min="18" max="60" value="36">
+      </div>
+      <div class="col" data-tip="Font size (px) for team labels (GAMERS / BATTLERS).">
+        <label>Team label px</label>
+        <input type="number" id="ep-font-team" min="14" max="34" value="22">
+      </div>
+      <div class="col" data-tip="Font size (px) for individual player names.">
+        <label>Player name px</label>
+        <input type="number" id="ep-font-player" min="14" max="34" value="22">
+      </div>
+      <div class="col" data-tip="Font size (px) for date/tagline/meta text.">
+        <label>Date/meta px</label>
+        <input type="number" id="ep-font-meta" min="12" max="34" value="18">
+      </div>
+    </div>
+
+    <hr>
+    <h2 style="margin-bottom:6px;">Timing (ms)</h2>
+    <div class="row">
+      <div class="col" data-tip="How long (ms) the passive ticker stays on screen per cycle.">
+        <label>Passive display</label>
+        <input type="number" id="ep-passive-ms" min="1000" step="500" value="8000">
+      </div>
+      <div class="col" data-tip="How long (ms) the fight card is shown before cycling off.">
+        <label>Fight card</label>
+        <input type="number" id="ep-fight-ms" min="1000" step="500" value="12000">
+      </div>
+      <div class="col" data-tip="Total duration (ms) of the paintball animation sequence.">
+        <label>Paintball total</label>
+        <input type="number" id="ep-paintball-ms" min="1000" step="500" value="8000">
+      </div>
+      <div class="col" data-tip="Duration (ms) of the paint splat impact animation.">
+        <label>Paint splat</label>
+        <input type="number" id="ep-splat-ms" min="1200" step="250" value="2400">
+      </div>
+      <div class="col" data-tip="When auto-cycle is running, how often (ms) it switches between promo modes.">
+        <label>Auto interval</label>
+        <input type="number" id="ep-auto-ms" min="10000" step="5000" value="30000">
+      </div>
+    </div>
+
+    <hr>
+    <h2 style="margin-bottom:6px;">Fun Drawer</h2>
+    <div class="row">
+      <div class="col" data-tip="Small eyebrow label above the fun drawer title.">
+        <label>Eyebrow</label>
+        <input type="text" id="ep-fun-eyebrow">
+      </div>
+      <div class="col" data-tip="Main headline text in the fun drawer.">
+        <label>Title</label>
+        <input type="text" id="ep-fun-title">
+      </div>
+      <div class="col" data-tip="Optional subtitle below the fun drawer title.">
+        <label>Subtitle</label>
+        <input type="text" id="ep-fun-sub">
+      </div>
+    </div>
+    <div class="row">
+      <div class="col" data-tip="URL for the fun drawer image, or paste a data: URL after uploading below.">
+        <label>Image URL</label>
+        <input type="text" id="ep-fun-img" placeholder="https://… or data:image/…">
+      </div>
+      <div class="col fixed" data-tip="Upload a local image — it becomes a data: URL stored in the field above.">
+        <label>Upload image</label>
+        <input type="file" accept="image/*" id="ep-fun-file" onchange="epLoadImage(event)">
+      </div>
+    </div>
+
+    <hr>
+    <h2 style="margin-bottom:6px;">Players</h2>
+    <div id="ep-player-fields"></div>
+
+    <hr>
+    <div class="row" style="flex-wrap:wrap;gap:6px;">
+      <button class="btn-p" style="flex:1;" onclick="epApply()">💾 Save & Apply</button>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px;">
+      <button class="btn-s" onclick="epShow('passive')">📺 Passive</button>
+      <button class="btn-s" onclick="epShow('fight-card')">⚔️ Fight Card</button>
+      <button class="btn-s" onclick="epShow('fun-drawer')">🎉 Fun Drawer</button>
+      <button class="btn-s" onclick="epShow('paintball')">🎨 Paintball</button>
+      <button class="btn-r" onclick="epHide()">✕ Hide</button>
+    </div>
+    <div class="row" style="gap:6px;margin-top:4px;">
+      <button class="btn-g" style="flex:1;" onclick="epAuto(true)">▶ Start Auto</button>
+      <button class="btn-r" style="flex:1;" onclick="epAuto(false)">■ Stop Auto</button>
+    </div>
+    <div class="status-line" id="ep-status"></div>
+  </div>
+</div>
+
+<!-- ══ GIFT BAR / GIFTR CONTROLS ══ -->
+<div class="panel" id="p-gb">
+  <div class="ph" onclick="togglePanel('gb')">
+    <h2>🎁 Gift Bar Controls</h2>
+    <span class="ph-chevron" id="ch-gb">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-gb">
+
+    <h2 style="margin-bottom:6px;">Pin Slot</h2>
+    <div class="row" data-tip="Pins one leaderboard slot on the gift bar overlay.\nAuto = resumes normal rotation through all enabled slots.">
+      <div class="mode-group" id="gb-slot-btns">
+        <button class="mode-btn" data-gbslot="daily"   onclick="gbPin('daily')">🌟 Daily</button>
+        <button class="mode-btn" data-gbslot="weekly"  onclick="gbPin('weekly')">📅 Weekly</button>
+        <button class="mode-btn" data-gbslot="monthly" onclick="gbPin('monthly')">🏆 Monthly</button>
+        <button class="mode-btn" data-gbslot="youtube" onclick="gbPin('youtube')">▶ YouTube</button>
+        <button class="mode-btn" data-gbslot="tiktok"  onclick="gbPin('tiktok')">♪ TikTok</button>
+        <button class="mode-btn" data-gbslot="auto"    onclick="gbPin('auto')">↺ Auto</button>
+      </div>
+    </div>
+
+    <hr>
+    <h2 style="margin-bottom:6px;">Rotation Slides</h2>
+    <div class="row" data-tip="Toggle which leaderboard slots rotate on the overlay.\nAt least one must stay enabled.">
+      <div class="mode-group" id="gb-slides-btns">
+        <button class="mode-btn active" data-gbslide="daily"   onclick="gbToggleSlide('daily')">Daily</button>
+        <button class="mode-btn active" data-gbslide="weekly"  onclick="gbToggleSlide('weekly')">Weekly</button>
+        <button class="mode-btn active" data-gbslide="monthly" onclick="gbToggleSlide('monthly')">Monthly</button>
+        <button class="mode-btn active" data-gbslide="youtube" onclick="gbToggleSlide('youtube')">▶ YouTube</button>
+        <button class="mode-btn active" data-gbslide="tiktok"  onclick="gbToggleSlide('tiktok')">♪ TikTok</button>
+      </div>
+    </div>
+
+    <hr>
+    <h2 style="margin-bottom:6px;">Custom Featured Gifter</h2>
+    <div class="row" data-tip="Manually feature a specific gifter on the gift bar overlay.\nThey appear in the dedicated 'custom' slot.\nName must match a gifter in the tracker.">
+      <div class="col">
+        <label>Gifter name</label>
+        <input type="text" id="gb-custom-name" list="gb-custom-datalist" placeholder="Gifter name…">
+        <datalist id="gb-custom-datalist"></datalist>
+      </div>
+      <div class="col fixed" style="flex-direction:row;gap:5px;align-items:flex-end;">
+        <button class="btn-p" onclick="gbFeature()">Feature</button>
+        <button class="btn-s" onclick="gbUnfeature()">Clear</button>
+      </div>
+    </div>
+    <div class="status-line" id="gb-status"></div>
+
+    <hr>
+    <button class="btn-s btn-sm" onclick="gbRefresh()" data-tip="Re-publishes the full giftr leaderboard from tracker.html data.">↺ Refresh Leaderboard</button>
+  </div>
+</div>
+
+<!-- ══ GIFT BATTLE ══ -->
+<div class="panel" id="p-gbt">
+  <div class="ph" onclick="togglePanel('gbt')">
+    <h2>🥊 Gift Battle / Progress Bar</h2>
+    <span class="ph-chevron" id="ch-gbt">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-gbt">
+
+    <div class="row" data-tip="Off = hide the bar.\nBattle = two teams compete in real time.\nShared Progress = combined gifting toward a goal amount.">
+      <div class="mode-group" id="gbt-mode-btns">
+        <button class="mode-btn active" data-gbtmode="off"      onclick="gbtMode('off')">Off</button>
+        <button class="mode-btn"        data-gbtmode="battle"   onclick="gbtMode('battle')">⚔ Battle</button>
+        <button class="mode-btn"        data-gbtmode="progress" onclick="gbtMode('progress')">📊 Progress</button>
+      </div>
+    </div>
+
+    <!-- Battle options -->
+    <div id="gbt-battle-opts" style="display:none;">
+      <hr>
+      <h2 style="margin-bottom:6px;">Battle Timer</h2>
+      <div class="row" data-tip="Full Live = battle runs until manually stopped.\nTimed = battle ends after the specified number of minutes.">
+        <div class="mode-group" id="gbt-timer-btns">
+          <button class="mode-btn active" data-gbttimer="live"  onclick="gbtTimer('live')">● Full Live</button>
+          <button class="mode-btn"        data-gbttimer="timed" onclick="gbtTimer('timed')">⏱ Timed</button>
+        </div>
+        <div id="gbt-min-wrap" style="display:none;align-items:center;gap:6px;">
+          <input type="number" id="gbt-minutes" min="1" max="180" value="5" style="width:64px;">
+          <span class="dim">minutes</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress options -->
+    <div id="gbt-progress-opts" style="display:none;">
+      <hr>
+      <h2 style="margin-bottom:6px;">Progress Goal</h2>
+      <div class="row">
+        <div class="col" data-tip="Combined USD spend target to fill the bar to 100%.\n(viewer_spend mode, all platforms combined)">
+          <label>Goal amount ($)</label>
+          <input type="number" id="gbt-goal" min="1" value="100">
+        </div>
+        <div class="col" data-tip="Prize or dare text shown on the overlay when the goal is reached.\nDisplayed in ALL CAPS automatically.">
+          <label>Prize / dare text</label>
+          <input type="text" id="gbt-prize" placeholder="DO 50 PUSHUPS" maxlength="60">
+        </div>
+      </div>
+    </div>
+
+    <hr>
+    <div class="row" style="gap:6px;">
+      <button class="btn-g" style="flex:1;" onclick="gbtActivate()">▶ Activate</button>
+      <button class="btn-r" style="flex:1;" onclick="gbtStop()">✕ Deactivate</button>
+    </div>
+    <div class="status-line" id="gbt-status"></div>
+  </div>
+</div>
+
+<!-- ══ TOP GIFTERS OVERLAY ══ -->
+<div class="panel" id="p-tgo">
+  <div class="ph" onclick="togglePanel('tgo')">
+    <h2>🏆 Top Gifters Overlay</h2>
+    <span class="ph-chevron" id="ch-tgo">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-tgo">
+    <div class="row" data-tip="Which time window to rank gifters by.\nDaily resets at midnight CST. Weekly resets Monday.">
+      <div class="mode-group" id="tgo-tf-btns">
+        <button class="mode-btn active" data-tgotf="daily"   onclick="tgoTF('daily')">📅 Daily</button>
+        <button class="mode-btn"        data-tgotf="weekly"  onclick="tgoTF('weekly')">🗓 Weekly</button>
+        <button class="mode-btn"        data-tgotf="monthly" onclick="tgoTF('monthly')">📆 Monthly</button>
+        <button class="mode-btn"        data-tgotf="allTime" onclick="tgoTF('allTime')">🏅 All Time</button>
+      </div>
+    </div>
+    <div class="row" style="gap:6px;">
+      <button class="btn-g" onclick="tgoShow()">▶ Show Panel</button>
+      <button class="btn-r" onclick="tgoHide()">✕ Hide Panel</button>
+      <button class="btn-s" onclick="tgoRefresh()">↺ Refresh</button>
+    </div>
+    <div class="status-line" id="tgo-status"></div>
+  </div>
+</div>
+
+<!-- ══ GIST SYNC ══ -->
+<div class="panel" id="p-gist">
+  <div class="ph" onclick="togglePanel('gist')">
+    <h2>☁ Gist Sync (Settings Backup)</h2>
+    <span class="ph-chevron" id="ch-gist">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-gist">
+    <div class="row">
+      <div class="col" data-tip="GitHub Personal Access Token with 'gist' scope.\nCreate at github.com/settings/tokens — never share this.">
+        <label>GitHub token (ghp_…)</label>
+        <input type="password" id="oc-gist-token" placeholder="ghp_…" oninput="ocGistCredChanged()">
+      </div>
+    </div>
+    <div class="row">
+      <div class="col" data-tip="The Gist ID that stores your overlay settings.\nClick Create to auto-generate one.">
+        <label>Gist ID</label>
+        <input type="text" id="oc-gist-id" placeholder="auto-filled on create" style="font-family:monospace;" oninput="ocGistCredChanged()">
+      </div>
+      <div class="col fixed" style="flex-direction:row;gap:5px;align-items:flex-end;">
+        <button class="btn-p" onclick="ocGistCreate()">Create</button>
+        <button class="btn-s" onclick="ocGistSave()">Save Now</button>
+      </div>
+    </div>
+    <div class="status-line" id="oc-gist-status-detail"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════
+   ABLY
+═══════════════════════════════════════════ */
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+const GIST_FILENAME = 'jjx-overlay-settings.json';
+const TRACKER_KEY   = 'gift-tracker-data';
+
+let ablyClient  = null;
+let ablyChannel = null;
+
+(function initAbly() {
+  ablyClient  = new Ably.Realtime({ key: ABLY_KEY });
+  ablyChannel = ablyClient.channels.get(ABLY_CH);
+  const dot   = document.getElementById('ably-dot');
+  const label = document.getElementById('ably-label');
+  ablyClient.connection.on('connected',    () => { dot.className='conn-dot connected';  label.textContent='connected';    });
+  ablyClient.connection.on('disconnected', () => { dot.className='conn-dot';            label.textContent='disconnected'; });
+  ablyClient.connection.on('failed',       () => { dot.className='conn-dot';            label.textContent='failed';       dot.style.background='#ef4444'; });
+})();
+
+function pub(ch, data) { ablyChannel?.publish(ch, data).catch(() => {}); }
+
+/* ═══════════════════════════════════════════
+   PANEL COLLAPSE
+═══════════════════════════════════════════ */
+function togglePanel(id) {
+  const pb = document.getElementById('pb-' + id);
+  const ch = document.getElementById('ch-' + id);
+  pb.classList.toggle('hidden');
+  ch.classList.toggle('open', !pb.classList.contains('hidden'));
+}
+
+/* ═══════════════════════════════════════════
+   LIVE TEXT
+═══════════════════════════════════════════ */
+let ltX = 'center', ltY = 'top', ltSize = 'lg';
+
+function sendLT() {
+  const main  = document.getElementById('lt-main').value.trim();
+  const sub   = document.getElementById('lt-sub').value.trim();
+  const badge = document.getElementById('lt-badge').value.trim();
+  pub('announce', { main, sub, badge, x: ltX, y: ltY, size: ltSize });
+  scheduleGistSave();
+}
+function ltVisible(v)  { pub('announce', { visible: v }); }
+function setLTSize(s)  { ltSize = s; document.querySelectorAll('[data-ltsize]').forEach(b => b.classList.toggle('active', b.dataset.ltsize === s)); pub('announce', { size: s }); scheduleGistSave(); }
+function setLTX(x)     { ltX   = x; document.querySelectorAll('[data-ltx]').forEach(b => b.classList.toggle('active', b.dataset.ltx === x));   pub('announce', { x }); scheduleGistSave(); }
+function setLTY(y)     { ltY   = y; document.querySelectorAll('[data-lty]').forEach(b => b.classList.toggle('active', b.dataset.lty === y));   pub('announce', { y }); scheduleGistSave(); }
+
+/* ═══════════════════════════════════════════
+   COMMENT PROMPT
+═══════════════════════════════════════════ */
+const CP_STORAGE = 'cp-presets';
+let cpX = 'center', cpY = 'bottom', cpSize = 'md';
+let cpPresets = JSON.parse(localStorage.getItem(CP_STORAGE) || '[]');
+
+function sendCP() {
+  const text     = document.getElementById('cp-main').value.trim();
+  const sub      = document.getElementById('cp-sub').value.trim();
+  const patterns = document.getElementById('cp-patterns').value.split(',').map(s => s.trim()).filter(Boolean);
+  const payload  = { x: cpX, y: cpY, size: cpSize, sub, patterns };
+  if (text) payload.text = text;
+  pub('comment-prompt', payload);
+  scheduleGistSave();
+}
+function cpVisible(v) { pub('comment-prompt', { visible: v }); }
+function setCPSize(s) { cpSize = s; document.querySelectorAll('[data-cpsize]').forEach(b => b.classList.toggle('active', b.dataset.cpsize === s)); pub('comment-prompt', { size: s }); scheduleGistSave(); }
+function setCPX(x)    { cpX   = x; document.querySelectorAll('[data-cpx]').forEach(b => b.classList.toggle('active', b.dataset.cpx === x));   pub('comment-prompt', { x }); scheduleGistSave(); }
+function setCPY(y)    { cpY   = y; document.querySelectorAll('[data-cpy]').forEach(b => b.classList.toggle('active', b.dataset.cpy === y));   pub('comment-prompt', { y }); scheduleGistSave(); }
+
+function cpAddPreset() {
+  const text = document.getElementById('cp-add-text').value.trim();
+  const sub  = document.getElementById('cp-add-sub').value.trim();
+  if (!text) return;
+  cpPresets.push({ text, sub });
+  localStorage.setItem(CP_STORAGE, JSON.stringify(cpPresets));
+  document.getElementById('cp-add-text').value = '';
+  document.getElementById('cp-add-sub').value  = '';
+  cpRenderList();
+  scheduleGistSave();
+}
+function cpRemovePreset(i) {
+  cpPresets.splice(i, 1);
+  localStorage.setItem(CP_STORAGE, JSON.stringify(cpPresets));
+  cpRenderList();
+  scheduleGistSave();
+}
+function cpSendSingle(i) {
+  const p = cpPresets[i]; if (!p) return;
+  const patterns = document.getElementById('cp-patterns').value.split(',').map(s => s.trim()).filter(Boolean);
+  pub('comment-prompt', { text: p.text, sub: p.sub || '', patterns });
+}
+function cpSendAll() {
+  if (!cpPresets.length) return;
+  const patterns = document.getElementById('cp-patterns').value.split(',').map(s => s.trim()).filter(Boolean);
+  const rotateMs = parseInt(document.getElementById('cp-rotate-ms').value) || 30000;
+  pub('comment-prompt', { presets: cpPresets, rotateMs, patterns, text: cpPresets[0].text, sub: cpPresets[0].sub || '' });
+}
+function cpRenderList() {
+  const list = document.getElementById('cp-preset-list');
+  if (!cpPresets.length) { list.innerHTML = '<span class="dim" style="font-style:italic">No presets — add one below.</span>'; return; }
+  list.innerHTML = cpPresets.map((p, i) => `
+    <div class="preset-item">
+      <span>${p.text}${p.sub ? ' <span style="color:var(--muted)">/ '+p.sub+'</span>' : ''}</span>
+      <button class="btn-s btn-sm" onclick="cpSendSingle(${i})">▶</button>
+      <button class="btn-r btn-sm" onclick="cpRemovePreset(${i})">✕</button>
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════
+   EVENT PROMO
+═══════════════════════════════════════════ */
+const EP_STORAGE = 'ep-overlay-settings';
+const EP_PLAYERS = ['Player 1','Player 2','Player 3','Player 4','Player 5','Player 6'];
+
+function epBuildPlayerFields() {
+  const root = document.getElementById('ep-player-fields');
+  EP_PLAYERS.forEach((label, i) => {
+    const d = document.createElement('div');
+    d.className = 'row';
+    d.innerHTML = `
+      <div class="col" data-tip="Display name for ${label} shown on fight cards."><label>${label} name</label><input type="text" id="ep-p${i}-name" placeholder="${label}"></div>
+      <div class="col" data-tip="Image URL for ${label}'s avatar on fight cards."><label>${label} image URL</label><input type="text" id="ep-p${i}-img" placeholder="https://…"></div>`;
+    root.appendChild(d);
+  });
+}
+
+function epReadConfig() {
+  const n = (id, min, max, fallback) => Math.max(min, Math.min(max, Number(document.getElementById(id)?.value) || fallback));
+  return {
+    title:   document.getElementById('ep-title')?.value.trim()   || '',
+    eyebrow: document.getElementById('ep-eyebrow')?.value.trim() || '',
+    dateTime:document.getElementById('ep-date')?.value.trim()    || '',
+    tagline: document.getElementById('ep-tagline')?.value.trim() || '',
+    passiveText: document.getElementById('ep-passive')?.value.trim() || '',
+    teamGamersLabel:   document.getElementById('ep-team1')?.value.trim()  || 'GAMERS',
+    teamBattlersLabel: document.getElementById('ep-team2')?.value.trim()  || 'BATTLERS',
+    fonts: {
+      shelfTitlePx: n('ep-font-title', 18, 60, 36),
+      teamLabelPx:  n('ep-font-team',  14, 34, 22),
+      playerNamePx: n('ep-font-player',14, 34, 22),
+      metaPx:       n('ep-font-meta',  12, 34, 18),
+    },
+    durations: {
+      passiveMs:      Math.max(1000, Number(document.getElementById('ep-passive-ms')?.value) || 8000),
+      fightCardMs:    Math.max(1000, Number(document.getElementById('ep-fight-ms')?.value)   || 12000),
+      paintballMs:    Math.max(1000, Number(document.getElementById('ep-paintball-ms')?.value)|| 8000),
+      paintballSplatMs: Math.max(1200, Number(document.getElementById('ep-splat-ms')?.value) || 2400),
+      autoIntervalMs: Math.max(10000,Number(document.getElementById('ep-auto-ms')?.value)    || 30000),
+    },
+    players: EP_PLAYERS.map((_, i) => ({
+      name:  document.getElementById(`ep-p${i}-name`)?.value.trim() || EP_PLAYERS[i],
+      image: document.getElementById(`ep-p${i}-img`)?.value.trim()  || '',
+    })),
+    fun: {
+      eyebrow: document.getElementById('ep-fun-eyebrow')?.value.trim() || '',
+      title:   document.getElementById('ep-fun-title')?.value.trim()   || '',
+      subtitle:document.getElementById('ep-fun-sub')?.value.trim()     || '',
+      image:   document.getElementById('ep-fun-img')?.value.trim()     || '',
+    },
+  };
+}
+
+function epPopulate(cfg) {
+  if (!cfg) return;
+  const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  s('ep-title', cfg.title); s('ep-eyebrow', cfg.eyebrow); s('ep-date', cfg.dateTime);
+  s('ep-tagline', cfg.tagline); s('ep-passive', cfg.passiveText);
+  s('ep-team1', cfg.teamGamersLabel); s('ep-team2', cfg.teamBattlersLabel);
+  if (cfg.fonts) {
+    s('ep-font-title', cfg.fonts.shelfTitlePx); s('ep-font-team', cfg.fonts.teamLabelPx);
+    s('ep-font-player', cfg.fonts.playerNamePx); s('ep-font-meta', cfg.fonts.metaPx);
+  }
+  if (cfg.durations) {
+    s('ep-passive-ms', cfg.durations.passiveMs); s('ep-fight-ms', cfg.durations.fightCardMs);
+    s('ep-paintball-ms', cfg.durations.paintballMs); s('ep-splat-ms', cfg.durations.paintballSplatMs);
+    s('ep-auto-ms', cfg.durations.autoIntervalMs);
+  }
+  if (cfg.fun) { s('ep-fun-eyebrow', cfg.fun.eyebrow); s('ep-fun-title', cfg.fun.title); s('ep-fun-sub', cfg.fun.subtitle); s('ep-fun-img', cfg.fun.image); }
+  (cfg.players || []).forEach((p, i) => { s(`ep-p${i}-name`, p.name); s(`ep-p${i}-img`, p.image); });
+}
+
+function epApply() {
+  const cfg = epReadConfig();
+  localStorage.setItem(EP_STORAGE, JSON.stringify(cfg));
+  pub('event-promo-config', cfg);
+  const st = document.getElementById('ep-status');
+  if (st) { st.textContent = '✅ Applied'; setTimeout(() => st.textContent = '', 2000); }
+  scheduleGistSave();
+}
+function epShow(mode) { pub('event-promo', { action: 'show', mode }); }
+function epHide()     { pub('event-promo', { action: 'hide' }); }
+function epAuto(on)   { pub('event-promo', { action: on ? 'auto-start' : 'auto-stop' }); }
+
+function epLoadImage(evt) {
+  const file = evt.target.files?.[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('ep-fun-img').value = e.target.result; };
+  reader.readAsDataURL(file);
+}
+
+/* ═══════════════════════════════════════════
+   GIFT BAR / GIFTR CONTROLS
+═══════════════════════════════════════════ */
+// Read tracker's localStorage to get gifter list and settings
+function trackerDB() {
+  try { return JSON.parse(localStorage.getItem(TRACKER_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveTrackerSettings(settings) {
+  try {
+    const db = trackerDB();
+    db.settings = { ...(db.settings || {}), ...settings };
+    localStorage.setItem(TRACKER_KEY, JSON.stringify(db));
+  } catch(e) {}
+}
+
+let gbEnabledSlides = ['daily','weekly','monthly','youtube','tiktok'];
+
+function gbInit() {
+  const db = trackerDB();
+  const enabled = db?.settings?.giftrEnabledSlots || ['daily','weekly','monthly','youtube','tiktok'];
+  gbEnabledSlides = [...enabled];
+  document.querySelectorAll('[data-gbslide]').forEach(b =>
+    b.classList.toggle('active', gbEnabledSlides.includes(b.dataset.gbslide)));
+
+  // Populate datalist with gifter names
+  const dl = document.getElementById('gb-custom-datalist');
+  if (dl && db.gifters) {
+    dl.innerHTML = Object.values(db.gifters)
+      .map(g => `<option value="${(g.displayName || '').replace(/"/g,'&quot;')}">`)
+      .join('');
+  }
+
+  // Show current custom featured
+  const custom = db?.settings?.giftrCustom;
+  const st = document.getElementById('gb-status');
+  if (st) st.textContent = custom ? `Featuring: ${custom.name}` : '';
+}
+
+function gbPin(slot) {
+  document.querySelectorAll('[data-gbslot]').forEach(b => b.classList.toggle('active', b.dataset.gbslot === slot));
+  pub('giftr-cmd', slot === 'auto' ? 'auto' : 'slot:' + slot);
+}
+
+function gbToggleSlide(slot) {
+  const idx = gbEnabledSlides.indexOf(slot);
+  if (idx >= 0) {
+    if (gbEnabledSlides.length <= 1) return; // keep at least one
+    gbEnabledSlides.splice(idx, 1);
+  } else {
+    gbEnabledSlides.push(slot);
+  }
+  document.querySelectorAll('[data-gbslide]').forEach(b =>
+    b.classList.toggle('active', gbEnabledSlides.includes(b.dataset.gbslide)));
+  saveTrackerSettings({ giftrEnabledSlots: [...gbEnabledSlides] });
+  pub('cmd', 'requestLeaderboard');
+}
+
+function gbFeature() {
+  const rawName = document.getElementById('gb-custom-name')?.value.trim() || '';
+  if (!rawName) return;
+  const db = trackerDB();
+  const norm = n => n.trim().toLowerCase();
+  const gifter = db.gifters
+    ? Object.values(db.gifters).find(g => norm(g.displayName || '') === norm(rawName))
+    : null;
+  const st = document.getElementById('gb-status');
+  if (!gifter) { if (st) st.textContent = '⚠ Gifter not found in tracker.'; return; }
+  const allRaw = (gifter.gifts || []).reduce((s, g) => s + g.amount, 0);
+  const custom = { name: gifter.displayName, amount: allRaw, type: (gifter.gifts?.[0]?.type || 'tiktok_coins'), platform: gifter.platform || 'unknown', profilePic: gifter.profilePic || null };
+  saveTrackerSettings({ giftrCustom: custom });
+  if (st) st.textContent = `Featuring: ${gifter.displayName}`;
+  document.getElementById('gb-custom-name').value = '';
+  pub('cmd', 'requestLeaderboard');
+}
+
+function gbUnfeature() {
+  saveTrackerSettings({ giftrCustom: null });
+  const st = document.getElementById('gb-status');
+  if (st) st.textContent = '';
+  pub('cmd', 'requestLeaderboard');
+}
+
+function gbRefresh() { pub('cmd', 'requestLeaderboard'); }
+
+/* ═══════════════════════════════════════════
+   GIFT BATTLE
+═══════════════════════════════════════════ */
+let _gbtMode  = 'off';
+let _gbtTimer = 'live';
+
+function gbtMode(mode) {
+  _gbtMode = mode;
+  document.querySelectorAll('[data-gbtmode]').forEach(b => b.classList.toggle('active', b.dataset.gbtmode === mode));
+  document.getElementById('gbt-battle-opts').style.display   = mode === 'battle'   ? '' : 'none';
+  document.getElementById('gbt-progress-opts').style.display = mode === 'progress' ? '' : 'none';
+}
+function gbtTimer(t) {
+  _gbtTimer = t;
+  document.querySelectorAll('[data-gbttimer]').forEach(b => b.classList.toggle('active', b.dataset.gbttimer === t));
+  document.getElementById('gbt-min-wrap').style.display = t === 'timed' ? 'flex' : 'none';
+}
+function gbtActivate() {
+  const cmd = { mode: _gbtMode };
+  if (_gbtMode === 'battle' && _gbtTimer === 'timed') {
+    cmd.timerSeconds = (parseInt(document.getElementById('gbt-minutes').value) || 5) * 60;
+  }
+  if (_gbtMode === 'progress') {
+    cmd.goalAmount = parseFloat(document.getElementById('gbt-goal').value) || 100;
+    cmd.prizeName  = (document.getElementById('gbt-prize').value || '').trim().toUpperCase();
+  }
+  pub('gift-battle-cmd', cmd);
+  const st = document.getElementById('gbt-status');
+  if (st) { st.textContent = '✅ Activated'; setTimeout(() => st.textContent = '', 3000); }
+}
+function gbtStop() {
+  pub('gift-battle-cmd', { mode: 'off' });
+  const st = document.getElementById('gbt-status');
+  if (st) { st.textContent = 'Deactivated'; setTimeout(() => st.textContent = '', 2000); }
+}
+
+/* ═══════════════════════════════════════════
+   TOP GIFTERS OVERLAY
+═══════════════════════════════════════════ */
+let _tgoTF = 'daily';
+
+function tgoTF(tf) {
+  _tgoTF = tf;
+  document.querySelectorAll('[data-tgotf]').forEach(b => b.classList.toggle('active', b.dataset.tgotf === tf));
+}
+function tgoShow() {
+  pub('cmd', JSON.stringify({ action: 'showTopGifters', timeFrame: _tgoTF }));
+  const st = document.getElementById('tgo-status');
+  if (st) { st.textContent = 'shown'; setTimeout(() => st.textContent = '', 1800); }
+}
+function tgoHide() {
+  pub('top-gifters', { visible: false, gifters: [] });
+  const st = document.getElementById('tgo-status');
+  if (st) { st.textContent = 'hidden'; setTimeout(() => st.textContent = '', 1800); }
+}
+function tgoRefresh() {
+  pub('cmd', 'requestLeaderboard');
+  const st = document.getElementById('tgo-status');
+  if (st) { st.textContent = 'refreshed'; setTimeout(() => st.textContent = '', 1800); }
+}
+
+/* ═══════════════════════════════════════════
+   GIST SYNC
+═══════════════════════════════════════════ */
+let _ocGistToken = localStorage.getItem('oc-gist-token') || '';
+let _ocGistId    = localStorage.getItem('oc-gist-id')    || '';
+let _ocSaveTimer = null;
+
+function ocGistCredChanged() {
+  _ocGistToken = document.getElementById('oc-gist-token').value.trim();
+  _ocGistId    = document.getElementById('oc-gist-id').value.trim();
+  localStorage.setItem('oc-gist-token', _ocGistToken);
+  localStorage.setItem('oc-gist-id',    _ocGistId);
+}
+
+function ocGistSetStatus(msg, color) {
+  ['gist-status-oc','oc-gist-status-detail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.style.color = color || 'var(--muted)'; }
+  });
+}
+
+function ocGistBundle() {
+  return JSON.stringify({
+    cpPresets,
+    cpX, cpY, cpSize,
+    ltX, ltY, ltSize,
+    epConfig: (() => { try { return JSON.parse(localStorage.getItem(EP_STORAGE) || 'null'); } catch(e) { return null; } })(),
+    gbEnabledSlides,
+  }, null, 2);
+}
+
+async function ocGistSave() {
+  if (!_ocGistToken || !_ocGistId) return;
+  ocGistSetStatus('Saving…', '#FBBF24');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${_ocGistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${_ocGistToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: ocGistBundle() } } }),
+    });
+    if (!res.ok) throw new Error(res.status);
+    ocGistSetStatus('✓ Saved ' + new Date().toLocaleTimeString(), '#4ade80');
+  } catch(e) { ocGistSetStatus('✗ Save failed: ' + e.message, '#f87171'); }
+}
+
+function scheduleGistSave() {
+  clearTimeout(_ocSaveTimer);
+  _ocSaveTimer = setTimeout(ocGistSave, 1500);
+}
+
+async function ocGistCreate() {
+  if (!_ocGistToken) { ocGistSetStatus('Enter token first', '#f87171'); return; }
+  ocGistSetStatus('Creating…', '#FBBF24');
+  try {
+    const res = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_ocGistToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: 'JJx Overlay Controller Settings', public: false, files: { [GIST_FILENAME]: { content: ocGistBundle() } } }),
+    });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    _ocGistId = data.id;
+    localStorage.setItem('oc-gist-id', _ocGistId);
+    document.getElementById('oc-gist-id').value = _ocGistId;
+    ocGistSetStatus('✓ Created', '#4ade80');
+  } catch(e) { ocGistSetStatus('✗ Create failed: ' + e.message, '#f87171'); }
+}
+
+async function ocGistLoad() {
+  if (!_ocGistToken || !_ocGistId) return;
+  ocGistSetStatus('Loading…', '#FBBF24');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${_ocGistId}`, {
+      headers: { Authorization: `Bearer ${_ocGistToken}` },
+    });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const raw  = data.files?.[GIST_FILENAME]?.content;
+    if (!raw) throw new Error('file missing');
+    const s = JSON.parse(raw);
+    if (Array.isArray(s.cpPresets)) { cpPresets = s.cpPresets; localStorage.setItem(CP_STORAGE, JSON.stringify(cpPresets)); cpRenderList(); }
+    if (s.cpX) setCPX(s.cpX); if (s.cpY) setCPY(s.cpY); if (s.cpSize) setCPSize(s.cpSize);
+    if (s.ltX) setLTX(s.ltX); if (s.ltY) setLTY(s.ltY); if (s.ltSize) setLTSize(s.ltSize);
+    if (s.epConfig) { localStorage.setItem(EP_STORAGE, JSON.stringify(s.epConfig)); epPopulate(s.epConfig); }
+    if (Array.isArray(s.gbEnabledSlides)) { gbEnabledSlides = s.gbEnabledSlides; document.querySelectorAll('[data-gbslide]').forEach(b => b.classList.toggle('active', gbEnabledSlides.includes(b.dataset.gbslide))); }
+    ocGistSetStatus('✓ Loaded ' + new Date().toLocaleTimeString(), '#4ade80');
+  } catch(e) { ocGistSetStatus('✗ Load failed: ' + e.message, '#f87171'); }
+}
+
+/* ═══════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════ */
+(function init() {
+  epBuildPlayerFields();
+  cpRenderList();
+  gbInit();
+
+  // Restore gist credentials
+  if (_ocGistToken) document.getElementById('oc-gist-token').value = _ocGistToken;
+  if (_ocGistId)    document.getElementById('oc-gist-id').value    = _ocGistId;
+
+  // Load from gist
+  ocGistLoad().then(() => {
+    // Re-init giftr after gist may have changed tracker settings
+    gbInit();
+  });
+
+  // Restore EP config from localStorage
+  try {
+    const ep = JSON.parse(localStorage.getItem(EP_STORAGE) || 'null');
+    if (ep) epPopulate(ep);
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>
