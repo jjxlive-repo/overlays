@@ -726,7 +726,7 @@ function epBuildPlayerFields() {
     d.className = 'row';
     d.innerHTML = `
       <div class="col" data-tip="Display name for ${label} shown on fight cards."><label>${label} name</label><input type="text" id="ep-p${i}-name" placeholder="${label}"></div>
-      <div class="col" data-tip="Image URL for ${label}'s avatar on fight cards."><label>${label} image URL</label><input type="text" id="ep-p${i}-img" placeholder="https://…"></div>`;
+      <div class="col" data-tip="Image URL for ${label}'s avatar, or upload a file to embed it."><label>${label} image</label><input type="text" id="ep-p${i}-img" placeholder="https://… or data:image/…"><input type="file" accept="image/*" id="ep-p${i}-file" onchange="epLoadPlayerImage(event, ${i})" style="margin-top:4px;font-size:11px;"></div>`;
     root.appendChild(d);
   });
 }
@@ -801,12 +801,17 @@ function epAuto(on)   {
   pub('event-promo', { type: 'event-promo-auto', enabled: on, intervalMs });
 }
 
-function epLoadImage(evt) {
+function epLoadImageInto(evt, targetId) {
   const file = evt.target.files?.[0]; if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => { document.getElementById('ep-fun-img').value = e.target.result; };
+  reader.onload = e => {
+    const el = document.getElementById(targetId);
+    if (el) { el.value = e.target.result; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  };
   reader.readAsDataURL(file);
 }
+function epLoadImage(evt)            { epLoadImageInto(evt, 'ep-fun-img'); }
+function epLoadPlayerImage(evt, i)   { epLoadImageInto(evt, `ep-p${i}-img`); }
 
 /* ═══════════════════════════════════════════
    GIFT BAR / GIFTR CONTROLS
