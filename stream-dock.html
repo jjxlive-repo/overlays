@@ -1717,62 +1717,7 @@ function ttBadgeClass(lv) {
   return 'lv1';
 }
 
-let ttAutoScroll = true;
-
-function toggleTTScroll(e) {
-  e.stopPropagation();
-  ttAutoScroll = !ttAutoScroll;
-  const btn = document.getElementById('btn-tt-scroll');
-  btn.textContent  = ttAutoScroll ? '⬇ Live' : '⏸ Paused';
-  btn.classList.toggle('live', ttAutoScroll);
-  if (ttAutoScroll) {
-    const c = document.getElementById('msgs-tt');
-    c.scrollTop = c.scrollHeight;
-  }
-}
-
-(function initTTScrollPause() {
-  const msgs = document.getElementById('msgs-tt');
-  msgs.addEventListener('scroll', () => {
-    if (!ttAutoScroll) return;
-    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
-    if (distFromBottom > 40) {
-      ttAutoScroll = false;
-      const btn = document.getElementById('btn-tt-scroll');
-      btn.textContent = '⏸ Paused';
-      btn.classList.remove('live');
-    }
-  });
-})();
-
-/* ── YouTube autoscroll ── */
-let ytAutoScroll = true;
-
-function toggleYTScroll(e) {
-  e.stopPropagation();
-  ytAutoScroll = !ytAutoScroll;
-  const btn = document.getElementById('btn-yt-scroll');
-  btn.textContent = ytAutoScroll ? '⬇ Live' : '⏸ Paused';
-  btn.classList.toggle('live', ytAutoScroll);
-  if (ytAutoScroll) {
-    const c = document.getElementById('msgs-yt');
-    c.scrollTop = c.scrollHeight;
-  }
-}
-
-(function initYTScrollPause() {
-  const msgs = document.getElementById('msgs-yt');
-  msgs.addEventListener('scroll', () => {
-    if (!ytAutoScroll) return;
-    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
-    if (distFromBottom > 40) {
-      ytAutoScroll = false;
-      const btn = document.getElementById('btn-yt-scroll');
-      btn.textContent = '⏸ Paused';
-      btn.classList.remove('live');
-    }
-  });
-})();
+/* TT/YT separate chat panels removed in restructure — only All Chat remains */
 
 /* ── All Chat autoscroll ── */
 let allAutoScroll = true;
@@ -2124,13 +2069,26 @@ const btnSave    = document.getElementById('btn-save');
 const btnReset   = document.getElementById('btn-reset');
 const flash      = document.getElementById('flash');
 
-ably.connection.on('connected', () => {
-  connDot.className = 'conn-dot connected';
-  connLabel.textContent = 'Splat connected ✓';
-});
-ably.connection.on('disconnected', () => {
-  connDot.className = 'conn-dot connecting';
-  connLabel.textContent = 'Reconnecting…';
+ably.connection.on(stateChange => {
+  const s = stateChange.current;
+  console.log('[Ably] connection state →', s, stateChange.reason || '');
+  if (s === 'connected') {
+    connDot.className = 'conn-dot connected';
+    connLabel.textContent = 'Splat connected ✓';
+  } else if (s === 'connecting') {
+    connDot.className = 'conn-dot connecting';
+    connLabel.textContent = 'Connecting…';
+  } else if (s === 'disconnected') {
+    connDot.className = 'conn-dot connecting';
+    connLabel.textContent = 'Reconnecting…';
+  } else if (s === 'suspended') {
+    connDot.className = 'conn-dot connecting';
+    connLabel.textContent = 'Suspended — retrying…';
+  } else if (s === 'failed' || s === 'closed') {
+    connDot.className = 'conn-dot';
+    const reason = stateChange.reason ? (stateChange.reason.message || stateChange.reason.code) : 'unknown';
+    connLabel.textContent = '✗ ' + s + ': ' + reason;
+  }
 });
 
 let splatState = 'idle', timeLeft = SPLAT_SEC, ticker = null;
@@ -2896,15 +2854,15 @@ function qcCPVisible(show) {
   doFlash(show ? 'green' : 'red');
 }
 
-/* ── Event Promo ── */
+/* ── Event Promo (type-based protocol to match gift-bar.html) ── */
 function qcEP(mode) {
   if (!ablyChannel) return;
-  ablyChannel.publish('event-promo', { action: 'show', mode }).catch(() => {});
+  ablyChannel.publish('event-promo', { type: 'event-promo-show', mode }).catch(() => {});
   doFlash('green');
 }
 function qcEPHide() {
   if (!ablyChannel) return;
-  ablyChannel.publish('event-promo', { action: 'hide' }).catch(() => {});
+  ablyChannel.publish('event-promo', { type: 'event-promo-hide' }).catch(() => {});
   doFlash('red');
 }
 

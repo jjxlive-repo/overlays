@@ -789,14 +789,17 @@ function epPopulate(cfg) {
 function epApply() {
   const cfg = epReadConfig();
   localStorage.setItem(EP_STORAGE, JSON.stringify(cfg));
-  pub('event-promo-config', cfg);
+  pub('event-promo', { type: 'event-promo-config', config: cfg });
   const st = document.getElementById('ep-status');
   if (st) { st.textContent = '✅ Applied'; setTimeout(() => st.textContent = '', 2000); }
   scheduleGistSave();
 }
-function epShow(mode) { pub('event-promo', { action: 'show', mode }); }
-function epHide()     { pub('event-promo', { action: 'hide' }); }
-function epAuto(on)   { pub('event-promo', { action: on ? 'auto-start' : 'auto-stop' }); }
+function epShow(mode) { pub('event-promo', { type: 'event-promo-show', mode, config: epReadConfig() }); }
+function epHide()     { pub('event-promo', { type: 'event-promo-hide' }); }
+function epAuto(on)   {
+  const intervalMs = parseInt(document.getElementById('ep-auto-ms')?.value) || 600000;
+  pub('event-promo', { type: 'event-promo-auto', enabled: on, intervalMs });
+}
 
 function epLoadImage(evt) {
   const file = evt.target.files?.[0]; if (!file) return;
