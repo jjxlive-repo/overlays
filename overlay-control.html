@@ -1002,6 +1002,10 @@ function scheduleGistSave() {
 
 async function ocGistCreate() {
   if (!_ocGistToken) { ocGistSetStatus('Enter token first', '#f87171'); return; }
+  if (_ocGistToken.startsWith('github_pat_')) {
+    ocGistSetStatus('✗ Fine-grained tokens don\'t support Gists. Use a classic token (ghp_…) with "gist" scope from github.com/settings/tokens', '#f87171');
+    return;
+  }
   ocGistSetStatus('Creating…', '#FBBF24');
   try {
     const res = await fetch('https://api.github.com/gists', {
@@ -1009,13 +1013,18 @@ async function ocGistCreate() {
       headers: { Authorization: `Bearer ${_ocGistToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: 'JJx Overlay Controller Settings', public: false, files: { [GIST_FILENAME]: { content: ocGistBundle() } } }),
     });
-    if (!res.ok) throw new Error(res.status);
+    if (!res.ok) {
+      let detail = res.status;
+      try { const j = await res.json(); detail = `${res.status} — ${j.message || JSON.stringify(j)}`; } catch(_) {}
+      if (res.status === 404) detail += '. If using a fine-grained token, switch to a classic token (ghp_…) with "gist" scope.';
+      throw new Error(detail);
+    }
     const data = await res.json();
     _ocGistId = data.id;
     localStorage.setItem('oc-gist-id', _ocGistId);
     document.getElementById('oc-gist-id').value = _ocGistId;
-    ocGistSetStatus('✓ Created', '#4ade80');
-  } catch(e) { ocGistSetStatus('✗ Create failed: ' + e.message, '#f87171'); }
+    ocGistSetStatus('✓ Created: ' + _ocGistId, '#4ade80');
+  } catch(e) { ocGistSetStatus('✗ ' + e.message, '#f87171'); }
 }
 
 async function ocGistLoad() {
