@@ -1678,9 +1678,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   transition: background 0.3s ease, transform 0.3s ease;
 }
 .cp-dot.active { background: #C084FC; transform: scale(1.5); }
+
+/* ── Ably connection dot ── */
+#conn-dot{position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;background:#555;z-index:9999;transition:background .3s,box-shadow .3s;}
 </style>
 </head>
 <body>
+<div id="conn-dot"></div>
 
 <canvas id="particle-canvas" width="1080" height="1920"></canvas>
 <div id="screen-pulse"></div>
@@ -2587,10 +2591,11 @@ function setEventPromoFunImage(image){
   renderEventPromo();
 }
 
+
 function handleEventPromoImageChunk(d){
+  const total=Number(d.total),part=Number(d.part);
+  if(!d.id||!Number.isInteger(total)||!Number.isInteger(part)||part<0||part>=total)return;
   if(d.index==='fun'){
-    const total=Number(d.total),part=Number(d.part);
-    if(!d.id||!Number.isInteger(total)||!Number.isInteger(part)||part<0||part>=total)return;
     const key=d.id+':fun';
     if(!eventPromoImageChunks[key])eventPromoImageChunks[key]={parts:new Array(total),total,index:'fun'};
     eventPromoImageChunks[key].parts[part]=d.chunk||'';
@@ -2601,9 +2606,7 @@ function handleEventPromoImageChunk(d){
     return;
   }
   const i=Number(d.index);
-  const total=Number(d.total);
-  const part=Number(d.part);
-  if(!d.id||!Number.isInteger(i)||i<0||i>3||!Number.isInteger(total)||!Number.isInteger(part)||part<0||part>=total)return;
+  if(!Number.isInteger(i)||i<0||i>3)return;
   const key=d.id+':'+i;
   if(!eventPromoImageChunks[key])eventPromoImageChunks[key]={parts:new Array(total),total,index:i};
   eventPromoImageChunks[key].parts[part]=d.chunk||'';
@@ -2613,281 +2616,177 @@ function handleEventPromoImageChunk(d){
   }
 }
 
-function handleEventPromoMessage(data){
-  const d=data||{};
-  console.log('[EP] msg type='+d.type+' mode='+(d.mode||'')+(d.config?' cfg:'+JSON.stringify(d.config.players?.map(p=>p.name)):''));
-  if(d.type==='event-promo-config')setEventPromoConfig(d.config);
-  else if(d.type==='event-promo-show'){if(d.config)setEventPromoConfig(d.config);eventPromoShowOverlay(d.mode,d.durationMs);}
-  else if(d.type==='event-promo-hide')hideEventPromo();
-  else if(d.type==='event-promo-auto')setEventPromoAuto(!!d.enabled,d.intervalMs);
-  else if(d.type==='event-promo-image')setEventPromoPlayerImage(d.index,d.image);
-  else if(d.type==='event-promo-image-chunk')handleEventPromoImageChunk(d);
-}
-
-function setEventPromoAuto(enabled,intervalMs){
-  if(eventPromoAutoTimer){clearInterval(eventPromoAutoTimer);eventPromoAutoTimer=null;}
-  if(!enabled)return;
-  const ms=Math.max(10000,Number(intervalMs)||eventPromoConfig.durations.autoIntervalMs||600000);
-  eventPromoAutoIndex=0;
-  eventPromoShowOverlay(eventPromoAutoModes[eventPromoAutoIndex],undefined);
-  eventPromoAutoTimer=setInterval(()=>{
-    eventPromoAutoIndex=(eventPromoAutoIndex+1)%eventPromoAutoModes.length;
-    eventPromoShowOverlay(eventPromoAutoModes[eventPromoAutoIndex],undefined);
-  },ms);
-}
-
+/* ══ EVENT PROMO: gift-alert integration ══ */
 function eventPromoSetGiftAlertActive(active){
   const root=document.getElementById('event-promo-root');
-  if(root)root.classList.toggle('ep-gift-alert',!!active);
+  if(root)root.classList.toggle('ep-gift-alert',active);
 }
 
-window.setEventPromoConfig=setEventPromoConfig;
-window.showEventPromo=(mode,durationMs)=>eventPromoShowOverlay(mode,durationMs);
-window.hideEventPromo=hideEventPromo;
+/* ══ EVENT PROMO: auto-cycle ══ */
+function startEventPromoAuto(intervalMs){
+  stopEventPromoAuto();
+  const ms=Math.max(10000,Number(intervalMs)||60000);
+  eventPromoAutoTimer=setInterval(()=>{
+    const mode=eventPromoAutoModes[eventPromoAutoIndex%eventPromoAutoModes.length];
+    eventPromoAutoIndex++;
+    eventPromoShowOverlay(mode);
+  },ms);
+}
+function stopEventPromoAuto(){
+  if(eventPromoAutoTimer){clearInterval(eventPromoAutoTimer);eventPromoAutoTimer=null;}
+}
+
+/* ══ ANNOUNCE BOX HANDLER ══ */
+let _cpRotateTimer=null,_cpPresets=[];
+function handleAnnounce(data){
+  const box=document.getElementById('announce-box');
+  if(!box)return;
+  if(typeof data.visible==='boolean'){box.classList.toggle('visible',data.visible);return;}
+  if(data.text!==undefined){const el=document.getElementById('announce-text');if(el)el.textContent=data.text||'';}
+  if(data.sub!==undefined){const el=document.getElementById('announce-sub');if(el){el.textContent=data.sub||'';el.classList.toggle('has-text',!!data.sub);}}
+  if(data.badge!==undefined){const el=document.getElementById('announce-live-badge');if(el)el.textContent=data.badge||'● LIVE';}
+  const sizeMap={micro:0.45,xxs:0.52,xs:0.6,sm:0.75,md:0.9,lg:1.0,xl:1.15,xxl:1.35};
+  if(data.size&&sizeMap[data.size])box.style.setProperty('--announce-scale',sizeMap[data.size]);
+  const xMap={left:'12%',center:'50%',right:'88%'};
+  if(data.x&&xMap[data.x])box.style.setProperty('--ax',xMap[data.x]);
+  const yMap={top:'200px',upper:'480px',center:'960px',lower:'1440px',bottom:'1700px'};
+  if(data.y&&yMap[data.y])box.style.setProperty('--ay',yMap[data.y]);
+  if(data.text)box.classList.add('visible');
+}
+
+/* ══ COMMENT PROMPT HANDLER ══ */
+function handleCommentPrompt(data){
+  const box=document.getElementById('comment-prompt');
+  if(!box)return;
+  if(typeof data.visible==='boolean'){
+    box.classList.toggle('visible',data.visible);
+    if(!data.visible&&_cpRotateTimer){clearInterval(_cpRotateTimer);_cpRotateTimer=null;}
+    return;
+  }
+  if(data.text!==undefined){const el=document.getElementById('cp-text');if(el)el.textContent=data.text||'';}
+  if(data.sub!==undefined){const el=document.getElementById('cp-sub');if(el){el.textContent=data.sub||'';el.classList.toggle('has-text',!!data.sub);}}
+  const sizeMap={xs:0.7,sm:0.85,md:1.0,lg:1.15,xl:1.3};
+  if(data.size&&sizeMap[data.size])box.style.setProperty('--cp-scale',sizeMap[data.size]);
+  const xMap={left:'20%',center:'50%',right:'80%'};
+  if(data.x&&xMap[data.x])box.style.left=xMap[data.x];
+  const yMap={top:'15%',upper:'30%',center:'50%',lower:'70%',bottom:'85%'};
+  if(data.y&&yMap[data.y])box.style.top=yMap[data.y];
+  if(data.presets&&data.presets.length){
+    _cpPresets=data.presets;
+    if(_cpRotateTimer)clearInterval(_cpRotateTimer);
+    let idx=0;
+    _cpRotateTimer=setInterval(()=>{
+      idx=(idx+1)%_cpPresets.length;
+      const p=_cpPresets[idx];
+      const textEl=document.getElementById('cp-text');
+      const subEl=document.getElementById('cp-sub');
+      if(textEl)textEl.textContent=p.text||'';
+      if(subEl){subEl.textContent=p.sub||'';subEl.classList.toggle('has-text',!!p.sub);}
+    },data.rotateMs||30000);
+  }
+  if(data.text)box.classList.add('visible');
+}
+
+/* ══ ABLY INIT + ALL SUBSCRIPTIONS ══ */
+const ablyClient=new Ably.Realtime({key:CONFIG.ABLY_KEY});
+const ablyChannel=ablyClient.channels.get(CONFIG.ABLY_CHANNEL);
+const connDotEl=document.getElementById('conn-dot');
+
+ablyClient.connection.on(stateChange=>{
+  const s=stateChange.current;
+  if(!connDotEl)return;
+  if(s==='connected'){
+    connDotEl.style.background='#22c55e';
+    connDotEl.style.boxShadow='0 0 6px #22c55e';
+    // Request current EP config from overlay-control (in case it was open first)
+    ablyChannel.publish('cmd','requestEventPromoConfig').catch(()=>{});
+  }else if(s==='connecting'||s==='disconnected'){
+    connDotEl.style.background='#f59e0b';
+    connDotEl.style.boxShadow='none';
+  }else{
+    connDotEl.style.background='#555';
+    connDotEl.style.boxShadow='none';
+  }
+});
+
+// Splat timer
+ablyChannel.subscribe('cmd',msg=>{
+  const cmd=msg.data;
+  if(cmd==='reset')splatEnterCountdown();
+  else if(cmd==='save')splatEnterSaved();
+  else if(cmd==='idle')splatEnterIdle();
+  // requestEventPromoConfig handled by overlay-control, not us
+});
+
+// Event promo
+ablyChannel.subscribe('event-promo',msg=>{
+  const d=msg.data;
+  if(!d||!d.type)return;
+  if(d.type==='event-promo-config')setEventPromoConfig(d.config);
+  else if(d.type==='event-promo-image')setEventPromoPlayerImage(d.index,d.image);
+  else if(d.type==='event-promo-image-chunk')handleEventPromoImageChunk(d);
+  else if(d.type==='event-promo-show'){if(d.config)setEventPromoConfig(d.config);eventPromoShowOverlay(d.mode,d.durationMs);}
+  else if(d.type==='event-promo-hide')hideEventPromo();
+  else if(d.type==='event-promo-auto'){if(d.enabled)startEventPromoAuto(d.intervalMs);else stopEventPromoAuto();}
+});
+
+// Gift alert → bar animation + gift battle tracker
+ablyChannel.subscribe('gift-alert',msg=>{
+  if(!msg.data)return;
+  onGiftAlert(msg.data);
+  gbbTrackGift(msg.data);
+});
+
+// Giftr leaderboard
+ablyChannel.subscribe('giftr',msg=>{
+  const d=msg.data;
+  if(!d)return;
+  if(d.cmd)onGiftrCmd(d.cmd);
+  else onGiftrData(d);
+});
+
+// Gift battle bar
+ablyChannel.subscribe('gift-battle',msg=>{
+  if(msg.data)gbbHandleCmd(msg.data);
+});
+
+// Announce box (live text)
+ablyChannel.subscribe('announce',msg=>{
+  if(msg.data)handleAnnounce(msg.data);
+});
+
+// Comment prompt
+ablyChannel.subscribe('comment-prompt',msg=>{
+  if(msg.data)handleCommentPrompt(msg.data);
+});
+
+// Splat position
+ablyChannel.subscribe('splat-pos',msg=>{
+  const d=msg.data;
+  if(!d)return;
+  if(d.pos)setSplatPosition(d.pos);
+  else if(typeof d==='string')setSplatPosition(d);
+});
+
+// Splat idle bait toggle
+ablyChannel.subscribe('splat-bait',msg=>{
+  const d=msg.data;
+  if(!d||typeof d.enabled!=='boolean')return;
+  baitEnabled=d.enabled;
+  if(!baitEnabled)splatHide(idleBait);
+  else if(splatState===SPLAT_STATE.IDLE)splatShow(idleBait);
+});
+
+// Top gifters panel
+ablyChannel.subscribe('top-gifters',msg=>{
+  if(msg.data)renderTopGifters(msg.data);
+});
+
+/* Boot */
+showSlot(0);
+startRotation();
 renderEventPromo();
 
-/* ══ ABLY — UNIFIED INIT ══ */
-(function initAbly(){
-  try{
-    const client=new Ably.Realtime({key:CONFIG.ABLY_KEY});
-    const channel=client.channels.get(CONFIG.ABLY_CHANNEL);
-    const dot=document.getElementById('status-dot');
-    client.connection.on('connected',   ()=>{dot.className='connected';});
-    client.connection.on('disconnected',()=>{dot.className='';});
-    client.connection.on('connecting',  ()=>{dot.className='connecting';});
-    client.connection.once('connected', ()=>{
-      channel.publish('cmd','requestLeaderboard').catch(()=>{});
-      channel.publish('cmd','requestEventPromoConfig').catch(()=>{});
-    });
-    /* Gift bar */
-    channel.subscribe('giftr',        msg=>onGiftrData(msg.data));
-    channel.subscribe('giftr-cmd',    msg=>onGiftrCmd(msg.data));
-    channel.subscribe('gift-alert', msg=>{
-      try { gbbTrackGift(msg.data); } catch(e){ console.warn('[gbb] gbbTrackGift err',e); }
-      if(gbbMode!=='off'){
-        try { gbbGiftPop(msg.data); } catch(e){ console.warn('[gbb] gbbGiftPop err',e); }
-      } else {
-        try { onGiftAlert(msg.data); } catch(e){ console.warn('[gbb] onGiftAlert err',e); }
-      }
-    });
-    channel.subscribe('top-gifters',  msg=>renderTopGifters(msg.data));
-    channel.subscribe('gift-battle-cmd', msg=>gbbHandleCmd(msg.data));
-    channel.subscribe('event-promo', msg=>handleEventPromoMessage(msg.data));
-    channel.subscribe('hype-event',  msg=>{ try{ hmAddPoints(msg.data); }catch(e){} });
-    channel.subscribe('comment-prompt', msg=>{ try{ handleCommentPromptMsg(msg.data); }catch(e){} });
-    /* Splat */
-    channel.subscribe('cmd', msg=>{
-      const cmd=msg.data;
-      if(cmd&&typeof cmd==='object'&&String(cmd.type||'').indexOf('event-promo-')===0){handleEventPromoMessage(cmd);return;}
-      if     (cmd==='reset') splatEnterCountdown();
-      else if(cmd==='save' ){if(splatState===SPLAT_STATE.COUNTDOWN)splatEnterSaved();}
-      else if(cmd==='idle' ) splatEnterIdle();
-    });
-    channel.subscribe('splat-pos',  msg=>setSplatPosition(msg.data));
-    /* Bait widget content — {img, top, main, visible} any field optional */
-    channel.subscribe('splat-bait', msg=>{
-      const d=msg.data||{};
-      if(d.img     !== undefined) document.getElementById('bait-galaxy-img').src        = d.img;
-      if(d.top     !== undefined) document.getElementById('bait-label-send').textContent = d.top;
-      if(d.main    !== undefined) document.getElementById('bait-label-main').textContent = d.main;
-      if(d.visible !== undefined){
-        baitEnabled=!!d.visible;
-        if(splatState===SPLAT_STATE.IDLE){
-          if(baitEnabled) splatShow(idleBait); else splatHide(idleBait);
-        }
-      }
-    });
-    /* Announce box — {text, badge, sub, x, y, size, visible} any field optional */
-    const ANNOUNCE_X={left:160, center:540, right:920};
-    const ANNOUNCE_Y={top:130, upper:400, center:750, lower:1250, bottom:1770};
-    const ANNOUNCE_SIZES={
-      micro:{w:160, fm:18,  fs:10, apv:'6px',  aph:'12px'},
-      xxs:  {w:260, fm:28,  fs:15, apv:'10px', aph:'18px'},
-      xs:   {w:360, fm:38,  fs:20, apv:'14px', aph:'26px'},
-      sm:   {w:500, fm:50,  fs:26, apv:'18px', aph:'34px'},
-      md:   {w:640, fm:62,  fs:33, apv:'20px', aph:'38px'},
-      lg:   {w:800, fm:76,  fs:40, apv:'24px', aph:'44px'},
-      xl:   {w:920, fm:90,  fs:48, apv:'26px', aph:'46px'},
-      xxl:  {w:1040,fm:106, fs:56, apv:'28px', aph:'50px'},
-    };
-    const announceBox=document.getElementById('announce-box');
-    channel.subscribe('announce', msg=>{
-      const d=msg.data||{};
-      if(d.text   !== undefined) document.getElementById('announce-text').textContent=d.text;
-      if(d.badge  !== undefined) document.getElementById('announce-live-badge').textContent=d.badge;
-      if(d.sub    !== undefined){
-        const subEl=document.getElementById('announce-sub');
-        subEl.textContent=d.sub;
-        subEl.classList.toggle('has-text',!!d.sub);
-      }
-      if(d.size !== undefined){
-        const s=ANNOUNCE_SIZES[d.size]||ANNOUNCE_SIZES.lg;
-        announceBox.style.setProperty('--aw',  s.w+'px');
-        announceBox.style.setProperty('--afm', s.fm+'px');
-        announceBox.style.setProperty('--afs', s.fs+'px');
-        announceBox.style.setProperty('--apv', s.apv);
-        announceBox.style.setProperty('--aph', s.aph);
-      }
-      if(d.x !== undefined){
-        const px=ANNOUNCE_X[d.x]??parseInt(d.x)??540;
-        announceBox.style.setProperty('--ax', px+'px');
-      }
-      if(d.y !== undefined){
-        const py=ANNOUNCE_Y[d.y]??parseInt(d.y)??130;
-        announceBox.style.setProperty('--ay', py+'px');
-      }
-      if(d.visible !== undefined) announceBox.classList.toggle('visible',!!d.visible);
-    });
-  }catch(e){console.warn('[Ably] init failed:',e);}
-})();
-
-/* ══ HYPE METER ENGINE ══ */
-(function initHypeMeter(){
-  const HM = {
-    rawPoints: 0,
-    displayPct: 30,
-    surgeActive: false,
-    surgeTimer: null,
-    nextSurgeTimeout: null,
-    decayInterval: null,
-    NUM_SEGS: 24,
-    FLOOR_PCT: 30,
-    MAX_EXPECTED: 800,
-    K: 0.005,
-    segs: [],
-  };
-
-  function logScale(raw) {
-    const {K,MAX_EXPECTED,FLOOR_PCT}=HM;
-    return FLOOR_PCT+(100-FLOOR_PCT)*(Math.log(1+raw*K)/Math.log(1+MAX_EXPECTED*K));
-  }
-
-  function renderSegs() {
-    const {NUM_SEGS,FLOOR_PCT,displayPct,surgeActive,segs}=HM;
-    const floorSegs =Math.ceil(FLOOR_PCT/100*NUM_SEGS);
-    const activeSegs=Math.ceil(displayPct/100*NUM_SEGS);
-    const hotStart  =Math.max(activeSegs-3,floorSegs);
-    segs.forEach((seg,i)=>{
-      if(surgeActive){seg.className='hm-seg surge';}
-      else if(i<activeSegs){
-        if(i>=hotStart&&activeSegs>floorSegs+2){seg.className='hm-seg hot';}
-        else if(i>=floorSegs||activeSegs>floorSegs){seg.className='hm-seg active';}
-        else{seg.className='hm-seg ember';}
-      }else if(i<floorSegs){seg.className='hm-seg ember';}
-      else{seg.className='hm-seg';}
-    });
-  }
-
-  window.hmAddPoints=function(eventData){
-    const type=(eventData||{}).type;
-    const mult=HM.surgeActive?2:1;
-    const pts=({join:1,like_batch:1,comment_match:3,heart_me:15,heart_me_first:50,yt_sub:40}[type]||0)*mult;
-    if(!pts)return;
-    HM.rawPoints=Math.min(HM.rawPoints+pts,HM.MAX_EXPECTED*2.5);
-    HM.displayPct=logScale(HM.rawPoints);
-    renderSegs();
-    if(type==='heart_me_first')triggerFirstGifterFlash();
-    if(type==='yt_sub')triggerYTSubCelebration();
-  };
-
-  function triggerFirstGifterFlash(){
-    const el=document.getElementById('hm-first-gifter-flash');
-    if(!el)return;
-    el.classList.remove('fire');void el.offsetWidth;el.classList.add('fire');
-    const bar=document.getElementById('gift-bar');
-    bar.style.transition='transform 0.18s cubic-bezier(.34,1.56,.64,1)';
-    bar.style.transform='scaleY(1.06)';
-    setTimeout(()=>{bar.style.transform='';setTimeout(()=>{bar.style.transition='';},200);},180);
-  }
-
-  function triggerYTSubCelebration(){
-    try{emitParticles(3,'youtube');triggerScreenPulse('youtube',3);}catch(e){}
-  }
-
-  function startDecay(){
-    clearInterval(HM.decayInterval);
-    HM.decayInterval=setInterval(()=>{
-      HM.rawPoints=Math.max(0,HM.rawPoints-HM.MAX_EXPECTED*0.04);
-      HM.displayPct=logScale(HM.rawPoints);
-      renderSegs();
-    },10000);
-  }
-
-  function scheduleSurge(){
-    clearTimeout(HM.nextSurgeTimeout);
-    HM.nextSurgeTimeout=setTimeout(triggerSurge,60000+Math.random()*30000);
-  }
-
-  function triggerSurge(){
-    HM.surgeActive=true;
-    const bar=document.getElementById('gift-bar'),badge=document.getElementById('hm-surge-badge');
-    bar.classList.remove('hm-surge-active');void bar.offsetWidth;bar.classList.add('hm-surge-active');
-    if(badge)badge.classList.add('visible');
-    renderSegs();
-    clearTimeout(HM.surgeTimer);
-    HM.surgeTimer=setTimeout(()=>{
-      HM.surgeActive=false;
-      bar.classList.remove('hm-surge-active');
-      if(badge)badge.classList.remove('visible');
-      renderSegs();scheduleSurge();
-    },5000);
-  }
-
-  const container=document.getElementById('hype-meter');
-  if(container){
-    for(let i=0;i<HM.NUM_SEGS;i++){
-      const s=document.createElement('div');s.className='hm-seg ember';
-      container.appendChild(s);HM.segs.push(s);
-    }
-  }
-  startDecay();scheduleSurge();renderSegs();
-})();
-
-/* ══ COMMENT PROMPT ENGINE ══ */
-(function initCommentPrompt(){
-  let cpRotateTimer=null,cpPresets=[],cpIdx=0,cpRotateMs=30000;
-  const CP_SIZES={xs:{w:360,fm:28,fs:15},sm:{w:500,fm:36,fs:20},md:{w:650,fm:44,fs:23},lg:{w:780,fm:54,fs:28},xl:{w:920,fm:64,fs:34}};
-  const CP_X={left:160,center:540,right:920};
-  const CP_Y={top:200,upper:480,center:960,lower:1380,bottom:1700};
-
-  function updateDots(){
-    const el=document.getElementById('cp-dots');if(!el)return;
-    if(cpPresets.length<=1){el.innerHTML='';return;}
-    el.innerHTML=cpPresets.map((_,i)=>`<div class="cp-dot${i===cpIdx?' active':''}"></div>`).join('');
-  }
-
-  function applyPreset(p){
-    const t=document.getElementById('cp-text'),s=document.getElementById('cp-sub');
-    if(t&&p.text!==undefined)t.textContent=p.text;
-    if(s){s.textContent=p.sub||'';s.classList.toggle('has-text',!!(p.sub));}
-  }
-
-  function startRotation(){
-    clearInterval(cpRotateTimer);
-    if(cpPresets.length<=1)return;
-    cpRotateTimer=setInterval(()=>{
-      cpIdx=(cpIdx+1)%cpPresets.length;
-      applyPreset(cpPresets[cpIdx]);updateDots();
-    },cpRotateMs);
-  }
-
-  window.handleCommentPromptMsg=function(d){
-    if(!d)return;
-    const el=document.getElementById('comment-prompt');if(!el)return;
-    if(d.text!==undefined)document.getElementById('cp-text').textContent=d.text;
-    if(d.eyebrow!==undefined)document.getElementById('cp-eyebrow').textContent=d.eyebrow||'COMMENT TO INTERACT';
-    if(d.sub!==undefined){const s=document.getElementById('cp-sub');s.textContent=d.sub;s.classList.toggle('has-text',!!d.sub);}
-    if(d.size!==undefined){const s=CP_SIZES[d.size]||CP_SIZES.md;el.style.setProperty('--cpw',s.w+'px');el.style.setProperty('--cpfm',s.fm+'px');el.style.setProperty('--cpfs',s.fs+'px');}
-    if(d.x!==undefined)el.style.setProperty('--cpx',(CP_X[d.x]??parseInt(d.x)??540)+'px');
-    if(d.y!==undefined)el.style.setProperty('--cpy',(CP_Y[d.y]??parseInt(d.y)??1620)+'px');
-    if(d.visible!==undefined)el.classList.toggle('visible',!!d.visible);
-    if(d.presets!==undefined){cpPresets=d.presets||[];cpIdx=0;if(cpPresets.length)applyPreset(cpPresets[0]);updateDots();}
-    if(d.rotateMs!==undefined)cpRotateMs=d.rotateMs;
-    if(d.presets!==undefined||d.rotateMs!==undefined)startRotation();
-  };
-})();
-
-splatEnterIdle();
 </script>
 </body>
 </html>
