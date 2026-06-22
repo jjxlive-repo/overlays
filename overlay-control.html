@@ -621,14 +621,14 @@ let ablyChannel = null;
   const label = document.getElementById('ably-label');
   ablyClient.connection.on('connected',    () => { dot.className='conn-dot connected';  label.textContent='connected';
     // Push current EP config so any already-open overlays pick up saved edits.
-    setTimeout(() => pub('event-promo', { type: 'event-promo-config', config: epReadConfig() }), 300);
+    setTimeout(() => epPushConfig(epReadConfig()), 300);
   });
   ablyClient.connection.on('disconnected', () => { dot.className='conn-dot';            label.textContent='disconnected'; });
   ablyClient.connection.on('failed',       () => { dot.className='conn-dot';            label.textContent='failed';       dot.style.background='#ef4444'; });
   // When an overlay (gift-bar) connects/reloads, it requests the current EP config — push it back.
   ablyChannel.subscribe('cmd', msg => {
     if (msg.data === 'requestEventPromoConfig') {
-      pub('event-promo', { type: 'event-promo-config', config: epReadConfig() });
+      epPushConfig(epReadConfig());
     }
   });
 })();
@@ -807,10 +807,43 @@ function epPopulate(cfg) {
   (cfg.players || []).forEach((p, i) => { s(`ep-p${i}-name`, p.name); s(`ep-p${i}-img`, p.image); });
 }
 
+// Chunk and publish a single image (index = 0-3 for players, 'fun' for fun drawer)
+function epPubImage(index, image) {
+  if (!image) return;
+  const CHUNK = 12000;
+  if (image.length <= CHUNK) {
+    pub('event-promo', { type: 'event-promo-image', index, image });
+    return;
+  }
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const total = Math.ceil(image.length / CHUNK);
+  for (let part = 0; part < total; part++) {
+    pub('event-promo', {
+      type: 'event-promo-image-chunk',
+      index, id, part, total,
+      chunk: image.slice(part * CHUNK, (part + 1) * CHUNK),
+    });
+  }
+}
+
+// Send full config: text/metadata in one message, images separately via chunking
+function epPushConfig(cfg) {
+  // Strip base64 images so the config message stays under Ably's 64KB limit
+  const safeConfig = {
+    ...cfg,
+    players: cfg.players.map(p => ({ ...p, image: '' })),
+    fun: { ...cfg.fun, image: '' },
+  };
+  pub('event-promo', { type: 'event-promo-config', config: safeConfig });
+  // Send each player image via the chunked protocol gift-bar already handles
+  cfg.players.forEach((p, i) => { if (p.image) epPubImage(i, p.image); });
+  if (cfg.fun?.image) epPubImage('fun', cfg.fun.image);
+}
+
 function epApply() {
   const cfg = epReadConfig();
   localStorage.setItem(EP_STORAGE, JSON.stringify(cfg));
-  pub('event-promo', { type: 'event-promo-config', config: cfg });
+  epPushConfig(cfg);
   const st = document.getElementById('ep-status');
   if (st) { st.textContent = '✅ Applied'; setTimeout(() => st.textContent = '', 2000); }
   scheduleGistSave();
@@ -818,8 +851,7 @@ function epApply() {
 function epShow(mode) {
   const cfg = epReadConfig();
   console.log('[ep] show', mode, 'players:', cfg.players.map(p => p.name), 'title:', cfg.title);
-  // Send config first (separate message), then show — guarantees ordered delivery
-  pub('event-promo', { type: 'event-promo-config', config: cfg });
+  epPushConfig(cfg);
   pub('event-promo', { type: 'event-promo-show', mode });
   const st = document.getElementById('ep-status');
   if (st) { st.textContent = '▶ Sent ' + mode; setTimeout(() => st.textContent = '', 2500); }
@@ -829,7 +861,7 @@ function epHide() {
   const st = document.getElementById('ep-status');
   if (st) { st.textContent = '✕ Hidden'; setTimeout(() => st.textContent = '', 2000); }
 }
-function epAuto(on)   {
+function epAuto(on) {
   const intervalMs = parseInt(document.getElementById('ep-auto-ms')?.value) || 600000;
   pub('event-promo', { type: 'event-promo-auto', enabled: on, intervalMs });
 }
