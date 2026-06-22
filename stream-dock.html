@@ -2729,3 +2729,201 @@ function setCPX(x) {
   ablyChannel.publish('comment-prompt', { x }).catch(() => {});
 }
 
+function setCPY(y) {
+  cpY = y;
+  document.querySelectorAll('[data-cpy]').forEach(b => b.classList.toggle('active', b.dataset.cpy === y));
+  ablyChannel.publish('comment-prompt', { y }).catch(() => {});
+}
+
+/* ── CP preset list ── */
+function cpRenderPresetList() {
+  const list = document.getElementById('cp-preset-list');
+  if (!list) return;
+  if (!cpPresets.length) { list.innerHTML = '<span style="font-size:11px;color:var(--txt-dim);font-style:italic;">No presets yet.</span>'; return; }
+  list.innerHTML = cpPresets.map((p, i) => `
+    <div style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:5px;padding:3px 7px;font-size:11px;">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.text}${p.sub ? ' <span style="opacity:.5">/ '+p.sub+'</span>' : ''}</span>
+      <button class="qc-btn" style="padding:2px 6px;font-size:10px;" onclick="cpSendPreset(${i})">▶</button>
+      <button class="qc-btn" style="padding:2px 6px;font-size:10px;color:#fb7185;" onclick="cpRemovePreset(${i})">✕</button>
+    </div>`).join('');
+}
+function cpSendPreset(i) {
+  const p = cpPresets[i]; if (!p) return;
+  ablyChannel.publish('comment-prompt', { text: p.text, sub: p.sub || '' }).catch(() => {});
+  doFlash('green');
+}
+function cpRemovePreset(i) {
+  cpPresets.splice(i, 1);
+  localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
+  cpRenderPresetList();
+}
+
+/* ════════════════════════════════════════
+   QUICK CONTROLS
+════════════════════════════════════════ */
+function qcLTVisible(v) {
+  ablyChannel.publish('announce', { visible: v }).catch(() => {});
+  doFlash(v ? 'green' : 'red');
+}
+
+function qcCPVisible(v) {
+  ablyChannel.publish('comment-prompt', { visible: v }).catch(() => {});
+  doFlash(v ? 'green' : 'red');
+}
+
+function qcEP(mode) {
+  eventPromoShow(mode);
+}
+function qcEPHide() {
+  eventPromoHide();
+}
+
+/* ── Bait card ── */
+let _baitVisible = false;
+function qcSetBait() {
+  const img  = (document.getElementById('qc-bait-img')?.value  || '').trim();
+  const top  = (document.getElementById('qc-bait-top')?.value  || '').trim();
+  const main = (document.getElementById('qc-bait-main')?.value || '').trim();
+  ablyChannel.publish('splat-bait', { img, top, main }).catch(() => {});
+  doFlash('green');
+}
+function qcToggleBait() {
+  _baitVisible = !_baitVisible;
+  ablyChannel.publish('splat-bait', { enabled: _baitVisible }).catch(() => {});
+  const btn = document.getElementById('qc-bait-toggle');
+  if (btn) btn.textContent = _baitVisible ? '👁 Hide Bait' : '👁 Show Bait';
+  doFlash(_baitVisible ? 'green' : 'red');
+}
+
+/* ── Top Gifters Overlay ── */
+let _tgoLastData = null;
+function qcTGOShow() {
+  const tf = document.getElementById('qc-tgo-tf')?.value || 'daily';
+  const payload = _tgoLastData
+    ? { ..._tgoLastData, visible: true, timeFrame: tf }
+    : { visible: true, timeFrame: tf, gifters: [] };
+  ablyChannel.publish('top-gifters', payload).catch(() => {});
+  doFlash('green');
+}
+function qcTGOHide() {
+  ablyChannel.publish('top-gifters', { visible: false }).catch(() => {});
+  doFlash('red');
+}
+function qcTGORefresh() {
+  try {
+    const db = JSON.parse(localStorage.getItem('gift-tracker-data') || '{}');
+    const tf = document.getElementById('qc-tgo-tf')?.value || 'daily';
+    const raw = db[tf] || {};
+    const gifters = Object.entries(raw)
+      .map(([name, d]) => ({ name, platform: d.platform || 'tiktok', spendDisplay: d.spendDisplay || '', rawDisplay: d.rawDisplay || '', amount: d.amount || 0 }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5)
+      .map((g, i) => ({ ...g, rank: i + 1 }));
+    _tgoLastData = { visible: true, timeFrame: tf, gifters };
+    ablyChannel.publish('top-gifters', _tgoLastData).catch(() => {});
+    doFlash('green');
+  } catch(e) {
+    ablyChannel.publish('top-gifters', { visible: true, timeFrame: 'daily', gifters: [] }).catch(() => {});
+  }
+}
+
+/* ── Gift Battle ── */
+let _gbtMode = 'off';
+function qcGBTMode(mode) {
+  _gbtMode = mode;
+  document.querySelectorAll('[data-gbtmode]').forEach(b => b.classList.toggle('qc-active', b.dataset.gbtmode === mode));
+  const st = document.getElementById('qc-gbt-status');
+  if (st) st.textContent = 'Mode: ' + mode;
+}
+function qcGBTActivate() {
+  if (_gbtMode === 'off') return;
+  ablyChannel.publish('gift-battle', { mode: _gbtMode, goalAmount: 100, prizeName: 'DARE' }).catch(() => {});
+  const st = document.getElementById('qc-gbt-status');
+  if (st) st.textContent = '▶ ' + _gbtMode + ' active';
+  doFlash('green');
+}
+function qcGBTStop() {
+  ablyChannel.publish('gift-battle', { mode: 'off' }).catch(() => {});
+  const st = document.getElementById('qc-gbt-status');
+  if (st) st.textContent = 'stopped';
+  doFlash('red');
+}
+
+/* ════════════════════════════════════════
+   SETTINGS + GIST
+════════════════════════════════════════ */
+function toggleSettings(e) {
+  const panel = document.getElementById('settings-panel');
+  if (panel) panel.classList.toggle('open');
+  if (e) e.stopPropagation();
+}
+document.addEventListener('click', e => {
+  const panel = document.getElementById('settings-panel');
+  if (panel && panel.classList.contains('open') && !panel.contains(e.target)) panel.classList.remove('open');
+});
+
+function adjustSize(delta) {
+  const root = document.documentElement;
+  const cur = parseFloat(getComputedStyle(root).fontSize) || 13;
+  root.style.fontSize = Math.max(10, Math.min(18, cur + delta)) + 'px';
+}
+
+let _gistSaveTimer = null;
+function scheduleGistSave() {
+  clearTimeout(_gistSaveTimer);
+  _gistSaveTimer = setTimeout(doGistSave, 3000);
+}
+
+function gistCredentialChanged() {
+  const st = document.getElementById('gist-status');
+  if (st) st.textContent = '';
+}
+
+async function gistCreate() {
+  const token = document.getElementById('gist-token')?.value.trim();
+  if (!token) { _gistStatus('⚠ Enter a GitHub token first'); return; }
+  _gistStatus('Creating…');
+  try {
+    const res = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: 'JJx overlay settings', public: false, files: { 'jjx-overlay-settings.json': { content: '{}' } } })
+    });
+    const data = await res.json();
+    if (data.id) {
+      const idEl = document.getElementById('gist-id');
+      if (idEl) idEl.value = data.id;
+      _gistStatus('✓ Created: ' + data.id);
+    } else {
+      _gistStatus('✗ ' + (data.message || 'failed'));
+    }
+  } catch(e) { _gistStatus('✗ Network error'); }
+}
+
+async function doGistSave() {
+  const token = document.getElementById('gist-token')?.value.trim();
+  const id    = document.getElementById('gist-id')?.value.trim();
+  if (!token || !id) return;
+  try {
+    await fetch(`https://api.github.com/gists/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { 'jjx-overlay-settings.json': { content: JSON.stringify({ saved: Date.now() }) } } })
+    });
+    _gistStatus('✓ Saved ' + new Date().toLocaleTimeString());
+  } catch(e) {}
+}
+
+function _gistStatus(msg) {
+  const el = document.getElementById('gist-status');
+  if (el) el.textContent = msg;
+}
+
+/* ════════════════════════════════════════
+   BOOT
+════════════════════════════════════════ */
+wsConnect();
+
+</script>
+</body>
+</html>
