@@ -619,9 +619,18 @@ let ablyChannel = null;
   ablyChannel = ablyClient.channels.get(ABLY_CH);
   const dot   = document.getElementById('ably-dot');
   const label = document.getElementById('ably-label');
-  ablyClient.connection.on('connected',    () => { dot.className='conn-dot connected';  label.textContent='connected';    });
+  ablyClient.connection.on('connected',    () => { dot.className='conn-dot connected';  label.textContent='connected';
+    // Push current EP config so any already-open overlays pick up saved edits.
+    setTimeout(() => pub('event-promo', { type: 'event-promo-config', config: epReadConfig() }), 300);
+  });
   ablyClient.connection.on('disconnected', () => { dot.className='conn-dot';            label.textContent='disconnected'; });
   ablyClient.connection.on('failed',       () => { dot.className='conn-dot';            label.textContent='failed';       dot.style.background='#ef4444'; });
+  // When an overlay (gift-bar) connects/reloads, it requests the current EP config — push it back.
+  ablyChannel.subscribe('cmd', msg => {
+    if (msg.data === 'requestEventPromoConfig') {
+      pub('event-promo', { type: 'event-promo-config', config: epReadConfig() });
+    }
+  });
 })();
 
 function pub(ch, data) { ablyChannel?.publish(ch, data).catch(() => {}); }
@@ -717,11 +726,17 @@ function cpRenderList() {
    EVENT PROMO
 ═══════════════════════════════════════════ */
 const EP_STORAGE = 'ep-overlay-settings';
-const EP_PLAYERS = ['Player 1','Player 2','Player 3','Player 4','Player 5','Player 6'];
+// Must match gift-bar.html fight card: 2 gamers + 2 battlers (4 slots, fixed teams)
+const EP_PLAYERS = [
+  { team: 'gamers',   label: 'Gamer 1'   },
+  { team: 'gamers',   label: 'Gamer 2'   },
+  { team: 'battlers', label: 'Battler 1' },
+  { team: 'battlers', label: 'Battler 2' },
+];
 
 function epBuildPlayerFields() {
   const root = document.getElementById('ep-player-fields');
-  EP_PLAYERS.forEach((label, i) => {
+  EP_PLAYERS.forEach(({ label }, i) => {
     const d = document.createElement('div');
     d.className = 'row';
     d.innerHTML = `
@@ -754,8 +769,9 @@ function epReadConfig() {
       paintballSplatMs: Math.max(1200, Number(document.getElementById('ep-splat-ms')?.value) || 2400),
       autoIntervalMs: Math.max(10000,Number(document.getElementById('ep-auto-ms')?.value)    || 30000),
     },
-    players: EP_PLAYERS.map((_, i) => ({
-      name:  document.getElementById(`ep-p${i}-name`)?.value.trim() || EP_PLAYERS[i],
+    players: EP_PLAYERS.map((p, i) => ({
+      team:  p.team,
+      name:  document.getElementById(`ep-p${i}-name`)?.value.trim() || p.label,
       image: document.getElementById(`ep-p${i}-img`)?.value.trim()  || '',
     })),
     fun: {
