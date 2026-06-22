@@ -2532,9 +2532,10 @@ function hideEventPromo(){
 
 function eventPromoShowOverlay(mode,durationMs){
   const cfg=eventPromoConfig=mergeEventPromoConfig(eventPromoConfig);
-  if(!cfg.enabled)return hideEventPromo();
+  console.log('[EP] showOverlay mode='+mode+' enabled='+cfg.enabled+' players='+JSON.stringify(cfg.players?.map(p=>p.name)));
+  if(!cfg.enabled){console.warn('[EP] blocked: cfg.enabled is false');return hideEventPromo();}
   const root=document.getElementById('event-promo-root');
-  if(!root)return;
+  if(!root){console.error('[EP] event-promo-root not found');return;}
   renderEventPromo();
   buildEventPromoPaint();
   clearTimeout(eventPromoHideTimer);
@@ -2614,6 +2615,7 @@ function handleEventPromoImageChunk(d){
 
 function handleEventPromoMessage(data){
   const d=data||{};
+  console.log('[EP] msg type='+d.type+' mode='+(d.mode||'')+(d.config?' cfg:'+JSON.stringify(d.config.players?.map(p=>p.name)):''));
   if(d.type==='event-promo-config')setEventPromoConfig(d.config);
   else if(d.type==='event-promo-show'){if(d.config)setEventPromoConfig(d.config);eventPromoShowOverlay(d.mode,d.durationMs);}
   else if(d.type==='event-promo-hide')hideEventPromo();

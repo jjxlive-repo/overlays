@@ -633,7 +633,12 @@ let ablyChannel = null;
   });
 })();
 
-function pub(ch, data) { ablyChannel?.publish(ch, data).catch(() => {}); }
+function pub(ch, data) {
+  if (!ablyChannel) { console.error('[pub] no channel'); return; }
+  const state = ablyClient?.connection?.state;
+  if (state !== 'connected') console.warn('[pub] publishing while state=', state, '— message will queue');
+  ablyChannel.publish(ch, data).catch(err => console.error('[pub] FAILED', ch, err));
+}
 
 /* ═══════════════════════════════════════════
    PANEL COLLAPSE
@@ -810,8 +815,20 @@ function epApply() {
   if (st) { st.textContent = '✅ Applied'; setTimeout(() => st.textContent = '', 2000); }
   scheduleGistSave();
 }
-function epShow(mode) { pub('event-promo', { type: 'event-promo-show', mode, config: epReadConfig() }); }
-function epHide()     { pub('event-promo', { type: 'event-promo-hide' }); }
+function epShow(mode) {
+  const cfg = epReadConfig();
+  console.log('[ep] show', mode, 'players:', cfg.players.map(p => p.name), 'title:', cfg.title);
+  // Send config first (separate message), then show — guarantees ordered delivery
+  pub('event-promo', { type: 'event-promo-config', config: cfg });
+  pub('event-promo', { type: 'event-promo-show', mode });
+  const st = document.getElementById('ep-status');
+  if (st) { st.textContent = '▶ Sent ' + mode; setTimeout(() => st.textContent = '', 2500); }
+}
+function epHide() {
+  pub('event-promo', { type: 'event-promo-hide' });
+  const st = document.getElementById('ep-status');
+  if (st) { st.textContent = '✕ Hidden'; setTimeout(() => st.textContent = '', 2000); }
+}
 function epAuto(on)   {
   const intervalMs = parseInt(document.getElementById('ep-auto-ms')?.value) || 600000;
   pub('event-promo', { type: 'event-promo-auto', enabled: on, intervalMs });

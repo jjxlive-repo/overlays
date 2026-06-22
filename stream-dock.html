@@ -2061,6 +2061,12 @@ function trim(el) {
 const ably = new Ably.Realtime({ key: ABLY_KEY });
 const ablyChannel = ably.channels.get(ABLY_CH);
 
+// Cache for event-promo config pushed by overlay-control
+let _epConfig = null;
+ablyChannel.subscribe('event-promo', msg => {
+  if (msg.data && msg.data.type === 'event-promo-config') _epConfig = msg.data.config;
+});
+
 const connDot   = document.getElementById('conn-dot');
 const connLabel = document.getElementById('conn-label');
 const splatTimer = document.getElementById('splat-timer');
@@ -2075,6 +2081,7 @@ ably.connection.on(stateChange => {
   if (s === 'connected') {
     connDot.className = 'conn-dot connected';
     connLabel.textContent = 'Splat connected ✓';
+    ablyChannel.publish('cmd', 'requestEventPromoConfig').catch(() => {});
   } else if (s === 'connecting') {
     connDot.className = 'conn-dot connecting';
     connLabel.textContent = 'Connecting…';
@@ -2857,7 +2864,15 @@ function qcCPVisible(show) {
 /* ── Event Promo (type-based protocol to match gift-bar.html) ── */
 function qcEP(mode) {
   if (!ablyChannel) return;
-  ablyChannel.publish('event-promo', { type: 'event-promo-show', mode }).catch(() => {});
+  // Ask overlay-control to push its current config — gift-bar will receive it first
+  ablyChannel.publish('cmd', 'requestEventPromoConfig').catch(() => {});
+  // After 250ms (config should have arrived at gift-bar), send the show command
+  // Also include cached config as a fallback if overlay-control isn't open
+  setTimeout(() => {
+    const payload = { type: 'event-promo-show', mode };
+    if (_epConfig) payload.config = _epConfig;
+    ablyChannel.publish('event-promo', payload).catch(() => {});
+  }, 250);
   doFlash('green');
 }
 function qcEPHide() {
