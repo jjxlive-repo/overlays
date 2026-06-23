@@ -1538,6 +1538,8 @@ html, body {
       <div class="splat-conn">
         <div class="conn-dot connecting" id="conn-dot"></div>
         <span id="conn-label" style="font-size:10px;">Connecting…</span>
+        <div class="conn-dot" id="ssn-dot" style="background:#F43F5E;margin-left:6px;"></div>
+        <span id="ssn-label" style="font-size:10px;">SSN ✗</span>
       </div>
       <div class="splat-timer" id="splat-timer">--</div>
       <div class="splat-prog-wrap">
@@ -1654,11 +1656,34 @@ const DANGER_AT = 10;
 let ws = null, wsTimer = null;
 let counts = { tt:0, yt:0, gifts:0, all:0 };
 
+function wsUpdateStatus(state) {
+  const dot = document.getElementById('ssn-dot');
+  const lbl = document.getElementById('ssn-label');
+  if (!dot || !lbl) return;
+  if (state === 'connected') {
+    dot.style.background = '#22c55e';
+    dot.style.boxShadow  = '0 0 5px #22c55e';
+    dot.style.animation  = '';
+    lbl.textContent = 'SSN ✓';
+  } else if (state === 'connecting') {
+    dot.style.background = '#FBBF24';
+    dot.style.boxShadow  = '';
+    dot.style.animation  = 'blink 1s ease-in-out infinite';
+    lbl.textContent = 'SSN…';
+  } else {
+    dot.style.background = '#F43F5E';
+    dot.style.boxShadow  = '';
+    dot.style.animation  = '';
+    lbl.textContent = 'SSN ✗';
+  }
+}
+
 function wsConnect() {
   if (ws) { try { ws.close(); } catch(e){} }
-  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/4`);
+  wsUpdateStatus('connecting');
+  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/1`);
 
-  ws.onopen = () => {};
+  ws.onopen = () => { wsUpdateStatus('connected'); };
 
   ws.onmessage = (e) => {
     let d;
@@ -1674,8 +1699,8 @@ function wsConnect() {
     }
   };
 
-  ws.onclose = () => { clearTimeout(wsTimer); wsTimer = setTimeout(wsConnect, 3000); };
-  ws.onerror = () => { ws.close(); };
+  ws.onclose = () => { wsUpdateStatus('disconnected'); clearTimeout(wsTimer); wsTimer = setTimeout(wsConnect, 3000); };
+  ws.onerror = () => { wsUpdateStatus('disconnected'); ws.close(); };
 }
 
 /* sendChat via HTTP GET — simplest, no socket channel confusion */
