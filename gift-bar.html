@@ -2170,7 +2170,7 @@ function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTime
 function stopRotation(){if(rotateTimer){clearInterval(rotateTimer);rotateTimer=null;}if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}}
 
 /* ══ GIFT BAR GIFTR DATA ══ */
-function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:enabled.includes(d.key));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
+function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:(enabled.includes(d.key)&&!!leaderboard[d.key]));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
 
 /* ══ TOP GIFTERS RENDER ══ */
 const TGP_MEDALS=['🥇','🥈','🥉'];
@@ -2791,6 +2791,7 @@ ablyClient.connection.on(stateChange=>{
     connDotEl.style.boxShadow='0 0 6px #22c55e';
     // Request current EP config from overlay-control (in case it was open first)
     ablyChannel.publish('cmd','requestEventPromoConfig').catch(()=>{});
+    ablyChannel.publish('cmd','requestLeaderboard').catch(()=>{}); // request giftr data on connect
   }else if(s==='connecting'||s==='disconnected'){
     connDotEl.style.background='#f59e0b';
     connDotEl.style.boxShadow='none';
