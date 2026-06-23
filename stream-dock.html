@@ -1562,7 +1562,7 @@ html, body {
   </div>
 
   <!-- EVENT PROMO SYSTEM (controls in overlay-control.html — hidden here) -->
-  <div class="event-promo-bar" id="event-promo-bar" style="display:none">
+  <div class="event-promo-bar" id="event-promo-bar">
     <div class="test-bar-header">
       <span class="test-bar-title">Event Promo</span>
       <span class="test-bar-sub">shelf, fun drawer, and event card controls</span>
@@ -1824,6 +1824,7 @@ function handleMsg(data) {
       evt === 'viewercount'   || evt === 'viewers'        ||
       evt === 'roomstats'     || evt === 'liveviewers'    ||
       data.viewers != null    || data.viewerCount != null  ||
+      data.totalUserCount != null || data.totalUser != null  ||
       (data.meta != null && (
         typeof data.meta === 'number' ||
         (typeof data.meta === 'object' && (
@@ -1831,25 +1832,41 @@ function handleMsg(data) {
         ))
       ));
     if (isViewerEvt) {
-      // SSN sends viewer count in data.meta (number or object) or data.viewers
+      // SSN sends viewer count in data.viewers, data.viewerCount, data.totalUser(Count),
+      // or data.meta (number or object with viewCount / liveViewCount / concurrentViewers)
       let count = null;
       if (data.viewers != null) {
         count = parseInt(data.viewers);
       } else if (data.viewerCount != null) {
         count = parseInt(data.viewerCount);
+      } else if (data.totalUserCount != null) {
+        count = parseInt(data.totalUserCount);          // TikTok alt field
+      } else if (data.totalUser != null) {
+        count = parseInt(data.totalUser);               // TikTok alt field
       } else if (data.meta != null) {
         if (typeof data.meta === 'object') {
-          // meta may be { viewers:N } or { viewCount:N } or { count:N }
           const m = data.meta;
-          count = parseInt(m.viewers ?? m.viewCount ?? m.count ?? m.liveViewCount ?? 0);
+          count = parseInt(
+            m.viewers ?? m.viewCount ?? m.liveViewCount ??
+            m.concurrentViewers ?? m.count ?? 0          // YouTube concurrentViewers
+          );
         } else {
           count = parseInt(data.meta);
         }
       }
-      // Only update if we got a real positive number
+
+      // Platform: prefer data.type; fall back on event name (roomstats=TT, liveviewers/viewer_update=YT)
+      let isTT = p.includes('tiktok');
+      let isYT = p.includes('youtube');
+      if (!isTT && !isYT) {
+        if (evt === 'roomstats') isTT = true;
+        else if (evt === 'liveviewers' || evt === 'viewer_update' || evt === 'viewer_updates') isYT = true;
+      }
+
+      // Only update if we got a real number
       if (count != null && !isNaN(count) && count >= 0) {
-        if (p.includes('tiktok'))  updateViewerCount('tt', count);
-        if (p.includes('youtube')) updateViewerCount('yt', count);
+        if (isTT) updateViewerCount('tt', count);
+        if (isYT) updateViewerCount('yt', count);
       }
     }
     return;
