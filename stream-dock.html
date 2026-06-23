@@ -1681,11 +1681,19 @@ function wsUpdateStatus(state) {
 function wsConnect() {
   if (ws) { try { ws.close(); } catch(e){} }
   wsUpdateStatus('connecting');
-  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/1`);
+  ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/4`);
 
-  ws.onopen = () => { wsUpdateStatus('connected'); };
+  let _ssnRaw = 0;
+  ws.onopen = () => {
+    wsUpdateStatus('connected');
+    _ssnRaw = 0;
+  };
 
   ws.onmessage = (e) => {
+    _ssnRaw++;
+    console.log('[SSN raw #' + _ssnRaw + ']', e.data.slice(0, 300));
+    document.getElementById('ssn-label').textContent = 'SSN ✓ (' + _ssnRaw + ')';
+
     let d;
     try { d = JSON.parse(e.data); } catch(_){ return; }
     if (!d) return;
@@ -1696,6 +1704,8 @@ function wsConnect() {
     } else if (d.event || d.viewers != null || d.meta != null) {
       // System events (viewer_update, etc.) have no chatname — route them through too
       handleMsg(d);
+    } else {
+      console.log('[SSN unhandled]', d);
     }
   };
 
