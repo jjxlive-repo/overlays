@@ -2137,69 +2137,9 @@ function handleMsg(data) {
   const evt = (data.event || '').toLowerCase();
   const p   = (data.type  || '').toLowerCase();
 
-  /* ── viewer count updates — checked FIRST, regardless of chatname ── */
-  const isViewerEvt =
-    evt === 'viewer_update' || evt === 'viewer_updates' ||
-    evt === 'viewercount'   || evt === 'viewers'        ||
-    evt === 'roomstats'     || evt === 'liveviewers'    ||
-    data.viewers != null    || data.viewerCount != null  ||
-    data.totalUserCount != null || data.totalUser != null  ||
-    (data.meta != null && (
-      typeof data.meta === 'number' ||
-      (typeof data.meta === 'object' && (
-        data.meta.viewers != null || data.meta.viewCount != null ||
-        data.meta.liveViewCount != null || data.meta.concurrentViewers != null
-      ))
-    ));
-  if (isViewerEvt) {
-    // SSN sends viewer count in data.viewers, data.viewerCount, data.totalUser(Count),
-    // or data.meta (number or object with viewCount / liveViewCount / concurrentViewers)
-    let count = null;
-    if (data.viewers != null) {
-      count = parseInt(data.viewers);
-    } else if (data.viewerCount != null) {
-      count = parseInt(data.viewerCount);
-    } else if (data.totalUserCount != null) {
-      count = parseInt(data.totalUserCount);          // TikTok alt field
-    } else if (data.totalUser != null) {
-      count = parseInt(data.totalUser);               // TikTok alt field
-    } else if (data.meta != null) {
-      if (typeof data.meta === 'object') {
-        const m = data.meta;
-        count = parseInt(
-          m.viewers ?? m.viewCount ?? m.liveViewCount ??
-          m.concurrentViewers ?? m.count ?? 0          // YouTube concurrentViewers
-        );
-      } else {
-        count = parseInt(data.meta);
-      }
-    }
-
-    // Platform: prefer data.type; fall back on event name (roomstats=TT, liveviewers/viewer_update=YT)
-    let isTT = p.includes('tiktok');
-    let isYT = p.includes('youtube');
-    if (!isTT && !isYT) {
-      if (evt === 'roomstats') isTT = true;
-      else if (evt === 'liveviewers' || evt === 'viewer_update' || evt === 'viewer_updates') isYT = true;
-    }
-
-    // Only update if we got a real number
-    if (count != null && !isNaN(count) && count >= 0) {
-      // Show debug: last VC event
-      const dbgEl = document.getElementById('vc-debug');
-      if (dbgEl) dbgEl.textContent = `vc: evt=${evt||'—'} p=${p||'—'} n=${count} tt=${isTT} yt=${isYT}`;
-      if (isTT) updateViewerCount('tt', count);
-      if (isYT) updateViewerCount('yt', count);
-    } else {
-      const dbgEl = document.getElementById('vc-debug');
-      if (dbgEl) dbgEl.textContent = `vc evt hit, no count: ${JSON.stringify(data).slice(0,80)}`;
-    }
-    return;
-  }
-
-  /* ── system events without chatname ── */
+  /* ── messages WITHOUT chatname: viewer counts + engagement system events ── */
   if (!data.chatname) {
-    // Engagement events that arrive without chatname
+    // Engagement events
     const _plat0 = p.includes('tiktok') ? 'tt' : p.includes('youtube') ? 'yt' : 'other';
     if (evt === 'follow' || evt === 'follower')                       publishHype('join',          _plat0);
     else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter') publishHype('join',          _plat0);
@@ -2207,13 +2147,53 @@ function handleMsg(data) {
     else if (evt === 'heart_me')                                      publishHype('heart_me',      _plat0);
     else if (evt === 'heart_me_first')                                publishHype('heart_me_first',_plat0);
     else if (evt === 'subscribe' && p.includes('youtube'))            publishHype('yt_sub',        'yt');
+
+    // Viewer count events
+    const isViewerEvt =
+      evt === 'viewer_update' || evt === 'viewer_updates' ||
+      evt === 'viewercount'   || evt === 'viewers'        ||
+      evt === 'roomstats'     || evt === 'liveviewers'    ||
+      data.viewers != null    || data.viewerCount != null  ||
+      data.totalUserCount != null || data.totalUser != null  ||
+      (data.meta != null && (
+        typeof data.meta === 'number' ||
+        (typeof data.meta === 'object' && (
+          data.meta.viewers != null || data.meta.viewCount != null ||
+          data.meta.liveViewCount != null || data.meta.concurrentViewers != null
+        ))
+      ));
+    if (isViewerEvt) {
+      let count = null;
+      if (data.viewers != null)         count = parseInt(data.viewers);
+      else if (data.viewerCount != null) count = parseInt(data.viewerCount);
+      else if (data.totalUserCount != null) count = parseInt(data.totalUserCount);
+      else if (data.totalUser != null)   count = parseInt(data.totalUser);
+      else if (data.meta != null) {
+        count = typeof data.meta === 'object'
+          ? parseInt(data.meta.viewers ?? data.meta.viewCount ?? data.meta.liveViewCount ?? data.meta.concurrentViewers ?? data.meta.count ?? 0)
+          : parseInt(data.meta);
+      }
+      let isTTvc = p.includes('tiktok');
+      let isYTvc = p.includes('youtube');
+      if (!isTTvc && !isYTvc) {
+        if (evt === 'roomstats') isTTvc = true;
+        else if (evt === 'liveviewers' || evt === 'viewer_update' || evt === 'viewer_updates') isYTvc = true;
+      }
+      if (count != null && !isNaN(count) && count >= 0) {
+        const dbg = document.getElementById('vc-debug');
+        if (dbg) dbg.textContent = `vc: evt=${evt||'—'} p=${p||'—'} n=${count} tt=${isTTvc} yt=${isYTvc}`;
+        if (isTTvc) updateViewerCount('tt', count);
+        if (isYTvc) updateViewerCount('yt', count);
+      } else {
+        const dbg = document.getElementById('vc-debug');
+        if (dbg) dbg.textContent = `vc hit, no count: ${JSON.stringify(data).slice(0,80)}`;
+      }
+    }
     return;
   }
 
-  const p = (data.type || '').toLowerCase();
-  const isTT   = p.includes('tiktok');
-  const isYT   = p.includes('youtube');
-  const evt = (data.event || '').toLowerCase();
+  const isTT = p.includes('tiktok');
+  const isYT = p.includes('youtube');
 
   // Detect TikTok gifts embedded as chat messages: "sent Rose <img/> × 1"
   // SSN sends these with empty hasDonation — parse gift name + count from chatmessage.
