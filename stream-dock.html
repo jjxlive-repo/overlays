@@ -15,7 +15,7 @@
   --gift:      #f5a623;
   --purple:    #A855F7;
   --purple-dk: #7B2FBE;
-  --green:     #22c55e;
+  --green:     #3b82f6;
   --danger:    #F43F5E;
   --bg:        #0d0d12;
   --bg-panel:  rgba(18,18,26,0.94);
@@ -572,14 +572,14 @@ html, body {
 .sp-save {
   background: linear-gradient(135deg, #15803d, var(--green));
   color: white;
-  box-shadow: 0 3px 12px rgba(34,197,94,0.35);
+  box-shadow: 0 3px 12px rgba(59,130,246,0.35);
   opacity: 0.3;
   pointer-events: none;
   transition: opacity 0.3s, filter 0.15s;
 }
 .sp-save.enabled { opacity: 1; pointer-events: auto; animation: saveReady 1.5s ease-in-out infinite; }
 .sp-save.enabled:hover { filter: brightness(1.1); }
-@keyframes saveReady { 0%,100%{box-shadow:0 3px 12px rgba(34,197,94,0.35)} 50%{box-shadow:0 3px 20px rgba(34,197,94,0.7)} }
+@keyframes saveReady { 0%,100%{box-shadow:0 3px 12px rgba(59,130,246,0.35)} 50%{box-shadow:0 3px 20px rgba(34,197,94,0.7)} }
 
 .sp-idle {
   background: rgba(255,255,255,0.06);
@@ -619,7 +619,222 @@ html, body {
   animation: giftGlow 2.8s ease forwards;
 }
 
-/* ── SETTINGS PANEL ── */
+
+/* ══════════════════════════════════════════════════════
+   GIFT CELEBRATION OVERLAY
+   Progressive tier system — T1 corner card → T10 full takeover
+   All colors colorblind-safe (no red/green distinction)
+══════════════════════════════════════════════════════ */
+
+/* ── Tier color tokens ── */
+:root {
+  --gc-t1:  #94a3b8;  /* slate       subtle  */
+  --gc-t2:  #7dd3fc;  /* light blue  clean   */
+  --gc-t3:  #38bdf8;  /* sky blue    notable */
+  --gc-t4:  #fbbf24;  /* amber       warm    */
+  --gc-t5:  #f59e0b;  /* gold        rich    */
+  --gc-t6:  #fb923c;  /* orange      hot     */
+  --gc-t7:  #e879f9;  /* fuchsia     electric*/
+  --gc-t8:  #c084fc;  /* purple      intense */
+  --gc-t9:  #facc15;  /* yellow      shock   */
+  --gc-t10: #ffffff;  /* white       legend  */
+}
+
+/* ── Container ── */
+#gift-cel {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9990;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Corner card (T1–T3) ── */
+.gc-card {
+  position: absolute;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--gc-color, #94a3b8);
+  background: rgba(13,13,18,0.92);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  opacity: 0;
+  transform: translateY(20px) scale(0.92);
+  transition: none;
+}
+
+/* ── Position classes ── */
+.gc-card.gc-corner {
+  bottom: 60px;
+  right: 14px;
+  width: 200px;
+}
+.gc-card.gc-center {
+  position: relative;
+  width: 300px;
+}
+.gc-card.gc-takeover {
+  position: relative;
+  width: 88%;
+  max-width: 480px;
+}
+
+/* ── Enter animations ── */
+.gc-card.gc-in.gc-corner {
+  animation: gcSlideUp 0.32s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.gc-card.gc-in.gc-center {
+  animation: gcScaleIn 0.38s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.gc-card.gc-in.gc-takeover {
+  animation: gcExplode 0.45s cubic-bezier(.22,1,.36,1) forwards;
+}
+.gc-card.gc-out {
+  animation: gcFadeOut 0.28s ease forwards !important;
+}
+
+@keyframes gcSlideUp {
+  from { opacity:0; transform:translateY(28px) scale(0.88); }
+  to   { opacity:1; transform:translateY(0)    scale(1);    }
+}
+@keyframes gcScaleIn {
+  from { opacity:0; transform:scale(0.78); }
+  to   { opacity:1; transform:scale(1);    }
+}
+@keyframes gcExplode {
+  0%   { opacity:0; transform:scale(0.60); }
+  60%  { opacity:1; transform:scale(1.04); }
+  100% { opacity:1; transform:scale(1);    }
+}
+@keyframes gcFadeOut {
+  from { opacity:1; transform:scale(1);    }
+  to   { opacity:0; transform:scale(0.92); }
+}
+
+/* ── Icon wrapper ── */
+.gc-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.gc-icon-wrap img, .gc-icon-wrap .gc-icon-emoji {
+  display: block;
+  object-fit: contain;
+  border-radius: 8px;
+  filter: drop-shadow(0 0 12px var(--gc-color, #94a3b8));
+}
+
+/* ── Glow ring that pulses around icon ── */
+.gc-glow-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--gc-color, #94a3b8);
+  opacity: 0;
+}
+.gc-card.gc-in .gc-glow-ring {
+  animation: gcRingPulse 1.2s ease-out infinite;
+}
+@keyframes gcRingPulse {
+  0%   { transform:scale(1);    opacity:0.8; }
+  100% { transform:scale(1.55); opacity:0;   }
+}
+
+/* ── Text elements ── */
+.gc-name {
+  font-family: var(--boogaloo);
+  color: var(--gc-color, #94a3b8);
+  text-align: center;
+  line-height: 1.1;
+  text-shadow: 0 0 14px var(--gc-color, #94a3b8);
+}
+.gc-gift-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.55);
+  text-align: center;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.gc-amount {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.gc-combo-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--gc-color, #94a3b8);
+  color: #000;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 20px;
+  min-width: 22px;
+  text-align: center;
+}
+.gc-platform-pill {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--gc-color, #94a3b8);
+  color: var(--gc-color, #94a3b8);
+  background: rgba(0,0,0,0.4);
+}
+
+/* ── Full-screen backdrop for T7–T10 ── */
+#gift-cel-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9989;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+#gift-cel-backdrop.on {
+  opacity: 1;
+  animation: gcBackdrop 0.4s ease forwards;
+}
+@keyframes gcBackdrop {
+  from { opacity:0; } to { opacity:1; }
+}
+
+/* ── T8–T10 screen shake ── */
+@keyframes gcShake {
+  0%,100% { transform:translate(0,0); }
+  15%      { transform:translate(-5px, 3px); }
+  30%      { transform:translate(4px,-4px); }
+  45%      { transform:translate(-3px, 5px); }
+  60%      { transform:translate(5px,-2px); }
+  75%      { transform:translate(-2px, 4px); }
+  90%      { transform:translate(3px,-3px); }
+}
+body.gc-shake { animation: gcShake 0.55s ease; }
+
+/* ── T10 legendary shimmer on icon ── */
+.gc-legendary .gc-icon-wrap img {
+  animation: gcLegendaryShimmer 1.8s ease-in-out infinite;
+}
+@keyframes gcLegendaryShimmer {
+  0%,100% { filter: drop-shadow(0 0 16px #fff) drop-shadow(0 0 40px #facc15); }
+  33%     { filter: drop-shadow(0 0 24px #e879f9) drop-shadow(0 0 50px #c084fc); }
+  66%     { filter: drop-shadow(0 0 20px #38bdf8) drop-shadow(0 0 44px #7dd3fc); }
+}
+
 .settings-btn {
   background: none;
   border: none;
@@ -758,7 +973,7 @@ html, body {
   white-space: nowrap;
 }
 .qc-btn:hover  { background: rgba(168,85,247,0.22); color: var(--txt); }
-.qc-btn.qc-on  { background: rgba(34,197,94,0.18);  border-color: rgba(34,197,94,0.5);  color: #4ade80; }
+.qc-btn.qc-on  { background: rgba(59,130,246,0.18);  border-color: rgba(59,130,246,0.5);  color: #60a5fa; }
 .qc-btn.qc-off { background: rgba(244,63,94,0.14);  border-color: rgba(244,63,94,0.4);  color: #fb7185; }
 .qc-btn.qc-active { background: rgba(168,85,247,0.3); border-color: rgba(168,85,247,0.65); color: #E879F9; }
 .qc-input {
@@ -1211,7 +1426,7 @@ html, body {
 }
 .ctrl-btn:hover { background: rgba(168,85,247,.22); color: var(--txt); }
 .ctrl-btn:active { transform: scale(0.97); }
-.ctrl-btn.c-on  { background: rgba(34,197,94,.18);  border-color: rgba(34,197,94,.5);   color: #4ade80; }
+.ctrl-btn.c-on  { background: rgba(59,130,246,.18);  border-color: rgba(59,130,246,.5);   color: #60a5fa; }
 .ctrl-btn.c-off { background: rgba(244,63,94,.14);  border-color: rgba(244,63,94,.4);   color: #fb7185; }
 .ctrl-btn.c-act { background: rgba(168,85,247,.3);  border-color: rgba(168,85,247,.65); color: #E879F9; }
 .ctrl-status { font-size: 9px; color: var(--txt-dim); min-height: 10px; }
@@ -1225,6 +1440,10 @@ html, body {
 </style>
 </head>
 <body>
+
+<!-- ══ GIFT CELEBRATION OVERLAY ══ -->
+<div id="gift-cel-backdrop"></div>
+<div id="gift-cel"></div>
 
 <!-- ══ HYPE FULL ALERT — slides down from top when meter fills ══ -->
 <div id="hype-full-alert">
@@ -1621,7 +1840,7 @@ html, body {
         <button class="ep-dock-btn danger" onclick="eventPromoHide()">🚫 Hide</button>
       </div>
       <div style="display:flex;gap:6px;">
-        <button class="ep-dock-btn" onclick="eventPromoAuto(true)" style="flex:1;background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.35);color:#4ade80;">▶ Start Auto</button>
+        <button class="ep-dock-btn" onclick="eventPromoAuto(true)" style="flex:1;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.35);color:#60a5fa;">▶ Start Auto</button>
         <button class="ep-dock-btn danger" onclick="eventPromoAuto(false)" style="flex:1;">■ Stop Auto</button>
       </div>
     </div>
@@ -1661,8 +1880,8 @@ function wsUpdateStatus(state) {
   const lbl = document.getElementById('ssn-label');
   if (!dot || !lbl) return;
   if (state === 'connected') {
-    dot.style.background = '#22c55e';
-    dot.style.boxShadow  = '0 0 5px #22c55e';
+    dot.style.background = '#3b82f6';
+    dot.style.boxShadow  = '0 0 5px #3b82f6';
     dot.style.animation  = '';
     lbl.textContent = 'SSN ✓';
   } else if (state === 'connecting') {
@@ -2935,9 +3154,9 @@ function toggleBaitVisible() {
   ablyChannel.publish('splat-bait', { visible: baitVisible }).catch(() => {});
   const btn = document.getElementById('btn-bait-visible');
   btn.textContent = baitVisible ? '👁 Bait' : '🙈 Bait';
-  btn.style.background    = baitVisible ? 'rgba(34,197,94,0.18)' : 'rgba(244,63,94,0.18)';
+  btn.style.background    = baitVisible ? 'rgba(59,130,246,0.18)' : 'rgba(244,63,94,0.18)';
   btn.style.borderColor   = baitVisible ? 'rgba(34,197,94,0.40)' : 'rgba(244,63,94,0.40)';
-  btn.style.color         = baitVisible ? '#4ade80' : '#fb7185';
+  btn.style.color         = baitVisible ? '#60a5fa' : '#fb7185';
   doFlash(baitVisible ? 'green' : 'red');
 }
 
@@ -2966,33 +3185,37 @@ function toggleAnnounceVisible() {
 }
 
 function sendAnnounce() {
+  ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
+  doFlash('green');
+}
+
+function buildAnnouncePayload() {
   const text  = document.getElementById('ann-main').value.trim();
   const sub   = document.getElementById('ann-sub').value.trim();
   const badge = document.getElementById('ann-badge').value.trim();
   const payload = { x: announceX, y: announceY, size: announceSize };
   if (text)  payload.text  = text;
-  payload.sub   = sub;   // empty string clears sub text
+  payload.sub = sub;
   if (badge) payload.badge = badge;
-  ablyChannel.publish('announce', payload).catch(() => {});
-  doFlash('green');
+  return payload;
 }
 
 function setAnnounceSize(size) {
   announceSize = size;
-  document.querySelectorAll('[data-asize]').forEach(b => b.classList.toggle('active', b.dataset.asize === size));
-  ablyChannel.publish('announce', { size }).catch(() => {});
+  document.querySelectorAll('[data-asize]').forEach(b => b.classList.toggle('c-act', b.dataset.asize === size));
+  if (announceVisible) ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
 }
 
 function setAnnounceX(x) {
   announceX = x;
-  document.querySelectorAll('[data-ax]').forEach(b => b.classList.toggle('active', b.dataset.ax === x));
-  ablyChannel.publish('announce', { x }).catch(() => {});
+  document.querySelectorAll('[data-ax]').forEach(b => b.classList.toggle('c-act', b.dataset.ax === x));
+  if (announceVisible) ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
 }
 
 function setAnnounceY(y) {
   announceY = y;
-  document.querySelectorAll('[data-ay]').forEach(b => b.classList.toggle('active', b.dataset.ay === y));
-  ablyChannel.publish('announce', { y }).catch(() => {});
+  document.querySelectorAll('[data-ay]').forEach(b => b.classList.toggle('c-act', b.dataset.ay === y));
+  if (announceVisible) ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
 }
 
 /* ═══════════════════════════════════════════
@@ -3093,7 +3316,9 @@ function cpRemovePreset(i) {
    QUICK CONTROLS
 ════════════════════════════════════════ */
 function qcLTVisible(v) {
-  ablyChannel.publish('announce', { visible: v }).catch(() => {});
+  announceVisible = v;
+  const payload = v ? { visible: true, ...buildAnnouncePayload() } : { visible: false };
+  ablyChannel.publish('announce', payload).catch(() => {});
   doFlash(v ? 'green' : 'red');
 }
 
@@ -3409,6 +3634,253 @@ function _gistStatus(msg) {
   const el = document.getElementById('gist-status');
   if (el) el.textContent = msg;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   GIFT CELEBRATION ENGINE
+   Tier system: 10 tiers across coin thresholds
+   T1–T3 → corner card   T4–T6 → center card   T7–T10 → full takeover
+   Colorblind-safe palette (deuteranopia / green deficiency)
+   Combo batching for small gifts. Queue with priority dropping.
+════════════════════════════════════════════════════════════════ */
+const GC_TIERS = [
+  null, // T0 (below threshold — no celebration)
+  { coins: 500,   label: 'TH1',  color: '#94a3b8', iconPx: 64,  namePx: 18, amtPx: 13, layout: 'corner',   duration: 2800, backdrop: false, shake: false },
+  { coins: 1000,  label: 'TH2',  color: '#7dd3fc', iconPx: 82,  namePx: 20, amtPx: 14, layout: 'corner',   duration: 3200, backdrop: false, shake: false },
+  { coins: 2000,  label: 'TH3',  color: '#38bdf8', iconPx: 100, namePx: 22, amtPx: 15, layout: 'corner',   duration: 3600, backdrop: false, shake: false },
+  { coins: 5000,  label: 'TH4',  color: '#fbbf24', iconPx: 128, namePx: 26, amtPx: 17, layout: 'center',   duration: 4200, backdrop: false, shake: false },
+  { coins: 10000, label: 'TH5',  color: '#f59e0b', iconPx: 156, namePx: 30, amtPx: 18, layout: 'center',   duration: 5000, backdrop: false, shake: false },
+  { coins: 15000, label: 'TH6',  color: '#fb923c', iconPx: 180, namePx: 34, amtPx: 20, layout: 'center',   duration: 5500, backdrop: false, shake: false },
+  { coins: 20000, label: 'TH7',  color: '#e879f9', iconPx: 200, namePx: 38, amtPx: 22, layout: 'takeover', duration: 6000, backdrop: true,  shake: false },
+  { coins: 30000, label: 'TH8',  color: '#c084fc', iconPx: 220, namePx: 44, amtPx: 24, layout: 'takeover', duration: 7000, backdrop: true,  shake: true  },
+  { coins: 37000, label: 'TH9',  color: '#facc15', iconPx: 250, namePx: 50, amtPx: 26, layout: 'takeover', duration: 8000, backdrop: true,  shake: true  },
+  { coins: 45000, label: 'TH10', color: '#ffffff', iconPx: 280, namePx: 58, amtPx: 28, layout: 'takeover', duration: 10000, backdrop: true, shake: true  },
+];
+
+/* normalize amount to coin-equivalent for tier lookup */
+function gcNormalize(amount, type) {
+  if (!type) return amount;
+  const t = type.toLowerCase();
+  if (t === 'tiktok_coins') return amount;
+  if (t === 'youtube_jewels') return amount; // jewels ≈ coins roughly
+  // YouTube SC / USD: 1 dollar ≈ 200 coin-equivalent
+  return Math.round(amount * 200);
+}
+
+function gcGetTier(amount, type) {
+  const coins = gcNormalize(amount, type);
+  if (coins < 500) return 0;
+  for (let i = GC_TIERS.length - 1; i >= 1; i--) {
+    if (coins >= GC_TIERS[i].coins) return i;
+  }
+  return 0;
+}
+
+function gcFormatAmount(amount, type) {
+  const t = (type || '').toLowerCase();
+  if (t === 'tiktok_coins') return Number(amount).toLocaleString() + ' 🪙';
+  if (t === 'youtube_jewels') return Number(amount).toLocaleString() + ' 💎';
+  // dollars
+  return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* ── Combo + Queue ── */
+const _gcState = {
+  queue:   [],
+  active:  false,
+  combos:  new Map(), // "name|giftTitle" → { data, tier, count, timer }
+  _card:   null,
+  _hideTimer: null,
+};
+
+function gcPush(data, tier) {
+  /* batch T1–T2 (small gifts) — same gifter + same gift within 1.5 s */
+  if (tier <= 2) {
+    const key = (data.name || '') + '|' + (data.giftTitle || '');
+    if (_gcState.combos.has(key)) {
+      const c = _gcState.combos.get(key);
+      c.count++;
+      clearTimeout(c.timer);
+      c.timer = setTimeout(() => {
+        c.data._comboCount = c.count;
+        _gcEnqueue(c.data, c.tier);
+        _gcState.combos.delete(key);
+      }, 1500);
+      return;
+    }
+    const entry = {
+      data, tier, count: 1,
+      timer: setTimeout(() => {
+        entry.data._comboCount = 1;
+        _gcEnqueue(entry.data, entry.tier);
+        _gcState.combos.delete(key);
+      }, 1500),
+    };
+    _gcState.combos.set(key, entry);
+    return;
+  }
+  _gcEnqueue(data, tier);
+}
+
+function _gcEnqueue(data, tier) {
+  /* cap queue at 6 — drop lowest-tier items first */
+  if (_gcState.queue.length >= 6) {
+    const dropIdx = _gcState.queue.findIndex(q => q.tier <= tier && q.tier <= 2);
+    if (dropIdx !== -1) _gcState.queue.splice(dropIdx, 1);
+    else if (tier <= 1) return; // all items are higher tier, drop this T1
+  }
+  _gcState.queue.push({ data, tier });
+  if (!_gcState.active) _gcNext();
+}
+
+function _gcNext() {
+  if (!_gcState.queue.length) { _gcState.active = false; return; }
+  _gcState.active = true;
+  const { data, tier } = _gcState.queue.shift();
+  _gcShow(data, tier);
+}
+
+function _gcShow(data, tier) {
+  const cfg = GC_TIERS[tier];
+  if (!cfg) { _gcNext(); return; }
+
+  const cel    = document.getElementById('gift-cel');
+  const bdrop  = document.getElementById('gift-cel-backdrop');
+  const combo  = data._comboCount || 1;
+  const isTT   = (data.platform || '').toLowerCase() === 'tiktok';
+  const isYT   = (data.platform || '').toLowerCase() === 'youtube';
+
+  /* ── backdrop for takeover tiers ── */
+  if (cfg.backdrop) {
+    bdrop.style.background = `radial-gradient(ellipse at center, ${cfg.color}18 0%, rgba(0,0,0,0.88) 70%)`;
+    bdrop.classList.add('on');
+  }
+
+  /* ── screen shake ── */
+  if (cfg.shake) {
+    document.body.classList.remove('gc-shake');
+    void document.body.offsetWidth;
+    document.body.classList.add('gc-shake');
+    setTimeout(() => document.body.classList.remove('gc-shake'), 600);
+  }
+
+  /* ── build card ── */
+  const card = document.createElement('div');
+  card.className = `gc-card gc-${cfg.layout}${tier === 10 ? ' gc-legendary' : ''}`;
+  card.style.setProperty('--gc-color', cfg.color);
+  card.style.border = `1.5px solid ${cfg.color}`;
+  card.style.boxShadow = `0 0 24px ${cfg.color}44, 0 0 60px ${cfg.color}18, inset 0 0 20px rgba(0,0,0,0.5)`;
+
+  /* icon */
+  const iconWrap = document.createElement('div');
+  iconWrap.className = 'gc-icon-wrap';
+  iconWrap.style.width  = cfg.iconPx + 'px';
+  iconWrap.style.height = cfg.iconPx + 'px';
+
+  if (data.contentImg) {
+    const img = document.createElement('img');
+    img.src = data.contentImg;
+    img.style.width  = cfg.iconPx + 'px';
+    img.style.height = cfg.iconPx + 'px';
+    img.onerror = () => { img.replaceWith(gcFallbackIcon(cfg, isTT, isYT, data)); };
+    iconWrap.appendChild(img);
+  } else {
+    iconWrap.appendChild(gcFallbackIcon(cfg, isTT, isYT, data));
+  }
+
+  /* combo badge */
+  if (combo > 1) {
+    const badge = document.createElement('div');
+    badge.className = 'gc-combo-badge';
+    badge.textContent = '×' + combo;
+    iconWrap.appendChild(badge);
+  }
+
+  /* glow ring */
+  const ring = document.createElement('div');
+  ring.className = 'gc-glow-ring';
+  iconWrap.appendChild(ring);
+
+  card.appendChild(iconWrap);
+
+  /* name */
+  const nameEl = document.createElement('div');
+  nameEl.className = 'gc-name';
+  nameEl.style.fontSize = cfg.namePx + 'px';
+  nameEl.textContent = data.name || 'Anonymous';
+  card.appendChild(nameEl);
+
+  /* gift label */
+  if (data.giftTitle) {
+    const lbl = document.createElement('div');
+    lbl.className = 'gc-gift-label';
+    lbl.style.fontSize = Math.max(9, cfg.amtPx - 5) + 'px';
+    lbl.textContent = (combo > 1 ? `×${combo} ` : '') + data.giftTitle;
+    card.appendChild(lbl);
+  }
+
+  /* amount */
+  const amtEl = document.createElement('div');
+  amtEl.className = 'gc-amount';
+  amtEl.style.fontSize = cfg.amtPx + 'px';
+  amtEl.textContent = gcFormatAmount(data.amount, data.type);
+  card.appendChild(amtEl);
+
+  /* platform pill */
+  const pill = document.createElement('div');
+  pill.className = 'gc-platform-pill';
+  pill.style.borderColor = cfg.color;
+  pill.style.color = cfg.color;
+  pill.textContent = isTT ? 'TikTok' : isYT ? 'YouTube' : (data.platform || 'Gift');
+  card.appendChild(pill);
+
+  /* ── mount and animate in ── */
+  cel.innerHTML = '';
+  cel.appendChild(card);
+  _gcState._card = card;
+
+  void card.offsetWidth; // reflow
+  card.classList.add('gc-in');
+
+  /* ── auto-dismiss ── */
+  if (_gcState._hideTimer) clearTimeout(_gcState._hideTimer);
+  _gcState._hideTimer = setTimeout(() => _gcHide(cfg), cfg.duration);
+}
+
+function gcFallbackIcon(cfg, isTT, isYT, data) {
+  const span = document.createElement('span');
+  span.className = 'gc-icon-emoji';
+  span.style.fontSize = (cfg.iconPx * 0.7) + 'px';
+  span.style.lineHeight = '1';
+  const evt = (data.giftTitle || '').toLowerCase();
+  span.textContent = isTT ? '🎁'
+    : evt.includes('jewel') ? '💎'
+    : isYT ? '⭐' : '💝';
+  return span;
+}
+
+function _gcHide(cfg) {
+  const card  = _gcState._card;
+  const bdrop = document.getElementById('gift-cel-backdrop');
+  if (card) {
+    card.classList.remove('gc-in');
+    card.classList.add('gc-out');
+  }
+  bdrop.classList.remove('on');
+  setTimeout(() => {
+    const cel = document.getElementById('gift-cel');
+    if (cel) cel.innerHTML = '';
+    _gcNext();
+  }, 300);
+}
+
+/* ── Subscribe to gift-alert channel ── */
+ablyChannel.subscribe('gift-alert', msg => {
+  const d = msg?.data;
+  if (!d || !d.amount) return;
+  const tier = gcGetTier(d.amount, d.type);
+  if (tier < 1) return;
+  gcPush(d, tier);
+});
 
 /* ════════════════════════════════════════
    BOOT
