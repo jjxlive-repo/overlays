@@ -1655,6 +1655,17 @@ body.gc-shake { animation: gcShake 0.55s ease; }
           <button class="ctrl-btn" style="width:100%;" onclick="gbRefresh()">↺ Refresh Leaderboard</button>
           <div class="ctrl-status" id="gb-status"></div>
           <div class="ctrl-sep" style="margin-top:6px;">
+            <div class="ctrl-row" style="align-items:center;gap:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">↕ Bar Y</span>
+              <button class="ctrl-btn" onclick="nudgeGiftBar(-5)" title="Up 5px">▲▲</button>
+              <button class="ctrl-btn" onclick="nudgeGiftBar(-1)" title="Up 1px">▲</button>
+              <span id="gift-bar-y-val" style="font-size:10px;min-width:28px;text-align:center;color:var(--txt);">450</span>
+              <button class="ctrl-btn" onclick="nudgeGiftBar(1)"  title="Down 1px">▼</button>
+              <button class="ctrl-btn" onclick="nudgeGiftBar(5)"  title="Down 5px">▼▼</button>
+              <button class="ctrl-btn c-off" onclick="resetGiftBarY()" title="Reset to 450">↺</button>
+            </div>
+          </div>
+          <div class="ctrl-sep" style="margin-top:6px;">
             <span class="ctrl-lbl" style="margin-bottom:3px;">🔥 Hype Meter CTA</span>
             <div class="ctrl-row">
               <input class="ctrl-in" id="hype-cta-input" type="text" placeholder="e.g. Eat fiery beanboozle">
@@ -3388,19 +3399,20 @@ function buildAnnouncePayload() {
 function setAnnounceSize(size) {
   announceSize = size;
   document.querySelectorAll('[data-asize]').forEach(b => b.classList.toggle('c-act', b.dataset.asize === size));
-  if (announceVisible) ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
+  // Always send — size should update even if dock lost visible state
+  ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
 }
 
 function setAnnounceX(x) {
   announceX = x;
   document.querySelectorAll('[data-ax]').forEach(b => b.classList.toggle('c-act', b.dataset.ax === x));
-  if (announceVisible) ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
+  ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
 }
 
 function setAnnounceY(y) {
   announceY = y;
   document.querySelectorAll('[data-ay]').forEach(b => b.classList.toggle('c-act', b.dataset.ay === y));
-  if (announceVisible) ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
+  ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
 }
 
 /* ═══════════════════════════════════════════
@@ -3457,6 +3469,18 @@ function onHypeIntensity(val) {
   const pct = parseInt(val, 10);
   document.getElementById('hype-intensity-val').textContent = pct + '%';
   if (ablyChannel) ablyChannel.publish('hype-intensity', { mult: pct / 100 }).catch(() => {});
+}
+
+let _giftBarY = 450;
+function nudgeGiftBar(delta) {
+  _giftBarY = Math.max(0, Math.min(1860, _giftBarY + delta));
+  document.getElementById('gift-bar-y-val').textContent = _giftBarY;
+  if (ablyChannel) ablyChannel.publish('gift-bar-pos', { top: _giftBarY }).catch(() => {});
+}
+function resetGiftBarY() {
+  _giftBarY = 450;
+  document.getElementById('gift-bar-y-val').textContent = _giftBarY;
+  if (ablyChannel) ablyChannel.publish('gift-bar-pos', { top: _giftBarY }).catch(() => {});
 }
 
 function setCPSize(size) {
