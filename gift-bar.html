@@ -3048,8 +3048,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     surgeTimer = null;
     surgeBanner?.classList.remove('visible');
     giftBarEl?.classList.remove('hm-surge-active');
-    // Cooldown: 60–90 s before next surge can fire
-    _surgeAvailAt = Date.now() + SURGE_MIN_MS + Math.random() * (SURGE_MAX_MS - SURGE_MIN_MS);
+    _scheduleSurge(); // reschedule next surge after 60-90 s
   }
 
   /* ── first gifter flash ── */
@@ -3174,24 +3173,25 @@ ablyChannel.subscribe('top-gifters',msg=>{
   }
 
   /* ── add points ── */
-  /* ── surge cooldown: timestamp after which next surge is allowed ── */
-  let _surgeAvailAt = 0;  // 0 = immediately available on load
-
   function addPts(base, plat){
     if(plat && plat !== 'other') setPlatMode(plat);
     const pts = base * _intensityMult;
     rawScore = Math.min(rawScore + (surgeActive ? pts * SURGE_MULTI : pts), MAX_RAW);
-
-    // Fire surge when meter crosses 25% threshold and cooldown has elapsed
-    if(!surgeActive && rawScore >= MAX_RAW * 0.25 && Date.now() >= _surgeAvailAt){
-      showSurge();
-    }
-
     if(rawScore >= MAX_RAW && !_bbFired){
       _bbFired = true;
       fireBeanBoozled();
     }
   }
+
+  /* ── surge scheduler: fires every 60-90 s if chat is alive (rawScore > 0) ── */
+  function _scheduleSurge(){
+    const gap = SURGE_MIN_MS + Math.random() * (SURGE_MAX_MS - SURGE_MIN_MS);
+    setTimeout(() => {
+      if(!surgeActive && rawScore > 0) showSurge();
+      else _scheduleSurge(); // no activity yet — check again after another gap
+    }, gap);
+  }
+  _scheduleSurge(); // kick off on load
 
   /* ── decay (pause during BB cooldown so meter doesn't drain mid-banner) ── */
   setInterval(() => {
