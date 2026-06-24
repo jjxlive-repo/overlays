@@ -2645,8 +2645,9 @@ function handleAnnounce(data){
   if(data.text!==undefined){const el=document.getElementById('announce-text');if(el)el.textContent=data.text||'';}
   if(data.sub!==undefined){const el=document.getElementById('announce-sub');if(el){el.textContent=data.sub||'';el.classList.toggle('has-text',!!data.sub);}}
   if(data.badge!==undefined){const el=document.getElementById('announce-live-badge');if(el)el.textContent=data.badge||'● LIVE';}
-  const sizeMap={micro:0.45,xxs:0.52,xs:0.6,sm:0.75,md:0.9,lg:1.0,xl:1.15,xxl:1.35};
-  if(data.size&&sizeMap[data.size])box.style.setProperty('--announce-scale',sizeMap[data.size]);
+  const sizeMap={micro:'34px',xxs:'42px',xs:'52px',sm:'62px',md:'70px',lg:'76px',xl:'92px',xxl:'112px'};
+  const sizeMapSub={micro:'20px',xxs:'24px',xs:'28px',sm:'32px',md:'36px',lg:'40px',xl:'48px',xxl:'58px'};
+  if(data.size&&sizeMap[data.size]){box.style.setProperty('--afm',sizeMap[data.size]);box.style.setProperty('--afs',sizeMapSub[data.size]);}
   const xMap={left:'12%',center:'50%',right:'88%'};
   if(data.x&&xMap[data.x])box.style.setProperty('--ax',xMap[data.x]);
   const yMap={top:'200px',upper:'480px',center:'960px',lower:'1440px',bottom:'1700px'};
@@ -2665,8 +2666,9 @@ function handleCommentPrompt(data){
   }
   if(data.text!==undefined){const el=document.getElementById('cp-text');if(el)el.textContent=data.text||'';}
   if(data.sub!==undefined){const el=document.getElementById('cp-sub');if(el){el.textContent=data.sub||'';el.classList.toggle('has-text',!!data.sub);}}
-  const sizeMap={xs:0.7,sm:0.85,md:1.0,lg:1.15,xl:1.3};
-  if(data.size&&sizeMap[data.size])box.style.setProperty('--cp-scale',sizeMap[data.size]);
+  const cpSizeMap={xs:'32px',sm:'38px',md:'44px',lg:'52px',xl:'62px'};
+  const cpSizeMapSub={xs:'16px',sm:'18px',md:'22px',lg:'26px',xl:'32px'};
+  if(data.size&&cpSizeMap[data.size]){box.style.setProperty('--cpfm',cpSizeMap[data.size]);box.style.setProperty('--cpfs',cpSizeMapSub[data.size]);}
   const xMap={left:'20%',center:'50%',right:'80%'};
   if(data.x&&xMap[data.x])box.style.left=xMap[data.x];
   const yMap={top:'15%',upper:'30%',center:'50%',lower:'70%',bottom:'85%'};
@@ -2768,13 +2770,21 @@ ablyChannel.subscribe('splat-pos',msg=>{
   else if(typeof d==='string')setSplatPosition(d);
 });
 
-// Splat idle bait toggle
+// Splat idle bait toggle + content config
 ablyChannel.subscribe('splat-bait',msg=>{
   const d=msg.data;
-  if(!d||typeof d.enabled!=='boolean')return;
-  baitEnabled=d.enabled;
-  if(!baitEnabled)splatHide(idleBait);
-  else if(splatState===SPLAT_STATE.IDLE)splatShow(idleBait);
+  if(!d)return;
+  // Content config: img / top label / main label
+  if(d.img!==undefined){const el=document.getElementById('bait-galaxy-img');if(el)el.src=d.img||'';}
+  if(d.top!==undefined){const el=document.getElementById('bait-label-send');if(el)el.textContent=d.top||'';}
+  if(d.main!==undefined){const el=document.getElementById('bait-label-main');if(el)el.textContent=d.main||'';}
+  // Toggle: accept both 'enabled' and 'visible' keys
+  const toggle = d.enabled!==undefined ? d.enabled : d.visible;
+  if(typeof toggle==='boolean'){
+    baitEnabled=toggle;
+    if(!baitEnabled)splatHide(idleBait);
+    else if(splatState===SPLAT_STATE.IDLE)splatShow(idleBait);
+  }
 });
 
 // Top gifters panel
@@ -2928,9 +2938,20 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }
 
-  /* ── add points (surge-aware) ── */
+  /* ── hype CTA text (set from dock) ── */
+  let _hypeCTA = '';
+  let _hypeFired = false;
+  ablyChannel.subscribe('hype-cta', msg => { _hypeCTA = (msg.data&&msg.data.text)||''; _hypeFired=false; });
+
+  /* ── add points (surge-aware) — fires hype-full when meter maxes ── */
   function addPts(base){
+    const prev = rawScore;
     rawScore = Math.min(rawScore + (surgeActive ? base * SURGE_MULTI : base), MAX_RAW);
+    if(rawScore >= MAX_RAW && prev < MAX_RAW && !_hypeFired){
+      _hypeFired = true;
+      ablyChannel.publish('hype-full', { action: _hypeCTA || 'DO THE THING' }).catch(()=>{});
+    }
+    if(rawScore < MAX_RAW * 0.9) _hypeFired = false; // reset when score drops
   }
 
   /* ── decay tick ── */
