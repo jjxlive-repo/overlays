@@ -2931,6 +2931,19 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let audioReady = false;
   let fallbackT  = 0;
 
+  /* ── WS audio relay — receives freq data from dock via localhost:9001 ── */
+  let _wsFreqData = null;
+  let _wsFreqAge  = 0;
+  (function connectAudioRelay(){
+    try {
+      const ws = new WebSocket('ws://localhost:9001');
+      ws.binaryType = 'arraybuffer';
+      ws.onmessage  = e => { _wsFreqData = new Uint8Array(e.data); _wsFreqAge = Date.now(); };
+      ws.onclose    = () => setTimeout(connectAudioRelay, 5000);
+      ws.onerror    = () => {};
+    } catch(e) {}
+  })();
+
   /* ── DOM ── */
   const meterEl    = document.getElementById('hype-meter');
   const surgeBanner= document.getElementById('hm-surge-banner');
@@ -2973,16 +2986,19 @@ ablyChannel.subscribe('top-gifters',msg=>{
       .catch(() => {});
   }
 
-  /* ── map analyser bins → per-segment 0-1 ── */
+  /* ── map freq source → per-segment 0-1 ──
+     Priority: 1) WS relay from dock  2) local mic analyser  3) sine fallback */
   function getFreqNorm(){
-    const out = new Float32Array(SEG_COUNT);
-    if(audioReady && analyser){
-      analyser.getByteFrequencyData(freqData);
+    const out      = new Float32Array(SEG_COUNT);
+    const src      = (_wsFreqData && Date.now() - _wsFreqAge < 300) ? _wsFreqData
+                   : (audioReady && analyser && (analyser.getByteFrequencyData(freqData), freqData))
+                   : null;
+    if(src){
       const binRange = BIN_END - BIN_START;
       for(let i = 0; i < SEG_COUNT; i++){
         const t      = i / (SEG_COUNT - 1);
         const binIdx = Math.round(BIN_START + t * binRange);
-        out[i]       = (freqData[Math.min(binIdx, freqData.length - 1)] || 0) / 255;
+        out[i]       = (src[Math.min(binIdx, src.length - 1)] || 0) / 255;
       }
     } else {
       fallbackT += 0.04;
