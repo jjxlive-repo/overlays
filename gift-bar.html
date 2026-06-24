@@ -2957,201 +2957,289 @@ ablyChannel.subscribe('top-gifters',msg=>{
   }
 
   /* ── log-scale: raw score → 0-1 amplitude ── */
+  /* ── log-scale: raw score → 0-1 display amplitude ── */
   function hypeAmp(){
     const pct = FLOOR_PCT + (100 - FLOOR_PCT) *
-      (Math.log(1 + Math.max(0, rawScore) * K) / Math.log(1 + MAX_RAW * K));
-    return pct / 100;
+      Math.log1p((rawScore / MAX_RAW) * (Math.E - 1));
+    return Math.min(1, pct / 100);
   }
 
-  /* ── audio init — requests mic, builds analyser ── */
-  function initAudio(){
-    if(!navigator.mediaDevices?.getUserMedia) return;
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then(stream => {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = ctx.createMediaStreamSource(stream);
-        analyser  = ctx.createAnalyser();
-        analyser.fftSize = 64;
-        analyser.smoothingTimeConstant = 0.5;
-        src.connect(analyser);
-        freqData   = new Uint8Array(analyser.frequencyBinCount);
-        audioReady = true;
-      })
-      .catch(() => {});
-  }
-
-  /* ── map freq source → per-segment 0-1 ──
-     Priority: 1) WS relay from dock  2) local mic analyser  3) sine fallback */
+  /* ── frequency bins → normalised per-segment amplitudes ── */
   function getFreqNorm(){
-    const out      = new Float32Array(SEG_COUNT);
-    const src      = (_wsFreqData && Date.now() - _wsFreqAge < 300) ? _wsFreqData
-                   : (audioReady && analyser)
-                     ? (analyser.getByteFrequencyData(freqData), freqData)
-                     : null;
+    const out = new Float32Array(SEG_COUNT);
+    const src = (_wsFreqData && Date.now() - _wsFreqAge < 300) ? _wsFreqData
+               : (audioReady && analyser)
+                 ? (analyser.getByteFrequencyData(freqData), freqData)
+                 : null;
     if(src){
       const binRange = BIN_END - BIN_START;
       for(let i = 0; i < SEG_COUNT; i++){
-        const t      = i / (SEG_COUNT - 1);
-        const binIdx = Math.round(BIN_START + t * binRange);
-        out[i]       = (src[Math.min(binIdx, src.length - 1)] || 0) / 255;
+        const b0 = Math.floor(BIN_START + (i / SEG_COUNT) * binRange);
+        const b1 = Math.floor(BIN_START + ((i + 1) / SEG_COUNT) * binRange);
+        let sum = 0, cnt = 0;
+        for(let b = b0; b <= b1 && b < src.length; b++){ sum += src[b]; cnt++; }
+        out[i] = cnt > 0 ? (sum / cnt) / 255 : 0;
       }
     } else {
-      fallbackT += 0.04;
-      for(let i = 0; i < SEG_COUNT; i++){
-        const phase = i / SEG_COUNT;
-        out[i] = 0.35 + 0.35 * Math.sin(fallbackT * 1.8 + phase * Math.PI * 2.4)
-                       + 0.15 * Math.sin(fallbackT * 3.1 + phase * Math.PI * 1.1);
-        out[i] = Math.max(0, Math.min(1, out[i]));
-      }
+      const t = Date.now() / 1000;
+      for(let i = 0; i < SEG_COUNT; i++)
+        out[i] = 0.14 + 0.07 * Math.sin(t * 1.8 + i * 0.45);
     }
     return out;
   }
 
-  /* ── segment class (colour driven by CSS + platform class on meterEl) ── */
-  function segColorClass(norm, amp){
-    if(surgeActive)        return 'hm-seg hm-surge';
-    if(norm * amp > 0.72)  return 'hm-seg hm-hot';
-    if(norm * amp > 0.30)  return 'hm-seg hm-mid';
-    return                        'hm-seg hm-floor';
+  /* ── 30-second event window tracker ── */
+  function trackEvt(type, plat){
+    _evtWin.push({ time: Date.now(), type, plat });
+    if(_evtWin.length > 300) _evtWin.shift();
   }
 
-  /* ── rAF render loop ── */
-  function frame(){
-    requestAnimationFrame(frame);
-    const amp   = hypeAmp();
-    const freqN = getFreqNorm();
-    for(let i = 0; i < SEG_COUNT; i++){
-      smoothed[i] = smoothed[i] * AUDIO_SMOOTH + freqN[i] * (1 - AUDIO_SMOOTH);
-      const h = MIN_H + (MAX_H - MIN_H) * smoothed[i] * amp;
-      segs[i].style.height = h.toFixed(1) + 'px';
-      segs[i].className    = segColorClass(smoothed[i], amp);
-    }
-  }
-
-  /* ── platform colour: apply class to meter element ── */
+  /* ── platform colour mode ── */
   function setPlatMode(mode){
     _platMode = mode;
     meterEl.className = mode === 'tt' ? 'hm-tt' : mode === 'yt' ? 'hm-yt' : '';
     clearTimeout(_platTimer);
-    if(mode !== 'neutral'){
-      _platTimer = setTimeout(() => {
-        _platMode = 'neutral';
-        meterEl.className = '';
-      }, PLAT_DECAY_MS);
-    }
-  }
-
-  /* ── event window (for intelligent CTA) ── */
-  function trackEvt(type, plat){
-    const now = Date.now();
-    _evtWin.push({ time: now, type, plat });
-    while(_evtWin.length && now - _evtWin[0].time > 30_000) _evtWin.shift();
+    if(mode !== 'neutral')
+      _platTimer = setTimeout(() => { _platMode = 'neutral'; meterEl.className = ''; }, PLAT_DECAY_MS);
   }
 
   /* ── pick surge duration + CTA based on current energy ── */
   function pickSurge(){
-    const pct  = rawScore / MAX_RAW;
-    const now  = Date.now();
+    const pct = rawScore / MAX_RAW;
+    const now = Date.now();
     const win  = _evtWin.filter(e => now - e.time < 30_000);
-    const joins    = win.filter(e => e.type === 'join').length;
-    const likes    = win.filter(e => e.type === 'like_batch').length;
-    const ytEvts   = win.filter(e => e.plat === 'yt').length;
-    const ttEvts   = win.filter(e => e.plat === 'tt').length;
-    const gifts    = win.filter(e => ['heart_me','heart_me_first','yt_sub'].includes(e.type)).length;
+    const joins  = win.filter(e => e.type === 'join').length;
+    const ytSubs = win.filter(e => e.type === 'yt_sub').length;
 
-    /* ── duration: low energy → long build; high energy / FYP bomb → short urgent ── */
     let durMs;
-    if(joins > 15)      durMs = 10_000 + Math.random() * 5_000;   // FYP bomb 10–15s
-    else if(pct < 0.20) durMs = 45_000 + Math.random() * 15_000;  // cold start 45–60s
-    else if(pct < 0.50) durMs = 25_000 + Math.random() * 15_000;  // building 25–40s
-    else if(pct < 0.70) durMs = 15_000 + Math.random() * 10_000;  // decent 15–25s
-    else                durMs = 10_000 + Math.random() * 5_000;    // hot 10–15s
+    if(pct > 0.8)      durMs = (10 + Math.random() * 5)  * 1000;
+    else if(pct > 0.5) durMs = (20 + Math.random() * 15) * 1000;
+    else               durMs = (45 + Math.random() * 15) * 1000;
 
-    /* ── CTA: pick what will most grow energy ── */
     let cta;
-    if(joins > 15)                               cta = 'JOINS & FOLLOWS';
-    else if(gifts > 3)                           cta = 'GIFTS & HEARTS';
-    else if(ytEvts > ttEvts * 1.5)               cta = 'YOUTUBE SUBS';
-    else if(pct < 0.25)                          cta = 'COMMENTS & LIKES';
-    else if(likes < 3)                           cta = 'LIKES & FOLLOWS';
-    else {
-      const opts = ['COMMENTS','FOLLOWS','HEARTS','GIFTS','TIKTOK FOLLOWS','SUPERCHATS'];
-      cta = opts[Math.floor(Math.random() * opts.length)];
-    }
+    if(ytSubs > 2)     cta = 'YOUTUBE SUBS';
+    else if(joins > 5) cta = 'JOINS & FOLLOWS';
+    else               cta = 'COMMENTS & LIKES';
 
     return { durMs, cta };
   }
 
-  /* ── surge banner countdown ── */
-  let _surgeEnd      = 0;
-  let _surgeInterval = null;
-
-  function openSurge(){
-    const { durMs, cta } = pickSurge();
+  /* ── surge banner show/hide ── */
+  function showSurge(){
+    if(surgeActive) return;
     surgeActive = true;
-    _surgeEnd   = Date.now() + durMs;
-
-    giftBarEl.classList.add('hm-surge-active');
-    if(sbCta)   sbCta.textContent = cta;
-    if(sbTimer) sbTimer.textContent = Math.ceil(durMs / 1000);
-    if(surgeBanner) surgeBanner.classList.add('visible');
-
-    clearInterval(_surgeInterval);
-    _surgeInterval = setInterval(() => {
-      const rem = Math.ceil((_surgeEnd - Date.now()) / 1000);
-      if(sbTimer) sbTimer.textContent = Math.max(0, rem);
-      if(rem <= 0){ clearInterval(_surgeInterval); closeSurge(); }
-    }, 500);
-
-    if(surgeTimer) clearTimeout(surgeTimer);
-    surgeTimer = setTimeout(() => { clearInterval(_surgeInterval); closeSurge(); }, durMs + 200);
+    giftBarEl?.classList.add('hm-surge-active');
+    const { durMs, cta } = pickSurge();
+    _hypeCTA = cta;
+    if(sbCta) sbCta.textContent = cta;
+    let remaining = Math.round(durMs / 1000);
+    if(sbTimer) sbTimer.textContent = remaining;
+    surgeBanner?.classList.add('visible');
+    surgeTimer = setInterval(() => {
+      remaining--;
+      if(sbTimer) sbTimer.textContent = Math.max(0, remaining);
+      if(remaining <= 0) hideSurge();
+    }, 1000);
+    surgeNext = Date.now() + durMs + SURGE_MIN_MS + Math.random() * (SURGE_MAX_MS - SURGE_MIN_MS);
   }
 
-  function closeSurge(){
+  function hideSurge(){
+    if(!surgeActive) return;
     surgeActive = false;
-    clearTimeout(surgeTimer);
-    clearInterval(_surgeInterval);
-    giftBarEl.classList.remove('hm-surge-active');
-    if(surgeBanner) surgeBanner.classList.remove('visible');
-    scheduleSurge();
+    clearInterval(surgeTimer);
+    surgeTimer = null;
+    surgeBanner?.classList.remove('visible');
+    giftBarEl?.classList.remove('hm-surge-active');
   }
 
-  function scheduleSurge(){
-    const delay = SURGE_MIN_MS + Math.random() * (SURGE_MAX_MS - SURGE_MIN_MS);
-    if(surgeNext) clearTimeout(surgeNext);
-    surgeNext = setTimeout(openSurge, delay);
-  }
-
-  /* ── first-gifter flash ── */
+  /* ── first gifter flash ── */
   function fireFirstFlash(){
     if(!firstFlash) return;
-    firstFlash.classList.remove('fire');
-    void firstFlash.offsetWidth;
-    firstFlash.classList.add('fire');
+    firstFlash.classList.add('active');
+    setTimeout(() => firstFlash.classList.remove('active'), 2000);
   }
 
-  /* ── add points (intensity + surge multiplier, platform colour) ── */
+  /* ══════════════════════════════════════════════════════════════════
+     BEAN BOOZLED — fires when hype meter hits 100%
+  ══════════════════════════════════════════════════════════════════ */
+  let _bbFired    = false;
+  let _bbCooldown = false;
+
+  // Inject BB styles
+  const _bbSty = document.createElement('style');
+  _bbSty.textContent = `
+    #bb-indicator {
+      position: absolute;
+      left: 50%; transform: translateX(-50%);
+      width: 760px; height: 38px;
+      display: flex; align-items: center; gap: 10px;
+      pointer-events: none; z-index: 13;
+      top: 516px;
+    }
+    #bb-icon { font-size: 20px; flex-shrink: 0; }
+    #bb-track {
+      flex: 1; height: 10px;
+      background: rgba(255,255,255,0.09);
+      border-radius: 5px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+    #bb-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg,#a21caf,#e879f9,#f43f5e);
+      border-radius: 5px; transition: width 0.5s ease;
+      box-shadow: 0 0 8px rgba(232,121,249,0.55);
+    }
+    #bb-label {
+      font-family:'Boogaloo',sans-serif; font-size:15px;
+      color:#e879f9; min-width:34px; text-align:right; flex-shrink:0;
+    }
+    #bb-cta-text {
+      font-family:'DM Sans',sans-serif; font-size:10px;
+      color:rgba(255,255,255,0.45); white-space:nowrap;
+      flex-shrink:0; letter-spacing:0.06em; text-transform:uppercase;
+    }
+    #bb-banner {
+      position: absolute; top:50%; left:50%;
+      transform: translate(-50%,-50%) scale(0.55);
+      opacity: 0; pointer-events: none; z-index: 50;
+      text-align: center;
+      transition: opacity 0.28s ease, transform 0.42s cubic-bezier(.34,1.56,.64,1);
+    }
+    #bb-banner.bb-active { opacity:1; transform:translate(-50%,-50%) scale(1); }
+    #bb-banner-inner {
+      background: radial-gradient(ellipse at center,#3b0764 0%,#0f0020 75%);
+      border: 3px solid #e879f9; border-radius: 28px;
+      padding: 44px 70px;
+      box-shadow: 0 0 70px rgba(232,121,249,0.75), 0 0 140px rgba(168,85,247,0.4);
+    }
+    #bb-banner-emoji { font-size:84px; display:block;
+      animation: bbBounce 0.45s ease infinite alternate; }
+    @keyframes bbBounce { from{transform:scale(1)} to{transform:scale(1.15) rotate(-6deg)} }
+    #bb-banner-text {
+      font-family:'Boogaloo',sans-serif; font-size:78px; line-height:1.1;
+      color:#e879f9; letter-spacing:0.04em;
+      text-shadow:0 0 30px rgba(232,121,249,0.9),0 0 60px rgba(168,85,247,0.5);
+    }
+    #bb-banner-sub {
+      font-family:'DM Sans',sans-serif; font-size:26px;
+      color:rgba(255,255,255,0.82); margin-top:10px;
+    }
+    @keyframes bbFlash {
+      0%{opacity:0} 12%{opacity:0.65} 40%{opacity:0.25} 65%{opacity:0.5} 100%{opacity:0}
+    }
+  `;
+  document.head.appendChild(_bbSty);
+
+  // Inject BB HTML elements
+  const _bbInd = document.createElement('div');
+  _bbInd.id = 'bb-indicator';
+  _bbInd.innerHTML =
+    '<span id="bb-icon">🫘</span>' +
+    '<div id="bb-track"><div id="bb-fill"></div></div>' +
+    '<span id="bb-label">0%</span>' +
+    '<span id="bb-cta-text">to Bean Boozled</span>';
+  document.body.appendChild(_bbInd);
+
+  const _bbBan = document.createElement('div');
+  _bbBan.id = 'bb-banner';
+  _bbBan.innerHTML =
+    '<div id="bb-banner-inner">' +
+    '<span id="bb-banner-emoji">🫘</span>' +
+    '<div id="bb-banner-text">BEAN BOOZLED!</div>' +
+    '<div id="bb-banner-sub">JJ HAS TO EAT ONE 💀</div>' +
+    '</div>';
+  document.body.appendChild(_bbBan);
+
+  function fireBeanBoozled(){
+    if(_bbCooldown) return;
+    _bbCooldown = true;
+    _bbBan.classList.add('bb-active');
+
+    // Full-screen flash
+    const fl = document.createElement('div');
+    fl.style.cssText = 'position:fixed;inset:0;background:#e879f9;z-index:49;pointer-events:none;animation:bbFlash 0.85s ease forwards;';
+    document.body.appendChild(fl);
+    setTimeout(() => fl.remove(), 900);
+
+    // Notify dock
+    try { ablyChannel.publish('bean-boozled', { fired: true, ts: Date.now() }); } catch(e) {}
+
+    // Auto-reset after 5 s
+    setTimeout(() => {
+      _bbBan.classList.remove('bb-active');
+      rawScore   = 0;
+      _bbFired   = false;
+      _bbCooldown = false;
+    }, 5000);
+  }
+
+  /* ── add points ── */
   function addPts(base, plat){
     if(plat && plat !== 'other') setPlatMode(plat);
-    const pts  = base * _intensityMult;
-    const prev = rawScore;
-    rawScore   = Math.min(rawScore + (surgeActive ? pts * SURGE_MULTI : pts), MAX_RAW);
-    if(rawScore >= MAX_RAW && prev < MAX_RAW && !_hypeFired){
-      _hypeFired = true;
-      ablyChannel.publish('hype-full', { action: _hypeCTA || 'DO THE THING' }).catch(()=>{});
+    const pts = base * _intensityMult;
+    rawScore = Math.min(rawScore + (surgeActive ? pts * SURGE_MULTI : pts), MAX_RAW);
+
+    if(!surgeActive && rawScore / MAX_RAW > 0.6 && (!surgeNext || Date.now() >= surgeNext))
+      showSurge();
+
+    if(rawScore >= MAX_RAW && !_bbFired){
+      _bbFired = true;
+      fireBeanBoozled();
     }
-    if(rawScore < MAX_RAW * 0.9) _hypeFired = false;
   }
 
-  /* ── decay tick ── */
+  /* ── decay (pause during BB cooldown so meter doesn't drain mid-banner) ── */
   setInterval(() => {
-    rawScore = Math.max(0, rawScore - DECAY_RATE * MAX_RAW);
+    if(!_bbCooldown) rawScore = Math.max(0, rawScore - MAX_RAW * DECAY_RATE);
   }, DECAY_TICK_MS);
 
-  /* ── Ably subscribers ── */
-  ablyChannel.subscribe('hype-cta', msg => {
-    _hypeCTA   = (msg.data && msg.data.text) || '';
-    _hypeFired = false;
+  /* ── publish hype % to Ably so dock can mirror it ── */
+  let _lastPubPct = -1;
+  setInterval(() => {
+    const pct = Math.round((rawScore / MAX_RAW) * 100);
+    if(Math.abs(pct - _lastPubPct) >= 2){
+      _lastPubPct = pct;
+      try { ablyChannel.publish('hype-pct', { pct }); } catch(e) {}
+    }
+  }, 2000);
+
+  /* ── RAF render loop ── */
+  (function drawHype(){
+    const amp  = hypeAmp();
+    const freq = getFreqNorm();
+
+    for(let i = 0; i < SEG_COUNT; i++){
+      const seg = segs[i];
+      smoothed[i] = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
+      const combined = Math.max(amp * 0.6 + smoothed[i] * 0.4, smoothed[i] * 0.35);
+      seg.style.height = (MIN_H + (MAX_H - MIN_H) * Math.min(1, combined)) + 'px';
+      const pct = rawScore / MAX_RAW;
+      const burst = surgeActive ? ' hm-surge' : '';
+      seg.className = 'hm-seg ' + (pct > 0.75 ? 'hm-hot' + burst : pct > 0.35 ? 'hm-mid' : 'hm-floor');
+    }
+
+    // Update BB bar
+    const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+    const bbF = document.getElementById('bb-fill');
+    const bbL = document.getElementById('bb-label');
+    if(bbF) bbF.style.width  = pct + '%';
+    if(bbL) bbL.textContent  = pct + '%';
+
+    requestAnimationFrame(drawHype);
+  })();
+
+  /* ── Ably subscriptions ── */
+  ablyChannel.subscribe('hype-event', msg => {
+    const d = msg?.data, type = d?.type, plat = d?.platform || 'other';
+    if(!type) return;
+    trackEvt(type, plat);
+    switch(type){
+      case 'comment': case 'join': case 'like_batch': case 'comment_match':
+        addPts(PTS[type] ?? 0.5, plat); break;
+      case 'heart_me':       addPts(PTS.heart_me,        plat); break;
+      case 'heart_me_first': addPts(PTS.heart_me_first,  plat); fireFirstFlash(); break;
+      case 'yt_sub':         addPts(PTS.yt_sub,          'yt'); fireFirstFlash(); break;
+    }
   });
 
   ablyChannel.subscribe('hype-intensity', msg => {
@@ -3160,41 +3248,24 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   ablyChannel.subscribe('gift-bar-pos', msg => {
     const top = msg.data?.top;
-    if (typeof top !== 'number') return;
-    const gb     = document.getElementById('gift-bar');
-    const banner = document.getElementById('hm-surge-banner');
-    if (gb)     gb.style.top     = top + 'px';
-    if (banner) banner.style.top = (top - 55) + 'px';   // surge banner sits above bar
+    if(typeof top !== 'number') return;
+    const gb  = document.getElementById('gift-bar');
+    const ban = document.getElementById('hm-surge-banner');
+    const bbi = document.getElementById('bb-indicator');
+    if(gb)  gb.style.top  = top + 'px';
+    if(ban) ban.style.top = (top - 55) + 'px';
+    if(bbi) bbi.style.top = (top + 66) + 'px';
   });
 
-  ablyChannel.subscribe('hype-event', msg => {
-    const d    = msg?.data;
-    const type = d?.type;
-    const plat = d?.platform || 'other';
-    if(!type) return;
-    trackEvt(type, plat);
-    switch(type){
-      case 'comment': case 'join': case 'like_batch': case 'comment_match': case 'heart_me':
-        addPts(PTS[type] ?? 0.5, plat); break;
-      case 'heart_me_first':
-        addPts(PTS.heart_me_first, plat); fireFirstFlash(); break;
-      case 'yt_sub':
-        addPts(PTS.yt_sub, 'yt'); fireFirstFlash(); break;
-    }
+  // Allow dock to manually reset bean boozled meter
+  ablyChannel.subscribe('bb-reset', () => {
+    rawScore    = 0;
+    _bbFired    = false;
+    _bbCooldown = false;
+    _bbBan.classList.remove('bb-active');
   });
-
-  /* ── kick off ── */
-  initAudio();
-  scheduleSurge();
-  requestAnimationFrame(frame);
 
 })();
-
-/* Boot */
-showSlot(0);
-startRotation();
-renderEventPromo();
-
 </script>
 </body>
 </html>
