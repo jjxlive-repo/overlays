@@ -2128,9 +2128,25 @@ function mapAlertType(evt, isTT, isYT) {
   return 'direct_donation';
 }
 
+/* ── Hype score mirror (dock-side estimate, drives BB bar independently of overlay) ── */
+const _DOCK_MAX_RAW    = 200;
+const _DOCK_DECAY_RATE = 0.035;
+const _DOCK_PTS = { comment:0.5, join:1, like_batch:1, comment_match:3, heart_me:15, heart_me_first:50, yt_sub:40 };
+let _dockRawScore = 0;
+
+function _dockAddPts(type) {
+  _dockRawScore = Math.min(_dockRawScore + (_DOCK_PTS[type] ?? 0.5), _DOCK_MAX_RAW);
+  _updateDockBB(Math.round((_dockRawScore / _DOCK_MAX_RAW) * 100));
+}
+setInterval(() => {
+  _dockRawScore = Math.max(0, _dockRawScore - _DOCK_MAX_RAW * _DOCK_DECAY_RATE);
+  _updateDockBB(Math.round((_dockRawScore / _DOCK_MAX_RAW) * 100));
+}, 10_000);
+
 /* ── Publish engagement event → gift-bar hype meter ── */
 function publishHype(type, platform) {
   if (ablyChannel) ablyChannel.publish('hype-event', { type, platform: platform || 'other' }).catch(() => {});
+  _dockAddPts(type); // mirror locally so dock BB bar moves without needing overlay
 }
 
 function handleMsg(data) {
@@ -3490,13 +3506,19 @@ function resetBeanBoozled() {
 }
 
 // Subscribe: hype-pct keeps the dock bar in sync
+// hype-pct from overlay overrides dock estimate (includes intensity multiplier)
 ablyChannel.subscribe('hype-pct', msg => {
-  if (msg.data?.pct != null) _updateDockBB(msg.data.pct);
+  if (msg.data?.pct != null) {
+    _dockRawScore = (msg.data.pct / 100) * _DOCK_MAX_RAW; // keep local estimate in sync
+    _updateDockBB(msg.data.pct);
+  }
 });
 
 // Subscribe: bean-boozled fires when overlay triggers
 ablyChannel.subscribe('bean-boozled', msg => {
   if (!msg.data?.fired) return;
+  _dockRawScore = 0;
+  _updateDockBB(0);
   const flash = document.getElementById('dock-bb-flash');
   if (flash) {
     flash.style.display = 'block';
