@@ -3167,9 +3167,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let _bbCooldown = false;
 
   /* ── Editable text strings (set from dock via milk-cta-config) ── */
-  let _mmBaitText = 'MILK THE METER 🫟';   // shown during fill
-  let _mmGoalText = 'LETS GOOO!!';          // explodes at 100%
+  let _mmBaitText    = 'MILK THE METER 🫟';   // shown during fill
+  let _mmGoalText    = 'LETS GOOO!!';          // explodes at 100%
   let _mmGoalVisible = true;
+  let _mmForceVisible = false;                 // dock Show button forces display even at 0%
 
   // Inject Milk Goal styles
   const _mmSty = document.createElement('style');
@@ -3207,7 +3208,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     #mm-status-text {
       font-family: 'Anton', sans-serif;
-      font-size: 28px;
+      font-size: 44px;
       color: #ffffff;
       -webkit-text-stroke: 2.5px #0f0020;
       text-shadow:
@@ -3224,7 +3225,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
     /* Urgency: 80–99% */
     #mm-status-wrap.urgent #mm-status-text {
-      font-size: 40px;
+      font-size: 58px;
       -webkit-text-stroke: 3px #0f0020;
       text-shadow:
         0 3px 14px rgba(0,0,0,0.95),
@@ -3242,16 +3243,16 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     /* Progress underline */
     #mm-progress-track {
-      width: 260px; height: 3px;
+      width: 500px; height: 7px;
       background: rgba(168,85,247,0.18);
-      border-radius: 3px;
+      border-radius: 4px;
       overflow: hidden;
     }
     #mm-progress-fill-line {
       height: 100%; width: 0%;
       background: linear-gradient(90deg, rgba(147,51,234,0.8), rgba(192,132,252,1.0));
-      border-radius: 3px;
-      box-shadow: 0 0 8px rgba(192,132,252,0.7);
+      border-radius: 4px;
+      box-shadow: 0 0 10px rgba(192,132,252,0.7);
       transition: width 0.5s ease;
     }
     #mm-status-wrap.urgent #mm-progress-fill-line {
@@ -3326,8 +3327,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── Update status text state based on milk % ── */
   function _mmUpdateStatus(pct) {
-    if(!_mmGoalVisible){ _mmWrap.classList.remove('visible'); return; }
-    _mmWrap.classList.toggle('visible', pct >= 5);
+    if(!_mmGoalVisible && !_mmForceVisible){ _mmWrap.classList.remove('visible'); return; }
+    // Force-visible shows at any %; normal mode only shows at 5%+
+    _mmWrap.classList.toggle('visible', _mmForceVisible || pct >= 5);
     _mmWrap.classList.toggle('urgent', pct >= 80);
     const fillLine = document.getElementById('mm-progress-fill-line');
     const statusTxt = document.getElementById('mm-status-text');
@@ -3661,10 +3663,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
     if(d.goalText !== undefined) {
       _mmGoalText = d.goalText || 'LETS GOOO!!';
     }
+    if(d.forceVisible !== undefined) {
+      _mmForceVisible = !!d.forceVisible;
+    }
     if(d.visible !== undefined) {
       _mmGoalVisible = !!d.visible;
-      if(!_mmGoalVisible) _mmWrap.classList.remove('visible');
     }
+    // Re-evaluate visibility immediately
+    const pct = Math.round((rawScore / MAX_RAW) * 100);
+    _mmUpdateStatus(pct);
   });
 
   ablyChannel.subscribe('bb-reset', () => {
