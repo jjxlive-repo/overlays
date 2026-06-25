@@ -557,10 +557,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 /* Contribution mini-pills — YT and TT share labels left of center */
 #gbb-prog-contrib {
-  display: none; /* shown only in progress mode via selector below */
+  display: none;
   position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
   z-index: 5; pointer-events: none;
-  align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 6px;
 }
 #gift-battle-bar.gbb-mode-progress #gbb-prog-contrib { display: flex; }
 .gbb-contrib-pill {
@@ -581,11 +581,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 /* Prize label — right-anchored, always visible, is the goal destination */
 #gbb-prog-prize {
-  display: none; /* shown only in progress mode via selector below */
+  display: none;
   position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
   z-index: 5; pointer-events: none;
   max-width: 380px; overflow: hidden;
-  align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 8px;
 }
 #gift-battle-bar.gbb-mode-progress #gbb-prog-prize { display: flex; }
 #gbb-prog-prize-icon {
@@ -1549,39 +1549,14 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #hype-meter {
   position: absolute;
   top: 100%;
-  left: 0; right: 0;
-  height: 64px;
+  left: 3px; right: 3px;
+  height: 110px;
   pointer-events: none; z-index: 13;
-  display: flex; gap: 3px; padding: 0 3px;
-  align-items: flex-start;
+  display: block;
+  overflow: visible;
 }
-.hm-seg {
-  flex: 1;
-  min-height: 6px;
-  border-radius: 2px 2px 5px 5px;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
-  opacity: 1;
-}
-
-/* ── FULL OPAQUE: blue → red → white ── */
-.hm-seg.hm-floor {
-  background: #3b82f6;
-  box-shadow: 0 0 8px rgba(59,130,246,0.85), 0 0 18px rgba(59,130,246,0.45);
-}
-.hm-seg.hm-mid {
-  background: #ef4444;
-  box-shadow: 0 0 10px rgba(239,68,68,0.95), 0 0 22px rgba(239,68,68,0.55);
-}
-.hm-seg.hm-hot {
-  background: #ffffff;
-  box-shadow: 0 0 14px 4px rgba(255,255,255,1.0), 0 0 30px rgba(239,68,68,0.70);
-  opacity: 1;
-}
-.hm-seg.hm-surge {
-  background: #ffffff;
-  box-shadow: 0 0 18px 6px rgba(255,255,255,1.0), 0 0 40px rgba(59,130,246,0.90);
-  opacity: 1;
-}
+/* Segment classes kept for compat but not rendered — canvas does all drawing */
+.hm-seg { display: none; }
 #gift-bar.hm-surge-active #bar-border::before,
 #gift-bar.hm-surge-active #bar-border::after {
   animation: hmBorderSurge 0.14s ease-in-out infinite alternate;
@@ -2863,8 +2838,6 @@ ablyClient.connection.on(stateChange=>{
     connDotEl.style.boxShadow='0 0 6px #3b82f6';
     // Request current EP config from overlay-control (in case it was open first)
     ablyChannel.publish('cmd','requestEventPromoConfig').catch(()=>{});
-    // Request leaderboard data from tracker so gift bar populates immediately
-    ablyChannel.publish('cmd','requestLeaderboard').catch(()=>{});
   }else if(s==='connecting'){
     connDotEl.style.background='#facc15';
     connDotEl.style.boxShadow='none';
@@ -3021,7 +2994,27 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let freqData   = null;
   let smoothed   = new Float32Array(SEG_COUNT).fill(0);
   let audioReady = false;
-  let fallbackT  = 0;
+
+  /* ── Platform energy arrays — injected by events, decay each frame ── */
+  let ttEnergy = new Float32Array(SEG_COUNT).fill(0); // TikTok (blue)
+  let ytEnergy = new Float32Array(SEG_COUNT).fill(0); // YouTube (red)
+
+  /* ── Inject platform energy at a position with a spread ── */
+  function injectPlatEnergy(arr, centerFrac, amount, spread){
+    const center = Math.round(centerFrac * (SEG_COUNT - 1));
+    for(let i = 0; i < SEG_COUNT; i++){
+      const dist = Math.abs(i - center);
+      if(dist <= spread)
+        arr[i] = Math.min(1, arr[i] + amount * Math.max(0, 1 - dist / (spread + 1)));
+    }
+  }
+
+  function injectTT(amount, spread, pos){ // pos: 0-0.6 (left-centre)
+    injectPlatEnergy(ttEnergy, pos ?? (0.1 + Math.random() * 0.5), amount, spread ?? 5);
+  }
+  function injectYT(amount, spread, pos){ // pos: 0.4-1.0 (centre-right)
+    injectPlatEnergy(ytEnergy, pos ?? (0.45 + Math.random() * 0.5), amount, spread ?? 5);
+  }
 
   /* ── WS audio relay — receives freq data from dock via localhost:9001 ── */
   let _wsFreqData = null;
@@ -3036,24 +3029,26 @@ ablyChannel.subscribe('top-gifters',msg=>{
     } catch(e) {}
   })();
 
-  /* ── DOM ── */
-  const meterEl     = document.getElementById('hype-meter');
+  /* ── Canvas setup — replaces segment divs ── */
+  const meterEl = document.getElementById('hype-meter');
+  const hmCanvas = document.createElement('canvas');
+  hmCanvas.width  = 1074;
+  hmCanvas.height = 110;
+  hmCanvas.style.cssText = 'display:block;width:100%;height:100%;';
+  meterEl.innerHTML = '';
+  meterEl.style.display = 'block';
+  meterEl.style.padding = '0';
+  meterEl.appendChild(hmCanvas);
+  const hmCtx = hmCanvas.getContext('2d');
+  const HMW = hmCanvas.width;
+  const HMH = hmCanvas.height;
+
   const boostBanner = document.getElementById('mm-boost-banner');
   const bbCta       = document.getElementById('mm-bb-cta');
   const bbTimer     = document.getElementById('mm-bb-timer');
   const bbHeadline  = document.getElementById('mm-bb-headline');
   const firstFlash  = document.getElementById('hm-first-gifter-flash');
   const giftBarEl   = document.getElementById('gift-bar');
-
-  /* ── build segments ── */
-  const segs = [];
-  for(let i = 0; i < SEG_COUNT; i++){
-    const d = document.createElement('div');
-    d.className = 'hm-seg hm-floor';
-    d.style.height = MIN_H + 'px';
-    meterEl.appendChild(d);
-    segs.push(d);
-  }
 
   /* ── log-scale: raw score → 0-1 amplitude ── */
   /* ── log-scale: raw score → 0-1 display amplitude ── */
@@ -3371,24 +3366,36 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
 
   /* ── add points ── */
-  /* ── addPts: type maps to boost category ── */
+  /* ── addPts: type maps to boost category + injects platform energy ── */
   function addPts(base, plat, inputType){
     if(plat && plat !== 'other') setPlatMode(plat);
-    // map input type → boost category
-    const cat = (inputType === 'like_batch') ? 'likes'
-              : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub') ? 'gifts'
-              : 'comments'; // join, comment, comment_match
+    const cat  = (inputType === 'like_batch') ? 'likes'
+               : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
+               : 'comments';
     const boostX = _boostMult[cat] ?? 1;
     const pts    = base * _intensityMult * boostX;
     rawScore = Math.min(rawScore + pts, MAX_RAW);
+
+    // ── Platform energy injection for visual waveform ──
+    const energy = Math.min(1, pts / 20);  // scale injection by points earned
+    const spread = pts >= 20 ? 8 : pts >= 8 ? 6 : pts >= 3 ? 4 : 3;
+    if(plat === 'tt'){
+      // TikTok: inject on left side, big gifts scatter multiple spikes
+      injectTT(Math.min(1, energy * 2.5), spread);
+      if(pts >= 20) injectTT(Math.min(0.8, energy * 1.5), spread - 1); // second spike
+    } else if(plat === 'yt'){
+      // YouTube: inject on right side
+      injectYT(Math.min(1, energy * 2.5), spread);
+      if(pts >= 20) injectYT(Math.min(0.8, energy * 1.5), spread - 1);
+    } else {
+      // Neutral/other: inject on both sides at lower amplitude
+      injectTT(Math.min(0.5, energy), Math.max(2, spread - 2));
+      injectYT(Math.min(0.5, energy), Math.max(2, spread - 2));
+    }
+
     if(rawScore >= MAX_RAW && !_bbFired){
       _bbFired = true;
-      if(alertActive){
-        // Defer explosion until current gift alert finishes
-        _pendingGoalExplosion = true;
-      } else {
-        fireMilkGoal();
-      }
+      if(alertActive){ _pendingGoalExplosion = true; } else { fireMilkGoal(); }
     }
   }
 
@@ -3439,37 +3446,101 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }, 2000);
 
-  /* ── RAF render loop ── */
+  /* ── Canvas bar renderer — 3 overlapping waveforms ──
+     Layer 0: purple baseline (audio-driven, always present)
+     Layer 1: blue TikTok spikes (injected on TT events, decay per frame)
+     Layer 2: red YouTube spikes (injected on YT events, decay per frame)
+  ── */
+  const SEG_GAP = 3;
+  const SEG_W   = (HMW - (SEG_COUNT - 1) * SEG_GAP) / SEG_COUNT;
+
+  function drawBar(x, h, colorBot, colorTop, glowColor, glowBlur){
+    const y = HMH - h;
+    const grad = hmCtx.createLinearGradient(x, HMH, x, y);
+    grad.addColorStop(0, colorBot);
+    grad.addColorStop(1, colorTop);
+    hmCtx.fillStyle = grad;
+    hmCtx.shadowColor = glowColor;
+    hmCtx.shadowBlur  = glowBlur;
+    hmCtx.beginPath();
+    hmCtx.roundRect(x, y, SEG_W, h, [Math.min(3, SEG_W/2), Math.min(3, SEG_W/2), 0, 0]);
+    hmCtx.fill();
+  }
+
   (function drawHype(){
-    const amp  = hypeAmp();
-    const freq = getFreqNorm();
+    const amp  = hypeAmp();        // 0.30 → 1.0
+    const freq = getFreqNorm();    // audio per-segment
+    const t    = Date.now() / 1000;
+    const boost = boostActive;
 
+    hmCtx.clearRect(0, 0, HMW, HMH);
+    hmCtx.shadowBlur = 0;
+
+    // ── Decay platform energies (slower = more visible reaction) ──
+    const platDecay = 0.975;
     for(let i = 0; i < SEG_COUNT; i++){
-      const seg = segs[i];
-      smoothed[i] = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
-
-      // height: audio amplitude drives shape, hype score drives overall scale
-      const combined = Math.min(1, smoothed[i] * 0.65 + amp * 0.35);
-      const h = MIN_H + (MAX_H - MIN_H) * combined;
-      seg.style.height = h.toFixed(1) + 'px';
-
-      // color: driven per-segment by its own amplitude (blue→red→white)
-      // so the waveform shows full color range across its height
-      const segAmp = smoothed[i];
-      let cls;
-      if(boostActive)        cls = 'hm-seg hm-surge';
-      else if(segAmp > 0.62) cls = 'hm-seg hm-hot';    // white peak
-      else if(segAmp > 0.28) cls = 'hm-seg hm-mid';    // red mid
-      else                   cls = 'hm-seg hm-floor';  // blue base
-      seg.className = cls;
+      ttEnergy[i] *= platDecay;
+      ytEnergy[i] *= platDecay;
+      smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
     }
 
-    // Update BB bar
+    // ── Layer 0: Purple baseline ──
+    hmCtx.globalAlpha = 1;
+    for(let i = 0; i < SEG_COUNT; i++){
+      const x        = i * (SEG_W + SEG_GAP);
+      const audioA   = smoothed[i];
+      const combined = Math.min(1, audioA * 0.7 + amp * 0.3);
+      const h        = Math.max(MIN_H, (MAX_H * 0.65) * combined + MIN_H);
+
+      const purple   = boost
+        ? `rgba(232,121,249,${0.65 + amp*0.3})`
+        : `rgba(${Math.round(100+amp*68)},${Math.round(7+amp*44)},${Math.round(150+amp*97)},${0.6+amp*0.35})`;
+      const purpleTop= boost
+        ? `rgba(255,255,255,${0.5+Math.sin(t*8+i*0.5)*0.3})`
+        : `rgba(${Math.round(147+amp*45)},${Math.round(51+amp*81)},${Math.round(234+amp*13)},${0.55+amp*0.40})`;
+      const glow     = boost ? 'rgba(232,121,249,0.9)' : `rgba(147,51,234,${0.3+amp*0.4})`;
+
+      drawBar(x, h, `rgba(59,7,100,${0.5+amp*0.3})`, purpleTop, glow, boost ? 14+Math.sin(t*6+i)*6 : 6+amp*8);
+    }
+
+    // ── Layer 1: TikTok blue ──
+    for(let i = 0; i < SEG_COUNT; i++){
+      const e = ttEnergy[i];
+      if(e < 0.02) continue;
+      const x = i * (SEG_W + SEG_GAP);
+      const h = Math.max(0, (MAX_H + 30) * e * amp); // can go taller than baseline
+      if(h < 1) continue;
+      hmCtx.globalAlpha = Math.min(1, e * 1.4);
+      drawBar(x, h,
+        'rgba(29,78,216,0.3)',
+        `rgba(147,197,253,${0.85+e*0.15})`,
+        `rgba(59,130,246,${0.85*e})`,
+        10 + e * 18
+      );
+    }
+
+    // ── Layer 2: YouTube red ──
+    for(let i = 0; i < SEG_COUNT; i++){
+      const e = ytEnergy[i];
+      if(e < 0.02) continue;
+      const x = i * (SEG_W + SEG_GAP);
+      const h = Math.max(0, (MAX_H + 30) * e * amp);
+      if(h < 1) continue;
+      hmCtx.globalAlpha = Math.min(1, e * 1.4);
+      drawBar(x, h,
+        'rgba(127,29,29,0.3)',
+        `rgba(252,165,165,${0.85+e*0.15})`,
+        `rgba(239,68,68,${0.85*e})`,
+        10 + e * 18
+      );
+    }
+
+    hmCtx.globalAlpha = 1;
+    hmCtx.shadowBlur  = 0;
+    hmCtx.shadowColor = 'transparent';
+
+    // ── Milk % UI ──
     const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
-    const bbF = document.getElementById('bb-fill');
-    const bbL = document.getElementById('bb-label');
-    if(bbF) bbF.style.width  = pct + '%';
-    if(bbL) bbL.textContent  = pct + '%';
     _mmUpdateStatus(pct);
 
     requestAnimationFrame(drawHype);
