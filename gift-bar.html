@@ -1856,7 +1856,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 <div id="mm-boost-banner">
   <span id="mm-bb-headline">⚡ 2X 🔥</span>
   <span class="mm-bb-sep">·</span>
-  <span id="mm-bb-cta">COMMENTS &amp; LIKES</span>
+  <span id="mm-bb-cta">COMMENTS &amp; JOINS</span>
   <span class="mm-bb-sep">·</span>
   <span id="mm-bb-timer">30</span><span id="mm-bb-unit">s</span>
   <span class="mm-bb-sep">⚡</span>
@@ -3445,7 +3445,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const pct = Math.round((rawScore / MAX_RAW) * 100);
     if(Math.abs(pct - _lastPubPct) >= 2){
       _lastPubPct = pct;
-      try { ablyChannel.publish('hype-pct', { pct }); } catch(e) {}
+      try { ablyChannel.publish('milk-pct', { pct }); } catch(e) {}
     }
   }, 2000);
 
@@ -3458,15 +3458,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const SEG_W   = (HMW - (SEG_COUNT - 1) * SEG_GAP) / SEG_COUNT;
 
   function drawBar(x, h, colorBot, colorTop, glowColor, glowBlur){
-    const y = HMH - h;
-    const grad = hmCtx.createLinearGradient(x, HMH, x, y);
-    grad.addColorStop(0, colorBot);
-    grad.addColorStop(1, colorTop);
+    // Bars grow DOWN from y=0 (top of canvas = bottom edge of gift bar)
+    const grad = hmCtx.createLinearGradient(x, 0, x, h);
+    grad.addColorStop(0, colorTop);   // bright end at the gift-bar edge
+    grad.addColorStop(1, colorBot);   // fade toward tip
     hmCtx.fillStyle = grad;
     hmCtx.shadowColor = glowColor;
     hmCtx.shadowBlur  = glowBlur;
     hmCtx.beginPath();
-    hmCtx.roundRect(x, y, SEG_W, h, [Math.min(3, SEG_W/2), Math.min(3, SEG_W/2), 0, 0]);
+    hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3, SEG_W/2), Math.min(3, SEG_W/2)]);
     hmCtx.fill();
   }
 
@@ -3609,6 +3609,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
   ablyChannel.subscribe('milk-boost', msg => {
     const d    = msg?.data;
     if(!d) return;
+    // durSec:0 or mult<=1 = "end boost" signal from dock's End Boost button
+    if(d.durSec === 0 || (d.mult != null && d.mult <= 1)){ _endBoost(false); return; }
     const type  = d.type  || 'comments';  // 'comments' | 'likes' | 'gifts'
     const mult  = Math.max(2, Math.min(10, d.mult  || 2));
     const durMs = Math.max(10, Math.min(120, d.durSec || 30)) * 1000;
