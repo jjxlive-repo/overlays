@@ -661,11 +661,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
     <div class="panel-header" id="top10-hdr">
       <h2>&#x1F3C6; Top 10 Gifters</h2>
       <div class="mode-group" style="margin-left:auto;flex-wrap:wrap" onclick="event.stopPropagation()">
-        <button class="btn-mode btn-top10-tf active" data-tf="day">Day</button>
-        <button class="btn-mode btn-top10-tf" data-tf="week">Week</button>
-        <button class="btn-mode btn-top10-tf" data-tf="month">Month</button>
-        <button class="btn-mode btn-top10-tf" data-tf="year">Year</button>
-        <button class="btn-mode btn-top10-tf" data-tf="allTime">All Time</button>
+        <button class="btn-top10-tf active" data-tf="day">Day</button>
+        <button class="btn-top10-tf" data-tf="week">Week</button>
+        <button class="btn-top10-tf" data-tf="month">Month</button>
+        <button class="btn-top10-tf" data-tf="year">Year</button>
+        <button class="btn-top10-tf" data-tf="allTime">All Time</button>
       </div>
       <span class="panel-toggle open" id="top10-toggle">&#x25BC;</span>
     </div>
@@ -1233,7 +1233,7 @@ function renderTop10() {
     const rank   = medals[i] || `<span style="font-size:11px;color:var(--muted);min-width:18px;display:inline-block;text-align:center">${i+1}</span>`;
     const color  = platColor[g.platform] || '#7a7a9a';
     const valStr = mode === 'raw'
-      ? formatRawAmount(g.total, g.type)
+      ? formatRaw(g.total, g.type)
       : '$' + g.total.toFixed(2);
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;background:${i%2===0?'var(--surface2)':'transparent'}">
       <span style="min-width:22px;text-align:center;font-size:13px">${rank}</span>
@@ -1580,15 +1580,17 @@ function handleTikfinityGift(data) {
         _src: 'tikfinity',
       }).catch(() => {});
     }
-    // ── HYPE: Heart Me gift detection ──
+    // ── MILK: all TikTok gifts contribute — Heart Me gets special treatment ──
     if (lowerGiftName === 'heart me' || lowerGiftName.includes('heart me')) {
-      const gifterKey = (userId || name).toLowerCase();
-      if (!heartMeFirstTimers.has(gifterKey)) {
-        heartMeFirstTimers.add(gifterKey);
-        publishHypeEvent('heart_me_first');
+      const gk = (userId || name).toLowerCase();
+      if (!heartMeFirstTimers.has(gk)) {
+        heartMeFirstTimers.add(gk);
+        ablyChannel?.publish('milk-event', { type: 'heart_me_first', gifterKey: gk }).catch(() => {});
       } else {
-        publishHypeEvent('heart_me');
+        ablyChannel?.publish('milk-event', { type: 'heart_me', gifterKey: gk }).catch(() => {});
       }
+    } else {
+      ablyChannel?.publish('milk-event', { type: 'tiktok_gift', coins, gifterKey: (userId || name).toLowerCase() }).catch(() => {});
     }
   }
 }
@@ -2068,8 +2070,11 @@ function openRename(key) {
 
 document.getElementById('rename-input').addEventListener('input', e => {
   const newName = e.target.value.trim();
-  const newKey  = normKey(newName);
-  const warn    = document.getElementById('rename-merge-warn');
+  const existingGifter = DB.gifters[renameKey];
+  const plat  = existingGifter ? (existingGifter.platform || 'unknown') : 'unknown';
+  const uid   = existingGifter ? (existingGifter.userId  || null)      : null;
+  const newKey = gifterKey(newName, plat, uid);
+  const warn   = document.getElementById('rename-merge-warn');
   warn.style.display = (DB.gifters[newKey] && newKey !== renameKey) ? 'block' : 'none';
 });
 
@@ -2082,7 +2087,10 @@ document.getElementById('rename-confirm').addEventListener('click', () => {
   if (!renameKey) return;
   const newName = document.getElementById('rename-input').value.trim();
   if (!newName) return;
-  const newKey  = normKey(newName);
+  const existingGifter = DB.gifters[renameKey];
+  const plat  = existingGifter ? (existingGifter.platform || 'unknown') : 'unknown';
+  const uid   = existingGifter ? (existingGifter.userId  || null)      : null;
+  const newKey = gifterKey(newName, plat, uid);
 
   if (newKey === renameKey) {
     // Just update display name
@@ -2096,7 +2104,7 @@ document.getElementById('rename-confirm').addEventListener('click', () => {
     saveData(DB);
     renderTable();
   } else {
-    // Rename key
+    // Rename key — preserve platform prefix
     DB.gifters[newKey] = { ...DB.gifters[renameKey], displayName: newName };
     delete DB.gifters[renameKey];
     saveData(DB);
@@ -2686,7 +2694,7 @@ function publishGiftrLeaderboard() {
 /* ── Community hype event publisher ── */
 function publishHypeEvent(type) {
   if (!ablyChannel) return;
-  ablyChannel.publish('hype-event', { type }).catch(() => {});
+  ablyChannel.publish('milk-event', { type }).catch(() => {});
 }
 
 /* ── YouTube Live concurrentViewers polling ──
