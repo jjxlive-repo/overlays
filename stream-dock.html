@@ -1772,7 +1772,11 @@ body.gc-shake { animation: gcShake 0.55s ease; }
             <button class="ctrl-btn c-on" onclick="gbFeature()">★</button>
             <button class="ctrl-btn c-off" onclick="gbUnfeature()">✕</button>
           </div>
-          <button class="ctrl-btn" style="width:100%;" onclick="gbRefresh()">↺ Refresh Leaderboard</button>
+          <div class="ctrl-row" style="gap:4px;">
+            <button class="ctrl-btn" style="flex:1;" onclick="gbRefresh()">↺ Refresh</button>
+            <button class="ctrl-btn" style="flex:1;background:rgba(168,85,247,0.25);border-color:rgba(168,85,247,0.5);" onclick="gbTestBar()">🧪 Test Bar</button>
+            <button class="ctrl-btn c-off" style="flex:0 0 auto;" onclick="gbClearBar()" title="Clear test data">✕</button>
+          </div>
           <div class="ctrl-status" id="gb-status"></div>
           <div class="ctrl-sep" style="margin-top:6px;">
             <div class="ctrl-row" style="align-items:center;gap:4px;">
@@ -2992,6 +2996,7 @@ ably.connection.on(stateChange => {
     connDot.className = 'conn-dot connected';
     connLabel.textContent = 'Splat connected ✓';
     ablyChannel.publish('cmd', 'requestEventPromoConfig').catch(() => {});
+    ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
   } else if (s === 'connecting') {
     connDot.className = 'conn-dot connecting';
     connLabel.textContent = 'Connecting…';
@@ -3986,6 +3991,29 @@ function gbUnfeature() {
 
 function gbRefresh() {
   ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
+}
+
+function gbTestBar() {
+  const fake = name => ({ name, amount: 1234, type: 'tiktok_coins', platform: 'tiktok', profilePic: null });
+  ablyChannel.publish('giftr', {
+    daily:   fake('TestViewer'),
+    weekly:  { name: 'TestViewer', amount: 8888, type: 'tiktok_coins', platform: 'tiktok', profilePic: null },
+    monthly: { name: 'TestViewer', amount: 22222, type: 'tiktok_coins', platform: 'tiktok', profilePic: null },
+    youtube: { name: 'YTViewer',   amount: 15,    type: 'youtube_jewels', platform: 'youtube', profilePic: null },
+    tiktok:  fake('TestViewer'),
+    enabledSlots: ['daily','weekly','monthly','youtube','tiktok'],
+  }).catch(() => {});
+  const st = document.getElementById('gb-status');
+  if (st) st.textContent = '🧪 Test data sent';
+}
+
+function gbClearBar() {
+  ablyChannel.publish('giftr', {
+    daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
+    enabledSlots: [],
+  }).catch(() => {});
+  const st = document.getElementById('gb-status');
+  if (st) st.textContent = '';
 }
 
 /* ════════════════════════════════════════
