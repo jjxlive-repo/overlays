@@ -64,6 +64,21 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #gift-bar.visible { opacity: 1; }
 
+/* ── Contribution ticker — floats above the gift bar ── */
+#gb-event-ticker {
+  position: absolute; top: -30px; left: 0; right: 0;
+  height: 24px; display: flex; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 8;
+}
+#gb-ticker-text {
+  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+  color: rgba(255,255,255,0.68); letter-spacing: 0.05em;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+  opacity: 0; transition: opacity 0.25s ease;
+  white-space: nowrap;
+}
+#gb-ticker-text.visible { opacity: 1; }
+
 /* ── Milk fill — sweeps L→R inside bar based on milk % ── */
 #gb-milk-fill {
   position: absolute; top: 0; left: 0; bottom: 0; width: 0%;
@@ -1729,6 +1744,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 </div>
 
 <div id="gift-bar">
+  <div id="gb-event-ticker"><span id="gb-ticker-text"></span></div>
   <div id="bar-bg-layer">
     <div id="bar-bg"></div><div id="bar-wash"></div>
     <div id="bar-shimmer-flare"></div><div id="bar-border"></div>
@@ -2465,7 +2481,7 @@ let baitEnabled=true;
 function splatShow(...els){els.forEach(e=>e.classList.add('visible'));}
 function splatHide(...els){els.forEach(e=>e.classList.remove('visible'));}
 
-function splatEnterIdle(){splatState=SPLAT_STATE.IDLE;clearInterval(splatTicker);clearTimeout(splatLingerTimer);splatHide(splatPanel,splatBg,splatBlobLayer,splatGlowRing,splatCrackLayer);splatTimerNum.className='';splatBanner.className='';splatProgFill.classList.remove('danger');splatBurstLayer.innerHTML='';splatCrackSvg.innerHTML='';splatCrackLayer.querySelectorAll('.drip').forEach(d=>d.remove());if(baitEnabled)splatShow(idleBait);}
+function splatEnterIdle(){splatState=SPLAT_STATE.IDLE;clearInterval(splatTicker);clearTimeout(splatLingerTimer);splatHide(splatPanel,splatBg,splatBlobLayer,splatGlowRing,splatCrackLayer);splatTimerNum.className='';splatBanner.className='';splatProgFill.style.width='0%';splatProgFill.classList.remove('danger');splatBurstLayer.innerHTML='';splatCrackSvg.innerHTML='';splatCrackLayer.querySelectorAll('.drip').forEach(d=>d.remove());if(baitEnabled)splatShow(idleBait);}
 function splatEnterCountdown(){
   // Defer if a gift alert is playing — restart after it clears
   if(alertActive){
@@ -2474,11 +2490,11 @@ function splatEnterCountdown(){
     }, 200);
     return;
   }
-  splatState=SPLAT_STATE.COUNTDOWN;clearInterval(splatTicker);clearTimeout(splatLingerTimer);splatHide(idleBait);splatTimeLeft=SPLAT_CONFIG.TIMER_SECONDS;splatHide(splatCrackLayer);splatCrackSvg.innerHTML='';splatBurstLayer.innerHTML='';splatCrackLayer.querySelectorAll('.drip').forEach(d=>d.remove());splatBanner.className='';splatBanner.textContent='';splatCountWrap.style.display='flex';splatProgFill.classList.remove('danger');splatProgFill.style.transition='none';splatProgFill.style.width='100%';requestAnimationFrame(()=>{splatProgFill.style.transition='width 0.9s linear,background 0.3s ease';});splatUpdateDisplay();splatShow(splatPanel,splatBg,splatBlobLayer,splatGlowRing);playSound('reset');splatTicker=setInterval(()=>{splatTimeLeft--;splatUpdateDisplay();if(splatTimeLeft<=0)splatEnterExpired();},1000);
+  splatState=SPLAT_STATE.COUNTDOWN;clearInterval(splatTicker);clearTimeout(splatLingerTimer);splatHide(idleBait);splatTimeLeft=SPLAT_CONFIG.TIMER_SECONDS;splatHide(splatCrackLayer);splatCrackSvg.innerHTML='';splatBurstLayer.innerHTML='';splatCrackLayer.querySelectorAll('.drip').forEach(d=>d.remove());splatBanner.className='';splatBanner.textContent='';splatCountWrap.style.display='flex';splatProgFill.classList.remove('danger');splatProgFill.style.transition='none';splatProgFill.style.width='0%';splatProgFill.classList.remove('danger');requestAnimationFrame(()=>{splatProgFill.style.transition='width 0.5s ease-out,background 0.3s ease';});splatUpdateDisplay();splatShow(splatPanel,splatBg,splatBlobLayer,splatGlowRing);playSound('reset');splatTicker=setInterval(()=>{splatTimeLeft--;splatUpdateDisplay();if(splatTimeLeft<=0)splatEnterExpired();},1000);
 }
 function splatEnterSaved(){if(splatState!==SPLAT_STATE.COUNTDOWN)return;splatState=SPLAT_STATE.SAVED;clearInterval(splatTicker);playSound('save');splatCountWrap.style.display='none';splatBanner.textContent=SPLAT_CONFIG.COPY_SAVED;splatBanner.className='saved-text';splatTriggerBurst();splatLingerTimer=setTimeout(splatEnterIdle,SPLAT_CONFIG.SAVED_LINGER_MS);}
 function splatEnterExpired(){splatState=SPLAT_STATE.EXPIRED;clearInterval(splatTicker);playSound('expire');splatTimerNum.textContent='0';splatTimerNum.className='pulse-danger';splatProgFill.style.width='0%';setTimeout(()=>{splatCountWrap.style.display='none';splatBanner.textContent=SPLAT_CONFIG.COPY_EXPIRED;splatBanner.className='expired-text';splatTriggerCrack();},300);splatLingerTimer=setTimeout(splatEnterIdle,SPLAT_CONFIG.EXPIRED_LINGER_MS);}
-function splatUpdateDisplay(){const pct=splatTimeLeft/SPLAT_CONFIG.TIMER_SECONDS;splatTimerNum.textContent=splatTimeLeft;splatProgFill.style.width=(pct*100)+'%';splatTimerNum.classList.remove('pulse-normal','pulse-warn','pulse-danger');if(splatTimeLeft<=SPLAT_CONFIG.DANGER_THRESHOLD){splatTimerNum.classList.add('pulse-danger');splatProgFill.classList.add('danger');}else if(splatTimeLeft<=SPLAT_CONFIG.WARN_THRESHOLD){splatTimerNum.classList.add('pulse-warn');}else{splatTimerNum.classList.add('pulse-normal');}}
+function splatUpdateDisplay(){splatTimerNum.textContent=splatTimeLeft;splatTimerNum.classList.remove('pulse-normal','pulse-warn','pulse-danger');if(splatTimeLeft<=SPLAT_CONFIG.DANGER_THRESHOLD){splatTimerNum.classList.add('pulse-danger');}else if(splatTimeLeft<=SPLAT_CONFIG.WARN_THRESHOLD){splatTimerNum.classList.add('pulse-warn');}else{splatTimerNum.classList.add('pulse-normal');}}
 
 /* Burst (save) */
 function splatTriggerBurst(){const colors=['#A855F7','#C084FC','#E879F9','#7B2FBE','#DDD6FE','#FBBF24'],cy=SPLAT_POSITIONS[currentSplatPos]||960,cx=540;for(let i=0;i<28;i++){const el=document.createElement('div');el.className='splat-particle';const sz=16+Math.random()*60,ang=(i/28)*360+Math.random()*20,r=80+Math.random()*260,dx=Math.cos(ang*Math.PI/180)*r,dy=Math.sin(ang*Math.PI/180)*r,col=colors[i%colors.length],dur=0.5+Math.random()*0.5,del=Math.random()*0.15,rot=Math.random()*360;el.style.cssText=`width:${sz}px;height:${sz*(0.6+Math.random()*0.6)}px;left:${cx-sz/2}px;top:${cy-sz/2}px;background:radial-gradient(ellipse at 35% 35%,${col},${col}99);border-radius:50% 70% 50% 70% / 60% 50% 70% 50%;box-shadow:0 0 ${sz*0.4}px ${col}88;animation:splatBurst${i} ${dur}s ${del}s cubic-bezier(.2,.8,.4,1) forwards;`;addSplatStyle(`@keyframes splatBurst${i}{0%{opacity:1;transform:translate(0,0) scale(0) rotate(0deg)}40%{opacity:1}100%{opacity:0;transform:translate(${dx}px,${dy}px) scale(1) rotate(${rot}deg)}}`);splatBurstLayer.appendChild(el);}splatBg.style.filter='drop-shadow(0 0 80px rgba(232,121,249,1)) drop-shadow(0 0 160px rgba(168,85,247,0.8))';setTimeout(()=>{splatBg.style.filter='drop-shadow(0 0 40px rgba(168,85,247,0.6))';},600);}
@@ -2843,7 +2859,11 @@ ablyClient.connection.on(stateChange=>{
 // Splat timer
 ablyChannel.subscribe('cmd',msg=>{
   const cmd=msg.data;
-  if(cmd==='reset')splatEnterCountdown();
+  if(cmd==='reset'){
+    // Reset milk meter fresh for each rescue attempt, then start countdown
+    if(typeof window._milkResetForRescue==='function') window._milkResetForRescue();
+    splatEnterCountdown();
+  }
   else if(cmd==='save')splatEnterSaved();
   else if(cmd==='idle')splatEnterIdle();
   // requestEventPromoConfig handled by overlay-control, not us
@@ -3000,6 +3020,32 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── current pct (used to show % alongside surge/boost text) ── */
   let _currentPct = 0;
+
+  /* ── instant save thresholds (0 = disabled) ── */
+  let _instantSaveCoins   = 0;
+  let _instantSaveDollars = 0;
+
+  /* ── contribution ticker ── */
+  const _tickerEl = document.getElementById('gb-ticker-text');
+  let _tickerQueue   = [];
+  let _tickerRunning = false;
+  function _tickerAdd(text){
+    _tickerQueue.push(text);
+    if(!_tickerRunning) _tickerNext();
+  }
+  function _tickerNext(){
+    if(!_tickerQueue.length){ _tickerRunning=false; if(_tickerEl) _tickerEl.classList.remove('visible'); return; }
+    _tickerRunning = true;
+    const text = _tickerQueue.shift();
+    if(_tickerEl){
+      _tickerEl.classList.remove('visible');
+      setTimeout(()=>{
+        _tickerEl.textContent = text;
+        _tickerEl.classList.add('visible');
+        setTimeout(_tickerNext, 2300);
+      }, 220);
+    }
+  }
 
   /* ── auto surge state (separate from manual boosts) ── */
   let _surgeActive    = false;   // true during the surge window
@@ -3255,6 +3301,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
   /* ── Update bar fill + CTA text based on milk % ── */
   function _mmUpdateStatus(pct) {
     _currentPct = pct;  // keep track for surge/boost text
+    // Mirror milk % to splat rescue countdown bar (replaces time-based depletion)
+    if(typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
+      splatProgFill.style.width = pct + '%';
+      splatProgFill.classList.toggle('danger', pct < 25);
+    }
     const milkFill = document.getElementById('gb-milk-fill');
     const barText  = document.getElementById('gb-bar-text');
     const show = _mmGoalVisible || _mmForceVisible;
@@ -3307,7 +3358,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── add points ── */
   /* ── addPts: type maps to boost category + injects platform energy ── */
-  function addPts(base, plat, inputType){
+  function addPts(base, plat, inputType, tickerLabel){
     if(plat && plat !== 'other') setPlatMode(plat);
     const cat  = (inputType === 'like' || inputType === 'like_batch') ? 'likes'
                : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
@@ -3316,6 +3367,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const surgeX  = (_surgeActive && _surgeType && _surgeType.match(inputType, plat, cat)) ? SURGE_MULTI : 1;
     const pts     = base * _intensityMult * boostX * surgeX;
     rawScore = Math.min(rawScore + pts, MAX_RAW);
+    // Contribution ticker
+    if(pts > 0){
+      const _tMap = { comment:'💬 comment', like:'👍 like', like_batch:'👍 likes',
+        join:'🚪 join/follow', heart_me:'💝 Heart Me', heart_me_first:'✨ first Heart Me',
+        yt_sub:'📹 YT sub', comment_match:'🎯 chat command' };
+      const _lbl = tickerLabel || _tMap[inputType] || inputType;
+      const _pStr = pts < 1 ? '+'+pts.toFixed(1) : '+'+Math.round(pts);
+      _tickerAdd(`${_lbl}  ${_pStr}pts`);
+    }
 
     // ── Platform energy injection for visual waveform ──
     const energy = Math.min(1, pts / 20);  // scale injection by points earned
@@ -3336,7 +3396,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     if(rawScore >= MAX_RAW && !_bbFired){
       _bbFired = true;
-      if(alertActive){ _pendingGoalExplosion = true; } else { fireMilkGoal(); }
+      if(typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
+        // Milk filled during rescue → auto-save the run!
+        splatEnterSaved();
+        setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
+      } else if(alertActive){
+        _pendingGoalExplosion = true;
+      } else {
+        fireMilkGoal();
+      }
     }
   }
 
@@ -3618,15 +3686,32 @@ ablyChannel.subscribe('top-gifters',msg=>{
         addPts(PTS.heart_me_first, 'tt', 'heart_me'); fireFirstFlash(); break;
 
       case 'tiktok_gift': {
-        // Check if this gift has a specific point override by name
         const _gKey = d.giftName ? 'gift_' + d.giftName.toLowerCase().replace(/\s+/g,'_') : null;
         const _gPts = (_gKey && PTS[_gKey] != null) ? PTS[_gKey]
                     : milkGiftPts(d.gifterKey, d.coins || 0, 0);
-        addPts(_gPts, 'tt', 'heart_me'); break;
+        // Instant save — gift meets coin threshold during rescue countdown
+        if(_instantSaveCoins > 0 && (d.coins||0) >= _instantSaveCoins &&
+           typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
+          _tickerAdd(`⚡ ${d.giftName||'Gift'} — INSTANT SAVE!`);
+          splatEnterSaved();
+          setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
+          break;
+        }
+        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`); break;
       }
 
-      case 'yt_superchat':
-        addPts(milkGiftPts(d.gifterKey, 0, d.dollars || 0), 'yt', 'heart_me'); break;
+      case 'yt_superchat': {
+        const _sPts = milkGiftPts(d.gifterKey, 0, d.dollars||0);
+        // Instant save — super chat meets dollar threshold during rescue countdown
+        if(_instantSaveDollars > 0 && (d.dollars||0) >= _instantSaveDollars &&
+           typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
+          _tickerAdd(`⚡ $${d.dollars} Super Chat — INSTANT SAVE!`);
+          splatEnterSaved();
+          setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
+          break;
+        }
+        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`); break;
+      }
     }
   });
 
@@ -3724,6 +3809,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
         if(sg.name && sg.pts != null) PTS['gift_' + sg.name.toLowerCase().replace(/\s+/g,'_')] = Number(sg.pts);
       });
     }
+
+    // Instant save thresholds
+    if(d.instantSaveCoins   != null) _instantSaveCoins   = Number(d.instantSaveCoins)   || 0;
+    if(d.instantSaveDollars != null) _instantSaveDollars = Number(d.instantSaveDollars) || 0;
   });
 
   ablyChannel.subscribe('bb-reset', () => {
@@ -3732,6 +3821,14 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _bbCooldown = false;
     _bbBan.classList.remove('bb-active');
   });
+
+  // Exposed so the outer cmd handler can reset milk on each rescue countdown
+  window._milkResetForRescue = function(){
+    rawScore    = 0;
+    _bbFired    = false;
+    _bbCooldown = false;
+    _mmUpdateStatus(0);
+  };
 
 })();
 </script>
