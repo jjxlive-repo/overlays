@@ -56,6 +56,56 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #line-sweep-bot { animation-delay: 0.08s; }
 
+/* ══ MISSION STRIP — pinned top, explains the game to FYP viewers ══ */
+#mission-strip {
+  position: absolute; top: 0; left: 0;
+  width: 1080px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20,8,40,0.72);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(168,85,247,0.25);
+  z-index: 15; pointer-events: none;
+  opacity: 0; transition: opacity 0.5s ease;
+}
+#mission-strip.visible { opacity: 1; }
+#mission-strip-text {
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+  color: rgba(255,255,255,0.88); letter-spacing: 0.06em;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+}
+#mission-strip-pct {
+  font-family: 'Boogaloo', cursive; font-size: 18px;
+  color: #C084FC; margin-left: 10px;
+  text-shadow: 0 0 12px rgba(192,132,252,0.6);
+}
+
+/* ══ ENTRY BANNER — reactive join flash for new viewers ══ */
+#entry-banner {
+  position: absolute; top: 54px; left: 0;
+  width: 1080px;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 14;
+  opacity: 0; transform: translateY(-6px);
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(.34,1.56,.64,1);
+}
+#entry-banner.visible {
+  opacity: 1; transform: translateY(0);
+}
+#entry-banner-inner {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: rgba(59,7,100,0.82);
+  border: 1px solid rgba(168,85,247,0.45);
+  border-radius: 24px;
+  padding: 7px 22px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 24px rgba(124,58,237,0.35);
+}
+#entry-banner-text {
+  font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600;
+  color: #FAF5FF; letter-spacing: 0.04em;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
 /* ══ GIFT BAR ══ */
 #gift-bar {
   position: absolute; top: 450px; left: 0;
@@ -3298,6 +3348,33 @@ ablyChannel.subscribe('top-gifters',msg=>{
   if(_gbEl) _gbEl.appendChild(_mmExplosion);
   else document.body.appendChild(_mmExplosion);
 
+  /* ── Mission strip — always-on top bar explaining the game ── */
+  const _missionStrip    = document.getElementById('mission-strip');
+  const _missionStripPct = document.getElementById('mission-strip-pct');
+  function _updateMissionStrip(pct, show) {
+    if (!_missionStrip) return;
+    if (_missionStripPct) _missionStripPct.textContent = pct + '%';
+    _missionStrip.classList.toggle('visible', !!show);
+  }
+
+  /* ── Entry banner — fires on join events ── */
+  const _entryBanner     = document.getElementById('entry-banner');
+  const _entryBannerText = document.getElementById('entry-banner-text');
+  let _entryBannerTimer  = null;
+  let _entryDebounce     = null;
+  function _fireEntryBanner(pct) {
+    clearTimeout(_entryDebounce);
+    _entryDebounce = setTimeout(() => {
+      if (!_entryBanner || !_entryBannerText) return;
+      _entryBannerText.textContent = `👋 Chat just hit ${pct}% — jump in!`;
+      _entryBanner.classList.add('visible');
+      clearTimeout(_entryBannerTimer);
+      _entryBannerTimer = setTimeout(() => {
+        _entryBanner.classList.remove('visible');
+      }, 2500);
+    }, 300); // debounce rapid joins
+  }
+
   /* ── Update bar fill + CTA text based on milk % ── */
   function _mmUpdateStatus(pct) {
     _currentPct = pct;  // keep track for surge/boost text
@@ -3321,6 +3398,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
       // Opacity scales with fill — 0.25 at empty, builds to 1.0 at full
       barText.style.opacity = show ? Math.min(1, pct * 0.0075 + 0.25) : '';
     }
+    // Mission strip always mirrors the live % when meter is active
+    _updateMissionStrip(pct, show);
   }
 
   function fireMilkGoal(){
@@ -3668,8 +3747,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
     if(!type) return;
     trackEvt(type, plat);
     switch(type){
-      case 'comment': case 'join': case 'comment_match':
+      case 'comment': case 'comment_match':
         addPts(PTS[type] ?? 0.5, plat, type); break;
+      case 'join':
+        addPts(PTS.join ?? 1, plat, 'join');
+        _fireEntryBanner(_currentPct);
+        break;
       case 'like':
         addPts(PTS.like, plat, 'like'); break;
       case 'like_batch':
@@ -3747,6 +3830,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
     if(typeof top !== 'number') return;
     const gb = document.getElementById('gift-bar');
     if(gb) gb.style.top = top + 'px';
+  });
+
+  ablyChannel.subscribe('mission-strip-config', msg => {
+    const d = msg?.data;
+    if(!d) return;
+    const strip = document.getElementById('mission-strip');
+    const txt   = document.getElementById('mission-strip-text');
+    if(strip && typeof d.top === 'number') strip.style.top = d.top + 'px';
+    if(txt   && typeof d.text === 'string' && d.text.trim()) txt.textContent = d.text;
   });
 
   ablyChannel.subscribe('milk-cta', msg => {
@@ -3832,5 +3924,16 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
 })();
 </script>
+<div id="mission-strip">
+  <span id="mission-strip-text">🥛 MILK THE METER — comment or gift to fill it</span>
+  <span id="mission-strip-pct">0%</span>
+</div>
+
+<div id="entry-banner">
+  <div id="entry-banner-inner">
+    <span id="entry-banner-text">👋 Chat just hit 0% — jump in!</span>
+  </div>
+</div>
+
 </body>
 </html>
