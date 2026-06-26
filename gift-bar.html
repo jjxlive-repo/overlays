@@ -2946,7 +2946,18 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const SURGE_MIN_MS      = 60_000;  // min gap between auto surges
   const SURGE_MAX_MS      = 90_000;  // max gap
   const SURGE_MULTI       = 2;       // global point multiplier during surge
-  const SURGE_DURATION_MS = 5_000;   // exactly 5 seconds
+  const SURGE_DURATION_MS = 15_000;  // 15 seconds with countdown
+  // Surge rotates through these types — one randomly picked per firing
+  // Weighted: TT comments ×2, joins ×2, YT comments ×1, gifts ×1, all ×1
+  const SURGE_TYPES = [
+    { key:'tt_comment', label:'💬 TIKTOK COMMENTS',  cta:'COMMENT NOW',     match:(t,p)    => t==='comment'&&p==='tt' },
+    { key:'tt_comment', label:'💬 TIKTOK COMMENTS',  cta:'COMMENT NOW',     match:(t,p)    => t==='comment'&&p==='tt' },
+    { key:'yt_comment', label:'📹 YOUTUBE COMMENTS', cta:'COMMENT NOW',     match:(t,p)    => t==='comment'&&p==='yt' },
+    { key:'join',       label:'🚪 JOINS & FOLLOWS',  cta:'JOIN THE SQUAD',  match:(t)      => t==='join' },
+    { key:'join',       label:'🚪 JOINS & FOLLOWS',  cta:'JOIN THE SQUAD',  match:(t)      => t==='join' },
+    { key:'gift',       label:'🎁 GIFTS & REACTIONS',cta:'SEND A GIFT',     match:(t,p,cat)=> cat==='gifts' },
+    { key:'all',        label:'⚡ ALL ENGAGEMENT',   cta:'ENGAGE NOW',      match:()       => true },
+  ];
   const AUDIO_SMOOTH   = 0.40;   // was 0.78 — much faster response to voice
   const GAIN_BOOST     = 3.2;    // amplify quiet audio signal before mapping
   const PLAT_DECAY_MS  = 8_000;
@@ -2971,9 +2982,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let _boostType = 'comments';
 
   /* ── auto surge state (separate from manual boosts) ── */
-  let _surgeActive    = false;   // true during the 5-second surge window
-  let _surgeMult      = 1;       // 1 normally, SURGE_MULTI during surge
+  let _surgeActive    = false;   // true during the surge window
+  let _surgeType      = null;    // current SURGE_TYPES entry
   let _surgeTimer     = null;
+  let _surgeCountdown = null;    // setInterval for countdown text
   let _surgeScheduled = false;   // prevents double-scheduling
 
   /* ── smart milk mode: 'auto' | 'manual' | 'both' ── */
@@ -3278,8 +3290,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const cat  = (inputType === 'like_batch') ? 'likes'
                : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
                : 'comments';
-    const boostX = _boostMult[cat] ?? 1;
-    const pts    = base * _intensityMult * boostX * _surgeMult; // _surgeMult=2 during auto surge
+    const boostX  = _boostMult[cat] ?? 1;
+    const surgeX  = (_surgeActive && _surgeType && _surgeType.match(inputType, plat, cat)) ? SURGE_MULTI : 1;
+    const pts     = base * _intensityMult * boostX * surgeX;
     rawScore = Math.min(rawScore + pts, MAX_RAW);
 
     // ── Platform energy injection for visual waveform ──
@@ -3306,9 +3319,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
   }
 
   /* ══ AUTO SURGE SYSTEM ══════════════════════════════════════════
-     Fires every 60–90 s (randomized). Lasts exactly 5 s.
-     During surge: ALL point values × SURGE_MULTI (global, not per-type).
-     Shows a bold flash callout + sound. Does NOT use the manual boost banner.
+     Fires every 60–90 s (randomized). Lasts 15 s with countdown timer.
+     Each surge targets ONE type (TT comments, YT comments, joins, gifts, or all).
+     Only that type gets ×SURGE_MULTI — everything else scores normally.
   ═══════════════════════════════════════════════════════════════ */
 
   function _scheduleAutoBoost(){
@@ -3326,35 +3339,48 @@ ablyChannel.subscribe('top-gifters',msg=>{
   function _fireAutoBoost(){
     if(_surgeActive) return;
     _surgeActive = true;
-    _surgeMult   = SURGE_MULTI;          // doubles ALL point types
+    _surgeType   = SURGE_TYPES[Math.floor(Math.random() * SURGE_TYPES.length)];
 
-    _showSurgeFlash();
+    _showSurgeFlash(_surgeType);
     _playSurgeSound();
     giftBarEl?.classList.add('hm-surge-active'); // waveform goes white/bright
 
     _surgeTimer = setTimeout(() => {
-      _surgeActive  = false;
-      _surgeMult    = 1;
+      _surgeActive = false;
+      _surgeType   = null;
       giftBarEl?.classList.remove('hm-surge-active');
       _hideSurgeFlash();
       _scheduleAutoBoost();              // queue the next surge
     }, SURGE_DURATION_MS);
   }
 
-  /* ── Surge flash element (injected, separate from manual boost banner) ── */
-  function _showSurgeFlash(){
+  /* ── Surge flash: shows type label + live countdown in bar text ── */
+  function _showSurgeFlash(st){
     const barText = document.getElementById('gb-bar-text');
     const gb      = document.getElementById('gift-bar');
-    if(barText){
-      barText.textContent = '⚡ 2X ALL POINTS — COMMENT, JOIN & GIFT ⚡';
-      barText.style.opacity = '';  // full opacity — clear pct-driven value
-      barText.classList.add('visible', 'surge');
-      barText.classList.remove('urgent');
-    }
     if(gb) gb.classList.add('gb-surge-active');
+    if(!barText) return;
+
+    let remaining = Math.round(SURGE_DURATION_MS / 1000);
+    function _updateSurgeText(){
+      barText.textContent = `⚡ 2X ${st.label} — ${remaining}s`;
+    }
+    _updateSurgeText();
+    barText.style.opacity = '';
+    barText.classList.add('visible', 'surge');
+    barText.classList.remove('urgent');
+
+    clearInterval(_surgeCountdown);
+    _surgeCountdown = setInterval(() => {
+      remaining--;
+      if(remaining > 0) _updateSurgeText();
+      else clearInterval(_surgeCountdown);
+    }, 1000);
   }
 
   function _hideSurgeFlash(){
+    clearInterval(_surgeCountdown);
+    _surgeCountdown = null;
     const barText = document.getElementById('gb-bar-text');
     const gb      = document.getElementById('gift-bar');
     if(gb) gb.classList.remove('gb-surge-active');
