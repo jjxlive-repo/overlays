@@ -2950,6 +2950,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const SURGE_MAX_MS      = 90_000;  // max gap
   const SURGE_MULTI       = 2;       // global point multiplier during surge
   const SURGE_DURATION_MS = 15_000;  // 15 seconds with countdown
+  const STREAM_DELAY_S    = 10;      // added to all timer displays + durations for stream delay
   // Surge rotates through these types — one randomly picked per firing
   // Weighted: TT comments ×2, joins ×2, YT comments ×1, gifts ×1, all ×1
   const SURGE_TYPES = [
@@ -3115,7 +3116,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
       _boostType  = type;
       _boostMult[type] = mult;
       if(boostTimer) clearInterval(boostTimer);
-      let remaining = Math.round(durMs / 1000);
+      let remaining = Math.round(durMs / 1000) + STREAM_DELAY_S;
       boostTimer = setInterval(() => {
         remaining--;
         if(remaining <= 0) { clearInterval(boostTimer); boostTimer = null; }
@@ -3129,7 +3130,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     giftBarEl?.classList.add('hm-surge-active', 'gb-boost-active');
 
     const barText = document.getElementById('gb-bar-text');
-    let remaining = Math.round(durMs / 1000);
+    let remaining = Math.round(durMs / 1000) + STREAM_DELAY_S;
     function _updateBoostBar() {
       if(barText){
         barText.textContent = `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s`;
@@ -3354,7 +3355,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
       giftBarEl?.classList.remove('hm-surge-active');
       _hideSurgeFlash();
       _scheduleAutoBoost();              // queue the next surge
-    }, SURGE_DURATION_MS);
+    }, SURGE_DURATION_MS + STREAM_DELAY_S * 1000);
   }
 
   /* ── Surge flash: shows type label + live countdown in bar text ── */
@@ -3364,7 +3365,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     if(gb) gb.classList.add('gb-surge-active');
     if(!barText) return;
 
-    let remaining = Math.round(SURGE_DURATION_MS / 1000);
+    let remaining = Math.round(SURGE_DURATION_MS / 1000) + STREAM_DELAY_S;
     function _updateSurgeText(){
       barText.textContent = `⚡ 2X ${st.label} — ${remaining}s`;
     }
