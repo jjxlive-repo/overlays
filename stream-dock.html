@@ -1516,7 +1516,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
       <div id="dock-milk-bar">
         <div id="dock-milk-bar-inner">
           <span style="font-size:12px;flex-shrink:0;">🥛</span>
-          <span id="dock-milk-label">MILK THE METER</span>
+          <span id="dock-milk-label">MILK METER</span>
           <span id="dock-bb-pct" style="font-family:var(--mono);font-size:10px;color:#e879f9;min-width:28px;text-align:right;flex-shrink:0;">0%</span>
           <button class="ctrl-btn c-off" style="padding:1px 5px;font-size:8px;flex-shrink:0;" onclick="resetBeanBoozled()" title="Reset meter">↺</button>
         </div>
@@ -1631,7 +1631,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <span class="ctrl-lbl" style="margin-bottom:4px;">🥛 Mission Strip</span>
             <span style="font-size:9px;color:var(--txt-dim);margin-bottom:2px;display:block;">Pinned top bar — explains game to new viewers</span>
             <input class="ctrl-in" id="mission-strip-text-input" type="text"
-              placeholder="🥛 MILK THE METER — comment or gift to fill it"
+              placeholder="🥛 MILK METER — comment or gift to fill it"
               style="margin-bottom:4px;">
             <div class="ctrl-row" style="align-items:center;gap:4px;margin-bottom:4px;">
               <span style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">↕ Y</span>
@@ -1852,6 +1852,30 @@ body.gc-shake { animation: gcShake 0.5s ease; }
       </div>
 
       <!-- ── EVENT PROMO ── -->
+      <!-- ── LIVE TEXT ── -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('lt')">
+          <span class="ctrl-hd-title">📝 Live Text</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-lt">
+          <div class="ctrl-row" style="flex-direction:column;gap:6px;">
+            <input id="lt-title-input" class="ep-dock-input" type="text" placeholder="Game / stream title"
+              style="width:100%;box-sizing:border-box;"
+              oninput="ltUpdateText()">
+            <input id="lt-subtitle-input" class="ep-dock-input" type="text" placeholder="Subtitle / goal"
+              style="width:100%;box-sizing:border-box;"
+              oninput="ltUpdateText()">
+          </div>
+          <div class="ctrl-row" style="gap:6px;flex-wrap:wrap;">
+            <button class="ctrl-btn" id="lt-pill-btn" onclick="ltToggle('pill')">💊 Pill</button>
+            <button class="ctrl-btn" id="lt-strip-btn" onclick="ltToggle('strip')">▬ Strip</button>
+            <button class="ctrl-btn" id="lt-card-btn" onclick="ltToggle('card')">🃏 Card</button>
+            <button class="ctrl-btn c-off" style="flex:1;" onclick="ltHideAll()">✕ Hide All</button>
+          </div>
+        </div>
+      </div>
+
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('ep')">
           <span class="ctrl-hd-title">🎭 Event Promo</span>
@@ -3506,6 +3530,35 @@ function eventPromoAuto(enabled) {
   doFlash(enabled ? 'green' : 'red');
 }
 
+/* ── LIVE TEXT ── */
+const _ltState = { pill: false, strip: false, card: false };
+function _ltPublish(patch) {
+  const title    = document.getElementById('lt-title-input')?.value   || '';
+  const subtitle = document.getElementById('lt-subtitle-input')?.value || '';
+  ablyChannel.publish('live-text', { title, subtitle, ...patch });
+}
+function ltUpdateText() {
+  _ltPublish({});
+}
+function ltToggle(which) {
+  _ltState[which] = !_ltState[which];
+  const btn = document.getElementById('lt-' + which + '-btn');
+  if (btn) btn.classList.toggle('c-on', _ltState[which]);
+  const patch = {};
+  patch[which] = _ltState[which];
+  _ltPublish(patch);
+  doFlash(_ltState[which] ? 'green' : 'red');
+}
+function ltHideAll() {
+  _ltState.pill = false; _ltState.strip = false; _ltState.card = false;
+  ['pill','strip','card'].forEach(k => {
+    const btn = document.getElementById('lt-' + k + '-btn');
+    if (btn) btn.classList.remove('c-on');
+  });
+  _ltPublish({ pill: false, strip: false, card: false });
+  doFlash('red');
+}
+
 function eventPromoLoadImageFile(i, evt) {
   const file = evt.target.files && evt.target.files[0];
   if (!file) return;
@@ -4134,7 +4187,7 @@ let _giftBarY = parseInt(localStorage.getItem('giftBarY') || '450', 10);
 
 /* ── Mission strip persistence ── */
 let _missionStripY    = parseInt(localStorage.getItem('missionStripY') || '0', 10);
-let _missionStripText = localStorage.getItem('missionStripText') || '🥛 MILK THE METER — comment or gift to fill it';
+let _missionStripText = localStorage.getItem('missionStripText') || '🥛 MILK METER — comment or gift to fill it';
 
 function nudgeMissionStrip(delta, reset) {
   if (reset) _missionStripY = 0;
@@ -4919,12 +4972,12 @@ function mmSendGoalConfig() {
   const baitText = (document.getElementById('mm-bait-text')?.value || '').trim();
   const goalText = (document.getElementById('mm-goal-text')?.value || '').trim();
   ablyChannel.publish('milk-cta-config', {
-    baitText: baitText || 'MILK THE METER 🫟',
+    baitText: baitText || 'MILK METER 🫟',
     goalText: goalText || 'LETS GOOO!!',
   }).catch(() => {});
   // Show the status text in dock so you can confirm what was sent
   const st = document.getElementById('mm-cta-status');
-  if(st) { st.textContent = '✓ Sent: ' + (baitText || 'MILK THE METER 🫟'); setTimeout(() => { st.textContent = ''; }, 3000); }
+  if(st) { st.textContent = '✓ Sent: ' + (baitText || 'MILK METER 🫟'); setTimeout(() => { st.textContent = ''; }, 3000); }
   doFlash('green');
 }
 
