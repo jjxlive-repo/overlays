@@ -1454,6 +1454,10 @@ body.gc-shake { animation: gcShake 0.55s ease; }
 .msc-sel { font-size:9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--txt);padding:2px 3px;cursor:pointer;max-width:90px; }
 .msc-wt  { display:flex;align-items:center;gap:3px; }
 .msc-wt-bar { height:5px;border-radius:3px;background:#7c3aed;min-width:2px;transition:width .2s; }
+.msc-mult-group { display:flex;gap:2px;flex-wrap:nowrap; }
+.msc-mult-btn { font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;border:1px solid rgba(168,85,247,.4);background:rgba(168,85,247,.12);color:#c084fc;cursor:pointer;line-height:1.4;white-space:nowrap;transition:background .12s; }
+.msc-mult-btn:hover { background:rgba(168,85,247,.35);color:#fff; }
+.msc-mult-btn:active { background:#7c3aed;color:#fff; }
 </style>
 </head>
 <body>
@@ -1763,7 +1767,7 @@ body.gc-shake { animation: gcShake 0.55s ease; }
           <!-- ENGAGEMENT -->
           <div class="msc-hdr">Engagement</div>
           <table class="msc-tbl">
-            <thead><tr><th>Trigger</th><th>Plat</th><th style="text-align:right">Pts</th><th>Slider</th><th>Wt</th></tr></thead>
+            <thead><tr><th>Trigger</th><th>Plat</th><th style="text-align:right">Pts</th><th>Slider</th><th>Wt</th><th>Quick ×</th></tr></thead>
             <tbody id="msc-engage-body"></tbody>
           </table>
 
@@ -1777,7 +1781,7 @@ body.gc-shake { animation: gcShake 0.55s ease; }
           <!-- GIFTS & SUBS -->
           <div class="msc-hdr">Gifts &amp; Subs <button class="msc-add" onclick="mscAddSpecificGift()">+ TT Gift</button></div>
           <table class="msc-tbl">
-            <thead><tr><th>Trigger</th><th>Plat</th><th style="text-align:right">Pts</th><th>Slider</th></tr></thead>
+            <thead><tr><th>Trigger</th><th>Plat</th><th style="text-align:right">Pts</th><th>Slider</th><th>Quick ×</th></tr></thead>
             <tbody id="msc-gifts-body"></tbody>
           </table>
 
@@ -3762,6 +3766,21 @@ function _mscMaxWt() {
   return Math.max(...all.map(r => r.pts), 0.01);
 }
 
+/* ── QUICK SURGE MULTIPLIER BUTTONS ── */
+function mscFireMult(key, mult) {
+  if (!ablyChannel) return;
+  const typeMap = { like:'likes', like_batch:'likes', heart_me:'gifts', heart_me_first:'gifts', yt_sub:'gifts' };
+  const iconMap = { like:'👍', like_batch:'👍', heart_me:'💝', heart_me_first:'✨', yt_sub:'📹' };
+  const type = typeMap[key] || 'comments';
+  const icon = iconMap[key] || '💬';
+  const label = _msc.engage.find(r=>r.key===key)?.label || _msc.gifts.find(r=>r.key===key)?.label || key;
+  ablyChannel.publish('milk-boost', { type, mult, durSec: 30, cta: label.toUpperCase(), icon }).catch(()=>{});
+  doFlash('green');
+}
+function _mscMultBtns(key) {
+  return `<div class="msc-mult-group">${[2,3,5,10].map(m=>`<button class="msc-mult-btn" onclick="mscFireMult('${key}',${m})">${m}×</button>`).join('')}</div>`;
+}
+
 /* ── ENGAGEMENT ── */
 function _mscRenderEngage() {
   const tb = document.getElementById('msc-engage-body');
@@ -3774,6 +3793,7 @@ function _mscRenderEngage() {
       <td style="text-align:right">${_mscNum(r.pts,0.1,0,r.smax,`_mscSyncE(${i},this.value,'n')`)}</td>
       <td><input class="msc-slide" type="range" step="0.1" min="0" max="${r.smax}" value="${r.pts}" oninput="_mscSyncE(${i},this.value,'s')"></td>
       <td><div class="msc-wt"><div class="msc-wt-bar" style="width:${Math.round(r.pts/maxWt*60)}px"></div><span style="font-size:9px;color:var(--txt-dim)">${r.pts}</span></div></td>
+      <td>${_mscMultBtns(r.key)}</td>
     </tr>`).join('');
 }
 function _mscSyncE(i, val, src) {
@@ -3795,6 +3815,7 @@ function _mscRenderGifts() {
       <td class="msc-plat">${r.plat}</td>
       <td style="text-align:right">${_mscNum(r.pts,1,0,r.smax,`_mscSyncG(${i},this.value,'n')`)}</td>
       <td><input class="msc-slide" type="range" step="1" min="0" max="${r.smax}" value="${r.pts}" oninput="_mscSyncG(${i},this.value,'s')"></td>
+      <td>${_mscMultBtns(r.key)}</td>
     </tr>`).join('');
   // Specific TT gift rows
   html += _msc.specific.map((sg, i) => `

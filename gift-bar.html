@@ -2998,6 +2998,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let _boostMult = { comments: 1, likes: 1, gifts: 1 };
   let _boostType = 'comments';
 
+  /* ── current pct (used to show % alongside surge/boost text) ── */
+  let _currentPct = 0;
+
   /* ── auto surge state (separate from manual boosts) ── */
   let _surgeActive    = false;   // true during the surge window
   let _surgeType      = null;    // current SURGE_TYPES entry
@@ -3144,9 +3147,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     const barText = document.getElementById('gb-bar-text');
     let remaining = Math.round(durMs / 1000) + STREAM_DELAY_S;
+    function _boostText() { return `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s  ·  ${_currentPct}%`; }
     function _updateBoostBar() {
       if(barText){
-        barText.textContent = `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s`;
+        barText.textContent = _boostText();
         barText.style.opacity = '';  // full opacity — clear pct-driven value
         barText.classList.add('visible', 'boost');
         barText.classList.remove('surge', 'urgent');
@@ -3155,7 +3159,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _updateBoostBar();
     boostTimer = setInterval(() => {
       remaining--;
-      if(barText) barText.textContent = `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s`;
+      if(barText) barText.textContent = _boostText();
       if(remaining <= 0) _endBoost(true);
     }, 1000);
   }
@@ -3250,6 +3254,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── Update bar fill + CTA text based on milk % ── */
   function _mmUpdateStatus(pct) {
+    _currentPct = pct;  // keep track for surge/boost text
     const milkFill = document.getElementById('gb-milk-fill');
     const barText  = document.getElementById('gb-bar-text');
     const show = _mmGoalVisible || _mmForceVisible;
@@ -3380,7 +3385,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     let remaining = Math.round(SURGE_DURATION_MS / 1000) + STREAM_DELAY_S;
     function _updateSurgeText(){
-      barText.textContent = `⚡ 2X ${st.label} — ${remaining}s`;
+      barText.textContent = `⚡ 2X ${st.label} — ${remaining}s  ·  ${_currentPct}%`;
     }
     _updateSurgeText();
     barText.style.opacity = '';
