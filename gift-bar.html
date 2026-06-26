@@ -114,6 +114,26 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #gift-bar.visible { opacity: 1; }
 
+/* ── Ripple layer — fill edge impact circles ── */
+#gb-ripple-layer {
+  position: absolute; top: 0; left: 0;
+  width: 1080px; height: 55px;
+  pointer-events: none; overflow: visible; z-index: 6;
+}
+/* ── Name tag — who just moved the meter (right-anchored above bar) ── */
+#gb-name-tag {
+  position: absolute; top: -28px; right: 16px;
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 600;
+  color: rgba(255,255,255,0.82); letter-spacing: 0.04em;
+  background: rgba(59,7,100,0.75);
+  border: 1px solid rgba(168,85,247,0.35);
+  border-radius: 20px; padding: 3px 12px;
+  pointer-events: none; z-index: 9; white-space: nowrap;
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+#gb-name-tag.visible { opacity: 1; transform: translateY(0); }
+
 /* ── Contribution ticker — floats above the gift bar ── */
 #gb-event-ticker {
   position: absolute; top: -30px; left: 0; right: 0;
@@ -1795,6 +1815,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 <div id="gift-bar">
   <div id="gb-event-ticker"><span id="gb-ticker-text"></span></div>
+  <div id="gb-name-tag"></div>
+  <div id="gb-ripple-layer"></div>
   <div id="bar-bg-layer">
     <div id="bar-bg"></div><div id="bar-wash"></div>
     <div id="bar-shimmer-flare"></div><div id="bar-border"></div>
@@ -3013,7 +3035,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const MIN_H          = 3;         // px — always-visible floor
   const FLOOR_PCT      = 30;        // log-scale display floor %
   const K              = 0.08;
-  const MAX_RAW        = 200;
+  let MAX_RAW          = 200;  // configurable from dock via milk-scoring-config.target
   const DECAY_RATE     = 0.035;
   const DECAY_TICK_MS  = 10_000;
   const SURGE_MIN_MS      = 60_000;  // min gap between auto surges
@@ -3044,13 +3066,13 @@ ablyChannel.subscribe('top-gifters',msg=>{
     heart_me:15, heart_me_first:50, yt_sub:40,
   };
 
-  // Mutable gift tier ranges — updated via milk-scoring-config
+  // Mutable gift tier ranges — dollar values, updated via milk-scoring-config
   let _giftRanges = [
-    { min:0,       max:49999,   rpt:3,  isNew:20  },
-    { min:50000,   max:99999,   rpt:30, isNew:40  },
-    { min:100000,  max:199999,  rpt:50, isNew:60  },
-    { min:200000,  max:499999,  rpt:70, isNew:80  },
-    { min:500000,  max:9999999, rpt:90, isNew:100 },
+    { minD:0,   maxD:4.99,  rpt:3,  isNew:20  },
+    { minD:5,   maxD:9.99,  rpt:15, isNew:30  },
+    { minD:10,  maxD:19.99, rpt:30, isNew:50  },
+    { minD:20,  maxD:49.99, rpt:50, isNew:70  },
+    { minD:50,  maxD:9999,  rpt:80, isNew:100 },
   ];
 
   // Chat command matchers — { phrase, matchType, pts }
@@ -3074,6 +3096,40 @@ ablyChannel.subscribe('top-gifters',msg=>{
   /* ── instant save thresholds (0 = disabled) ── */
   let _instantSaveCoins   = 0;
   let _instantSaveDollars = 0;
+
+  /* ── fill edge ripple ── */
+  const _rippleLayer = document.getElementById('gb-ripple-layer');
+  function _triggerRipple(pct, pts) {
+    if (!_rippleLayer || pct <= 0) return;
+    const x     = Math.round(pct / 100 * 1080);
+    const y     = 27;  // vertical center of 55px bar
+    const rings = pts >= 30 ? 3 : pts >= 8 ? 2 : 1;
+    const color = pts >= 30 ? 'rgba(232,121,249,' : pts >= 8 ? 'rgba(192,132,252,' : 'rgba(168,85,247,';
+    for (let i = 0; i < rings; i++) {
+      const el = document.createElement('div');
+      el.style.cssText = `position:absolute;border-radius:50%;border:2px solid ${color}0.85);left:${x}px;top:${y}px;transform:translate(-50%,-50%);pointer-events:none;`;
+      _rippleLayer.appendChild(el);
+      const size = Math.min(140, Math.max(18, pts * 2.8)) * (1 + i * 0.45);
+      setTimeout(() => {
+        el.animate([
+          { width:'6px', height:'6px', opacity:0.9, transform:'translate(-50%,-50%)' },
+          { width:size+'px', height:size+'px', opacity:0, transform:'translate(-50%,-50%)' },
+        ], { duration: 650 + i * 130, easing:'ease-out', fill:'forwards' })
+        .onfinish = () => el.remove();
+      }, i * 110);
+    }
+  }
+
+  /* ── name tag — who just moved the meter ── */
+  const _nameTagEl    = document.getElementById('gb-name-tag');
+  let   _nameTagTimer = null;
+  function _triggerNameTag(username, action) {
+    if (!_nameTagEl || !username) return;
+    _nameTagEl.textContent = `@${username}  ${action}`;
+    _nameTagEl.classList.add('visible');
+    clearTimeout(_nameTagTimer);
+    _nameTagTimer = setTimeout(() => _nameTagEl.classList.remove('visible'), 2600);
+  }
 
   /* ── contribution ticker ── */
   const _tickerEl = document.getElementById('gb-ticker-text');
@@ -3437,7 +3493,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── add points ── */
   /* ── addPts: type maps to boost category + injects platform energy ── */
-  function addPts(base, plat, inputType, tickerLabel){
+  function addPts(base, plat, inputType, tickerLabel, username){
     if(plat && plat !== 'other') setPlatMode(plat);
     const cat  = (inputType === 'like' || inputType === 'like_batch') ? 'likes'
                : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
@@ -3446,7 +3502,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const surgeX  = (_surgeActive && _surgeType && _surgeType.match(inputType, plat, cat)) ? SURGE_MULTI : 1;
     const pts     = base * _intensityMult * boostX * surgeX;
     rawScore = Math.min(rawScore + pts, MAX_RAW);
-    // Contribution ticker
+    // Contribution ticker + visual effects
     if(pts > 0){
       const _tMap = { comment:'💬 comment', like:'👍 like', like_batch:'👍 likes',
         join:'🚪 join/follow', heart_me:'💝 Heart Me', heart_me_first:'✨ first Heart Me',
@@ -3454,6 +3510,14 @@ ablyChannel.subscribe('top-gifters',msg=>{
       const _lbl = tickerLabel || _tMap[inputType] || inputType;
       const _pStr = pts < 1 ? '+'+pts.toFixed(1) : '+'+Math.round(pts);
       _tickerAdd(`${_lbl}  ${_pStr}pts`);
+      // Ripple at current fill edge — always
+      const _pctNow = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+      _triggerRipple(_pctNow, pts);
+      // Name tag — only when we have a username
+      if(username) {
+        const _nameAction = tickerLabel ? tickerLabel.replace(/^\S+\s*/,'') : `+${_pStr}pts`;
+        _triggerNameTag(username, _nameAction);
+      }
     }
 
     // ── Platform energy injection for visual waveform ──
@@ -3731,12 +3795,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
   function milkGiftPts(gifterKey, coins, dollars){
     const isNew = gifterKey && !_milkGiftersSeen.has(gifterKey);
     if(gifterKey) _milkGiftersSeen.add(gifterKey);
-    // Normalize to coin-equivalent ($1 ≈ 1000 coins)
-    const coinEq = coins > 0 ? coins : (dollars > 0 ? dollars * 1000 : 0);
+    // Normalize to dollar value — works for TT coins, YT superchats, jewels, etc.
+    const dollarVal = dollars > 0 ? dollars : (coins > 0 ? coins / 100 : 0);
     // Walk dynamic tiers from highest to lowest
-    const sorted = [..._giftRanges].sort((a,b) => b.min - a.min);
+    const sorted = [..._giftRanges].sort((a,b) => b.minD - a.minD);
     for(const tier of sorted){
-      if(coinEq >= tier.min) return isNew ? tier.isNew : tier.rpt;
+      if(dollarVal >= tier.minD) return isNew ? tier.isNew : tier.rpt;
     }
     return isNew ? 20 : 3; // fallback if no tiers defined
   }
@@ -3746,54 +3810,53 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const d = msg?.data, type = d?.type, plat = d?.platform || 'other';
     if(!type) return;
     trackEvt(type, plat);
+    const _who = d.gifterKey || d.username || null;
     switch(type){
       case 'comment': case 'comment_match':
-        addPts(PTS[type] ?? 0.5, plat, type); break;
+        addPts(PTS[type] ?? 0.5, plat, type, null, _who); break;
       case 'join':
-        addPts(PTS.join ?? 1, plat, 'join');
+        addPts(PTS.join ?? 1, plat, 'join', null, _who);
         _fireEntryBanner(_currentPct);
         break;
       case 'like':
-        addPts(PTS.like, plat, 'like'); break;
+        addPts(PTS.like, plat, 'like'); break;      // likes: no username, ripple only
       case 'like_batch':
         addPts(PTS.like_batch, plat, 'like_batch'); break;
       case 'yt_sub':
-        addPts(PTS.yt_sub, 'yt', 'yt_sub'); fireFirstFlash(); break;
+        addPts(PTS.yt_sub, 'yt', 'yt_sub', '📹 YT sub', _who); fireFirstFlash(); break;
 
       case 'heart_me':
-        // Heart Me repeat gifter — use uniqueness system
-        addPts(milkGiftPts(d.gifterKey, 1, 0), 'tt', 'heart_me'); break;
+        addPts(milkGiftPts(d.gifterKey, 1, 0), 'tt', 'heart_me', '💝 Heart Me', _who); break;
       case 'heart_me_first':
-        // Heart Me first-timer — mark in unique set + flash
         if(d.gifterKey) _milkGiftersSeen.add(d.gifterKey);
-        addPts(PTS.heart_me_first, 'tt', 'heart_me'); fireFirstFlash(); break;
+        addPts(PTS.heart_me_first, 'tt', 'heart_me', '✨ first Heart Me', _who); fireFirstFlash(); break;
 
       case 'tiktok_gift': {
         const _gKey = d.giftName ? 'gift_' + d.giftName.toLowerCase().replace(/\s+/g,'_') : null;
         const _gPts = (_gKey && PTS[_gKey] != null) ? PTS[_gKey]
                     : milkGiftPts(d.gifterKey, d.coins || 0, 0);
-        // Instant save — gift meets coin threshold during rescue countdown
         if(_instantSaveCoins > 0 && (d.coins||0) >= _instantSaveCoins &&
            typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
           _tickerAdd(`⚡ ${d.giftName||'Gift'} — INSTANT SAVE!`);
+          if(_who) _triggerNameTag(_who, `sent ${d.giftName||'gift'} — SAVED IT!`);
           splatEnterSaved();
           setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
           break;
         }
-        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`); break;
+        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`, _who); break;
       }
 
       case 'yt_superchat': {
         const _sPts = milkGiftPts(d.gifterKey, 0, d.dollars||0);
-        // Instant save — super chat meets dollar threshold during rescue countdown
         if(_instantSaveDollars > 0 && (d.dollars||0) >= _instantSaveDollars &&
            typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
           _tickerAdd(`⚡ $${d.dollars} Super Chat — INSTANT SAVE!`);
+          if(_who) _triggerNameTag(_who, `sent $${d.dollars} — SAVED IT!`);
           splatEnterSaved();
           setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
           break;
         }
-        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`); break;
+        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`, _who); break;
       }
     }
   });
@@ -3880,14 +3943,19 @@ ablyChannel.subscribe('top-gifters',msg=>{
       Object.assign(PTS, d.pts);
     }
 
-    // Update gift tier ranges
-    if(Array.isArray(d.ranges) && d.ranges.length){
+    // Update gift tier ranges (dollar-based: minD/maxD)
+    if(Array.isArray(d.ranges) && d.ranges.length && d.ranges[0]?.minD != null){
       _giftRanges = d.ranges.map(r => ({
-        min:   Number(r.min)   || 0,
-        max:   Number(r.max)   || 9999999,
+        minD:  Number(r.minD)  || 0,
+        maxD:  Number(r.maxD)  || 9999,
         rpt:   Number(r.rpt)   || 0,
         isNew: Number(r.isNew) || 0,
       }));
+    }
+
+    // Update fill target (100% threshold)
+    if(d.target != null && Number(d.target) > 0){
+      MAX_RAW = Number(d.target);
     }
 
     // Update chat command matchers
