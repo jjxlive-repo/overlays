@@ -63,6 +63,72 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   opacity: 0; transition: opacity 0.6s ease; z-index: 10;
 }
 #gift-bar.visible { opacity: 1; }
+
+/* ── Milk fill — sweeps L→R inside bar based on milk % ── */
+#gb-milk-fill {
+  position: absolute; top: 0; left: 0; bottom: 0; width: 0%;
+  background: linear-gradient(90deg, rgba(147,51,234,0.42) 0%, rgba(232,121,249,0.28) 100%);
+  transition: width 0.5s ease, background 0.4s ease;
+  pointer-events: none; z-index: 1;
+}
+#gb-milk-fill.urgent {
+  background: linear-gradient(90deg, rgba(168,85,247,0.58) 0%, rgba(232,121,249,0.48) 100%);
+}
+/* ── In-bar CTA / surge text ── */
+#gb-bar-text {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-family: 'Anton', sans-serif; font-size: 22px; color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 16px rgba(168,85,247,0.5);
+  white-space: nowrap; letter-spacing: 0.07em; text-transform: uppercase;
+  line-height: 1; pointer-events: none; z-index: 7;
+  opacity: 0; transition: opacity 0.3s ease, font-size 0.3s ease;
+}
+#gb-bar-text.visible { opacity: 1; }
+#gb-bar-text.urgent {
+  font-size: 26px;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.95), 0 0 28px rgba(232,121,249,0.9), 0 0 55px rgba(168,85,247,0.6);
+  animation: gbTextPulse 0.5s ease-in-out infinite alternate;
+}
+#gb-bar-text.surge {
+  font-size: 30px; letter-spacing: 0.1em;
+  -webkit-text-stroke: 1.5px #7c3aed;
+  text-shadow: 0 0 20px #e879f9, 0 0 50px #a855f7, 0 3px 0 rgba(0,0,0,0.9);
+  animation: gbSurgePulse 0.2s ease-in-out infinite alternate;
+}
+#gb-bar-text.boost {
+  font-size: 24px; letter-spacing: 0.08em;
+  text-shadow: 0 0 16px #38bdf8, 0 0 36px #3b82f6, 0 3px 0 rgba(0,0,0,0.9);
+  animation: gbBoostPulse 0.55s ease-in-out infinite alternate;
+}
+@keyframes gbBoostPulse {
+  from { filter: brightness(1.0) drop-shadow(0 0 6px #3b82f6); }
+  to   { filter: brightness(1.4) drop-shadow(0 0 20px #38bdf8) drop-shadow(0 0 36px #fff); }
+}
+/* Bar border flickers blue during manual boost */
+#gift-bar.gb-boost-active #bar-border::before,
+#gift-bar.gb-boost-active #bar-border::after {
+  animation: gbBorderFlicker 0.15s steps(1) infinite;
+  background: linear-gradient(to right, rgba(56,189,248,0.3) 0%, rgba(255,255,255,0.7) 50%, rgba(56,189,248,0.3) 100%);
+}
+@keyframes gbTextPulse {
+  from { text-shadow: 0 2px 8px rgba(0,0,0,0.95), 0 0 20px rgba(192,132,252,0.8), 0 0 45px rgba(168,85,247,0.5); }
+  to   { text-shadow: 0 2px 8px rgba(0,0,0,0.95), 0 0 36px rgba(232,121,249,1.0), 0 0 70px rgba(168,85,247,0.75); }
+}
+@keyframes gbSurgePulse {
+  from { filter: brightness(1.0) drop-shadow(0 0 8px #a855f7); }
+  to   { filter: brightness(1.6) drop-shadow(0 0 28px #e879f9) drop-shadow(0 0 50px #fff); }
+}
+/* Bar top/bottom border flickers electric during surge */
+#gift-bar.gb-surge-active #bar-border::before,
+#gift-bar.gb-surge-active #bar-border::after {
+  animation: gbBorderFlicker 0.12s steps(1) infinite;
+}
+@keyframes gbBorderFlicker {
+  0%  { opacity: 1; }
+  30% { opacity: 0.25; }
+  60% { opacity: 0.85; }
+}
+
 #gift-bar.ep-passive-active { opacity: 1; }
 #gift-bar.ep-passive-active #bar-bg {
   background: linear-gradient(to right, transparent 0%, rgba(20,4,40,0.12) 18%,
@@ -1565,86 +1631,6 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   from { background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.10) 30%, rgba(232,121,249,0.75) 70%, rgba(255,255,255,0.85) 100%); }
   to   { background: linear-gradient(to right, transparent 0%, rgba(232,121,249,0.25) 30%, rgba(255,255,255,0.65) 70%, rgba(232,121,249,1.0) 100%); }
 }
-/* ══ MILK BOOST BANNER — electric arc, slides UP from above the bar ══ */
-#mm-boost-banner {
-  position: absolute;
-  top: 395px; left: 50%;   /* gift bar top (450) minus banner height (55) = 395 */
-  /* hidden: at the gift bar's y-level, slides upward to reveal */
-  transform: translateX(-50%) translateY(100%);
-  opacity: 0;
-  /* single-row strip, same height as gift bar */
-  height: 55px;
-  width: max-content;
-  padding: 0 22px;
-  white-space: nowrap;
-  pointer-events: none; z-index: 14;
-  /* electric border via spinning ::before + dark ::after */
-  border-radius: 12px 12px 0 0;   /* rounded top, flat bottom flush with bar */
-  overflow: hidden;
-  display: flex; flex-direction: row; align-items: center; gap: 10px;
-  transition: transform 0.38s cubic-bezier(.34,1.56,.64,1), opacity 0.22s ease;
-}
-#mm-boost-banner.visible {
-  transform: translateX(-50%) translateY(0);
-  opacity: 1;
-}
-/* spinning red↔blue electric border — negative z-index so text is always above */
-#mm-boost-banner::before {
-  content: '';
-  position: absolute;
-  width: 400%; height: 400%;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%) rotate(0deg);
-  background: conic-gradient(
-    from 0deg,
-    #ff1144 0deg, #ff77aa 55deg, transparent 95deg,
-    #0077ff 160deg, #44aaff 215deg, transparent 255deg,
-    #ff1144 320deg, transparent 360deg
-  );
-  animation: electricSpin 2s linear infinite;
-  z-index: -2;
-}
-/* dark inner fill — 3px electric border visible around edge */
-#mm-boost-banner::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  background: rgba(4,0,16,0.97);
-  border-radius: 9px 9px 0 0;
-  z-index: -1;
-}
-@keyframes electricSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
-@keyframes mmArcFlicker {
-  0%,100% { filter: brightness(1.0) drop-shadow(0 0 4px #fff); }
-  15%     { filter: brightness(1.8) drop-shadow(0 0 12px #38bdf8) drop-shadow(0 0 20px #3b82f6); }
-  30%     { filter: brightness(1.2) drop-shadow(0 0 6px #fff); }
-  50%     { filter: brightness(2.0) drop-shadow(0 0 16px #facc15) drop-shadow(0 0 28px #fb923c); }
-  70%     { filter: brightness(1.3) drop-shadow(0 0 8px #e879f9); }
-  85%     { filter: brightness(1.9) drop-shadow(0 0 14px #fff) drop-shadow(0 0 24px #38bdf8); }
-}
-#mm-boost-banner.visible {
-  animation: mmArcFlicker 0.9s ease-in-out infinite;
-}
-
-/* ── text elements (all inline on one row) ── */
-#mm-bb-headline {
-  font-family: 'Anton', sans-serif; font-size: 26px; letter-spacing: 3px;
-  color: #fff; line-height: 1;
-}
-.mm-bb-sep {
-  font-size: 14px; color: rgba(255,255,255,0.35); font-weight: 300;
-}
-#mm-bb-cta {
-  font-family: 'Anton', sans-serif; font-size: 22px; letter-spacing: 2px;
-  color: #fff; text-transform: uppercase; line-height: 1;
-}
-#mm-bb-timer {
-  font-family: 'Boogaloo', cursive; font-size: 26px; color: #fff; line-height: 1;
-}
-#mm-bb-unit {
-  font-family: 'DM Sans', sans-serif; font-size: 11px; letter-spacing: 2px;
-  color: rgba(255,255,255,0.5); text-transform: uppercase; margin-left: -4px;
-}
 #hm-first-gifter-flash {
   position: absolute; inset: 0; pointer-events: none; z-index: 14; opacity: 0;
   background: linear-gradient(to right, transparent 0%, rgba(255,215,0,0.05) 25%, rgba(255,215,0,0.16) 60%, rgba(255,215,0,0.26) 100%);
@@ -1737,6 +1723,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     <div id="bar-shimmer-flare"></div><div id="bar-border"></div>
     <div id="bar-progress"></div>
   </div>
+  <div id="gb-milk-fill"></div>
+  <div id="gb-bar-text"></div>
   <!-- ══ GIFT BATTLE BAR — overlays bar when battle/progress mode is active ══ -->
   <div id="gift-battle-bar">
     <!-- fills -->
@@ -1852,15 +1840,6 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="hype-meter"></div>
 </div>
 
-<!-- ══ HYPE: surge banner + first-gifter flash layer (outside gift-bar so they can overflow) ══ -->
-<div id="mm-boost-banner">
-  <span id="mm-bb-headline">⚡ 2X 🔥</span>
-  <span class="mm-bb-sep">·</span>
-  <span id="mm-bb-cta">COMMENTS &amp; JOINS</span>
-  <span class="mm-bb-sep">·</span>
-  <span id="mm-bb-timer">30</span><span id="mm-bb-unit">s</span>
-  <span class="mm-bb-sep">⚡</span>
-</div>
 <div id="hm-first-gifter-flash"></div>
 
 <!-- ══ GBB TIMER SHELF — floats above the battle bar for countdown display ══ -->
@@ -2707,8 +2686,8 @@ function _orchOnAlertStart() {
   const gb = document.getElementById('gift-bar');
   _epWasPassive = gb.classList.contains('ep-passive-active');
   if (_epWasPassive) gb.classList.remove('ep-passive-active');
-  // Hide milk status text during alert
-  const sw = document.getElementById('mm-status-wrap');
+  // Hide in-bar text during alert
+  const sw = document.getElementById('gb-bar-text');
   if (sw) sw.style.opacity = '0';
   // Pause EP auto-cycle
   stopEventPromoAuto();
@@ -2721,8 +2700,8 @@ function _orchOnAlertEnd() {
     gb.classList.add('ep-passive-active');
     _epWasPassive = false;
   }
-  // Restore milk status text
-  const sw = document.getElementById('mm-status-wrap');
+  // Restore in-bar text
+  const sw = document.getElementById('gb-bar-text');
   if (sw) sw.style.opacity = '';
 
   // Fire queued goal explosion if pending
@@ -3051,10 +3030,6 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const HMW = hmCanvas.width;
   const HMH = hmCanvas.height;
 
-  const boostBanner = document.getElementById('mm-boost-banner');
-  const bbCta       = document.getElementById('mm-bb-cta');
-  const bbTimer     = document.getElementById('mm-bb-timer');
-  const bbHeadline  = document.getElementById('mm-bb-headline');
   const firstFlash  = document.getElementById('hm-first-gifter-flash');
   const giftBarEl   = document.getElementById('gift-bar');
 
@@ -3109,15 +3084,13 @@ ablyChannel.subscribe('top-gifters',msg=>{
   /* ── pick surge duration + CTA based on current energy ── */
   /* ── _triggerBoost: core boost fire (manual or auto) ── */
   function _triggerBoost(type, mult, durMs, cta, icon){
-    // If a gift alert is playing, defer the boost banner until it's done
     if(alertActive){
+      // Defer visual until alert clears; apply multiplier immediately
       _pendingBoostData = { type, mult, durMs, cta, icon };
-      // Still apply the multiplier immediately so points during the alert are boosted
       if(boostActive) _endBoost(false);
       boostActive = true;
       _boostType  = type;
       _boostMult[type] = mult;
-      // Schedule auto-end without showing banner yet
       if(boostTimer) clearInterval(boostTimer);
       let remaining = Math.round(durMs / 1000);
       boostTimer = setInterval(() => {
@@ -3126,23 +3099,25 @@ ablyChannel.subscribe('top-gifters',msg=>{
       }, 1000);
       return;
     }
-    // No alert active — show banner immediately
     if(boostActive) _endBoost(false);
-    boostActive   = true;
-    _boostType    = type;
+    boostActive      = true;
+    _boostType       = type;
     _boostMult[type] = mult;
+    giftBarEl?.classList.add('hm-surge-active', 'gb-boost-active');
 
-    giftBarEl?.classList.add('hm-surge-active');
-    // Update banner text: "⚡ 5X 💬" · "COMMENTS" · "45s"
-    if(bbHeadline) bbHeadline.textContent = `⚡ ${mult}X ${icon}`;
-    if(bbCta)      bbCta.textContent      = cta;
+    const barText = document.getElementById('gb-bar-text');
     let remaining = Math.round(durMs / 1000);
-    if(bbTimer)    bbTimer.textContent    = remaining;
-    boostBanner?.classList.add('visible');
-
+    function _updateBoostBar() {
+      if(barText){
+        barText.textContent = `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s`;
+        barText.classList.add('visible', 'boost');
+        barText.classList.remove('surge', 'urgent');
+      }
+    }
+    _updateBoostBar();
     boostTimer = setInterval(() => {
       remaining--;
-      if(bbTimer) bbTimer.textContent = Math.max(0, remaining);
+      if(barText) barText.textContent = `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s`;
       if(remaining <= 0) _endBoost(true);
     }, 1000);
   }
@@ -3150,11 +3125,13 @@ ablyChannel.subscribe('top-gifters',msg=>{
   function _endBoost(reschedule){
     if(!boostActive) return;
     boostActive = false;
-    _boostMult[_boostType] = 1; // reset that type's multiplier
+    _boostMult[_boostType] = 1;
     clearInterval(boostTimer);
     boostTimer = null;
-    boostBanner?.classList.remove('visible');
-    giftBarEl?.classList.remove('hm-surge-active');
+    giftBarEl?.classList.remove('hm-surge-active', 'gb-boost-active');
+    const barText = document.getElementById('gb-bar-text');
+    if(barText) barText.classList.remove('boost');
+    // Next drawHype frame restores CTA text/visibility naturally
     if(reschedule) _scheduleAutoBoost();
   }
 
@@ -3177,99 +3154,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let _mmGoalVisible = true;
   let _mmForceVisible = false;                 // dock Show button forces display even at 0%
 
-  // Inject Milk Goal styles
+  // Inject Milk Goal styles (goal explosion + hit-flash only — bar fill/text are in main CSS)
   const _mmSty = document.createElement('style');
   _mmSty.textContent = `
-    /* ── Status text — sits below the gift bar ── */
-    /* ── Status wrap: sits BELOW the hype meter waveform ──
-       Gift bar:   top 450px, height 55px → bottom 505px
-       Hype meter: top 100% of bar → 505px, height 110px → bottom 615px
-       Status:     starts at 624px (8px gap below meter)            */
-    #mm-status-wrap {
-      position: absolute;
-      left: 50%; transform: translateX(-50%);
-      top: 624px;
-      display: flex; flex-direction: column; align-items: center; gap: 8px;
-      pointer-events: none; z-index: 13;
-      opacity: 0;
-      transition: opacity 0.5s ease;
-    }
-    #mm-status-wrap.visible { opacity: 1; }
-
-    /* Pill background for legibility over any game footage */
-    #mm-status-text-wrap {
-      background: rgba(5, 0, 20, 0.55);
-      border: 1px solid rgba(168,85,247,0.28);
-      border-radius: 24px;
-      padding: 5px 20px 6px;
-      backdrop-filter: blur(4px);
-      transition: background 0.4s ease, border-color 0.4s ease, padding 0.4s ease;
-    }
-    #mm-status-wrap.urgent #mm-status-text-wrap {
-      background: rgba(10, 0, 30, 0.72);
-      border-color: rgba(232,121,249,0.65);
-      padding: 7px 26px 8px;
-    }
-
-    #mm-status-text {
-      font-family: 'Anton', sans-serif;
-      font-size: 44px;
-      color: #ffffff;
-      -webkit-text-stroke: 2.5px #0f0020;
-      text-shadow:
-        0 3px 12px rgba(0,0,0,0.9),
-        0 0 24px rgba(168,85,247,0.55),
-        0 0 48px rgba(168,85,247,0.25);
-      white-space: nowrap;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      line-height: 1;
-      display: block;
-      transition: font-size 0.4s cubic-bezier(.34,1.56,.64,1),
-                  text-shadow 0.4s ease;
-    }
-    /* Urgency: 80–99% */
-    #mm-status-wrap.urgent #mm-status-text {
-      font-size: 58px;
-      -webkit-text-stroke: 3px #0f0020;
-      text-shadow:
-        0 3px 14px rgba(0,0,0,0.95),
-        0 0 36px rgba(232,121,249,0.95),
-        0 0 70px rgba(168,85,247,0.65),
-        0 0 110px rgba(168,85,247,0.35);
-      animation: mmStatusPulse 0.5s ease-in-out infinite alternate;
-    }
-    @keyframes mmStatusPulse {
-      from { transform: scale(1.0);
-             text-shadow: 0 3px 14px rgba(0,0,0,0.95), 0 0 28px rgba(192,132,252,0.8),  0 0 55px rgba(168,85,247,0.5); }
-      to   { transform: scale(1.055);
-             text-shadow: 0 3px 14px rgba(0,0,0,0.95), 0 0 48px rgba(232,121,249,1.0),  0 0 90px rgba(168,85,247,0.75); }
-    }
-
-    /* Progress underline */
-    #mm-progress-track {
-      width: 500px; height: 7px;
-      background: rgba(168,85,247,0.18);
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    #mm-progress-fill-line {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, rgba(147,51,234,0.8), rgba(192,132,252,1.0));
-      border-radius: 4px;
-      box-shadow: 0 0 10px rgba(192,132,252,0.7);
-      transition: width 0.5s ease;
-    }
-    #mm-status-wrap.urgent #mm-progress-fill-line {
-      background: linear-gradient(90deg, #a855f7, #e879f9, #ffffff);
-      box-shadow: 0 0 12px rgba(232,121,249,1.0), 0 0 24px rgba(168,85,247,0.7);
-      animation: mmLinePulse 0.5s ease-in-out infinite alternate;
-    }
-    @keyframes mmLinePulse {
-      from { box-shadow: 0 0 10px rgba(232,121,249,0.8); }
-      to   { box-shadow: 0 0 22px rgba(232,121,249,1.0), 0 0 38px rgba(168,85,247,0.7); }
-    }
-
     /* ── Goal explosion — text blasts from center of gift bar ── */
     #mm-goal-explosion {
       position: absolute;
@@ -3315,13 +3202,6 @@ ablyChannel.subscribe('top-gifters',msg=>{
   document.head.appendChild(_mmSty);
 
   // Inject elements
-  const _mmWrap = document.createElement('div');
-  _mmWrap.id = 'mm-status-wrap';
-  _mmWrap.innerHTML =
-    '<div id="mm-status-text-wrap"><span id="mm-status-text">MILK THE METER 🫟</span></div>' +
-    '<div id="mm-progress-track"><div id="mm-progress-fill-line"></div></div>';
-  document.body.appendChild(_mmWrap);
-
   const _mmExplosion = document.createElement('div');
   _mmExplosion.id = 'mm-goal-explosion';
   _mmExplosion.textContent = 'LETS GOOO!!';
@@ -3330,16 +3210,21 @@ ablyChannel.subscribe('top-gifters',msg=>{
   if(_gbEl) _gbEl.appendChild(_mmExplosion);
   else document.body.appendChild(_mmExplosion);
 
-  /* ── Update status text state based on milk % ── */
+  /* ── Update bar fill + CTA text based on milk % ── */
   function _mmUpdateStatus(pct) {
-    if(!_mmGoalVisible && !_mmForceVisible){ _mmWrap.classList.remove('visible'); return; }
-    // Force-visible shows at any %; normal mode only shows at 5%+
-    _mmWrap.classList.toggle('visible', _mmForceVisible || pct >= 5);
-    _mmWrap.classList.toggle('urgent', pct >= 80);
-    const fillLine = document.getElementById('mm-progress-fill-line');
-    const statusTxt = document.getElementById('mm-status-text');
-    if(fillLine) fillLine.style.width = pct + '%';
-    if(statusTxt) statusTxt.textContent = _mmBaitText;
+    const milkFill = document.getElementById('gb-milk-fill');
+    const barText  = document.getElementById('gb-bar-text');
+    const show = (_mmGoalVisible || _mmForceVisible) && (_mmForceVisible || pct >= 5);
+    if (milkFill) {
+      milkFill.style.width = show ? pct + '%' : '0%';
+      milkFill.classList.toggle('urgent', pct >= 80);
+    }
+    if (barText && !_surgeActive) {
+      barText.textContent = _mmBaitText;
+      barText.classList.toggle('visible', show);
+      barText.classList.toggle('urgent', pct >= 80);
+      barText.classList.remove('surge');
+    }
   }
 
   function fireMilkGoal(){
@@ -3446,65 +3331,23 @@ ablyChannel.subscribe('top-gifters',msg=>{
   }
 
   /* ── Surge flash element (injected, separate from manual boost banner) ── */
-  (function _initSurgeFlash(){
-    const sty = document.createElement('style');
-    sty.textContent = `
-      #surge-flash {
-        position: absolute;
-        top: 375px; left: 0; width: 1080px; height: 80px;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 5px; pointer-events: none; z-index: 22;
-        opacity: 0; transform: scaleY(0.4);
-        transition: opacity 0.1s ease, transform 0.15s cubic-bezier(.34,1.56,.64,1);
-      }
-      #surge-flash.active { opacity: 1; transform: scaleY(1); }
-      #sf-text {
-        font-family: 'Anton', sans-serif; font-size: 54px; color: #fff;
-        letter-spacing: 8px; line-height: 1;
-        -webkit-text-stroke: 2px #7c3aed;
-        text-shadow: 0 0 20px #e879f9, 0 0 50px #a855f7, 0 4px 0 rgba(0,0,0,0.9);
-        animation: sfPulse 0.2s ease-in-out infinite alternate;
-      }
-      #surge-flash.active #sf-text { animation-play-state: running; }
-      @keyframes sfPulse {
-        from { filter: brightness(1.0) drop-shadow(0 0 8px #a855f7); }
-        to   { filter: brightness(1.6) drop-shadow(0 0 28px #e879f9) drop-shadow(0 0 50px #fff); }
-      }
-      #sf-bar { width: 480px; height: 6px; background: rgba(168,85,247,0.25); border-radius: 3px; overflow: hidden; }
-      #sf-fill {
-        height: 100%; width: 100%;
-        background: linear-gradient(90deg, #7c3aed, #e879f9, #fff);
-        border-radius: 3px;
-        box-shadow: 0 0 14px #e879f9;
-      }
-    `;
-    document.head.appendChild(sty);
-
-    const el = document.createElement('div');
-    el.id = 'surge-flash';
-    el.innerHTML = '<div id="sf-text">⚡ 2X SURGE ⚡</div><div id="sf-bar"><div id="sf-fill"></div></div>';
-    document.body.appendChild(el);
-  })();
-
   function _showSurgeFlash(){
-    const el   = document.getElementById('surge-flash');
-    const fill = document.getElementById('sf-fill');
-    if(!el) return;
-    // Reset fill to full width, then start depleting over SURGE_DURATION_MS
-    if(fill){
-      fill.style.transition = 'none';
-      fill.style.width = '100%';
-      requestAnimationFrame(() => {
-        fill.style.transition = `width ${SURGE_DURATION_MS}ms linear`;
-        fill.style.width = '0%';
-      });
+    const barText = document.getElementById('gb-bar-text');
+    const gb      = document.getElementById('gift-bar');
+    if(barText){
+      barText.textContent = '⚡ 2X SURGE ⚡';
+      barText.classList.add('visible', 'surge');
+      barText.classList.remove('urgent');
     }
-    el.classList.add('active');
+    if(gb) gb.classList.add('gb-surge-active');
   }
 
   function _hideSurgeFlash(){
-    const el = document.getElementById('surge-flash');
-    if(el) el.classList.remove('active');
+    const barText = document.getElementById('gb-bar-text');
+    const gb      = document.getElementById('gift-bar');
+    if(gb) gb.classList.remove('gb-surge-active');
+    // Strip surge — next drawHype frame restores CTA text/visibility naturally
+    if(barText) barText.classList.remove('surge');
   }
 
   function _playSurgeSound(){
@@ -3758,14 +3601,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
   ablyChannel.subscribe('gift-bar-pos', msg => {
     const top = msg.data?.top;
     if(typeof top !== 'number') return;
-    const gb  = document.getElementById('gift-bar');
-    const ban = document.getElementById('mm-boost-banner');
-    const bbi = document.getElementById('bb-indicator');
-    const sf  = document.getElementById('surge-flash');
-    if(gb)  gb.style.top  = top + 'px';
-    if(ban) ban.style.top = (top - 55) + 'px';
-    if(bbi) bbi.style.top = (top + 66) + 'px';
-    if(sf)  sf.style.top  = (top - 75) + 'px';  // surge flash sits just above bar
+    const gb = document.getElementById('gift-bar');
+    if(gb) gb.style.top = top + 'px';
   });
 
   ablyChannel.subscribe('milk-cta', msg => {
