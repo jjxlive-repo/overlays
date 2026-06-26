@@ -591,9 +591,10 @@ html, body {
 
 /* ── FLASH ── */
 #flash { position:fixed; inset:0; pointer-events:none; z-index:999; opacity:0; transition:opacity 0.1s; }
-#flash.green  { background:rgba(34,197,94,0.12); }
-#flash.red    { background:rgba(244,63,94,0.12); }
-#flash.purple { background:rgba(232,121,249,0.22); }
+/* Deutan-safe: blue = confirm/good, orange = warn/reset, purple = action */
+#flash.green  { background:rgba(59,130,246,0.18); }   /* blue — safe/save */
+#flash.red    { background:rgba(249,115,22,0.20); }    /* orange — reset/danger */
+#flash.purple { background:rgba(232,121,249,0.22); }   /* purple — action */
 #flash.show  { opacity:1; }
 
 /* ── GIFT GLOW — entire dock blazes gold ── */
@@ -622,219 +623,155 @@ html, body {
 
 
 /* ══════════════════════════════════════════════════════
-   GIFT CELEBRATION OVERLAY
-   Progressive tier system — T1 corner card → T10 full takeover
-   All colors colorblind-safe (no red/green distinction)
+   GIFT CELEBRATION — Slide-down banner system
+   T0 (tiny spam-guarded) → T10 (legendary)
+   Backgrounds scale by tier; colorblind-safe (deutan)
+   Blue family = small  Amber/orange = mid  Purple = big  White = legendary
 ══════════════════════════════════════════════════════ */
 
-/* ── Tier color tokens ── */
-:root {
-  --gc-t1:  #94a3b8;  /* slate       subtle  */
-  --gc-t2:  #7dd3fc;  /* light blue  clean   */
-  --gc-t3:  #38bdf8;  /* sky blue    notable */
-  --gc-t4:  #fbbf24;  /* amber       warm    */
-  --gc-t5:  #f59e0b;  /* gold        rich    */
-  --gc-t6:  #fb923c;  /* orange      hot     */
-  --gc-t7:  #e879f9;  /* fuchsia     electric*/
-  --gc-t8:  #c084fc;  /* purple      intense */
-  --gc-t9:  #facc15;  /* yellow      shock   */
-  --gc-t10: #ffffff;  /* white       legend  */
+/* ── Milk Meter bar — top of chat ── */
+#dock-milk-bar {
+  background: rgba(13,8,30,0.95);
+  border-bottom: 1px solid rgba(168,85,247,0.25);
+  flex-shrink: 0;
+}
+#dock-milk-bar-inner {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px 3px;
+}
+#dock-milk-label {
+  font-family: var(--boogaloo); font-size: 11px; color: #c084fc;
+  flex: 1; letter-spacing: 0.03em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+#dock-milk-track {
+  height: 5px; background: rgba(255,255,255,0.07); overflow: hidden;
+}
+#dock-bb-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg,#7c3aed,#e879f9,#c084fc);
+  transition: width 0.5s ease;
+}
+#dock-bb-flash {
+  display: none; text-align: center; padding: 3px 8px 4px;
+  font-family: var(--boogaloo); font-size: 14px; color: #e879f9;
+  letter-spacing: 0.05em; background: rgba(59,7,100,0.55);
 }
 
-/* ── Container ── */
+/* ── Gift celebration container — slides down from very top ── */
 #gift-cel {
   position: fixed;
-  inset: 0;
+  top: 0; left: 0; right: 0;
   pointer-events: none;
   z-index: 9990;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
+#gift-cel-backdrop { display: none; } /* no longer used */
 
-/* ── Corner card (T1–T3) ── */
+/* ── Base banner card ── */
 .gc-card {
-  position: absolute;
-  pointer-events: none;
+  width: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1.5px solid var(--gc-color, #94a3b8);
-  background: rgba(13,13,18,0.92);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 0 20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  gap: 8px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-bottom: 2px solid var(--gc-color, #64748b);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+  transform: translateY(-110%);
   opacity: 0;
-  transform: translateY(20px) scale(0.92);
-  transition: none;
 }
 
-/* ── Position classes ── */
-.gc-card.gc-corner {
-  bottom: 60px;
-  right: 14px;
-  width: 200px;
-}
-.gc-card.gc-center {
-  position: relative;
-  width: 300px;
-}
-.gc-card.gc-takeover {
-  position: relative;
-  width: 88%;
-  max-width: 480px;
-}
+/* Tier heights */
+.gc-slim   { min-height: 36px; }
+.gc-small  { min-height: 50px; }
+.gc-medium { min-height: 62px; }
+.gc-large  { min-height: 74px; }
+.gc-legend { min-height: 88px; }
 
-/* ── Enter animations ── */
-.gc-card.gc-in.gc-corner {
-  animation: gcSlideUp 0.32s cubic-bezier(.34,1.56,.64,1) forwards;
-}
-.gc-card.gc-in.gc-center {
-  animation: gcScaleIn 0.38s cubic-bezier(.34,1.56,.64,1) forwards;
-}
-.gc-card.gc-in.gc-takeover {
-  animation: gcExplode 0.45s cubic-bezier(.22,1,.36,1) forwards;
-}
-.gc-card.gc-out {
-  animation: gcFadeOut 0.28s ease forwards !important;
-}
+/* Enter: slide down */
+.gc-card.gc-in  { animation: gcSlideDown 0.30s cubic-bezier(.34,1.56,.64,1) forwards; }
+.gc-card.gc-out { animation: gcSlideUp2  0.24s ease-in forwards !important; }
 
-@keyframes gcSlideUp {
-  from { opacity:0; transform:translateY(28px) scale(0.88); }
-  to   { opacity:1; transform:translateY(0)    scale(1);    }
+@keyframes gcSlideDown {
+  from { transform: translateY(-110%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
 }
-@keyframes gcScaleIn {
-  from { opacity:0; transform:scale(0.78); }
-  to   { opacity:1; transform:scale(1);    }
-}
-@keyframes gcExplode {
-  0%   { opacity:0; transform:scale(0.60); }
-  60%  { opacity:1; transform:scale(1.04); }
-  100% { opacity:1; transform:scale(1);    }
-}
-@keyframes gcFadeOut {
-  from { opacity:1; transform:scale(1);    }
-  to   { opacity:0; transform:scale(0.92); }
+@keyframes gcSlideUp2 {
+  from { transform: translateY(0);     opacity: 1; }
+  to   { transform: translateY(-110%); opacity: 0; }
 }
 
 /* ── Icon wrapper ── */
 .gc-icon-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  position: relative; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 }
-.gc-icon-wrap img, .gc-icon-wrap .gc-icon-emoji {
-  display: block;
-  object-fit: contain;
-  border-radius: 8px;
-  filter: drop-shadow(0 0 12px var(--gc-color, #94a3b8));
+.gc-icon-wrap img { object-fit: contain; border-radius: 6px; display: block; }
+.gc-icon-emoji { line-height: 1; display: block; }
+
+/* Combo badge */
+.gc-combo-badge {
+  position: absolute; top: -5px; right: -5px;
+  background: var(--gc-color, #64748b); color: #000;
+  font-size: 8px; font-weight: 800;
+  padding: 1px 4px; border-radius: 20px;
+  min-width: 18px; text-align: center;
 }
 
-/* ── Glow ring that pulses around icon ── */
-.gc-glow-ring {
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  border: 2px solid var(--gc-color, #94a3b8);
-  opacity: 0;
+/* ── Text area (middle) ── */
+.gc-text-area {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 1px;
 }
-.gc-card.gc-in .gc-glow-ring {
-  animation: gcRingPulse 1.2s ease-out infinite;
-}
-@keyframes gcRingPulse {
-  0%   { transform:scale(1);    opacity:0.8; }
-  100% { transform:scale(1.55); opacity:0;   }
-}
-
-/* ── Text elements ── */
 .gc-name {
   font-family: var(--boogaloo);
-  color: var(--gc-color, #94a3b8);
-  text-align: center;
+  color: var(--gc-color, #64748b);
   line-height: 1.1;
-  text-shadow: 0 0 14px var(--gc-color, #94a3b8);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 0 10px var(--gc-color, #64748b);
 }
 .gc-gift-label {
-  font-size: 10px;
-  color: rgba(255,255,255,0.55);
-  text-align: center;
+  color: rgba(255,255,255,0.6);
   font-weight: 500;
-  letter-spacing: 0.04em;
-}
-.gc-amount {
-  font-family: var(--mono);
-  font-weight: 700;
-  color: #fff;
-  text-align: center;
-  letter-spacing: 0.02em;
-}
-.gc-combo-badge {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  background: var(--gc-color, #94a3b8);
-  color: #000;
-  font-size: 9px;
-  font-weight: 800;
-  padding: 2px 5px;
-  border-radius: 20px;
-  min-width: 22px;
-  text-align: center;
-}
-.gc-platform-pill {
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 10px;
-  border: 1px solid var(--gc-color, #94a3b8);
-  color: var(--gc-color, #94a3b8);
-  background: rgba(0,0,0,0.4);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* ── Full-screen backdrop for T7–T10 ── */
-#gift-cel-backdrop {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9989;
-  opacity: 0;
-  transition: opacity 0.25s ease;
+/* ── Right side: amount + platform ── */
+.gc-right {
+  flex-shrink: 0; text-align: right;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
 }
-#gift-cel-backdrop.on {
-  opacity: 1;
-  animation: gcBackdrop 0.4s ease forwards;
+.gc-amount {
+  font-family: var(--mono); font-weight: 700; color: #fff;
 }
-@keyframes gcBackdrop {
-  from { opacity:0; } to { opacity:1; }
+.gc-platform-pill {
+  font-size: 7px; font-weight: 800;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 8px;
+  border: 1px solid var(--gc-color, #64748b);
+  color: var(--gc-color, #64748b);
+  background: rgba(0,0,0,0.35);
+}
+
+/* ── T10 legendary shimmer ── */
+.gc-legendary .gc-name { animation: gcLegPulse 1.2s ease-in-out infinite alternate; }
+@keyframes gcLegPulse {
+  from { text-shadow: 0 0 10px #fff; }
+  to   { text-shadow: 0 0 22px #fff, 0 0 40px #facc15; }
 }
 
 /* ── T8–T10 screen shake ── */
 @keyframes gcShake {
   0%,100% { transform:translate(0,0); }
-  15%      { transform:translate(-5px, 3px); }
-  30%      { transform:translate(4px,-4px); }
-  45%      { transform:translate(-3px, 5px); }
-  60%      { transform:translate(5px,-2px); }
-  75%      { transform:translate(-2px, 4px); }
-  90%      { transform:translate(3px,-3px); }
+  15%     { transform:translate(-4px, 2px); }
+  30%     { transform:translate(3px,-3px); }
+  45%     { transform:translate(-2px, 4px); }
+  60%     { transform:translate(4px,-2px); }
+  75%     { transform:translate(-2px, 3px); }
+  90%     { transform:translate(2px,-2px); }
 }
-body.gc-shake { animation: gcShake 0.55s ease; }
-
-/* ── T10 legendary shimmer on icon ── */
-.gc-legendary .gc-icon-wrap img {
-  animation: gcLegendaryShimmer 1.8s ease-in-out infinite;
-}
-@keyframes gcLegendaryShimmer {
-  0%,100% { filter: drop-shadow(0 0 16px #fff) drop-shadow(0 0 40px #facc15); }
-  33%     { filter: drop-shadow(0 0 24px #e879f9) drop-shadow(0 0 50px #c084fc); }
-  66%     { filter: drop-shadow(0 0 20px #38bdf8) drop-shadow(0 0 44px #7dd3fc); }
-}
+body.gc-shake { animation: gcShake 0.5s ease; }
 
 .settings-btn {
   background: none;
@@ -1458,6 +1395,24 @@ body.gc-shake { animation: gcShake 0.55s ease; }
 .msc-mult-btn { font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;border:1px solid rgba(168,85,247,.4);background:rgba(168,85,247,.12);color:#c084fc;cursor:pointer;line-height:1.4;white-space:nowrap;transition:background .12s; }
 .msc-mult-btn:hover { background:rgba(168,85,247,.35);color:#fff; }
 .msc-mult-btn:active { background:#7c3aed;color:#fff; }
+
+/* ── Test Fire buttons ── */
+.tf-btn {
+  font-size:10px;font-weight:700;padding:5px 4px;border-radius:5px;cursor:pointer;
+  border:1px solid rgba(168,85,247,0.45);background:rgba(168,85,247,0.12);
+  color:#c084fc;letter-spacing:.03em;transition:all .12s;
+}
+.tf-btn:hover  { background:rgba(168,85,247,0.35);color:#fff; }
+.tf-btn:active { background:#7c3aed;color:#fff;transform:scale(0.96); }
+.tf-btn-gift   { border-color:rgba(232,121,249,0.5);background:rgba(232,121,249,0.10);color:#e879f9; }
+.tf-btn-gift:hover  { background:rgba(232,121,249,0.28);color:#fff; }
+.tf-btn-gift:active { background:#a21caf; }
+.tf-btn-gold   { border-color:rgba(234,179,8,0.5);background:rgba(234,179,8,0.10);color:#facc15; }
+.tf-btn-gold:hover  { background:rgba(234,179,8,0.28);color:#fff; }
+.tf-btn-gold:active { background:#a16207; }
+.tf-btn-danger { border-color:rgba(239,68,68,0.5);background:rgba(239,68,68,0.10);color:#f87171; }
+.tf-btn-danger:hover  { background:rgba(239,68,68,0.28);color:#fff; }
+.tf-btn-danger:active { background:#991b1b; }
 </style>
 </head>
 <body>
@@ -1516,6 +1471,21 @@ body.gc-shake { animation: gcShake 0.55s ease; }
             </div>
             <div id="gist-status" style="font-size:9px;color:var(--txt-dim);min-height:12px;"></div>
           </div>
+
+          <!-- Gift alert audio -->
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:5px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:5px;">
+            <span class="settings-label">🔔 Gift Alert Sound</span>
+            <div style="display:flex;gap:5px;width:100%;align-items:center;">
+              <label style="flex:1;font-size:10px;padding:3px 7px;border:1px solid rgba(251,191,36,0.4);border-radius:5px;background:rgba(251,191,36,0.08);color:#fbbf24;cursor:pointer;text-align:center;">
+                📂 Upload
+                <input type="file" id="gift-audio-upload" accept="audio/*" style="display:none;" onchange="giftAudioLoad(this)">
+              </label>
+              <button onclick="giftAudioTest()" style="padding:3px 8px;font-size:10px;border:1px solid rgba(251,191,36,0.4);border-radius:5px;background:rgba(251,191,36,0.08);color:#fbbf24;cursor:pointer;">▶ Test</button>
+              <button onclick="giftAudioClear()" style="padding:3px 8px;font-size:10px;border:1px solid rgba(239,68,68,0.35);border-radius:5px;background:rgba(239,68,68,0.08);color:#f87171;cursor:pointer;">✕</button>
+            </div>
+            <div id="gift-audio-status" style="font-size:9px;color:var(--txt-dim);min-height:12px;">No file loaded</div>
+          </div>
+
         <div class="settings-row">
             <span class="settings-label">Font</span>
             <select class="settings-select" id="font-select" onchange="applyFont()">
@@ -1540,6 +1510,18 @@ body.gc-shake { animation: gcShake 0.55s ease; }
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- ── Milk Meter — persistent fill bar above chat ── -->
+      <div id="dock-milk-bar">
+        <div id="dock-milk-bar-inner">
+          <span style="font-size:12px;flex-shrink:0;">🥛</span>
+          <span id="dock-milk-label">MILK THE METER</span>
+          <span id="dock-bb-pct" style="font-family:var(--mono);font-size:10px;color:#e879f9;min-width:28px;text-align:right;flex-shrink:0;">0%</span>
+          <button class="ctrl-btn c-off" style="padding:1px 5px;font-size:8px;flex-shrink:0;" onclick="resetBeanBoozled()" title="Reset meter">↺</button>
+        </div>
+        <div id="dock-milk-track"><div id="dock-bb-fill"></div></div>
+        <div id="dock-bb-flash"></div>
       </div>
 
       <div class="msgs" id="msgs-all" style="flex:1;">
@@ -1770,6 +1752,32 @@ body.gc-shake { animation: gcShake 0.55s ease; }
         </div>
       </div>
 
+      <!-- ══ TEST FIRE ══ -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('testfire')">
+          <span class="ctrl-hd-title">🧪 Test Fire</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-testfire" style="padding:6px 8px 8px;">
+          <div style="font-size:9px;color:var(--txt-dim);margin-bottom:6px;">
+            Sends fake milk-event payloads to the overlay so you can verify each trigger's visual response.
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+            <button class="tf-btn" onclick="testFireMilk('comment','💬 Comment','test_user')">💬 Comment</button>
+            <button class="tf-btn" onclick="testFireMilk('like','👍 Like','test_user')">👍 Like</button>
+            <button class="tf-btn" onclick="testFireMilk('join','🚪 Join','new_viewer_99')">🚪 Join/Follow</button>
+            <button class="tf-btn" onclick="testFireMilk('comment_match','📢 Cmd Match','test_user')">📢 Cmd Match</button>
+            <button class="tf-btn tf-btn-gift" onclick="testFireMilk('heart_me','💝 Heart Me','gifter_123')">💝 Heart Me</button>
+            <button class="tf-btn tf-btn-gift" onclick="testFireMilk('heart_me_first','✨ First Heart','big_fan_42')">✨ 1st Heart Me</button>
+            <button class="tf-btn tf-btn-gift" onclick="testFireMilk('yt_sub','📹 YT Sub','youtube_fan')">📹 YouTube Sub</button>
+            <button class="tf-btn tf-btn-gift" onclick="testFireTTGift()">🎁 TT Gift (Galaxy)</button>
+            <button class="tf-btn tf-btn-gold" onclick="testFireSuperchat()">💛 Superchat $5</button>
+            <button class="tf-btn tf-btn-danger" onclick="testFireMilkReset()">💀 Full Reset</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ MILK SCORING SYSTEM ══ -->
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('msc')">
@@ -1779,6 +1787,15 @@ body.gc-shake { animation: gcShake 0.55s ease; }
         <div class="ctrl-bd" id="ctrl-msc" style="padding:0 0 6px;">
 
           <div style="padding:6px 8px 2px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+              <span style="font-size:10px;color:var(--txt-dim);flex:1;">🎯 100% fill target (pts)</span>
+              <input class="ctrl-in" id="msc-target" type="number" min="10" max="2000" step="10" value="200"
+                style="width:64px;text-align:right;padding:2px 5px;">
+              <span style="font-size:9px;color:var(--txt-dim);">pts</span>
+            </div>
+            <div style="font-size:8px;color:var(--txt-dim);margin-bottom:5px;line-height:1.4;">
+              Lower = fills faster. Comment = 0.5 pt, Heart Me = 15 pts, Galaxy = ~10 pts at $1/coin
+            </div>
             <button onclick="mscPushAll()" style="width:100%;padding:6px;font-size:11px;font-weight:700;letter-spacing:.06em;background:rgba(168,85,247,.22);border:1px solid rgba(168,85,247,.6);border-radius:6px;color:#c084fc;cursor:pointer;text-transform:uppercase;">↑ Push All Scoring to Overlay</button>
             <div id="msc-status" style="font-size:9px;color:#86efac;min-height:11px;text-align:center;margin-top:2px;"></div>
           </div>
@@ -1823,13 +1840,13 @@ body.gc-shake { animation: gcShake 0.55s ease; }
             </tbody>
           </table>
 
-          <!-- GIFT COIN RANGES -->
-          <div class="msc-hdr">Gift Ranges (Coins / $) <button class="msc-add" onclick="mscAddRange()">+ Range</button></div>
+          <!-- GIFT $ RANGES -->
+          <div class="msc-hdr">Gift Ranges ($) <button class="msc-add" onclick="mscAddRange()">+ Range</button></div>
           <table class="msc-tbl">
-            <thead><tr><th>From coins</th><th>To coins</th><th style="text-align:right">Repeat</th><th style="text-align:right">New</th><th></th></tr></thead>
+            <thead><tr><th>From $</th><th>To $</th><th style="text-align:right">Repeat</th><th style="text-align:right">New</th><th></th></tr></thead>
             <tbody id="msc-ranges-body"></tbody>
           </table>
-          <div style="padding:2px 8px 4px;font-size:9px;color:var(--txt-dim);">1,000 coins ≈ $1 · Repeat = return gifter · New = first gift this session</div>
+          <div style="padding:2px 8px 4px;font-size:9px;color:var(--txt-dim);">$ value — applies to TT coins, YT superchats, jewels, emeralds automatically · Repeat = return gifter · New = first gift this session</div>
 
         </div>
       </div>
@@ -1903,18 +1920,7 @@ body.gc-shake { animation: gcShake 0.55s ease; }
               <button class="ctrl-btn c-off" onclick="resetGiftBarY()" title="Reset to 450">↺</button>
             </div>
           </div>
-          <!-- Bean Boozled meter mirror -->
-          <div class="ctrl-sep" style="margin-top:8px;">
-            <div class="ctrl-row" style="align-items:center;gap:6px;">
-              <span style="font-size:14px;">🫘</span>
-              <div style="flex:1;height:10px;background:rgba(255,255,255,0.08);border-radius:5px;overflow:hidden;border:1px solid rgba(255,255,255,0.12);">
-                <div id="dock-bb-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#a21caf,#e879f9,#f43f5e);border-radius:5px;transition:width 0.5s ease;"></div>
-              </div>
-              <span id="dock-bb-pct" style="font-family:var(--mono);font-size:10px;color:#e879f9;min-width:28px;text-align:right;">0%</span>
-              <button class="ctrl-btn c-off" style="padding:2px 7px;font-size:9px;" onclick="resetBeanBoozled()" title="Reset meter">↺</button>
-            </div>
-            <div id="dock-bb-flash" style="display:none;text-align:center;font-family:'Boogaloo',sans-serif;font-size:15px;color:#e879f9;padding:4px 0;letter-spacing:0.05em;">🫘 BEAN BOOZLED!</div>
-          </div>
+          <!-- Milk meter moved to top of chat -->
         </div>
       </div>
 
@@ -3054,7 +3060,9 @@ ablyChannel.subscribe('event-promo', msg => {
 
 // Hype meter full — alert JJ to do the action
 ablyChannel.subscribe('milk-full', msg => {
-  const cta    = (msg.data && (msg.data.cta || msg.data.action)) || 'DO IT NOW!';
+  // Prefer the locally typed goal text — avoids stale roundtrip from overlay
+  const localCta = document.getElementById('mm-goal-text')?.value?.trim();
+  const cta = localCta || (msg.data && (msg.data.cta || msg.data.action)) || 'DO IT NOW!';
   const alertEl = document.getElementById('hype-full-alert');
   const textEl  = document.getElementById('hf-alert-text');
   if (!alertEl || !textEl) return;
@@ -3190,12 +3198,65 @@ function doFlash(color) {
 const giftGlowEl = document.getElementById('gift-glow');
 let giftGlowTimer = null;
 
+/* Gift alert audio — persists as base64 in localStorage */
+let _giftAudioUrl = null;
+
+(function _giftAudioInit() {
+  try {
+    const stored = localStorage.getItem('giftAlertAudio');
+    if (stored) {
+      _giftAudioUrl = stored;
+      const el = document.getElementById('gift-audio-status');
+      if (el) el.textContent = '✓ Sound loaded (from last session)';
+    }
+  } catch(e) {}
+})();
+
+function giftAudioLoad(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _giftAudioUrl = e.target.result;
+    try { localStorage.setItem('giftAlertAudio', _giftAudioUrl); } catch(err) {}
+    const el = document.getElementById('gift-audio-status');
+    if (el) el.textContent = `✓ ${file.name}`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function giftAudioTest() {
+  if (!_giftAudioUrl) {
+    const el = document.getElementById('gift-audio-status');
+    if (el) el.textContent = '⚠ No file loaded yet';
+    return;
+  }
+  const audio = new Audio(_giftAudioUrl);
+  audio.volume = 0.8;
+  audio.play().catch(() => {});
+}
+
+function giftAudioClear() {
+  _giftAudioUrl = null;
+  try { localStorage.removeItem('giftAlertAudio'); } catch(e) {}
+  const el = document.getElementById('gift-audio-status');
+  if (el) el.textContent = 'No file loaded';
+  const input = document.getElementById('gift-audio-upload');
+  if (input) input.value = '';
+}
+
 function triggerGiftAlert() {
   giftGlowEl.classList.remove('active');
   void giftGlowEl.offsetWidth; // force reflow so animation restarts on rapid gifts
   giftGlowEl.classList.add('active');
   clearTimeout(giftGlowTimer);
   giftGlowTimer = setTimeout(() => giftGlowEl.classList.remove('active'), 3000);
+  // Play custom alert sound if loaded
+  if (_giftAudioUrl) {
+    const audio = new Audio(_giftAudioUrl);
+    audio.volume = 0.8;
+    audio.play().catch(() => {});
+  }
 }
 
 document.addEventListener('keydown', e => {
@@ -3755,12 +3816,18 @@ function onHypeIntensity(val) {
   if (ablyChannel) ablyChannel.publish('hype-intensity', { mult: pct / 100 }).catch(() => {});
 }
 
-/* ── Bean Boozled dock mirror ── */
+/* ── Milk Meter dock mirror ── */
 function _updateDockBB(pct) {
-  const fill = document.getElementById('dock-bb-fill');
-  const lbl  = document.getElementById('dock-bb-pct');
-  if (fill) fill.style.width  = Math.min(100, pct) + '%';
-  if (lbl)  lbl.textContent   = Math.min(100, pct) + '%';
+  const fill  = document.getElementById('dock-bb-fill');
+  const lbl   = document.getElementById('dock-bb-pct');
+  const label = document.getElementById('dock-milk-label');
+  if (fill)  fill.style.width = Math.min(100, pct) + '%';
+  if (lbl)   lbl.textContent  = Math.min(100, pct) + '%';
+  // Keep label in sync with current bait text
+  if (label) {
+    const bait = document.getElementById('mm-bait-text')?.value?.trim();
+    if (bait) label.textContent = bait;
+  }
 }
 
 function resetBeanBoozled() {
@@ -3788,11 +3855,11 @@ function _mscDefaults() {
     ],
     cmds: [], specific: [],
     ranges: [
-      { min:0,       max:49999,   rpt:3,  isNew:20  },
-      { min:50000,   max:99999,   rpt:30, isNew:40  },
-      { min:100000,  max:199999,  rpt:50, isNew:60  },
-      { min:200000,  max:499999,  rpt:70, isNew:80  },
-      { min:500000,  max:9999999, rpt:90, isNew:100 },
+      { minD:0,   maxD:4.99,  rpt:3,  isNew:20  },
+      { minD:5,   maxD:9.99,  rpt:15, isNew:30  },
+      { minD:10,  maxD:19.99, rpt:30, isNew:50  },
+      { minD:20,  maxD:49.99, rpt:50, isNew:70  },
+      { minD:50,  maxD:9999,  rpt:80, isNew:100 },
     ],
   };
 }
@@ -3804,7 +3871,8 @@ const _msc = (() => {
     if (saved?.gifts)  def.gifts.forEach(r  => { const s = saved.gifts.find(x=>x.key===r.key);  if(s) r.pts = s.pts; });
     if (saved?.cmds)     def.cmds     = saved.cmds;
     if (saved?.specific) def.specific = saved.specific;
-    if (saved?.ranges)   def.ranges   = saved.ranges;
+    // Only restore if dollar-based (minD field); ignore old coin-based data
+    if (saved?.ranges && saved.ranges[0]?.minD != null) def.ranges = saved.ranges;
   } catch(e) {}
   return def;
 })();
@@ -3941,18 +4009,22 @@ function _mscRenderRanges() {
   const tb = document.getElementById('msc-ranges-body');
   if (!tb) return;
   tb.innerHTML = _msc.ranges.map((r, i) => {
-    const toVal = r.max >= 9999999 ? '' : r.max;
-    const toPlaceholder = r.max >= 9999999 ? '∞' : '';
+    const toVal = r.maxD >= 9999 ? '' : r.maxD;
+    const toPlaceholder = r.maxD >= 9999 ? '∞' : '';
     return `<tr>
       <td>
-        <input class="msc-range-num" type="number" min="0" value="${r.min}"
-          oninput="_msc.ranges[${i}].min=parseInt(this.value)||0">
-        <div style="font-size:8px;color:var(--txt-dim)">≈ $${(r.min/1000).toFixed(0)}</div>
+        <div style="display:flex;align-items:center;gap:2px;">
+          <span style="font-size:10px;color:var(--txt-dim);">$</span>
+          <input class="msc-range-num" type="number" min="0" step="0.01" value="${r.minD}"
+            oninput="_msc.ranges[${i}].minD=parseFloat(this.value)||0" style="width:52px;">
+        </div>
       </td>
       <td>
-        <input class="msc-range-num" type="number" min="0" value="${toVal}" placeholder="${toPlaceholder}"
-          oninput="_msc.ranges[${i}].max=parseInt(this.value)||9999999">
-        <div style="font-size:8px;color:var(--txt-dim)">${r.max>=9999999?'∞':'≈ $'+(r.max/1000).toFixed(0)}</div>
+        <div style="display:flex;align-items:center;gap:2px;">
+          <span style="font-size:10px;color:var(--txt-dim);">$</span>
+          <input class="msc-range-num" type="number" min="0" step="0.01" value="${toVal}" placeholder="${toPlaceholder}"
+            oninput="_msc.ranges[${i}].maxD=parseFloat(this.value)||9999" style="width:52px;">
+        </div>
       </td>
       <td style="text-align:right">${_mscNum(r.rpt,1,0,200,`_msc.ranges[${i}].rpt=parseFloat(this.value)||0`,'width:36px')}</td>
       <td style="text-align:right">${_mscNum(r.isNew,1,0,200,`_msc.ranges[${i}].isNew=parseFloat(this.value)||0`,'width:36px')}</td>
@@ -3961,11 +4033,11 @@ function _mscRenderRanges() {
   }).join('');
 }
 function mscAddRange() {
-  const sorted = [..._msc.ranges].sort((a,b) => a.min - b.min);
+  const sorted = [..._msc.ranges].sort((a,b) => a.minD - b.minD);
   const last = sorted[sorted.length - 1];
-  const newMin = last ? Math.min(last.max + 1, 9999998) : 0;
-  _msc.ranges.push({ min:newMin, max:9999999, rpt:30, isNew:50 });
-  _msc.ranges.sort((a,b) => a.min - b.min);
+  const newMin = last ? (last.maxD >= 9999 ? last.minD + 10 : last.maxD + 0.01) : 0;
+  _msc.ranges.push({ minD: Math.round(newMin * 100) / 100, maxD: 9999, rpt: 30, isNew: 50 });
+  _msc.ranges.sort((a,b) => a.minD - b.minD);
   _mscRenderRanges();
 }
 function _mscRmRange(i) {
@@ -3988,6 +4060,7 @@ function mscPushAll() {
 
   const instantSaveCoins   = Number(document.getElementById('msc-instant-coins')?.value)   || 0;
   const instantSaveDollars = Number(document.getElementById('msc-instant-dollars')?.value) || 0;
+  const target             = Number(document.getElementById('msc-target')?.value) || 200;
 
   ablyChannel.publish('milk-scoring-config', {
     pts,
@@ -3996,6 +4069,7 @@ function mscPushAll() {
     specific:           _msc.specific,
     instantSaveCoins,
     instantSaveDollars,
+    target,
   }).catch(() => {});
 
   // Also push comment-prompt patterns so trackers pick them up
@@ -4010,6 +4084,7 @@ function mscPushAll() {
   try {
     localStorage.setItem('instantSaveCoins',   instantSaveCoins);
     localStorage.setItem('instantSaveDollars', instantSaveDollars);
+    localStorage.setItem('milkTarget',         target);
   } catch(e) {}
 
   const el = document.getElementById('msc-status');
@@ -4035,15 +4110,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const dollarEl = document.getElementById('msc-instant-dollars');
   if (coinEl)   coinEl.value   = parseInt(localStorage.getItem('instantSaveCoins')   || '0', 10);
   if (dollarEl) dollarEl.value = parseInt(localStorage.getItem('instantSaveDollars') || '0', 10);
+  const targetEl = document.getElementById('msc-target');
+  if (targetEl) targetEl.value = parseInt(localStorage.getItem('milkTarget') || '200', 10);
 });
 
-// Subscribe: bean-boozled fires when overlay triggers
+// Subscribe: bean-boozled fires when overlay triggers (milk meter hits 100%)
 ablyChannel.subscribe('bean-boozled', msg => {
   if (!msg.data?.fired) return;
   _dockRawScore = 0;
   _updateDockBB(0);
   const flash = document.getElementById('dock-bb-flash');
   if (flash) {
+    // Use same goal text as what's typed in the dock
+    flash.textContent = document.getElementById('mm-goal-text')?.value?.trim() || '🥛 METER FULL!';
     flash.style.display = 'block';
     setTimeout(() => { flash.style.display = 'none'; }, 5000);
   }
@@ -4476,64 +4555,74 @@ function _gistStatus(msg) {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   GIFT CELEBRATION ENGINE
-   Tier system: 10 tiers across coin thresholds
-   T1–T3 → corner card   T4–T6 → center card   T7–T10 → full takeover
-   Colorblind-safe palette (deuteranopia / green deficiency)
-   Combo batching for small gifts. Queue with priority dropping.
+   GIFT CELEBRATION ENGINE — Slide-down banner system
+   T0 tiny (spam-guarded) → T10 legendary
+   Background color scales by tier; all deutan-safe
+   Blue = small  Amber/orange = mid  Purple/yellow = big  White = legend
 ════════════════════════════════════════════════════════════════ */
 const GC_TIERS = [
-  null, // T0 (below threshold — no celebration)
-  { coins: 500,   label: 'TH1',  color: '#94a3b8', iconPx: 64,  namePx: 18, amtPx: 13, layout: 'corner',   duration: 2800, backdrop: false, shake: false },
-  { coins: 1000,  label: 'TH2',  color: '#7dd3fc', iconPx: 82,  namePx: 20, amtPx: 14, layout: 'corner',   duration: 3200, backdrop: false, shake: false },
-  { coins: 2000,  label: 'TH3',  color: '#38bdf8', iconPx: 100, namePx: 22, amtPx: 15, layout: 'corner',   duration: 3600, backdrop: false, shake: false },
-  { coins: 5000,  label: 'TH4',  color: '#fbbf24', iconPx: 128, namePx: 26, amtPx: 17, layout: 'center',   duration: 4200, backdrop: false, shake: false },
-  { coins: 10000, label: 'TH5',  color: '#f59e0b', iconPx: 156, namePx: 30, amtPx: 18, layout: 'center',   duration: 5000, backdrop: false, shake: false },
-  { coins: 15000, label: 'TH6',  color: '#fb923c', iconPx: 180, namePx: 34, amtPx: 20, layout: 'center',   duration: 5500, backdrop: false, shake: false },
-  { coins: 20000, label: 'TH7',  color: '#e879f9', iconPx: 200, namePx: 38, amtPx: 22, layout: 'takeover', duration: 6000, backdrop: true,  shake: false },
-  { coins: 30000, label: 'TH8',  color: '#c084fc', iconPx: 220, namePx: 44, amtPx: 24, layout: 'takeover', duration: 7000, backdrop: true,  shake: true  },
-  { coins: 37000, label: 'TH9',  color: '#facc15', iconPx: 250, namePx: 50, amtPx: 26, layout: 'takeover', duration: 8000, backdrop: true,  shake: true  },
-  { coins: 45000, label: 'TH10', color: '#ffffff', iconPx: 280, namePx: 58, amtPx: 28, layout: 'takeover', duration: 10000, backdrop: true, shake: true  },
+  // T0: any gift < 500 coins — tiny, spam-guarded (4s cooldown per gifter+gift)
+  { coins: 1,     bg: '#0d1117', color: '#64748b', h: 'slim',   iconPx: 22, namePx: 11, amtPx: 10, duration: 1800, shake: false },
+  // T1–T3: blue family (cool = smaller value)
+  { coins: 500,   bg: '#0c2240', color: '#7dd3fc', h: 'small',  iconPx: 34, namePx: 13, amtPx: 11, duration: 2800, shake: false },
+  { coins: 1000,  bg: '#0d2d54', color: '#38bdf8', h: 'small',  iconPx: 38, namePx: 14, amtPx: 12, duration: 3200, shake: false },
+  { coins: 2000,  bg: '#073763', color: '#0ea5e9', h: 'small',  iconPx: 42, namePx: 15, amtPx: 13, duration: 3600, shake: false },
+  // T4–T6: amber/orange family (warm = mid value)
+  { coins: 5000,  bg: '#3b2500', color: '#fbbf24', h: 'medium', iconPx: 50, namePx: 17, amtPx: 13, duration: 4200, shake: false },
+  { coins: 10000, bg: '#3d2000', color: '#f59e0b', h: 'medium', iconPx: 56, namePx: 19, amtPx: 14, duration: 5000, shake: false },
+  { coins: 15000, bg: '#3d1500', color: '#fb923c', h: 'medium', iconPx: 60, namePx: 21, amtPx: 15, duration: 5500, shake: false },
+  // T7–T10: purple → legendary (electric = big value)
+  { coins: 20000, bg: '#2e0a4a', color: '#e879f9', h: 'large',  iconPx: 64, namePx: 23, amtPx: 16, duration: 6000, shake: false },
+  { coins: 30000, bg: '#3b0a5e', color: '#c084fc', h: 'large',  iconPx: 68, namePx: 25, amtPx: 17, duration: 7000, shake: true  },
+  { coins: 37000, bg: '#4a2a00', color: '#facc15', h: 'large',  iconPx: 72, namePx: 27, amtPx: 18, duration: 8000, shake: true  },
+  { coins: 45000, bg: '#1a0830', color: '#ffffff', h: 'legend', iconPx: 78, namePx: 29, amtPx: 19, duration:10000, shake: true  },
 ];
 
-/* normalize amount to coin-equivalent for tier lookup */
 function gcNormalize(amount, type) {
   if (!type) return amount;
   const t = type.toLowerCase();
   if (t === 'tiktok_coins') return amount;
-  if (t === 'youtube_jewels') return amount; // jewels ≈ coins roughly
-  // YouTube SC / USD: 1 dollar ≈ 200 coin-equivalent
-  return Math.round(amount * 200);
+  if (t === 'youtube_jewels') return amount;
+  return Math.round(amount * 100); // USD → coin-equivalent (100 coins = $1)
 }
 
 function gcGetTier(amount, type) {
   const coins = gcNormalize(amount, type);
-  if (coins < 500) return 0;
-  for (let i = GC_TIERS.length - 1; i >= 1; i--) {
+  if (coins < 1) return -1;
+  for (let i = GC_TIERS.length - 1; i >= 0; i--) {
     if (coins >= GC_TIERS[i].coins) return i;
   }
-  return 0;
+  return -1;
 }
 
 function gcFormatAmount(amount, type) {
   const t = (type || '').toLowerCase();
   if (t === 'tiktok_coins') return Number(amount).toLocaleString() + ' 🪙';
   if (t === 'youtube_jewels') return Number(amount).toLocaleString() + ' 💎';
-  // dollars
   return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /* ── Combo + Queue ── */
 const _gcState = {
-  queue:   [],
-  active:  false,
-  combos:  new Map(), // "name|giftTitle" → { data, tier, count, timer }
-  _card:   null,
+  queue:      [],
+  active:     false,
+  combos:     new Map(), // "name|giftTitle" → { data, tier, count, timer }
+  _card:      null,
   _hideTimer: null,
+  _t0guard:   new Map(), // "name|giftTitle" → lastFireMs — spam guard for T0
 };
 
 function gcPush(data, tier) {
-  /* batch T1–T2 (small gifts) — same gifter + same gift within 1.5 s */
+  // T0: spam guard — suppress same gifter+gift within 4s
+  if (tier === 0) {
+    const key = (data.name || '') + '|' + (data.giftTitle || data.type || '');
+    const now = Date.now();
+    if (now - (_gcState._t0guard.get(key) || 0) < 4000) return;
+    _gcState._t0guard.set(key, now);
+    _gcEnqueue(data, tier);
+    return;
+  }
+  // T1–T2: combo batch — same gifter+gift within 1.5s
   if (tier <= 2) {
     const key = (data.name || '') + '|' + (data.giftTitle || '');
     if (_gcState.combos.has(key)) {
@@ -4547,8 +4636,7 @@ function gcPush(data, tier) {
       }, 1500);
       return;
     }
-    const entry = {
-      data, tier, count: 1,
+    const entry = { data, tier, count: 1,
       timer: setTimeout(() => {
         entry.data._comboCount = 1;
         _gcEnqueue(entry.data, entry.tier);
@@ -4562,11 +4650,11 @@ function gcPush(data, tier) {
 }
 
 function _gcEnqueue(data, tier) {
-  /* cap queue at 6 — drop lowest-tier items first */
+  // cap at 6; drop lowest-tier items first when at capacity
   if (_gcState.queue.length >= 6) {
-    const dropIdx = _gcState.queue.findIndex(q => q.tier <= tier && q.tier <= 2);
+    const dropIdx = _gcState.queue.findIndex(q => q.tier <= tier && q.tier <= 1);
     if (dropIdx !== -1) _gcState.queue.splice(dropIdx, 1);
-    else if (tier <= 1) return; // all items are higher tier, drop this T1
+    else if (tier <= 0) return;
   }
   _gcState.queue.push({ data, tier });
   if (!_gcState.active) _gcNext();
@@ -4583,134 +4671,116 @@ function _gcShow(data, tier) {
   const cfg = GC_TIERS[tier];
   if (!cfg) { _gcNext(); return; }
 
-  const cel    = document.getElementById('gift-cel');
-  const bdrop  = document.getElementById('gift-cel-backdrop');
-  const combo  = data._comboCount || 1;
-  const isTT   = (data.platform || '').toLowerCase() === 'tiktok';
-  const isYT   = (data.platform || '').toLowerCase() === 'youtube';
+  const cel   = document.getElementById('gift-cel');
+  const combo = data._comboCount || 1;
+  const isTT  = (data.platform || '').toLowerCase() === 'tiktok';
+  const isYT  = (data.platform || '').toLowerCase() === 'youtube';
 
-  /* ── backdrop for takeover tiers ── */
-  if (cfg.backdrop) {
-    bdrop.style.background = `radial-gradient(ellipse at center, ${cfg.color}18 0%, rgba(0,0,0,0.88) 70%)`;
-    bdrop.classList.add('on');
-  }
-
-  /* ── screen shake ── */
   if (cfg.shake) {
     document.body.classList.remove('gc-shake');
     void document.body.offsetWidth;
     document.body.classList.add('gc-shake');
-    setTimeout(() => document.body.classList.remove('gc-shake'), 600);
+    setTimeout(() => document.body.classList.remove('gc-shake'), 520);
   }
 
-  /* ── build card ── */
+  // build horizontal banner card
   const card = document.createElement('div');
-  card.className = `gc-card gc-${cfg.layout}${tier === 10 ? ' gc-legendary' : ''}`;
+  card.className = `gc-card gc-${cfg.h}${tier === 10 ? ' gc-legendary' : ''}`;
   card.style.setProperty('--gc-color', cfg.color);
-  card.style.border = `1.5px solid ${cfg.color}`;
-  card.style.boxShadow = `0 0 24px ${cfg.color}44, 0 0 60px ${cfg.color}18, inset 0 0 20px rgba(0,0,0,0.5)`;
+  card.style.background = cfg.bg;
+  card.style.borderBottomColor = cfg.color + 'bb';
+  card.style.boxShadow = `0 4px 20px ${cfg.color}2a`;
 
-  /* icon */
+  // icon
   const iconWrap = document.createElement('div');
   iconWrap.className = 'gc-icon-wrap';
-  iconWrap.style.width  = cfg.iconPx + 'px';
-  iconWrap.style.height = cfg.iconPx + 'px';
+  iconWrap.style.cssText = `width:${cfg.iconPx}px;height:${cfg.iconPx}px;`;
 
   if (data.contentImg) {
     const img = document.createElement('img');
     img.src = data.contentImg;
-    img.style.width  = cfg.iconPx + 'px';
-    img.style.height = cfg.iconPx + 'px';
-    img.onerror = () => { img.replaceWith(gcFallbackIcon(cfg, isTT, isYT, data)); };
+    img.style.cssText = `width:${cfg.iconPx}px;height:${cfg.iconPx}px;`;
+    img.onerror = () => img.replaceWith(gcFallbackIcon(cfg, isTT, isYT, data));
     iconWrap.appendChild(img);
   } else {
     iconWrap.appendChild(gcFallbackIcon(cfg, isTT, isYT, data));
   }
 
-  /* combo badge */
   if (combo > 1) {
     const badge = document.createElement('div');
     badge.className = 'gc-combo-badge';
     badge.textContent = '×' + combo;
     iconWrap.appendChild(badge);
   }
-
-  /* glow ring */
-  const ring = document.createElement('div');
-  ring.className = 'gc-glow-ring';
-  iconWrap.appendChild(ring);
-
   card.appendChild(iconWrap);
 
-  /* name */
+  // text area
+  const textArea = document.createElement('div');
+  textArea.className = 'gc-text-area';
+
   const nameEl = document.createElement('div');
   nameEl.className = 'gc-name';
   nameEl.style.fontSize = cfg.namePx + 'px';
   nameEl.textContent = data.name || 'Anonymous';
-  card.appendChild(nameEl);
+  textArea.appendChild(nameEl);
 
-  /* gift label */
   if (data.giftTitle) {
     const lbl = document.createElement('div');
     lbl.className = 'gc-gift-label';
-    lbl.style.fontSize = Math.max(9, cfg.amtPx - 5) + 'px';
+    lbl.style.fontSize = Math.max(8, cfg.amtPx - 3) + 'px';
     lbl.textContent = (combo > 1 ? `×${combo} ` : '') + data.giftTitle;
-    card.appendChild(lbl);
+    textArea.appendChild(lbl);
   }
+  card.appendChild(textArea);
 
-  /* amount */
+  // right: amount + platform
+  const right = document.createElement('div');
+  right.className = 'gc-right';
+
   const amtEl = document.createElement('div');
   amtEl.className = 'gc-amount';
   amtEl.style.fontSize = cfg.amtPx + 'px';
   amtEl.textContent = gcFormatAmount(data.amount, data.type);
-  card.appendChild(amtEl);
+  right.appendChild(amtEl);
 
-  /* platform pill */
   const pill = document.createElement('div');
   pill.className = 'gc-platform-pill';
-  pill.style.borderColor = cfg.color;
-  pill.style.color = cfg.color;
   pill.textContent = isTT ? 'TikTok' : isYT ? 'YouTube' : (data.platform || 'Gift');
-  card.appendChild(pill);
+  right.appendChild(pill);
 
-  /* ── mount and animate in ── */
+  card.appendChild(right);
+
+  // mount + animate in
   cel.innerHTML = '';
   cel.appendChild(card);
   _gcState._card = card;
-
-  void card.offsetWidth; // reflow
+  void card.offsetWidth;
   card.classList.add('gc-in');
 
-  /* ── auto-dismiss ── */
   if (_gcState._hideTimer) clearTimeout(_gcState._hideTimer);
-  _gcState._hideTimer = setTimeout(() => _gcHide(cfg), cfg.duration);
+  _gcState._hideTimer = setTimeout(_gcHide, cfg.duration);
 }
 
 function gcFallbackIcon(cfg, isTT, isYT, data) {
   const span = document.createElement('span');
   span.className = 'gc-icon-emoji';
-  span.style.fontSize = (cfg.iconPx * 0.7) + 'px';
-  span.style.lineHeight = '1';
+  span.style.fontSize = Math.round(cfg.iconPx * 0.72) + 'px';
   const evt = (data.giftTitle || '').toLowerCase();
-  span.textContent = isTT ? '🎁'
-    : evt.includes('jewel') ? '💎'
-    : isYT ? '⭐' : '💝';
+  span.textContent = isTT ? '🎁' : evt.includes('jewel') ? '💎' : isYT ? '⭐' : '💝';
   return span;
 }
 
-function _gcHide(cfg) {
-  const card  = _gcState._card;
-  const bdrop = document.getElementById('gift-cel-backdrop');
+function _gcHide() {
+  const card = _gcState._card;
   if (card) {
     card.classList.remove('gc-in');
     card.classList.add('gc-out');
   }
-  bdrop.classList.remove('on');
   setTimeout(() => {
     const cel = document.getElementById('gift-cel');
     if (cel) cel.innerHTML = '';
     _gcNext();
-  }, 300);
+  }, 260);
 }
 
 /* ── Subscribe to gift-alert channel ── */
@@ -4718,9 +4788,53 @@ ablyChannel.subscribe('gift-alert', msg => {
   const d = msg?.data;
   if (!d || !d.amount) return;
   const tier = gcGetTier(d.amount, d.type);
-  if (tier < 1) return;
+  if (tier < 0) return; // below minimum (< 1 coin)
   gcPush(d, tier);
 });
+
+/* ════════════════════════════════════════
+   TEST FIRE
+════════════════════════════════════════ */
+
+function testFireMilk(type, label, username) {
+  if (!ablyChannel) { doFlash('red'); return; }
+  const platMap = { like:'tt', like_batch:'tt', heart_me:'tt', heart_me_first:'tt', yt_sub:'yt', comment:'tt', join:'tt', comment_match:'tt' };
+  const payload = { type, platform: platMap[type] || 'tt' };
+  if (username) payload.username = username;
+  ablyChannel.publish('milk-event', payload).catch(() => {});
+  doFlash('purple');
+}
+
+function testFireTTGift() {
+  if (!ablyChannel) { doFlash('red'); return; }
+  ablyChannel.publish('milk-event', {
+    type: 'tiktok_gift',
+    giftName: 'Galaxy',
+    coins: 1000,
+    gifterKey: 'test_gifter',
+    username: 'big_whale_999',
+    platform: 'tt',
+  }).catch(() => {});
+  doFlash('purple');
+}
+
+function testFireSuperchat() {
+  if (!ablyChannel) { doFlash('red'); return; }
+  ablyChannel.publish('milk-event', {
+    type: 'yt_superchat',
+    dollars: 5,
+    gifterKey: 'yt_test_gifter',
+    username: 'youtube_supporter',
+    platform: 'yt',
+  }).catch(() => {});
+  doFlash('purple');
+}
+
+function testFireMilkReset() {
+  if (!ablyChannel) { doFlash('red'); return; }
+  ablyChannel.publish('cmd', 'reset').catch(() => {});
+  doFlash('red');
+}
 
 /* ════════════════════════════════════════
    MILK CONTROLS
