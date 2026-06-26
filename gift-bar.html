@@ -2956,9 +2956,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const MAX_RAW        = 200;
   const DECAY_RATE     = 0.035;
   const DECAY_TICK_MS  = 10_000;
-  const SURGE_MIN_MS   = 60_000;    // min gap between surges
-  const SURGE_MAX_MS   = 90_000;
-  const SURGE_MULTI    = 2;
+  const SURGE_MIN_MS      = 60_000;  // min gap between auto surges
+  const SURGE_MAX_MS      = 90_000;  // max gap
+  const SURGE_MULTI       = 2;       // global point multiplier during surge
+  const SURGE_DURATION_MS = 5_000;   // exactly 5 seconds
   const AUDIO_SMOOTH   = 0.40;   // was 0.78 — much faster response to voice
   const GAIN_BOOST     = 3.2;    // amplify quiet audio signal before mapping
   const PLAT_DECAY_MS  = 8_000;
@@ -2972,15 +2973,21 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── state ── */
   let rawScore       = 0;
-  let boostActive    = false;   // formerly boostActive
+  let boostActive    = false;
   let boostTimer     = null;
   let _intensityMult = 1.0;
   let _milkCTA       = '';
   let _milkFired     = false;
 
-  /* ── per-input boost multipliers (1 = no boost) ── */
+  /* ── per-input boost multipliers (1 = no boost) — for manual boosts ── */
   let _boostMult = { comments: 1, likes: 1, gifts: 1 };
-  let _boostType = 'comments'; // currently active boost type label
+  let _boostType = 'comments';
+
+  /* ── auto surge state (separate from manual boosts) ── */
+  let _surgeActive    = false;   // true during the 5-second surge window
+  let _surgeMult      = 1;       // 1 normally, SURGE_MULTI during surge
+  let _surgeTimer     = null;
+  let _surgeScheduled = false;   // prevents double-scheduling
 
   /* ── smart milk mode: 'auto' | 'manual' | 'both' ── */
   let _smartMode = 'auto';
@@ -3019,18 +3026,16 @@ ablyChannel.subscribe('top-gifters',msg=>{
     injectPlatEnergy(ytEnergy, pos ?? (0.45 + Math.random() * 0.5), amount, spread ?? 5);
   }
 
-  /* ── WS audio relay — receives freq data from dock via localhost:9001 ── */
+  /* ── Ably audio relay — receives freq data from dock via mic-freq channel ── */
   let _wsFreqData = null;
   let _wsFreqAge  = 0;
-  (function connectAudioRelay(){
-    try {
-      const ws = new WebSocket('ws://localhost:9001');
-      ws.binaryType = 'arraybuffer';
-      ws.onmessage  = e => { _wsFreqData = new Uint8Array(e.data); _wsFreqAge = Date.now(); };
-      ws.onclose    = () => setTimeout(connectAudioRelay, 5000);
-      ws.onerror    = () => {};
-    } catch(e) {}
-  })();
+  ablyChannel.subscribe('mic-freq', msg => {
+    const f = msg?.data?.f;
+    if (Array.isArray(f) && f.length > 0) {
+      _wsFreqData = new Uint8Array(f);
+      _wsFreqAge  = Date.now();
+    }
+  });
 
   /* ── Canvas setup — replaces segment divs ── */
   const meterEl = document.getElementById('hype-meter');
@@ -3378,7 +3383,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
                : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
                : 'comments';
     const boostX = _boostMult[cat] ?? 1;
-    const pts    = base * _intensityMult * boostX;
+    const pts    = base * _intensityMult * boostX * _surgeMult; // _surgeMult=2 during auto surge
     rawScore = Math.min(rawScore + pts, MAX_RAW);
 
     // ── Platform energy injection for visual waveform ──
@@ -3404,41 +3409,144 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }
 
-  /* ── smart milk scheduler: fires every 60-90 s when mode allows ── */
+  /* ══ AUTO SURGE SYSTEM ══════════════════════════════════════════
+     Fires every 60–90 s (randomized). Lasts exactly 5 s.
+     During surge: ALL point values × SURGE_MULTI (global, not per-type).
+     Shows a bold flash callout + sound. Does NOT use the manual boost banner.
+  ═══════════════════════════════════════════════════════════════ */
+
   function _scheduleAutoBoost(){
-    if(_smartMode === 'manual') return; // no auto — only fires on manual trigger
+    if(_smartMode === 'manual') return;
+    if(_surgeScheduled) return;          // already one in the pipe
+    _surgeScheduled = true;
     const gap = SURGE_MIN_MS + Math.random() * (SURGE_MAX_MS - SURGE_MIN_MS);
     setTimeout(() => {
-      if(!boostActive && rawScore > 0) _fireAutoBoost();
-      else _scheduleAutoBoost();
+      _surgeScheduled = false;
+      if(!_surgeActive && rawScore > 0) _fireAutoBoost();
+      else _scheduleAutoBoost();         // missed window (no score yet), try again
     }, gap);
   }
 
   function _fireAutoBoost(){
-    // Smart: pick the input type with highest recent activity
-    const now = Date.now();
-    const win  = _evtWin.filter(e => now - e.time < 30_000);
-    const nCom = win.filter(e => e.type === 'comment' || e.type === 'comment_match').length;
-    const nLik = win.filter(e => e.type === 'like_batch').length;
-    const nGft = win.filter(e => e.type === 'heart_me' || e.type === 'yt_sub').length;
-    const joins = win.filter(e => e.type === 'join').length;
-    // boost whichever is lowest to drive it up (smart fill gaps)
-    let type = 'comments', icon = '💬';
-    if(nLik <= nCom && nLik <= nGft){ type = 'likes';    icon = '👍'; }
-    if(nGft <= nCom && nGft <= nLik){ type = 'gifts';    icon = '🎁'; }
-    if(joins > 8)                   { type = 'comments'; icon = '💬'; }
-    const mult   = 2; // smart auto always fires at 2x
-    const durMs  = (30 + Math.random() * 30) * 1000;
-    const cta    = type === 'likes' ? 'LIKES & FOLLOWS'
-                 : type === 'gifts' ? 'GIFTS & SUBS'
-                 : 'COMMENTS & JOINS';
-    _triggerBoost(type, mult, durMs, cta, icon);
+    if(_surgeActive) return;
+    _surgeActive = true;
+    _surgeMult   = SURGE_MULTI;          // doubles ALL point types
+
+    _showSurgeFlash();
+    _playSurgeSound();
+    giftBarEl?.classList.add('hm-surge-active'); // waveform goes white/bright
+
+    _surgeTimer = setTimeout(() => {
+      _surgeActive  = false;
+      _surgeMult    = 1;
+      giftBarEl?.classList.remove('hm-surge-active');
+      _hideSurgeFlash();
+      _scheduleAutoBoost();              // queue the next surge
+    }, SURGE_DURATION_MS);
   }
+
+  /* ── Surge flash element (injected, separate from manual boost banner) ── */
+  (function _initSurgeFlash(){
+    const sty = document.createElement('style');
+    sty.textContent = `
+      #surge-flash {
+        position: absolute;
+        top: 375px; left: 0; width: 1080px; height: 80px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 5px; pointer-events: none; z-index: 22;
+        opacity: 0; transform: scaleY(0.4);
+        transition: opacity 0.1s ease, transform 0.15s cubic-bezier(.34,1.56,.64,1);
+      }
+      #surge-flash.active { opacity: 1; transform: scaleY(1); }
+      #sf-text {
+        font-family: 'Anton', sans-serif; font-size: 54px; color: #fff;
+        letter-spacing: 8px; line-height: 1;
+        -webkit-text-stroke: 2px #7c3aed;
+        text-shadow: 0 0 20px #e879f9, 0 0 50px #a855f7, 0 4px 0 rgba(0,0,0,0.9);
+        animation: sfPulse 0.2s ease-in-out infinite alternate;
+      }
+      #surge-flash.active #sf-text { animation-play-state: running; }
+      @keyframes sfPulse {
+        from { filter: brightness(1.0) drop-shadow(0 0 8px #a855f7); }
+        to   { filter: brightness(1.6) drop-shadow(0 0 28px #e879f9) drop-shadow(0 0 50px #fff); }
+      }
+      #sf-bar { width: 480px; height: 6px; background: rgba(168,85,247,0.25); border-radius: 3px; overflow: hidden; }
+      #sf-fill {
+        height: 100%; width: 100%;
+        background: linear-gradient(90deg, #7c3aed, #e879f9, #fff);
+        border-radius: 3px;
+        box-shadow: 0 0 14px #e879f9;
+      }
+    `;
+    document.head.appendChild(sty);
+
+    const el = document.createElement('div');
+    el.id = 'surge-flash';
+    el.innerHTML = '<div id="sf-text">⚡ 2X SURGE ⚡</div><div id="sf-bar"><div id="sf-fill"></div></div>';
+    document.body.appendChild(el);
+  })();
+
+  function _showSurgeFlash(){
+    const el   = document.getElementById('surge-flash');
+    const fill = document.getElementById('sf-fill');
+    if(!el) return;
+    // Reset fill to full width, then start depleting over SURGE_DURATION_MS
+    if(fill){
+      fill.style.transition = 'none';
+      fill.style.width = '100%';
+      requestAnimationFrame(() => {
+        fill.style.transition = `width ${SURGE_DURATION_MS}ms linear`;
+        fill.style.width = '0%';
+      });
+    }
+    el.classList.add('active');
+  }
+
+  function _hideSurgeFlash(){
+    const el = document.getElementById('surge-flash');
+    if(el) el.classList.remove('active');
+  }
+
+  function _playSurgeSound(){
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Ascending power-up burst: 5 notes
+      [[200,0.00],[300,0.07],[440,0.13],[600,0.19],[880,0.25]].forEach(([freq, delay]) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'triangle'; osc.frequency.value = freq;
+        const t = ctx.currentTime + delay;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.28, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+        osc.start(t); osc.stop(t + 0.33);
+      });
+      // White noise swoosh underneath
+      const buf  = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.45), ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for(let i = 0; i < data.length; i++) data[i] = (Math.random()*2-1) * (1 - i/data.length);
+      const nSrc = ctx.createBufferSource(); nSrc.buffer = buf;
+      const filt = ctx.createBiquadFilter(); filt.type = 'bandpass';
+      filt.frequency.setValueAtTime(600, ctx.currentTime);
+      filt.frequency.linearRampToValueAtTime(2400, ctx.currentTime + 0.45);
+      filt.Q.value = 1.5;
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.12, ctx.currentTime);
+      nGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      nSrc.connect(filt); filt.connect(nGain); nGain.connect(ctx.destination);
+      nSrc.start(); nSrc.stop(ctx.currentTime + 0.46);
+    } catch(e) {}
+  }
+
   _scheduleAutoBoost(); // kick off on load
 
-  /* ── decay (pause during BB cooldown so meter doesn't drain mid-banner) ── */
+  /* ── decay (randomized 3–5% per tick so it feels organic, pauses during BB cooldown) ── */
   setInterval(() => {
-    if(!_bbCooldown) rawScore = Math.max(0, rawScore - MAX_RAW * DECAY_RATE);
+    if(!_bbCooldown){
+      const rate = 0.03 + Math.random() * 0.02; // 3–5% of MAX_RAW
+      rawScore = Math.max(0, rawScore - MAX_RAW * rate);
+    }
   }, DECAY_TICK_MS);
 
   /* ── publish hype % to Ably so dock can mirror it ── */
@@ -3489,23 +3597,36 @@ ablyChannel.subscribe('top-gifters',msg=>{
       smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
     }
 
+    // ── 30-second tension cycle: slow sine drives a visual build→peak→release rhythm ──
+    // Period = 30s (2π / (π/15) = 30). abs() makes it always positive → peaks every 15s.
+    const tensionWave = Math.abs(Math.sin(t * Math.PI / 15)); // 0→1→0 every 15s, full cycle 30s
+    const surgeGlow   = _surgeActive ? 1 : 0; // extra brightness during surge
+
     // ── Layer 0: Purple baseline ──
     hmCtx.globalAlpha = 1;
     for(let i = 0; i < SEG_COUNT; i++){
       const x        = i * (SEG_W + SEG_GAP);
       const audioA   = smoothed[i];
       const combined = Math.min(1, audioA * 0.7 + amp * 0.3);
-      const h        = Math.max(MIN_H, (MAX_H * 0.65) * combined + MIN_H);
+      // Tension wave lifts the floor 0→12px over each 15s build, plus surge spike
+      const tensionFloor = tensionWave * 12 + surgeGlow * 18;
+      const h        = Math.max(MIN_H + tensionFloor, (MAX_H * 0.65) * combined + MIN_H);
 
-      const purple   = boost
+      // surge: white/electric flash; boost: pink; normal: dynamic purple
+      const purple   = _surgeActive
+        ? `rgba(255,255,255,${0.85 + Math.sin(t*12+i*0.4)*0.15})`
+        : boost
         ? `rgba(232,121,249,${0.65 + amp*0.3})`
         : `rgba(${Math.round(100+amp*68)},${Math.round(7+amp*44)},${Math.round(150+amp*97)},${0.6+amp*0.35})`;
-      const purpleTop= boost
+      const purpleTop= _surgeActive
+        ? `rgba(232,121,249,${0.9 + Math.sin(t*15+i*0.6)*0.1})`
+        : boost
         ? `rgba(255,255,255,${0.5+Math.sin(t*8+i*0.5)*0.3})`
         : `rgba(${Math.round(147+amp*45)},${Math.round(51+amp*81)},${Math.round(234+amp*13)},${0.55+amp*0.40})`;
-      const glow     = boost ? 'rgba(232,121,249,0.9)' : `rgba(147,51,234,${0.3+amp*0.4})`;
+      const glow     = _surgeActive ? 'rgba(255,255,255,0.95)' : boost ? 'rgba(232,121,249,0.9)' : `rgba(147,51,234,${0.3+amp*0.4})`;
+      const glowBlur = _surgeActive ? 22+Math.sin(t*10+i)*8 : boost ? 14+Math.sin(t*6+i)*6 : 6+amp*8;
 
-      drawBar(x, h, `rgba(59,7,100,${0.5+amp*0.3})`, purpleTop, glow, boost ? 14+Math.sin(t*6+i)*6 : 6+amp*8);
+      drawBar(x, h, `rgba(59,7,100,${0.5+amp*0.3})`, purpleTop, glow, glowBlur);
     }
 
     // ── Layer 1: TikTok blue ──
@@ -3640,9 +3761,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const gb  = document.getElementById('gift-bar');
     const ban = document.getElementById('mm-boost-banner');
     const bbi = document.getElementById('bb-indicator');
+    const sf  = document.getElementById('surge-flash');
     if(gb)  gb.style.top  = top + 'px';
     if(ban) ban.style.top = (top - 55) + 'px';
     if(bbi) bbi.style.top = (top + 66) + 'px';
+    if(sf)  sf.style.top  = (top - 75) + 'px';  // surge flash sits just above bar
   });
 
   ablyChannel.subscribe('milk-cta', msg => {
