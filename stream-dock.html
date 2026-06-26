@@ -1644,6 +1644,25 @@ body.gc-shake { animation: gcShake 0.55s ease; }
             </div>
           </div>
 
+          <!-- Mission Strip -->
+          <div class="ctrl-sep" style="margin-top:0;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">🥛 Mission Strip</span>
+            <span style="font-size:9px;color:var(--txt-dim);margin-bottom:2px;display:block;">Pinned top bar — explains game to new viewers</span>
+            <input class="ctrl-in" id="mission-strip-text-input" type="text"
+              placeholder="🥛 MILK THE METER — comment or gift to fill it"
+              style="margin-bottom:4px;">
+            <div class="ctrl-row" style="align-items:center;gap:4px;margin-bottom:4px;">
+              <span style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">↕ Y</span>
+              <button class="ctrl-btn" onclick="nudgeMissionStrip(-5)" title="Up 5px">▲▲</button>
+              <button class="ctrl-btn" onclick="nudgeMissionStrip(-1)" title="Up 1px">▲</button>
+              <span id="mission-strip-y-val" style="font-size:10px;min-width:28px;text-align:center;color:var(--txt);">0</span>
+              <button class="ctrl-btn" onclick="nudgeMissionStrip(1)"  title="Down 1px">▼</button>
+              <button class="ctrl-btn" onclick="nudgeMissionStrip(5)"  title="Down 5px">▼▼</button>
+              <button class="ctrl-btn c-off" onclick="nudgeMissionStrip(0,true)" title="Reset to top">↺</button>
+            </div>
+            <button onclick="pushMissionStrip()" style="width:100%;padding:6px;font-size:12px;font-weight:700;background:rgba(168,85,247,0.22);border:1px solid rgba(168,85,247,0.6);border-radius:6px;color:#c084fc;cursor:pointer;">↑ Send to Overlay</button>
+          </div>
+
           <!-- Milk Boost Configurator -->
           <div class="ctrl-sep" style="margin-top:6px;">
             <span class="ctrl-lbl" style="margin-bottom:4px;">⚡ Milk Boost</span>
@@ -3076,6 +3095,7 @@ ably.connection.on(stateChange => {
     ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
     ablyChannel.publish('gift-bar-pos', { top: _giftBarY }).catch(() => {});
     document.getElementById('gift-bar-y-val').textContent = _giftBarY;
+    ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
   } else if (s === 'connecting') {
     connDot.className = 'conn-dot connecting';
     connLabel.textContent = 'Connecting…';
@@ -3754,27 +3774,43 @@ function resetBeanBoozled() {
    State → rendered tables → Push All → milk-scoring-config + comment-prompt
 ═══════════════════════════════════════════════════════════════ */
 
-const _msc = {
-  engage: [
-    { key:'comment',       label:'Comment',       plat:'TT / YT', pts:0.5,  smax:5   },
-    { key:'like',          label:'Like',           plat:'TT',      pts:0.1,  smax:2   },
-    { key:'join',          label:'Join / Follow',  plat:'TT / YT', pts:1,    smax:10  },
-  ],
-  gifts: [
-    { key:'heart_me',       label:'Heart Me (repeat)', plat:'TT', pts:15, smax:100 },
-    { key:'heart_me_first', label:'Heart Me (1st)',     plat:'TT', pts:50, smax:200 },
-    { key:'yt_sub',         label:'YouTube Sub',        plat:'YT', pts:40, smax:200 },
-  ],
-  cmds: [],           // { phrase, matchType:'starts_with'|'exact'|'contains', pts }
-  specific: [],       // { name, pts }
-  ranges: [
-    { min:0,       max:49999,   rpt:3,  isNew:20  },
-    { min:50000,   max:99999,   rpt:30, isNew:40  },
-    { min:100000,  max:199999,  rpt:50, isNew:60  },
-    { min:200000,  max:499999,  rpt:70, isNew:80  },
-    { min:500000,  max:9999999, rpt:90, isNew:100 },
-  ],
-};
+function _mscDefaults() {
+  return {
+    engage: [
+      { key:'comment',       label:'Comment',       plat:'TT / YT', pts:0.5,  smax:5   },
+      { key:'like',          label:'Like',           plat:'TT',      pts:0.1,  smax:2   },
+      { key:'join',          label:'Join / Follow',  plat:'TT / YT', pts:1,    smax:10  },
+    ],
+    gifts: [
+      { key:'heart_me',       label:'Heart Me (repeat)', plat:'TT', pts:15, smax:100 },
+      { key:'heart_me_first', label:'Heart Me (1st)',     plat:'TT', pts:50, smax:200 },
+      { key:'yt_sub',         label:'YouTube Sub',        plat:'YT', pts:40, smax:200 },
+    ],
+    cmds: [], specific: [],
+    ranges: [
+      { min:0,       max:49999,   rpt:3,  isNew:20  },
+      { min:50000,   max:99999,   rpt:30, isNew:40  },
+      { min:100000,  max:199999,  rpt:50, isNew:60  },
+      { min:200000,  max:499999,  rpt:70, isNew:80  },
+      { min:500000,  max:9999999, rpt:90, isNew:100 },
+    ],
+  };
+}
+const _msc = (() => {
+  const def = _mscDefaults();
+  try {
+    const saved = JSON.parse(localStorage.getItem('milkScoringConfig') || 'null');
+    if (saved?.engage) def.engage.forEach(r => { const s = saved.engage.find(x=>x.key===r.key); if(s) r.pts = s.pts; });
+    if (saved?.gifts)  def.gifts.forEach(r  => { const s = saved.gifts.find(x=>x.key===r.key);  if(s) r.pts = s.pts; });
+    if (saved?.cmds)     def.cmds     = saved.cmds;
+    if (saved?.specific) def.specific = saved.specific;
+    if (saved?.ranges)   def.ranges   = saved.ranges;
+  } catch(e) {}
+  return def;
+})();
+function _mscSave() {
+  try { localStorage.setItem('milkScoringConfig', JSON.stringify(_msc)); } catch(e) {}
+}
 
 /* ── helpers ── */
 function _mscNum(val, step, min, max, onInput, extraStyle) {
@@ -3969,8 +4005,15 @@ function mscPushAll() {
     }).catch(() => {});
   }
 
+  // Persist to localStorage
+  _mscSave();
+  try {
+    localStorage.setItem('instantSaveCoins',   instantSaveCoins);
+    localStorage.setItem('instantSaveDollars', instantSaveDollars);
+  } catch(e) {}
+
   const el = document.getElementById('msc-status');
-  if (el) { el.textContent = '✓ Pushed to overlay'; setTimeout(() => { el.textContent = ''; }, 2500); }
+  if (el) { el.textContent = '✓ Pushed & saved'; setTimeout(() => { el.textContent = ''; }, 2500); }
   doFlash('green');
 }
 
@@ -3980,6 +4023,18 @@ document.addEventListener('DOMContentLoaded', () => {
   _mscRenderGifts();
   _mscRenderCmds();
   _mscRenderRanges();
+
+  // Restore mission strip inputs
+  const msInput = document.getElementById('mission-strip-text-input');
+  if (msInput) msInput.value = _missionStripText;
+  const msYVal = document.getElementById('mission-strip-y-val');
+  if (msYVal) msYVal.textContent = _missionStripY;
+
+  // Restore instant save inputs
+  const coinEl   = document.getElementById('msc-instant-coins');
+  const dollarEl = document.getElementById('msc-instant-dollars');
+  if (coinEl)   coinEl.value   = parseInt(localStorage.getItem('instantSaveCoins')   || '0', 10);
+  if (dollarEl) dollarEl.value = parseInt(localStorage.getItem('instantSaveDollars') || '0', 10);
 });
 
 // Subscribe: bean-boozled fires when overlay triggers
@@ -3997,6 +4052,26 @@ ablyChannel.subscribe('bean-boozled', msg => {
 });
 
 let _giftBarY = parseInt(localStorage.getItem('giftBarY') || '450', 10);
+
+/* ── Mission strip persistence ── */
+let _missionStripY    = parseInt(localStorage.getItem('missionStripY') || '0', 10);
+let _missionStripText = localStorage.getItem('missionStripText') || '🥛 MILK THE METER — comment or gift to fill it';
+
+function nudgeMissionStrip(delta, reset) {
+  if (reset) _missionStripY = 0;
+  else _missionStripY = Math.max(-200, Math.min(600, _missionStripY + delta));
+  localStorage.setItem('missionStripY', _missionStripY);
+  const el = document.getElementById('mission-strip-y-val');
+  if (el) el.textContent = _missionStripY;
+  if (ablyChannel) ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
+}
+function pushMissionStrip() {
+  const input = document.getElementById('mission-strip-text-input');
+  if (input && input.value.trim()) _missionStripText = input.value.trim();
+  localStorage.setItem('missionStripText', _missionStripText);
+  if (ablyChannel) ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
+  doFlash('purple');
+}
 function nudgeGiftBar(delta) {
   _giftBarY = Math.max(0, Math.min(1860, _giftBarY + delta));
   localStorage.setItem('giftBarY', _giftBarY);
