@@ -83,7 +83,15 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   line-height: 1; pointer-events: none; z-index: 7;
   opacity: 0; transition: opacity 0.3s ease, font-size 0.3s ease;
 }
-#gb-bar-text.visible { opacity: 1; }
+#gb-bar-text.visible { opacity: 1; } /* overridden by inline style from JS */
+/* Slow breath on normal fill state — filter so it doesn't fight JS opacity */
+#gb-bar-text.visible:not(.urgent):not(.surge):not(.boost) {
+  animation: gbTextBreath 3s ease-in-out infinite;
+}
+@keyframes gbTextBreath {
+  0%, 100% { filter: brightness(0.8); }
+  50%      { filter: brightness(1.2); }
+}
 #gb-bar-text.urgent {
   font-size: 26px;
   text-shadow: 0 2px 8px rgba(0,0,0,0.95), 0 0 28px rgba(232,121,249,0.9), 0 0 55px rgba(168,85,247,0.6);
@@ -3110,6 +3118,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     function _updateBoostBar() {
       if(barText){
         barText.textContent = `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s`;
+        barText.style.opacity = '';  // full opacity — clear pct-driven value
         barText.classList.add('visible', 'boost');
         barText.classList.remove('surge', 'urgent');
       }
@@ -3219,11 +3228,13 @@ ablyChannel.subscribe('top-gifters',msg=>{
       milkFill.style.width = show ? pct + '%' : '0%';
       milkFill.classList.toggle('urgent', pct >= 80);
     }
-    if (barText && !_surgeActive) {
+    if (barText && !_surgeActive && !boostActive) {
       barText.textContent = _mmBaitText;
       barText.classList.toggle('visible', show);
       barText.classList.toggle('urgent', pct >= 80);
-      barText.classList.remove('surge');
+      barText.classList.remove('surge', 'boost');
+      // Opacity scales with fill — nearly invisible at low %, fully opaque near 100%
+      barText.style.opacity = show ? Math.min(1, pct * 0.009 + 0.08) : '';
     }
   }
 
@@ -3336,6 +3347,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const gb      = document.getElementById('gift-bar');
     if(barText){
       barText.textContent = '⚡ 2X SURGE ⚡';
+      barText.style.opacity = '';  // full opacity — clear pct-driven value
       barText.classList.add('visible', 'surge');
       barText.classList.remove('urgent');
     }
