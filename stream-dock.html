@@ -1469,6 +1469,10 @@ body.gc-shake { animation: gcShake 0.5s ease; }
               <input type="text" class="settings-select" id="gist-id" placeholder="Gist ID (auto-filled on create)" style="flex:1;font-family:monospace;font-size:10px;" oninput="gistCredentialChanged()">
               <button class="size-btn" id="gist-create-btn" onclick="gistCreate()" style="white-space:nowrap;font-size:10px;">Create</button>
             </div>
+            <div style="display:flex;gap:5px;width:100%;">
+              <button class="size-btn" onclick="doGistSave()" style="flex:1;font-size:10px;">💾 Save</button>
+              <button class="size-btn" onclick="doGistLoad()" style="flex:1;font-size:10px;">📥 Load</button>
+            </div>
             <div id="gist-status" style="font-size:9px;color:var(--txt-dim);min-height:12px;"></div>
           </div>
 
@@ -4165,6 +4169,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dollarEl) dollarEl.value = parseInt(localStorage.getItem('instantSaveDollars') || '0', 10);
   const targetEl = document.getElementById('msc-target');
   if (targetEl) targetEl.value = parseInt(localStorage.getItem('milkTarget') || '200', 10);
+
+  // Restore Gist ID (token is never persisted — user re-enters it each session)
+  const savedGistId = localStorage.getItem('jjx-gist-id');
+  if (savedGistId) {
+    const idEl = document.getElementById('gist-id');
+    if (idEl) idEl.value = savedGistId;
+  }
 });
 
 // Subscribe: bean-boozled fires when overlay triggers (milk meter hits 100%)
@@ -4563,8 +4574,104 @@ function scheduleGistSave() {
 }
 
 function gistCredentialChanged() {
+  // Persist Gist ID (but NEVER the token) so it survives page reloads
+  const id = document.getElementById('gist-id')?.value.trim();
+  if (id) localStorage.setItem('jjx-gist-id', id);
+  else localStorage.removeItem('jjx-gist-id');
   const st = document.getElementById('gist-status');
   if (st) st.textContent = '';
+}
+
+/* Snapshot all config that should round-trip through Gist */
+function gistGetConfig() {
+  // Ensure event promo config is flushed to localStorage first
+  eventPromoSaveLocal();
+  return {
+    _v: 2,
+    milkScoringConfig:    localStorage.getItem('milkScoringConfig'),
+    'cp-presets':         localStorage.getItem('cp-presets'),
+    instantSaveCoins:     localStorage.getItem('instantSaveCoins'),
+    instantSaveDollars:   localStorage.getItem('instantSaveDollars'),
+    milkTarget:           localStorage.getItem('milkTarget'),
+    missionStripText:     localStorage.getItem('missionStripText'),
+    missionStripY:        localStorage.getItem('missionStripY'),
+    giftBarY:             localStorage.getItem('giftBarY'),
+    [EVENT_PROMO_STORAGE_KEY]: localStorage.getItem(EVENT_PROMO_STORAGE_KEY),
+  };
+}
+
+/* Restore config snapshot — updates localStorage, JS vars, and DOM */
+function applyGistConfig(cfg) {
+  if (!cfg || cfg._v !== 2) { _gistStatus('⚠ Incompatible config version'); return; }
+
+  // --- milkScoringConfig ---
+  if (cfg.milkScoringConfig != null) {
+    localStorage.setItem('milkScoringConfig', cfg.milkScoringConfig);
+    try {
+      const saved = JSON.parse(cfg.milkScoringConfig);
+      if (saved?.engage) _msc.engage.forEach(r => { const s = saved.engage.find(x=>x.key===r.key); if(s) r.pts = s.pts; });
+      if (saved?.gifts)  _msc.gifts.forEach(r  => { const s = saved.gifts.find(x=>x.key===r.key);  if(s) r.pts = s.pts; });
+      if (saved?.cmds)     _msc.cmds     = saved.cmds;
+      if (saved?.specific) _msc.specific = saved.specific;
+      if (saved?.ranges && saved.ranges[0]?.minD != null) _msc.ranges = saved.ranges;
+    } catch(e) {}
+    _mscRenderEngage(); _mscRenderGifts(); _mscRenderCmds(); _mscRenderRanges();
+  }
+
+  // --- comment-prompt presets ---
+  if (cfg['cp-presets'] != null) {
+    localStorage.setItem('cp-presets', cfg['cp-presets']);
+    try { cpPresets = JSON.parse(cfg['cp-presets']); } catch(e) { cpPresets = []; }
+    cpRenderPresetList();
+  }
+
+  // --- instant save / milk target ---
+  if (cfg.instantSaveCoins != null) {
+    localStorage.setItem('instantSaveCoins', cfg.instantSaveCoins);
+    const el = document.getElementById('msc-instant-coins');
+    if (el) el.value = cfg.instantSaveCoins;
+  }
+  if (cfg.instantSaveDollars != null) {
+    localStorage.setItem('instantSaveDollars', cfg.instantSaveDollars);
+    const el = document.getElementById('msc-instant-dollars');
+    if (el) el.value = cfg.instantSaveDollars;
+  }
+  if (cfg.milkTarget != null) {
+    localStorage.setItem('milkTarget', cfg.milkTarget);
+    const el = document.getElementById('msc-target');
+    if (el) el.value = cfg.milkTarget;
+  }
+
+  // --- mission strip ---
+  if (cfg.missionStripText != null) {
+    localStorage.setItem('missionStripText', cfg.missionStripText);
+    _missionStripText = cfg.missionStripText;
+    const el = document.getElementById('mission-strip-text-input');
+    if (el) el.value = _missionStripText;
+  }
+  if (cfg.missionStripY != null) {
+    localStorage.setItem('missionStripY', cfg.missionStripY);
+    _missionStripY = parseInt(cfg.missionStripY, 10) || 0;
+    const el = document.getElementById('mission-strip-y-val');
+    if (el) el.textContent = _missionStripY;
+  }
+
+  // --- gift bar Y ---
+  if (cfg.giftBarY != null) {
+    localStorage.setItem('giftBarY', cfg.giftBarY);
+    _giftBarY = parseInt(cfg.giftBarY, 10) || 450;
+    const el = document.getElementById('gift-bar-y-val');
+    if (el) el.textContent = _giftBarY;
+  }
+
+  // --- event promo config ---
+  if (cfg[EVENT_PROMO_STORAGE_KEY] != null) {
+    localStorage.setItem(EVENT_PROMO_STORAGE_KEY, cfg[EVENT_PROMO_STORAGE_KEY]);
+    try {
+      const epCfg = JSON.parse(cfg[EVENT_PROMO_STORAGE_KEY]);
+      eventPromoPopulateFields(epCfg);
+    } catch(e) {}
+  }
 }
 
 async function gistCreate() {
@@ -4572,18 +4679,24 @@ async function gistCreate() {
   if (!token) { _gistStatus('⚠ Enter a GitHub token first'); return; }
   _gistStatus('Creating…');
   try {
+    const initialContent = JSON.stringify(gistGetConfig(), null, 2);
     const res = await fetch('https://api.github.com/gists', {
       method: 'POST',
       headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: 'JJx overlay settings', public: false, files: { 'jjx-overlay-settings.json': { content: '{}' } } })
+      body: JSON.stringify({
+        description: 'JJx overlay settings',
+        public: false,
+        files: { 'jjx-overlay-settings.json': { content: initialContent } }
+      })
     });
     const data = await res.json();
     if (data.id) {
       const idEl = document.getElementById('gist-id');
       if (idEl) idEl.value = data.id;
-      _gistStatus('✓ Created: ' + data.id);
+      localStorage.setItem('jjx-gist-id', data.id);
+      _gistStatus('✓ Created & saved: ' + data.id);
     } else {
-      _gistStatus('✗ ' + (data.message || 'failed'));
+      _gistStatus('✗ ' + (data.message || 'Create failed'));
     }
   } catch(e) { _gistStatus('✗ Network error'); }
 }
@@ -4591,15 +4704,43 @@ async function gistCreate() {
 async function doGistSave() {
   const token = document.getElementById('gist-token')?.value.trim();
   const id    = document.getElementById('gist-id')?.value.trim();
-  if (!token || !id) return;
+  if (!token) { _gistStatus('⚠ Enter GitHub token'); return; }
+  if (!id)    { _gistStatus('⚠ Enter or create a Gist ID'); return; }
+  _gistStatus('Saving…');
   try {
-    await fetch(`https://api.github.com/gists/${id}`, {
+    const content = JSON.stringify(gistGetConfig(), null, 2);
+    const res = await fetch(`https://api.github.com/gists/${id}`, {
       method: 'PATCH',
       headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: { 'jjx-overlay-settings.json': { content: JSON.stringify({ saved: Date.now() }) } } })
+      body: JSON.stringify({ files: { 'jjx-overlay-settings.json': { content } } })
     });
-    _gistStatus('✓ Saved ' + new Date().toLocaleTimeString());
-  } catch(e) {}
+    if (res.ok) {
+      _gistStatus('✓ Saved ' + new Date().toLocaleTimeString());
+    } else {
+      const data = await res.json().catch(() => ({}));
+      _gistStatus('✗ ' + (data.message || 'Save failed'));
+    }
+  } catch(e) { _gistStatus('✗ Network error'); }
+}
+
+async function doGistLoad() {
+  const token = document.getElementById('gist-token')?.value.trim();
+  const id    = document.getElementById('gist-id')?.value.trim();
+  if (!token) { _gistStatus('⚠ Enter GitHub token'); return; }
+  if (!id)    { _gistStatus('⚠ Enter a Gist ID'); return; }
+  _gistStatus('Loading…');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${id}`, {
+      headers: { Authorization: 'token ' + token }
+    });
+    if (!res.ok) { _gistStatus('✗ Gist not found or no access'); return; }
+    const data = await res.json();
+    const fileContent = data.files?.['jjx-overlay-settings.json']?.content;
+    if (!fileContent) { _gistStatus('✗ No settings file in Gist'); return; }
+    const cfg = JSON.parse(fileContent);
+    applyGistConfig(cfg);
+    _gistStatus('✓ Loaded ' + new Date().toLocaleTimeString());
+  } catch(e) { _gistStatus('✗ ' + e.message); }
 }
 
 function _gistStatus(msg) {
