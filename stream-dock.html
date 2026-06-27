@@ -1810,6 +1810,12 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <thead><tr><th>Trigger</th><th>Plat</th><th style="text-align:right">Pts</th><th>Slider</th><th>Wt</th><th>Quick ×</th></tr></thead>
             <tbody id="msc-engage-body"></tbody>
           </table>
+          <div style="display:flex;align-items:center;gap:6px;margin:4px 0 8px;">
+            <span style="font-size:10px;color:var(--txt-dim);flex:1;">👍 Likes per meter tick</span>
+            <input class="ctrl-in" id="msc-like-batch" type="number" min="1" max="500" step="1" value="20"
+              style="width:56px;text-align:right;padding:2px 5px;">
+            <span style="font-size:9px;color:var(--txt-dim);">likes</span>
+          </div>
 
           <!-- CHAT COMMANDS -->
           <div class="msc-hdr">Chat Commands <button class="msc-add" onclick="mscAddCmd()">+ Add</button></div>
@@ -4118,6 +4124,7 @@ function mscPushAll() {
   const instantSaveCoins   = Number(document.getElementById('msc-instant-coins')?.value)   || 0;
   const instantSaveDollars = Number(document.getElementById('msc-instant-dollars')?.value) || 0;
   const target             = Number(document.getElementById('msc-target')?.value) || 200;
+  const likeBatchSize      = Math.max(1, Number(document.getElementById('msc-like-batch')?.value) || 20);
 
   ablyChannel.publish('milk-scoring-config', {
     pts,
@@ -4127,6 +4134,7 @@ function mscPushAll() {
     instantSaveCoins,
     instantSaveDollars,
     target,
+    likeBatchSize,
   }).catch(() => {});
 
   // Also push comment-prompt patterns so trackers pick them up
@@ -4142,6 +4150,7 @@ function mscPushAll() {
     localStorage.setItem('instantSaveCoins',   instantSaveCoins);
     localStorage.setItem('instantSaveDollars', instantSaveDollars);
     localStorage.setItem('milkTarget',         target);
+    localStorage.setItem('likeBatchSize',      likeBatchSize);
   } catch(e) {}
 
   const el = document.getElementById('msc-status');
@@ -4169,6 +4178,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dollarEl) dollarEl.value = parseInt(localStorage.getItem('instantSaveDollars') || '0', 10);
   const targetEl = document.getElementById('msc-target');
   if (targetEl) targetEl.value = parseInt(localStorage.getItem('milkTarget') || '200', 10);
+  const likeBatchEl = document.getElementById('msc-like-batch');
+  if (likeBatchEl) likeBatchEl.value = parseInt(localStorage.getItem('likeBatchSize') || '20', 10);
 
   // Restore Gist ID (token is never persisted — user re-enters it each session)
   const savedGistId = localStorage.getItem('jjx-gist-id');
@@ -4593,6 +4604,7 @@ function gistGetConfig() {
     instantSaveCoins:     localStorage.getItem('instantSaveCoins'),
     instantSaveDollars:   localStorage.getItem('instantSaveDollars'),
     milkTarget:           localStorage.getItem('milkTarget'),
+    likeBatchSize:        localStorage.getItem('likeBatchSize'),
     missionStripText:     localStorage.getItem('missionStripText'),
     missionStripY:        localStorage.getItem('missionStripY'),
     giftBarY:             localStorage.getItem('giftBarY'),
@@ -4640,6 +4652,11 @@ function applyGistConfig(cfg) {
     localStorage.setItem('milkTarget', cfg.milkTarget);
     const el = document.getElementById('msc-target');
     if (el) el.value = cfg.milkTarget;
+  }
+  if (cfg.likeBatchSize != null) {
+    localStorage.setItem('likeBatchSize', cfg.likeBatchSize);
+    const el = document.getElementById('msc-like-batch');
+    if (el) el.value = cfg.likeBatchSize;
   }
 
   // --- mission strip ---

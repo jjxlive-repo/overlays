@@ -3211,6 +3211,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
     heart_me:15, heart_me_first:50, yt_sub:40,
   };
 
+  // Like batching — accumulate N likes before adding pts to meter
+  let LIKE_BATCH_SIZE = 20;   // configurable from dock via milk-scoring-config.likeBatchSize
+  let _likeAccum = 0;
+  let _likeAccumPlat = 'other';
+
   // Mutable gift tier ranges — dollar values, updated via milk-scoring-config
   let _giftRanges = [
     { minD:0,   maxD:4.99,  rpt:3,  isNew:20  },
@@ -3963,8 +3968,23 @@ ablyChannel.subscribe('top-gifters',msg=>{
         addPts(PTS.join ?? 1, plat, 'join', null, _who);
         _fireEntryBanner(_currentPct);
         break;
-      case 'like':
-        addPts(PTS.like, plat, 'like'); break;      // likes: no username, ripple only
+      case 'like': {
+        // Accumulate likes — show small ripple per like, add pts every LIKE_BATCH_SIZE
+        _likeAccum++;
+        _likeAccumPlat = plat || _likeAccumPlat;
+        // Small visual feedback per like (no pts yet)
+        const _likePct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+        _triggerRipple(_likePct, 0.05);
+        if (LIKE_BATCH_SIZE <= 1) {
+          // Batch size 1 = count every like (legacy behaviour)
+          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
+          _likeAccum = 0;
+        } else if (_likeAccum >= LIKE_BATCH_SIZE) {
+          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
+          _likeAccum = 0;
+        }
+        break;
+      }
       case 'like_batch':
         addPts(PTS.like_batch, plat, 'like_batch'); break;
       case 'yt_sub':
@@ -4101,6 +4121,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
     // Update fill target (100% threshold)
     if(d.target != null && Number(d.target) > 0){
       MAX_RAW = Number(d.target);
+    }
+
+    // Update like batch size
+    if(d.likeBatchSize != null && Number(d.likeBatchSize) >= 1){
+      LIKE_BATCH_SIZE = Math.round(Number(d.likeBatchSize));
+      _likeAccum = 0; // reset accumulator when config changes
     }
 
     // Update chat command matchers
