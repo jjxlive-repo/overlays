@@ -1462,20 +1462,6 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         <button class="col-toggle-btn" id="col-toggle-btn" onclick="toggleControlsCol()" title="Toggle controls panel">⊞ Controls</button>
         <button class="settings-btn" onclick="toggleSettings(event)" title="Font settings">⚙</button>
         <div class="settings-panel" id="settings-panel">
-          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:5px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:5px;">
-            <span class="settings-label">GitHub Gist sync</span>
-            <input type="password" class="settings-select" id="gist-token" placeholder="ghp_… personal access token" style="width:100%;" oninput="gistCredentialChanged()">
-            <div style="display:flex;gap:5px;width:100%;">
-              <input type="text" class="settings-select" id="gist-id" placeholder="Gist ID (auto-filled on create)" style="flex:1;font-family:monospace;font-size:10px;" oninput="gistCredentialChanged()">
-              <button class="size-btn" id="gist-create-btn" onclick="gistCreate()" style="white-space:nowrap;font-size:10px;">Create</button>
-            </div>
-            <div style="display:flex;gap:5px;width:100%;">
-              <button class="size-btn" onclick="doGistSave()" style="flex:1;font-size:10px;">💾 Save</button>
-              <button class="size-btn" onclick="doGistLoad()" style="flex:1;font-size:10px;">📥 Load</button>
-            </div>
-            <div id="gist-status" style="font-size:9px;color:var(--txt-dim);min-height:12px;"></div>
-          </div>
-
           <!-- Gift alert audio -->
           <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:5px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:5px;">
             <span class="settings-label">🔔 Gift Alert Sound</span>
@@ -1541,6 +1527,44 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 
     <!-- RIGHT: overlay controls (collapsible) -->
     <div class="col-controls" id="col-controls">
+
+      <!-- ── CLOUD SYNC ── -->
+      <div class="ctrl-card" id="cloud-sync-card">
+        <div class="ctrl-hd open" onclick="toggleCtrl('cloud-sync')" style="border-bottom-color:var(--border);">
+          <span style="font-size:11px;">☁</span>
+          <span class="ctrl-hd-title" style="flex:1;letter-spacing:.1em;">CLOUD SYNC (GITHUB GIST)</span>
+          <span id="gist-dot" style="width:8px;height:8px;border-radius:50%;background:#4b5563;flex-shrink:0;box-shadow:0 0 0 2px rgba(0,0,0,.4);"></span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd open" id="ctrl-cloud-sync" style="gap:7px;">
+          <label style="font-size:9px;color:var(--txt-dim);margin-bottom:-3px;">GitHub Personal Access Token <span style="color:#6b7280;">(needs gist scope)</span></label>
+          <input type="password" class="ep-dock-input" id="gist-token" placeholder="ghp_… personal access token"
+            style="width:100%;box-sizing:border-box;" oninput="gistCredentialChanged()">
+
+          <label style="font-size:9px;color:var(--txt-dim);margin-bottom:-3px;">Gist ID <span style="color:#6b7280;">(auto-filled after first save)</span></label>
+          <input type="text" class="ep-dock-input" id="gist-id" placeholder="will appear here after Create"
+            style="width:100%;box-sizing:border-box;font-family:monospace;font-size:10px;letter-spacing:.04em;" oninput="gistCredentialChanged()">
+
+          <div style="display:flex;gap:6px;margin-top:1px;">
+            <button onclick="doGistSave()" style="flex:1;padding:6px 0;font-size:10px;font-weight:700;letter-spacing:.06em;
+              background:rgba(168,85,247,.28);border:1px solid rgba(168,85,247,.7);border-radius:6px;
+              color:#c084fc;cursor:pointer;text-transform:uppercase;">💾 Save &amp; Sync Now</button>
+            <button onclick="doGistLoad()" style="padding:6px 10px;font-size:10px;font-weight:600;
+              background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;
+              color:var(--txt-dim);cursor:pointer;white-space:nowrap;">⬇ Pull from Gist</button>
+            <button onclick="gistDisconnect()" style="padding:6px 10px;font-size:10px;font-weight:600;
+              background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;
+              color:#f87171;cursor:pointer;white-space:nowrap;">✕ Disconnect</button>
+          </div>
+
+          <div id="gist-status" style="font-size:9px;color:#86efac;min-height:14px;display:flex;align-items:center;gap:5px;"></div>
+
+          <div style="font-size:8px;color:#4b5563;line-height:1.5;border-top:1px solid rgba(255,255,255,.05);padding-top:6px;">
+            Data auto-syncs to a private Gist 2 seconds after every Save. Survives browser clears, works across machines.<br>
+            Get a token at <span style="color:#6b7280;">github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</span> — tick the <em>gist</em> scope only.
+          </div>
+        </div>
+      </div>
 
       <!-- ── LIVE TEXT ── -->
       <div class="ctrl-card">
@@ -4186,6 +4210,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (savedGistId) {
     const idEl = document.getElementById('gist-id');
     if (idEl) idEl.value = savedGistId;
+    // Dot stays grey until user saves/loads — just show it's configured
+    _gistStatus('Enter token to sync', null);
   }
 });
 
@@ -4589,6 +4615,9 @@ function gistCredentialChanged() {
   const id = document.getElementById('gist-id')?.value.trim();
   if (id) localStorage.setItem('jjx-gist-id', id);
   else localStorage.removeItem('jjx-gist-id');
+  // Reset dot to amber (credentials changed, not yet verified)
+  const dot = document.getElementById('gist-dot');
+  if (dot) { dot.style.background = '#4b5563'; dot.style.boxShadow = '0 0 0 2px rgba(0,0,0,.4)'; }
   const st = document.getElementById('gist-status');
   if (st) st.textContent = '';
 }
@@ -4693,8 +4722,8 @@ function applyGistConfig(cfg) {
 
 async function gistCreate() {
   const token = document.getElementById('gist-token')?.value.trim();
-  if (!token) { _gistStatus('⚠ Enter a GitHub token first'); return; }
-  _gistStatus('Creating…');
+  if (!token) { _gistStatus('⚠ Enter a GitHub token first', false); return; }
+  _gistStatus('Creating…', null);
   try {
     const initialContent = JSON.stringify(gistGetConfig(), null, 2);
     const res = await fetch('https://api.github.com/gists', {
@@ -4711,19 +4740,20 @@ async function gistCreate() {
       const idEl = document.getElementById('gist-id');
       if (idEl) idEl.value = data.id;
       localStorage.setItem('jjx-gist-id', data.id);
-      _gistStatus('✓ Created & saved: ' + data.id);
+      _gistStatus('✓ In sync (' + new Date().toLocaleTimeString() + ')', true);
     } else {
-      _gistStatus('✗ ' + (data.message || 'Create failed'));
+      _gistStatus('✗ ' + (data.message || 'Create failed'), false);
     }
-  } catch(e) { _gistStatus('✗ Network error'); }
+  } catch(e) { _gistStatus('✗ Network error — check token & internet', false); }
 }
 
 async function doGistSave() {
   const token = document.getElementById('gist-token')?.value.trim();
-  const id    = document.getElementById('gist-id')?.value.trim();
-  if (!token) { _gistStatus('⚠ Enter GitHub token'); return; }
-  if (!id)    { _gistStatus('⚠ Enter or create a Gist ID'); return; }
-  _gistStatus('Saving…');
+  let   id    = document.getElementById('gist-id')?.value.trim();
+  if (!token) { _gistStatus('⚠ Enter GitHub token', false); return; }
+  // Auto-create if no ID yet
+  if (!id) { await gistCreate(); return; }
+  _gistStatus('Syncing…', null);
   try {
     const content = JSON.stringify(gistGetConfig(), null, 2);
     const res = await fetch(`https://api.github.com/gists/${id}`, {
@@ -4732,37 +4762,65 @@ async function doGistSave() {
       body: JSON.stringify({ files: { 'jjx-overlay-settings.json': { content } } })
     });
     if (res.ok) {
-      _gistStatus('✓ Saved ' + new Date().toLocaleTimeString());
+      _gistStatus('✓ In sync (' + new Date().toLocaleTimeString() + ')', true);
     } else {
       const data = await res.json().catch(() => ({}));
-      _gistStatus('✗ ' + (data.message || 'Save failed'));
+      _gistStatus('✗ ' + (data.message || 'Save failed'), false);
     }
-  } catch(e) { _gistStatus('✗ Network error'); }
+  } catch(e) { _gistStatus('✗ Network error — check token & internet', false); }
 }
 
 async function doGistLoad() {
   const token = document.getElementById('gist-token')?.value.trim();
   const id    = document.getElementById('gist-id')?.value.trim();
-  if (!token) { _gistStatus('⚠ Enter GitHub token'); return; }
-  if (!id)    { _gistStatus('⚠ Enter a Gist ID'); return; }
-  _gistStatus('Loading…');
+  if (!token) { _gistStatus('⚠ Enter GitHub token', false); return; }
+  if (!id)    { _gistStatus('⚠ Enter a Gist ID', false); return; }
+  _gistStatus('Pulling…', null);
   try {
     const res = await fetch(`https://api.github.com/gists/${id}`, {
       headers: { Authorization: 'token ' + token }
     });
-    if (!res.ok) { _gistStatus('✗ Gist not found or no access'); return; }
+    if (!res.ok) { _gistStatus('✗ Gist not found or no access', false); return; }
     const data = await res.json();
     const fileContent = data.files?.['jjx-overlay-settings.json']?.content;
-    if (!fileContent) { _gistStatus('✗ No settings file in Gist'); return; }
+    if (!fileContent) { _gistStatus('✗ No settings file in Gist', false); return; }
     const cfg = JSON.parse(fileContent);
     applyGistConfig(cfg);
-    _gistStatus('✓ Loaded ' + new Date().toLocaleTimeString());
-  } catch(e) { _gistStatus('✗ ' + e.message); }
+    _gistStatus('✓ In sync (' + new Date().toLocaleTimeString() + ')', true);
+  } catch(e) { _gistStatus('✗ ' + e.message, false); }
 }
 
-function _gistStatus(msg) {
+function _gistStatus(msg, synced) {
   const el = document.getElementById('gist-status');
-  if (el) el.textContent = msg;
+  if (!el) return;
+  const isOk  = synced === true  || (synced === undefined && msg.startsWith('✓'));
+  const isErr = synced === false || msg.startsWith('✗') || msg.startsWith('⚠');
+  el.innerHTML = '';
+  if (msg) {
+    const span = document.createElement('span');
+    span.textContent = msg;
+    span.style.color = isErr ? '#f87171' : isOk ? '#86efac' : 'var(--txt-dim)';
+    el.appendChild(span);
+  }
+  // Sync dot
+  const dot = document.getElementById('gist-dot');
+  if (dot) {
+    if (isOk)       { dot.style.background = '#22c55e'; dot.style.boxShadow = '0 0 6px rgba(34,197,94,.7),0 0 0 2px rgba(0,0,0,.4)'; }
+    else if (isErr) { dot.style.background = '#f87171'; dot.style.boxShadow = '0 0 6px rgba(244,63,94,.5),0 0 0 2px rgba(0,0,0,.4)'; }
+    else            { dot.style.background = '#f59e0b'; dot.style.boxShadow = '0 0 4px rgba(245,158,11,.5),0 0 0 2px rgba(0,0,0,.4)'; }
+  }
+}
+
+function gistDisconnect() {
+  const tokenEl = document.getElementById('gist-token');
+  const idEl    = document.getElementById('gist-id');
+  if (tokenEl) tokenEl.value = '';
+  if (idEl)    idEl.value    = '';
+  localStorage.removeItem('jjx-gist-id');
+  const dot = document.getElementById('gist-dot');
+  if (dot) { dot.style.background = '#4b5563'; dot.style.boxShadow = '0 0 0 2px rgba(0,0,0,.4)'; }
+  _gistStatus('Disconnected', false);
+  setTimeout(() => _gistStatus(''), 2500);
 }
 
 /* ════════════════════════════════════════════════════════════════
