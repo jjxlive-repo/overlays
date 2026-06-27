@@ -1402,10 +1402,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 /* ── BOLD LIVE CARD — free-floating, width-collapsed, LIVE tab above ── */
 .ep-live-tab {
   position: absolute;
-  left: -3px; top: -26px;
-  height: 24px;
+  left: -3px; bottom: -24px; top: auto;
+  height: 22px;
   padding: 0 11px 0 9px;
-  border-radius: 6px 6px 0 0;
+  border-radius: 0 0 6px 6px;
   background: linear-gradient(90deg, #b91c1c, #F43F5E);
   font-family: 'Anton', sans-serif;
   font-size: 10px; letter-spacing: 0.20em;
@@ -1421,10 +1421,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   animation: ltpPulse 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }
-.ep-root.ep-card-mode .ep-live-tab { display: flex; }
+.ep-root.ep-card-mode.ep-lt-mode .ep-live-tab { display: flex; }
 .ep-root.ep-card-mode .ep-dim { opacity: 0; }
 .ep-root.ep-card-mode .ep-card {
-  top: 520px;
+  top: auto;
+  bottom: 1478px; /* card bottom sits 8px above bar top (450px) */
   left: 40px;
   width: fit-content;
   min-width: 180px;
@@ -1482,8 +1483,31 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   overflow-wrap: anywhere;
 }
 .ep-root.ep-card-mode .ep-date-time { display: none; }
-.ep-root.ep-card-mode .ep-matchup { display: none; }
-.ep-root.ep-card-mode .ep-vs { display: none; }
+/* Fight-card: restore matchup/VS for team display */
+.ep-root.ep-card-mode .ep-matchup {
+  display: grid; margin: 10px 0 0; width: 100%; min-width: 420px;
+  grid-template-columns: 1fr 60px 1fr; gap: 12px;
+}
+.ep-root.ep-card-mode .ep-team { opacity: 1; animation: none !important; }
+.ep-root.ep-card-mode .ep-team-gamers  { animation: epTeamLeft  0.62s 0.16s cubic-bezier(.34,1.56,.64,1) forwards !important; }
+.ep-root.ep-card-mode .ep-team-battlers { animation: epTeamRight 0.62s 0.24s cubic-bezier(.34,1.56,.64,1) forwards !important; }
+.ep-root.ep-card-mode .ep-team-label {
+  margin-bottom: 5px; font-size: var(--ep-team-label); line-height: 1; letter-spacing: 1.5px;
+  color: #FAF5FF; text-shadow: 0 1px 7px rgba(0,0,0,0.95), 0 0 12px rgba(232,121,249,0.92);
+  background: rgba(232,121,249,0.16); border: 1px solid rgba(250,245,255,0.16);
+  border-radius: 999px; padding: 1px 8px 0; white-space: normal;
+}
+.ep-root.ep-card-mode .ep-player-row { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.ep-root.ep-card-mode .ep-player { flex:1; min-width:0; min-height:80px; height:auto; padding:7px 5px 6px; border-radius:9px; }
+.ep-root.ep-card-mode .ep-avatar { width:50px; height:50px; margin-bottom:4px; border-width:2px; font-size:18px; box-shadow:0 0 16px rgba(232,121,249,0.6); }
+.ep-root.ep-card-mode .ep-player-name { font-size:var(--ep-player-name); line-height:1; letter-spacing:1px; }
+.ep-root.ep-card-mode .ep-vs {
+  opacity: 0; font-size: 32px;
+  animation: epVsPunch 0.42s 0.46s cubic-bezier(.34,1.56,.64,1) forwards !important;
+}
+/* Live-text card only: hide matchup/VS */
+.ep-root.ep-card-mode.ep-lt-mode .ep-matchup { display: none; }
+.ep-root.ep-card-mode.ep-lt-mode .ep-vs { display: none; }
 .ep-fun-drawer {
   position: absolute;
   top: 505px;
@@ -2749,13 +2773,13 @@ function hideEventPromo(){
   if((root.classList.contains('ep-card-mode')||root.classList.contains('ep-fun-mode'))&&!root.classList.contains('ep-card-hiding')){
     root.classList.add('ep-card-hiding');
     setTimeout(()=>{
-      root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding');
+      root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding','ep-lt-mode');
       document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
       root.setAttribute('aria-hidden','true');
     },430);
     return;
   }
-  root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding');
+  root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding','ep-lt-mode');
   document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
   root.setAttribute('aria-hidden','true');
 }
@@ -3083,13 +3107,19 @@ ablyChannel.subscribe('live-text',msg=>{
   if(d.strip!==undefined&&_ltStrip){
     d.strip?_ltStrip.classList.add('lts-visible'):_ltStrip.classList.remove('lts-visible');
   }
-  // Bold card toggle — show first, then re-apply title/subtitle since renderEventPromo() overwrites them
+  // Bold card toggle — ep-lt-mode class keeps teams hidden for live-text use
   if(d.card!==undefined){
+    const epRoot=document.getElementById('event-promo-root');
     if(d.card){
       eventPromoShowOverlay('fight-card');
+      epRoot?.classList.add('ep-lt-mode');
+      // Re-apply after renderEventPromo() overwrites them
       if(d.title!==undefined)epText('ep-title',d.title);
       if(d.subtitle!==undefined)epText('ep-tagline',d.subtitle);
-    } else hideEventPromo();
+    } else {
+      epRoot?.classList.remove('ep-lt-mode');
+      hideEventPromo();
+    }
   }
 });
 
