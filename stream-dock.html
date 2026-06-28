@@ -2003,46 +2003,6 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         </div>
       </div>
 
-      <!-- ── GIFT BATTLE ── -->
-      <div class="ctrl-card">
-        <div class="ctrl-hd" onclick="toggleCtrl('gbt')">
-          <span class="ctrl-hd-title">🥊 Gift Battle</span>
-          <span class="ctrl-hd-ch">▼</span>
-        </div>
-        <div class="ctrl-bd" id="ctrl-gbt">
-          <div class="ctrl-row">
-            <button class="ctrl-btn c-act" data-gbtmode="off"      onclick="qcGBTMode('off')">Off</button>
-            <button class="ctrl-btn"       data-gbtmode="battle"   onclick="qcGBTMode('battle')">⚔ Battle</button>
-            <button class="ctrl-btn"       data-gbtmode="progress" onclick="qcGBTMode('progress')">📊 Goal</button>
-          </div>
-          <!-- Battle options -->
-          <div id="gbt-battle-opts" style="display:none;flex-direction:column;gap:5px;">
-            <div class="ctrl-row">
-              <span class="ctrl-lbl">Timer:</span>
-              <button class="ctrl-btn c-act" data-gbttimer="live"  onclick="gbtTimer('live')">Live</button>
-              <button class="ctrl-btn"       data-gbttimer="timed" onclick="gbtTimer('timed')">Timed</button>
-            </div>
-            <div class="ctrl-row" id="gbt-min-wrap" style="display:none;">
-              <span class="ctrl-lbl">Min:</span>
-              <input class="ctrl-in" id="gbt-minutes" type="number" min="1" max="60" value="5" style="width:50px;flex:none;">
-            </div>
-          </div>
-          <!-- Progress options -->
-          <div id="gbt-progress-opts" style="display:none;flex-direction:column;gap:5px;">
-            <div class="ctrl-row">
-              <span class="ctrl-lbl">Goal $:</span>
-              <input class="ctrl-in" id="gbt-goal"  type="number" min="1" value="100">
-              <span class="ctrl-lbl">Prize:</span>
-              <input class="ctrl-in" id="gbt-prize" type="text" placeholder="DARE">
-            </div>
-          </div>
-          <div class="ctrl-row">
-            <button class="ctrl-btn c-on"  style="flex:1;" onclick="qcGBTActivate()">▶ Activate</button>
-            <button class="ctrl-btn c-off" style="flex:1;" onclick="qcGBTStop()">✕ Stop</button>
-          </div>
-          <div class="ctrl-status" id="qc-gbt-status"></div>
-        </div>
-      </div>
 
       <!-- ── BAIT CARD ── -->
       <div class="ctrl-card">
@@ -2625,7 +2585,9 @@ function handleMsg(data) {
     if (alertAmount > 0 && ablyChannel) {
       ablyChannel.publish('gift-alert', {
         name: data.chatname || 'Anonymous', amount: alertAmount,
-        type: alertType, platform: alertPlat, contentImg, giftTitle, _src: 'dock',
+        type: alertType, platform: alertPlat, contentImg, giftTitle,
+        giftLabel: data.hasDonation || giftTitle || null,
+        _src: 'dock',
       }).catch(() => {});
     }
   }
@@ -4406,55 +4368,6 @@ function qcTGORefresh() {
   }
 }
 
-/* ── Gift Battle ── */
-let _gbtMode = 'off';
-let _gbtTimer = 'live';
-
-function qcGBTMode(mode) {
-  _gbtMode = mode;
-  document.querySelectorAll('[data-gbtmode]').forEach(b => {
-    b.classList.toggle('qc-active', b.dataset.gbtmode === mode);
-    b.classList.toggle('c-act',     b.dataset.gbtmode === mode);
-  });
-  const st = document.getElementById('qc-gbt-status');
-  if (st) st.textContent = 'Mode: ' + mode;
-  const bo = document.getElementById('gbt-battle-opts');
-  const po = document.getElementById('gbt-progress-opts');
-  if (bo) bo.style.display   = mode === 'battle'   ? 'flex' : 'none';
-  if (po) po.style.display   = mode === 'progress' ? 'flex' : 'none';
-}
-
-function gbtTimer(t) {
-  _gbtTimer = t;
-  document.querySelectorAll('[data-gbttimer]').forEach(b => {
-    b.classList.toggle('c-act', b.dataset.gbttimer === t);
-  });
-  const wrap = document.getElementById('gbt-min-wrap');
-  if (wrap) wrap.style.display = t === 'timed' ? 'flex' : 'none';
-}
-
-function qcGBTActivate() {
-  if (_gbtMode === 'off') return;
-  const cmd = { mode: _gbtMode };
-  if (_gbtMode === 'battle' && _gbtTimer === 'timed') {
-    cmd.timerSeconds = (parseInt(document.getElementById('gbt-minutes')?.value) || 5) * 60;
-  }
-  if (_gbtMode === 'progress') {
-    cmd.goalAmount = parseFloat(document.getElementById('gbt-goal')?.value) || 100;
-    cmd.prizeName  = (document.getElementById('gbt-prize')?.value || 'DARE').trim().toUpperCase();
-  }
-  ablyChannel.publish('gift-battle', cmd).catch(() => {});
-  const st = document.getElementById('qc-gbt-status');
-  if (st) { st.textContent = '▶ ' + _gbtMode + ' active'; }
-  doFlash('green');
-}
-
-function qcGBTStop() {
-  ablyChannel.publish('gift-battle', { mode: 'off' }).catch(() => {});
-  const st = document.getElementById('qc-gbt-status');
-  if (st) st.textContent = 'stopped';
-  doFlash('red');
-}
 
 /* ════════════════════════════════════════
    COLLAPSIBLE CONTROLS COLUMN

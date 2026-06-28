@@ -164,6 +164,83 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 /* user pill — brighter, with purple accent on the @username */
 #gb-notif-user .notif-user-name { color: #C084FC; }
 
+/* ── v3: Platform notification zones — TT above bar, YT below bar ── */
+#notif-zone-tt,
+#notif-zone-yt {
+  position: absolute; left: 0; width: 100%;
+  height: 160px; pointer-events: none; overflow: visible; z-index: 8;
+}
+#notif-zone-tt { bottom: calc(100% + 4px); }
+#notif-zone-yt { top:    calc(100% + 4px); }
+
+/* Spawned platform pill */
+.nt-pill {
+  position: absolute;
+  display: inline-flex; align-items: center; gap: 7px;
+  border-radius: 22px; padding: 5px 14px 5px 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 700;
+  white-space: nowrap; border: 1px solid;
+  will-change: transform, opacity;
+  transition: opacity 0.28s ease, transform 0.40s cubic-bezier(.34,1.56,.64,1);
+}
+.nt-pill-tt {
+  background: rgba(4,24,28,.92); border-color: rgba(105,201,208,.58);
+  color: #b4edf2; box-shadow: 0 0 18px rgba(105,201,208,.22), 0 2px 8px rgba(0,0,0,.55);
+}
+.nt-pill-yt {
+  background: rgba(36,5,5,.92); border-color: rgba(255,85,85,.58);
+  color: #ffb5b5; box-shadow: 0 0 18px rgba(255,85,85,.22), 0 2px 8px rgba(0,0,0,.55);
+}
+.nt-pill-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.nt-pill-tt .nt-pill-dot { background: #69C9D0; box-shadow: 0 0 6px rgba(105,201,208,.95); }
+.nt-pill-yt .nt-pill-dot { background: #FF5555; box-shadow: 0 0 6px rgba(255,85,85,.95); }
+.nt-user { color: rgba(255,255,255,.92); }
+.nt-label { color: inherit; }
+.nt-pts  { margin-left: 5px; opacity: .62; font-size: 10px; letter-spacing: .04em; }
+.nt-pill.nt-exit {
+  opacity: 0 !important;
+  transform-origin: center;
+  transition: opacity 0.26s ease, transform 0.26s ease !important;
+}
+
+/* ── v3: Boost / surge pill — floats above bar, replaces in-bar text during boost ── */
+#v3-boost-pill {
+  position: absolute; left: 50%; top: -48px;
+  transform: translateX(-50%) translateY(10px);
+  pointer-events: none; z-index: 16; white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.28s ease, transform 0.35s cubic-bezier(.34,1.56,.64,1);
+}
+#v3-boost-pill.visible {
+  opacity: 1; transform: translateX(-50%) translateY(0);
+}
+#v3bp-inner {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(18,3,42,.92);
+  border: 1px solid rgba(232,121,249,.62);
+  border-radius: 24px; padding: 6px 22px 6px 15px;
+  box-shadow: 0 0 22px rgba(168,85,247,.38), 0 0 0 1px rgba(232,121,249,.10) inset;
+  backdrop-filter: blur(6px);
+}
+#v3bp-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #e879f9; flex-shrink: 0;
+  box-shadow: 0 0 7px rgba(232,121,249,.85);
+  animation: v3bpPulse 0.9s ease-in-out infinite;
+}
+@keyframes v3bpPulse { 0%,100%{opacity:1} 50%{opacity:.18} }
+#v3bp-text {
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700;
+  color: #FAF5FF; letter-spacing: .045em;
+}
+.v3bp-mult { color: #e879f9; }
+#v3bp-timer {
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
+  color: rgba(255,255,255,.42); letter-spacing: .07em;
+}
+
 /* ── Milk fill — sweeps L→R inside bar based on milk % ── */
 #gb-milk-fill {
   position: absolute; top: 0; left: 0; bottom: 0; width: 0%;
@@ -344,523 +421,6 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .plat-tiktok  { color:#69C9D0;background:rgba(105,201,208,0.16);border:1px solid rgba(105,201,208,0.30); }
 .plat-youtube { color:#FF6B6B;background:rgba(255,80,80,0.16);  border:1px solid rgba(255,80,80,0.30);   }
 .plat-direct, .plat-default { color:#C084FC;background:rgba(192,132,252,0.16);border:1px solid rgba(192,132,252,0.30); }
-
-/* ══ GIFT BATTLE BAR — FIGHT NIGHT REDESIGN ══ */
-#gift-battle-bar {
-  position: absolute; inset: 0; z-index: 2; display: none; overflow: hidden;
-  /* subtle inner glow on the whole bar */
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.6);
-}
-#gift-battle-bar.active { display: block; }
-/* Hide milk fill + text when gift battle is active — battle bar owns the canvas */
-#gift-bar:has(#gift-battle-bar.active) #gb-milk-fill,
-#gift-bar:has(#gift-battle-bar.active) #gb-bar-text { display: none !important; }
-
-/* ── YT fill: YouTube red, rich and deep, left → right ── */
-#gbb-yt-fill {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
-  background: linear-gradient(to right,
-    #3d0000 0%,
-    #8b0000 30%,
-    #cc1010 65%,
-    #e62020 100%);
-  transition: width 1.2s cubic-bezier(.22,1,.36,1);
-  overflow: hidden;
-}
-/* inner gloss strip — fight-night sheen on YT side */
-#gbb-yt-fill::after {
-  content: '';
-  position: absolute; left: 0; right: 0; top: 0; height: 45%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, transparent 100%);
-  pointer-events: none;
-}
-/* ── TT fill: charcoal, right → left ── */
-#gbb-tt-fill {
-  position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
-  background: linear-gradient(to left,
-    #0a0a0a 0%,
-    #222222 35%,
-    #383838 70%,
-    #444444 100%);
-  transition: width 1.2s cubic-bezier(.22,1,.36,1);
-  overflow: hidden;
-}
-#gbb-tt-fill::after {
-  content: '';
-  position: absolute; left: 0; right: 0; top: 0; height: 45%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 100%);
-  pointer-events: none;
-}
-
-/* ── Platform identity logos — left/right anchored inside fills ── */
-/* YT play-button SVG badge — top-aligned */
-#gbb-yt-logo {
-  position: absolute; left: 14px; top: 7px;
-  display: flex; align-items: center; gap: 5px;
-  pointer-events: none; z-index: 3; overflow: hidden;
-}
-#gbb-yt-logo svg { width: 18px; height: 13px; flex-shrink: 0; }
-#gbb-yt-logo-text {
-  font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 2px;
-  color: rgba(255,255,255,0.80); text-transform: uppercase; white-space: nowrap;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
-}
-/* TT music-note badge — top-aligned */
-#gbb-tt-logo {
-  position: absolute; right: 14px; top: 7px;
-  display: flex; align-items: center; gap: 5px; flex-direction: row-reverse;
-  pointer-events: none; z-index: 3; overflow: hidden;
-}
-#gbb-tt-logo svg { width: 15px; height: 17px; flex-shrink: 0; }
-#gbb-tt-logo-text {
-  font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 2px;
-  color: rgba(255,255,255,0.80); text-transform: uppercase; white-space: nowrap;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
-}
-
-/* ── Divider — the signature element: a hot white saber line with red glow ── */
-#gbb-divider {
-  position: absolute;
-  /* starts at 50%; JS can override via left: calc(ytPct%) if desired */
-  left: 50%; top: -4px; bottom: -4px;
-  width: 3px;
-  transform: translateX(-50%);
-  background: #ffffff;
-  box-shadow:
-    0 0  6px 2px rgba(255,255,255,0.95),
-    0 0 16px 4px rgba(255,60,60,0.75),
-    0 0 36px 8px rgba(200,0,0,0.45);
-  z-index: 5; pointer-events: none;
-  transition: left 1.2s cubic-bezier(.22,1,.36,1);
-  animation: gbbDividerBreath 2.4s ease-in-out infinite;
-}
-@keyframes gbbDividerBreath {
-  0%,100% { box-shadow: 0 0 6px 2px rgba(255,255,255,0.95), 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.40); }
-  50%      { box-shadow: 0 0 8px 3px rgba(255,255,255,1.0),  0 0 24px 6px rgba(255,60,60,0.90), 0 0 52px 14px rgba(200,0,0,0.55); }
-}
-/* Surge flash when a gift tips the balance */
-#gbb-divider.surge {
-  animation: gbbDividerSurge 0.45s ease-out forwards, gbbDividerBreath 2.4s ease-in-out 0.5s infinite;
-}
-@keyframes gbbDividerSurge {
-  0%  { box-shadow: 0 0 6px 2px #fff, 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.4); }
-  30% { box-shadow: 0 0 18px 8px #fff, 0 0 50px 18px rgba(255,80,80,1.0), 0 0 90px 28px rgba(200,0,0,0.7); width: 5px; }
-  100%{ box-shadow: 0 0 6px 2px #fff, 0 0 16px 4px rgba(255,60,60,0.75), 0 0 36px 8px rgba(200,0,0,0.4); width: 3px; }
-}
-
-/* ── VS text at center, always on top ── */
-#gbb-vs {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-  font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 3px;
-  color: #fff; text-transform: uppercase;
-  background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.15);
-  padding: 1px 7px 1px 8px; border-radius: 3px;
-  box-shadow: 0 0 14px rgba(0,0,0,0.9);
-  z-index: 6; pointer-events: none; white-space: nowrap;
-}
-
-/* ── Percentage labels — bottom-anchored on their platform side, never move ── */
-#gbb-yt-pct {
-  position: absolute; left: 14px; bottom: 5px;
-  font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 1.5px;
-  color: rgba(255,255,255,0.95); white-space: nowrap;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 18px rgba(230,32,32,0.55);
-  z-index: 4; pointer-events: none;
-}
-#gbb-tt-pct {
-  position: absolute; right: 14px; bottom: 5px;
-  font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 1.5px;
-  color: rgba(255,255,255,0.95); white-space: nowrap;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 18px rgba(255,255,255,0.2);
-  z-index: 4; pointer-events: none;
-}
-
-/* ── Content zone (keeps layout stable; timer moved to shelf) ── */
-#gbb-content {
-  position: absolute; left: 0; top: 0; bottom: 0; right: 265px; z-index: 3;
-  pointer-events: none;
-}
-#gbb-mid {
-  position: absolute; left: 50%; top: 0; bottom: 0;
-  width: 120px; transform: translateX(-50%);
-  display: flex; align-items: center; justify-content: center;
-  pointer-events: none;
-}
-#gbb-mid::before, #gbb-mid::after { display: none; }
-
-/* hide old dollar-amount spans — replaced by pct labels */
-#gbb-yt-info, #gbb-tt-info { display: none; }
-.gbb-plat-lbl { display: none; }
-#gbb-yt-amt, #gbb-tt-amt { display: none; }
-
-/* ── LIVE dot — stays inside the bar at center ── */
-#gbb-timer-val {
-  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
-  letter-spacing: 0.22em; text-transform: uppercase;
-  color: #ff6b6b; white-space: nowrap;
-  background: rgba(0,0,0,0.50); padding: 2px 9px;
-  border-radius: 20px; border: 1px solid rgba(255,80,80,0.18);
-  transition: opacity 0.3s ease;
-  animation: gbbLivePulse 1.8s ease-in-out infinite;
-}
-/* hide the in-bar chip when the shelf is active */
-#gift-battle-bar.gbb-shelf-active #gbb-timer-val { opacity: 0; pointer-events: none; }
-@keyframes gbbLivePulse { 0%,100%{opacity:1} 50%{opacity:0.32} }
-
-/* ── TIMER SHELF — floats above the bar, drops into view for countdowns ── */
-#gbb-timer-shelf {
-  /* bar sits at top:450px; shelf is 28px tall, sits 4px above bar */
-  position: absolute;
-  left: 50%; top: 418px;
-  transform: translateX(-50%) translateY(-6px);
-  z-index: 15;
-  pointer-events: none;
-
-  /* collapsed/hidden by default */
-  opacity: 0;
-  transition: opacity 0.32s ease, transform 0.38s cubic-bezier(.34,1.4,.64,1);
-}
-#gbb-timer-shelf.visible {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-/* pill shape */
-#gbb-shelf-pill {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 14px 4px 12px;
-  border-radius: 20px;
-  background: rgba(6,0,10,0.88);
-  border: 1px solid rgba(255,255,255,0.12);
-  box-shadow:
-    0 2px 16px rgba(0,0,0,0.75),
-    0 0 0 1px rgba(255,255,255,0.04) inset;
-  white-space: nowrap;
-}
-/* small clock icon dot */
-#gbb-shelf-icon {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: #ff4444;
-  box-shadow: 0 0 6px 2px rgba(255,40,40,0.6);
-  flex-shrink: 0;
-  animation: gbbShelfDot 1.2s ease-in-out infinite;
-}
-@keyframes gbbShelfDot { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-#gbb-shelf-val {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 20px; letter-spacing: 2px;
-  color: #ffffff;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.9);
-  transition: color 0.3s ease;
-}
-#gbb-shelf-val.gbb-warn  { color: #fbbf24; }
-#gbb-shelf-val.gbb-danger{ color: #ef4444; animation: gbbShelfDanger 0.5s ease-in-out infinite; }
-#gbb-shelf-val.gbb-ended { color: #fbbf24; font-size: 16px; letter-spacing: 1.5px; }
-@keyframes gbbShelfDanger { 0%,100%{transform:scale(1)} 50%{transform:scale(1.10)} }
-
-#gbb-shelf-label {
-  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
-  letter-spacing: 0.22em; text-transform: uppercase;
-  color: rgba(255,255,255,0.38);
-}
-
-/* danger state: pill border pulses red */
-#gbb-timer-shelf.shelf-danger #gbb-shelf-pill {
-  border-color: rgba(239,68,68,0.35);
-  animation: gbbShelfPillDanger 0.5s ease-in-out infinite;
-}
-@keyframes gbbShelfPillDanger {
-  0%,100%{box-shadow:0 2px 16px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04) inset}
-  50%    {box-shadow:0 2px 24px rgba(239,68,68,0.5),0 0 14px rgba(239,68,68,0.3),0 0 0 1px rgba(239,68,68,0.2) inset}
-}
-/* warn state: subtle amber glow */
-#gbb-timer-shelf.shelf-warn #gbb-shelf-pill {
-  border-color: rgba(251,191,36,0.25);
-}
-
-/* ── Shimmer for progress goal ── */
-#gbb-goal-shimmer {
-  position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 7;
-  background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.22) 50%, transparent 80%);
-  background-size: 200% 100%;
-}
-#gbb-goal-shimmer.active { opacity: 1; animation: gbbShimmer 1.0s ease-in-out infinite; }
-@keyframes gbbShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-
-/* hide old watermark text (replaced by logo badges) */
-.gbb-fill-wm { display: none; }
-
-/* ── Center goal line (progress mode) ── */
-#gbb-goal-line {
-  position: absolute; left: 50%; top: 0; bottom: 0;
-  width: 2px; transform: translateX(-50%);
-  background: rgba(255,255,255,0.30);
-  box-shadow: 0 0 8px rgba(255,255,255,0.55), 0 0 3px rgba(255,255,255,0.90);
-  z-index: 2; pointer-events: none; display: none;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-goal-line { display: block; }
-#gift-battle-bar.gbb-mode-progress #gbb-timer-val {
-  font-size: 11px; letter-spacing: 0.14em;
-  background: rgba(0,0,0,0.52); color: rgba(255,255,255,0.85);
-}
-
-/* ── Battle-start announce ── */
-#gbb-announce {
-  position: absolute; inset: 0; z-index: 10; pointer-events: none;
-  display: flex; align-items: center; justify-content: center; gap: 14px;
-  opacity: 0;
-}
-#gbb-announce.show { animation: gbbAnnounceAnim 3.5s ease forwards; }
-@keyframes gbbAnnounceAnim { 0%{opacity:0} 12%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
-.gbb-ann-logo {
-  font-family: 'Anton', sans-serif; font-size: 13px; letter-spacing: 3px;
-  text-transform: uppercase; padding: 2px 9px; border-radius: 3px; white-space: nowrap;
-}
-.gbb-ann-yt { color:#ff5555; background:rgba(220,0,0,0.20); border:1px solid rgba(255,50,50,0.45); }
-.gbb-ann-tt { color:#e0e0e0; background:rgba(80,80,80,0.22); border:1px solid rgba(180,180,180,0.35); }
-#gbb-ann-text {
-  font-family: 'Anton', sans-serif; font-size: 14px; letter-spacing: 4px;
-  color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.95); text-transform: uppercase;
-}
-
-/* ── Gift pop layer ── */
-#gbb-pop-layer {
-  position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden;
-}
-.gbb-pop-name {
-  position: absolute; top: 50%; left: 50%;
-  font-family: 'Anton', sans-serif; letter-spacing: 2px; color: #fff; white-space: nowrap;
-  pointer-events: none; text-shadow: 0 2px 12px rgba(0,0,0,0.98);
-  transform-origin: center center;
-}
-.gbb-pop-sm { font-size: 18px; }
-.gbb-pop-md { font-size: 26px; }
-.gbb-pop-lg { font-size: 34px; }
-.gbb-pop-yt { color: #ff7070; animation: gbbPopYT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
-.gbb-pop-tt { color: #d0d0d0; animation: gbbPopTT 1.6s cubic-bezier(.34,1.56,.64,1) forwards; }
-@keyframes gbbPopYT {
-  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
-  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
-  65%  { opacity:1; transform:translate(-110%,-50%) scale(0.92); }
-  100% { opacity:0; transform:translate(-155%,-50%) scale(0.72); }
-}
-@keyframes gbbPopTT {
-  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
-  25%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
-  65%  { opacity:1; transform:translate(20%,-50%) scale(0.92); }
-  100% { opacity:0; transform:translate(65%,-50%) scale(0.72); }
-}
-.gbb-pop-flash {
-  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
-  font-family: 'DM Sans', sans-serif; font-size: 9px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.80);
-  white-space: nowrap; pointer-events: none;
-  animation: gbbFlashFade 1.8s ease forwards;
-}
-@keyframes gbbFlashFade { 0%,12%{opacity:0} 22%,78%{opacity:1} 100%{opacity:0} }
-
-/* ══ PROGRESS MODE — unified left-to-right fill ══ */
-
-/* Hide battle-mode fills and VS chip in progress mode */
-#gift-battle-bar.gbb-mode-progress #gbb-yt-fill,
-#gift-battle-bar.gbb-mode-progress #gbb-tt-fill,
-#gift-battle-bar.gbb-mode-progress #gbb-vs,
-#gift-battle-bar.gbb-mode-progress #gbb-yt-pct,
-#gift-battle-bar.gbb-mode-progress #gbb-tt-pct,
-#gift-battle-bar.gbb-mode-progress #gbb-divider { display: none; }
-
-/* Ghost track — the empty portion of the bar */
-#gbb-prog-track {
-  display: none;
-  position: absolute; inset: 0;
-  background: #111111;
-  z-index: 1;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-track { display: block; }
-
-/* Unified fill container — grows left to right */
-#gbb-prog-fill {
-  display: none;
-  position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
-  z-index: 2; overflow: hidden;
-  transition: width 1.3s cubic-bezier(.22,1,.36,1);
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-fill { display: block; }
-
-/* YT segment — sits at the left of the fill, width = ytPct of total fill */
-#gbb-prog-yt-seg {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 50%;
-  background: linear-gradient(to right, #3d0000, #8b0000, #cc1010, #e62020);
-  transition: width 1.3s cubic-bezier(.22,1,.36,1);
-}
-#gbb-prog-yt-seg::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, transparent 50%);
-}
-
-/* TT segment — sits immediately after YT, fills the rest of the fill */
-#gbb-prog-tt-seg {
-  position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
-  background: linear-gradient(to right, #2a2a2a, #3c3c3c, #464646);
-  transition: width 1.3s cubic-bezier(.22,1,.36,1);
-}
-#gbb-prog-tt-seg::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, transparent 50%);
-}
-
-/* Leading edge glow — the fill frontier, always at the right edge of #gbb-prog-fill */
-#gbb-prog-edge {
-  display: none;
-  position: absolute; right: -2px; top: -4px; bottom: -4px; width: 3px;
-  background: #ffffff;
-  box-shadow:
-    0 0 6px 2px rgba(255,255,255,0.95),
-    0 0 18px 5px rgba(255,180,0,0.70),
-    0 0 40px 10px rgba(220,120,0,0.45);
-  z-index: 4; pointer-events: none;
-  animation: gbbEdgeBreath 2.2s ease-in-out infinite;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-edge { display: block; }
-@keyframes gbbEdgeBreath {
-  0%,100% { box-shadow: 0 0 6px 2px rgba(255,255,255,0.95), 0 0 18px 5px rgba(255,180,0,0.65), 0 0 40px 10px rgba(220,120,0,0.40); }
-  50%      { box-shadow: 0 0 9px 3px rgba(255,255,255,1.0),  0 0 28px 8px rgba(255,200,0,0.85), 0 0 60px 16px rgba(220,140,0,0.55); }
-}
-#gbb-prog-edge.surge {
-  animation: gbbEdgeSurge 0.5s ease-out forwards, gbbEdgeBreath 2.2s ease-in-out 0.55s infinite;
-}
-@keyframes gbbEdgeSurge {
-  0%  { box-shadow: 0 0 6px 2px #fff, 0 0 18px 5px rgba(255,180,0,0.7), 0 0 40px 10px rgba(220,120,0,0.4); }
-  30% { box-shadow: 0 0 20px 9px #fff, 0 0 55px 20px rgba(255,220,0,1.0), 0 0 100px 30px rgba(220,160,0,0.7); width: 5px; }
-  100%{ box-shadow: 0 0 6px 2px #fff, 0 0 18px 5px rgba(255,180,0,0.7), 0 0 40px 10px rgba(220,120,0,0.4); width: 3px; }
-}
-
-/* Contribution mini-pills — centered in progress bar */
-#gbb-prog-contrib {
-  display: none;
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  z-index: 5; pointer-events: none;
-  display: flex; align-items: center; gap: 8px;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-contrib { display: flex; }
-.gbb-contrib-pill {
-  display: flex; align-items: center; gap: 4px;
-  background: rgba(0,0,0,0.55); border-radius: 10px;
-  padding: 2px 7px 2px 5px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.gbb-contrib-dot {
-  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-}
-.gbb-contrib-dot.yt { background: #e62020; box-shadow: 0 0 5px rgba(230,32,32,0.7); }
-.gbb-contrib-dot.tt { background: #555555; box-shadow: 0 0 5px rgba(120,120,120,0.5); }
-.gbb-contrib-label {
-  font-family: 'Anton', sans-serif; font-size: 9px; letter-spacing: 0.18em;
-  text-transform: uppercase; color: rgba(255,255,255,0.50); white-space: nowrap;
-}
-.gbb-contrib-pct {
-  font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700;
-  letter-spacing: 0.08em; color: rgba(255,255,255,0.90); white-space: nowrap;
-}
-
-/* Prize label — right-anchored, always visible, is the goal destination */
-#gbb-prog-prize {
-  display: none;
-  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-  z-index: 5; pointer-events: none;
-  max-width: 380px; overflow: hidden;
-  display: flex; align-items: center; gap: 8px;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-prize { display: flex; }
-#gbb-prog-prize-icon {
-  font-size: 18px; flex-shrink: 0; line-height: 1;
-  filter: drop-shadow(0 0 8px rgba(255,200,0,0.6));
-}
-#gbb-prog-prize-text {
-  font-family: 'Anton', sans-serif; font-size: 17px; letter-spacing: 2px;
-  text-transform: uppercase; color: rgba(255,255,255,0.90); white-space: nowrap;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.95), 0 0 18px rgba(255,180,0,0.25);
-  overflow: hidden; text-overflow: ellipsis;
-}
-
-/* ── GOAL HIT — DARE UNLOCKED sequence ── */
-/* Full-bar flash overlay */
-#gbb-prog-flash {
-  display: none;
-  position: absolute; inset: -4px; z-index: 20; pointer-events: none;
-  background: #ffffff; opacity: 0; border-radius: 0;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-flash { display: block; }
-#gbb-prog-flash.fire { animation: gbbFlashBlast 0.55s ease-out forwards; }
-@keyframes gbbFlashBlast {
-  0%   { opacity: 0; }
-  18%  { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-/* Gold fill state when goal hit */
-#gift-battle-bar.gbb-goal-hit #gbb-prog-fill {
-  background: linear-gradient(to right, #78350f, #d97706, #fbbf24, #fde68a) !important;
-  transition: background 0.4s ease;
-}
-#gift-battle-bar.gbb-goal-hit #gbb-prog-yt-seg,
-#gift-battle-bar.gbb-goal-hit #gbb-prog-tt-seg { display: none; }
-
-/* DARE UNLOCKED stamp — slams into center */
-#gbb-prog-unlock {
-  display: none;
-  position: absolute; inset: 0; z-index: 18; pointer-events: none;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  opacity: 0;
-}
-#gift-battle-bar.gbb-mode-progress #gbb-prog-unlock { display: flex; }
-#gbb-prog-unlock.stamp { animation: gbbUnlockStamp 4.5s cubic-bezier(.22,1,.36,1) forwards; }
-@keyframes gbbUnlockStamp {
-  0%   { opacity:0; transform:scale(2.4) rotate(-3deg); }
-  12%  { opacity:1; transform:scale(0.94) rotate(0.5deg); }
-  20%  { transform:scale(1.04) rotate(0deg); }
-  30%  { transform:scale(1.0); opacity:1; }
-  78%  { opacity:1; transform:scale(1.0); }
-  100% { opacity:0; transform:scale(0.88); }
-}
-#gbb-unlock-headline {
-  font-family: 'Anton', sans-serif; font-size: 28px; letter-spacing: 5px;
-  text-transform: uppercase; color: #fbbf24;
-  text-shadow:
-    0 0 14px rgba(251,191,36,0.95),
-    0 0 40px rgba(251,191,36,0.60),
-    0 2px 0 rgba(0,0,0,1),
-    0 4px 18px rgba(0,0,0,0.95);
-  white-space: nowrap;
-}
-#gbb-unlock-prize {
-  font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 3px;
-  text-transform: uppercase; color: rgba(255,255,255,0.88);
-  text-shadow: 0 1px 8px rgba(0,0,0,0.95);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px;
-}
-
-/* Announce badge colors for progress mode */
-#gift-battle-bar.gbb-mode-progress .gbb-ann-yt {
-  color:#ff5555; background:rgba(220,0,0,0.20); border-color:rgba(255,50,50,0.45);
-}
-#gift-battle-bar.gbb-mode-progress .gbb-ann-tt {
-  color:#e0e0e0; background:rgba(80,80,80,0.22); border-color:rgba(180,180,180,0.35);
-}
-
-/* Gift pop — rises from center */
-.gbb-pop-prog { animation: gbbPopProg 2.0s ease-out forwards !important; }
-.gbb-pop-yt.gbb-pop-prog { color:#ef4444 !important; text-shadow:0 0 22px rgba(239,68,68,0.95),0 2px 10px rgba(0,0,0,0.98) !important; }
-.gbb-pop-tt.gbb-pop-prog { color:#d0d0d0 !important; text-shadow:0 0 22px rgba(200,200,200,0.8),0 2px 10px rgba(0,0,0,0.98) !important; }
-@keyframes gbbPopProg {
-  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.3) rotate(-4deg); }
-  22%  { opacity:1; transform:translate(-50%,-50%) scale(1.18) rotate(0deg); }
-  55%  { opacity:1; transform:translate(-50%,-50%) scale(1.02); }
-  100% { opacity:0; transform:translate(-50%,-60%) scale(0.82); }
-}
-.gbb-pop-yt .gbb-pop-flash-txt { color: #fca5a5; }
-.gbb-pop-tt .gbb-pop-flash-txt { color: #d0d0d0; }
 
 /* ══ TOP GIFTERS PANEL ══ */
 #top-gifters-panel {
@@ -1901,6 +1461,79 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   color: rgba(232,121,249,0.85); white-space: nowrap;
   line-height: 1.1;
 }
+/* ══ GIFT ANIMATION SYSTEM ══ */
+#gift-anim-root {
+  position: absolute; top: 0; left: 0;
+  width: 1080px; height: 1920px;
+  pointer-events: none; z-index: 20; overflow: hidden;
+}
+#gift-eq-canvas   { position: absolute; bottom: 0; left: 0; width: 1080px; height: 120px; }
+#gift-blast-canvas{ position: absolute; top: 0;    left: 0; width: 1080px; height: 1920px; }
+
+/* Notification card */
+#gift-card {
+  position: absolute; left: 50%;
+  transform: translateX(-50%);
+  width: 360px; border-radius: 20px; overflow: hidden;
+  opacity: 0; will-change: transform, opacity, top;
+  filter: drop-shadow(0 14px 44px rgba(0,0,0,.72));
+}
+#gc-plat-bar {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 18px;
+  font-family: 'DM Sans', sans-serif; font-size: 11px;
+  font-weight: 800; letter-spacing: .10em; text-transform: uppercase;
+}
+#gc-body {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 18px 16px;
+  background: rgba(7,2,20,.94);
+  border: 2px solid; border-top: none;
+  border-radius: 0 0 18px 18px;
+}
+#gc-img-wrap {
+  width: 64px; height: 64px; flex-shrink: 0;
+  position: relative; display: flex; align-items: center; justify-content: center;
+}
+#gc-img { width: 64px; height: 64px; object-fit: contain; border-radius: 10px; }
+#gc-img-fallback {
+  font-size: 38px; position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%,-50%);
+}
+#gc-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#gc-sender-name {
+  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,.60); white-space: nowrap;
+}
+#gc-gift-label {
+  font-family: 'Boogaloo', sans-serif; font-size: 24px; color: #FAF5FF;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.1;
+}
+#gc-amount-str {
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 800;
+  opacity: .72; color: #FAF5FF;
+}
+/* Platform colour variants */
+#gift-card.plat-tiktok  #gc-plat-bar { background: rgba(105,201,208,.20); color: #69C9D0; }
+#gift-card.plat-tiktok  #gc-body     { border-color: rgba(105,201,208,.52); }
+#gift-card.plat-tiktok  #gc-amount-str { color: #69C9D0; opacity: 1; }
+#gift-card.plat-youtube #gc-plat-bar { background: rgba(255,68,68,.20); color: #FF7070; }
+#gift-card.plat-youtube #gc-body     { border-color: rgba(255,68,68,.52); }
+#gift-card.plat-youtube #gc-amount-str { color: #FF8888; opacity: 1; }
+#gift-card.plat-default #gc-plat-bar { background: rgba(168,85,247,.20); color: #C084FC; }
+#gift-card.plat-default #gc-body     { border-color: rgba(168,85,247,.52); }
+/* Tier sizing */
+#gift-card.tier-sm { width: 280px; }
+#gift-card.tier-md { width: 360px; }
+#gift-card.tier-lg { width: 450px; }
+#gift-card.tier-sm #gc-gift-label { font-size: 18px; }
+#gift-card.tier-md #gc-gift-label { font-size: 24px; }
+#gift-card.tier-lg #gc-gift-label { font-size: 30px; }
+#gift-card.tier-lg #gc-img-wrap,
+#gift-card.tier-lg #gc-img { width: 80px; height: 80px; }
+#gift-card.tier-lg #gc-sender-name { font-size: 14px; }
+#gift-card.tier-lg #gc-amount-str  { font-size: 15px; }
 </style>
 </head>
 <body>
@@ -1925,105 +1558,19 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     <div id="bar-shimmer-flare"></div><div id="bar-border"></div>
     <div id="bar-progress"></div>
   </div>
-  <div id="gb-milk-fill"></div>
-  <div id="gb-bar-text"></div>
-  <!-- ══ GIFT BATTLE BAR — overlays bar when battle/progress mode is active ══ -->
-  <div id="gift-battle-bar">
-    <!-- fills -->
-    <div id="gbb-yt-fill">
-      <span class="gbb-fill-wm">▶ YOUTUBE</span>
-      <!-- YouTube logo badge -->
-      <div id="gbb-yt-logo">
-        <svg viewBox="0 0 90 63" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="90" height="63" rx="14" fill="#fff" fill-opacity="0.92"/>
-          <path d="M36 20 L64 31.5 L36 43 Z" fill="#cc1010"/>
-        </svg>
-        <span id="gbb-yt-logo-text">YouTube</span>
-      </div>
-    </div>
-    <div id="gbb-tt-fill">
-      <span class="gbb-fill-wm">TIKTOK ♪</span>
-      <!-- TikTok logo badge -->
-      <div id="gbb-tt-logo">
-        <svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M29 0C29.8 6.2 33.2 9.6 39 10v7c-3.4-.3-6.4-1.4-9-3.2V28c0 9.4-10.4 14.6-18 9.2-5.4-3.8-6.6-11.4-2.6-16.6 3-4 7.8-5.6 12.2-4.4v7.4c-4.2-1.6-7.6 1.2-7.2 5 .4 3 3 5.2 6 5 4-.2 6.6-3.2 6.6-7.2V0h3Z" fill="white" fill-opacity="0.90"/>
-        </svg>
-        <span id="gbb-tt-logo-text">TikTok</span>
-      </div>
-    </div>
-
-    <!-- shimmer / goal line -->
-    <div id="gbb-goal-shimmer"></div>
-    <div id="gbb-goal-line"></div>
-
-    <!-- ── PROGRESS MODE elements ── -->
-    <!-- ghost track (empty portion) -->
-    <div id="gbb-prog-track"></div>
-    <!-- unified fill, grows left→right -->
-    <div id="gbb-prog-fill">
-      <div id="gbb-prog-yt-seg"></div>
-      <div id="gbb-prog-tt-seg"></div>
-      <!-- leading-edge saber glow -->
-      <div id="gbb-prog-edge"></div>
-    </div>
-    <!-- contribution pills (centered in progress bar) -->
-    <div id="gbb-prog-contrib">
-      <div class="gbb-contrib-pill">
-        <div class="gbb-contrib-dot yt"></div>
-        <span class="gbb-contrib-label">YT</span>
-        <span class="gbb-contrib-pct" id="gbb-prog-yt-pct">0%</span>
-      </div>
-      <div class="gbb-contrib-pill">
-        <div class="gbb-contrib-dot tt"></div>
-        <span class="gbb-contrib-label">TT</span>
-        <span class="gbb-contrib-pct" id="gbb-prog-tt-pct">0%</span>
-      </div>
-    </div>
-    <!-- prize destination label (right) -->
-    <div id="gbb-prog-prize">
-      <span id="gbb-prog-prize-icon">🎯</span>
-      <span id="gbb-prog-prize-text">DARE</span>
-    </div>
-    <!-- goal-hit flash overlay -->
-    <div id="gbb-prog-flash"></div>
-    <!-- DARE UNLOCKED stamp -->
-    <div id="gbb-prog-unlock">
-      <div id="gbb-unlock-headline">DARE UNLOCKED</div>
-      <div id="gbb-unlock-prize"></div>
-    </div>
-
-    <!-- hot divider saber line -->
-    <div id="gbb-divider"></div>
-
-    <!-- percentage labels flanking the divider -->
-    <div id="gbb-yt-pct">50%</div>
-    <div id="gbb-tt-pct">50%</div>
-
-    <!-- VS chip — center, z above everything -->
-    <div id="gbb-vs">VS</div>
-
-    <!-- content zone keeps the timer chip -->
-    <div id="gbb-content">
-      <div id="gbb-yt-info">
-        <span id="gbb-yt-lbl" class="gbb-plat-lbl">▶ YT</span>
-        <span id="gbb-yt-amt">$0.00</span>
-      </div>
-      <div id="gbb-mid">
-        <span id="gbb-timer-val" class="gbb-live">● LIVE</span>
-      </div>
-      <div id="gbb-tt-info">
-        <span id="gbb-tt-amt">$0.00</span>
-        <span id="gbb-tt-lbl" class="gbb-plat-lbl">TT ♪</span>
-      </div>
-    </div>
-
-    <div id="gbb-pop-layer"></div>
-    <div id="gbb-announce">
-      <span class="gbb-ann-logo gbb-ann-yt">▶ YouTube</span>
-      <span id="gbb-ann-text">⚔ GIFT BATTLE!</span>
-      <span class="gbb-ann-logo gbb-ann-tt">TikTok</span>
+  <!-- ══ v3: BOOST/SURGE PILL — floats above bar, shown during boost/surge ══ -->
+  <div id="v3-boost-pill">
+    <div id="v3bp-inner">
+      <span id="v3bp-dot"></span>
+      <span id="v3bp-text">⚡ 2X BOOST</span>
+      <span id="v3bp-timer"></span>
     </div>
   </div>
+  <!-- ══ v3: PLATFORM NOTIF ZONES — TT above bar, YT below bar, track fill edge ══ -->
+  <div id="notif-zone-tt"></div>
+  <div id="notif-zone-yt"></div>
+  <div id="gb-milk-fill"></div>
+  <div id="gb-bar-text"></div>
   <div id="bar-hero">
     <img id="bar-hero-gift-img" src="" alt="">
     <span id="bar-hero-name"></span>
@@ -2056,12 +1603,28 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 <div id="hm-first-gifter-flash"></div>
 
-<!-- ══ GBB TIMER SHELF — floats above the battle bar for countdown display ══ -->
-<div id="gbb-timer-shelf">
-  <div id="gbb-shelf-pill">
-    <div id="gbb-shelf-icon"></div>
-    <div id="gbb-shelf-val">0:00</div>
-    <div id="gbb-shelf-label">remaining</div>
+<!-- ══ GIFT ANIMATION SYSTEM — bottom geyser EQ + flying notification card ══ -->
+<div id="gift-anim-root">
+  <!-- Shockwave rings canvas (Blast variant) — full canvas overlay -->
+  <canvas id="gift-blast-canvas"></canvas>
+  <!-- Bottom geyser EQ — always animating, reactive on gifts -->
+  <canvas id="gift-eq-canvas"></canvas>
+  <!-- Notification card — flies from geyser center to canvas center then absorbs into bar -->
+  <div id="gift-card">
+    <div id="gc-plat-bar">
+      <span id="gc-plat-name">TikTok</span>
+    </div>
+    <div id="gc-body">
+      <div id="gc-img-wrap">
+        <img id="gc-img" src="" alt="" style="display:none;">
+        <span id="gc-img-fallback">🎁</span>
+      </div>
+      <div id="gc-text">
+        <div id="gc-sender-name"></div>
+        <div id="gc-gift-label"></div>
+        <div id="gc-amount-str"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2380,275 +1943,6 @@ function resumeFromAlert(){document.getElementById('bar-info-amount').classList.
 
 /* ══ GIFT BAR GIFTR CMD ══ */
 function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=false;if(!alertActive)startRotation();}else if(cmd.startsWith('slot:')){const key=cmd.slice(5),idx=activeSlots.findIndex(s=>s.key===key);if(idx>=0){pinned=true;stopRotation();showSlot(idx);}}}
-
-/* ══ GIFT BATTLE BAR ══ */
-let gbbMode='off';
-let gbbYtSpend=0,gbbTtSpend=0,gbbTtCoins=0,gbbGoalAmount=100;
-let gbbTimerLeft=null;   // null = full live, number = seconds remaining
-let gbbTimerInterval=null;
-let gbbGoalHit=false;
-
-function gbbFmt(usd){return'$'+usd.toFixed(2);}
-function gbbFmtCoins(n){
-  if(n>=1000000)return(n/1000000).toFixed(1).replace(/\.0$/,'')+'M coins';
-  if(n>=10000)return(n/1000).toFixed(1).replace(/\.0$/,'')+'K coins';
-  return n.toLocaleString()+' coins';
-}
-
-function gbbComputeSpend(amount,type){
-  const n=Number(amount)||0;
-  if(type==='tiktok_coins')return n*0.01;         // $0.01/coin viewer spend
-  if(type==='youtube_jewels')return n*0.005;       // ~$0.005/jewel (matches tracker.html rate)
-  if(type==='youtube_superchat'||type==='direct_donation'||type==='direct')return n;
-  return 0;
-}
-
-function gbbTrackGift(data){
-  if(gbbMode==='off')return;
-  const plat=(data.platform||'').toLowerCase();
-  const spend=gbbComputeSpend(data.amount,data.type);
-  if(spend<=0)return;
-  if(plat==='youtube')gbbYtSpend+=spend;
-  else if(plat==='tiktok'){
-    gbbTtSpend+=spend;
-    // accumulate raw coins for display; non-coin gifts approximate via rate
-    if(data.type==='tiktok_coins') gbbTtCoins+=(Number(data.amount)||0);
-    else gbbTtCoins+=Math.round(spend/0.01);
-  }
-  gbbUpdateDisplay(true);
-}
-
-function gbbUpdateDisplay(triggerSurge){
-  if(gbbMode==='off')return;
-  const yt=gbbYtSpend,tt=gbbTtSpend;
-  const ytFill=document.getElementById('gbb-yt-fill');
-  const ttFill=document.getElementById('gbb-tt-fill');
-  const ytAmt =document.getElementById('gbb-yt-amt');
-  const ttAmt =document.getElementById('gbb-tt-amt');
-  const timerEl=document.getElementById('gbb-timer-val');
-  const divider=document.getElementById('gbb-divider');
-  const ytPctEl=document.getElementById('gbb-yt-pct');
-  const ttPctEl=document.getElementById('gbb-tt-pct');
-  const shelf    =document.getElementById('gbb-timer-shelf');
-  const shelfVal =document.getElementById('gbb-shelf-val');
-  const bar      =document.getElementById('gift-battle-bar');
-  function updateShelf(text,valClass,shelfClass){
-    if(!shelf||!shelfVal)return;
-    shelfVal.textContent=text; shelfVal.className=valClass||'';
-    shelf.className=shelfClass?'visible '+shelfClass:'visible';
-    bar&&bar.classList.add('gbb-shelf-active');
-  }
-  function hideShelf(){
-    if(!shelf)return;
-    shelf.className='';
-    bar&&bar.classList.remove('gbb-shelf-active');
-  }
-  function updateSplit(ytPct){
-    const ttPct=100-ytPct;
-    ytFill.style.width=ytPct+'%'; ttFill.style.width=ttPct+'%';
-    if(divider) divider.style.left=ytPct+'%';
-    if(ytPctEl) ytPctEl.textContent=Math.round(ytPct)+'%';
-    if(ttPctEl) ttPctEl.textContent=Math.round(ttPct)+'%';
-    if(triggerSurge&&divider){divider.classList.remove('surge');void divider.offsetWidth;divider.classList.add('surge');}
-  }
-  if(gbbMode==='battle'){
-    const total=(yt+tt)||0.001;
-    updateSplit((yt/total)*100);
-    ytAmt.textContent=gbbFmt(yt); ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
-    if(gbbTimerLeft===null){
-      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
-      hideShelf();
-    }else if(gbbTimerLeft<=0){
-      const winner=yt>tt?'▶ YT WINS':tt>yt?'TT WINS':'DRAW';
-      timerEl.textContent=''; timerEl.className='';
-      updateShelf(winner,'gbb-ended','shelf-ended');
-    }else{
-      const m=Math.floor(gbbTimerLeft/60),s=gbbTimerLeft%60;
-      const timeStr=m+':'+String(s).padStart(2,'0');
-      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
-      updateShelf(timeStr, gbbTimerLeft<=10?'gbb-danger':gbbTimerLeft<=60?'gbb-warn':'', gbbTimerLeft<=10?'shelf-danger':gbbTimerLeft<=60?'shelf-warn':'');
-    }
-  }else if(gbbMode==='progress'){
-    const goal=gbbGoalAmount||100;
-    const totalSpend=yt+tt;
-    const totalPct=Math.min(totalSpend/goal*100,100);
-    // Unified fill width = total progress
-    const progFill=document.getElementById('gbb-prog-fill');
-    const progYtSeg=document.getElementById('gbb-prog-yt-seg');
-    const progTtSeg=document.getElementById('gbb-prog-tt-seg');
-    const progEdge=document.getElementById('gbb-prog-edge');
-    const progYtPct=document.getElementById('gbb-prog-yt-pct');
-    const progTtPct=document.getElementById('gbb-prog-tt-pct');
-    if(progFill) progFill.style.width=totalPct+'%';
-    // Inside the fill, YT takes its share of the filled region
-    const ytShareOfFill=totalSpend>0?(yt/totalSpend)*100:50;
-    const ttShareOfFill=100-ytShareOfFill;
-    if(progYtSeg) progYtSeg.style.width=ytShareOfFill+'%';
-    if(progTtSeg) progTtSeg.style.width=ttShareOfFill+'%';
-    // Edge surge
-    if(triggerSurge&&progEdge){progEdge.classList.remove('surge');void progEdge.offsetWidth;progEdge.classList.add('surge');}
-    // Contribution pill labels (% of total spend each team did)
-    if(progYtPct) progYtPct.textContent=totalSpend>0?Math.round(yt/totalSpend*100)+'%':'0%';
-    if(progTtPct) progTtPct.textContent=totalSpend>0?Math.round(tt/totalSpend*100)+'%':'0%';
-    ytAmt.textContent=gbbFmt(yt); ttAmt.textContent=gbbFmtCoins(gbbTtCoins);
-    if(!gbbGoalHit&&totalSpend>=goal){
-      gbbGoalHit=true;
-      gbbFireDareUnlock();
-      timerEl.textContent=''; timerEl.className='';
-      updateShelf('DARE UNLOCKED','gbb-ended','shelf-ended');
-    }else if(!gbbGoalHit){
-      const rem=Math.max(0,goal-totalSpend);
-      const pct=totalPct;
-      timerEl.textContent='● LIVE'; timerEl.className='gbb-live';
-      updateShelf('$'+rem.toFixed(0)+' to go', pct>=90?'gbb-danger':pct>=70?'gbb-warn':'', pct>=90?'shelf-danger':pct>=70?'shelf-warn':'');
-    }
-  }
-}
-
-function gbbFireDareUnlock(){
-  const bar=document.getElementById('gift-battle-bar');
-  const flash=document.getElementById('gbb-prog-flash');
-  const stamp=document.getElementById('gbb-prog-unlock');
-  const prizeName=document.getElementById('gbb-unlock-prize');
-  const progFill=document.getElementById('gbb-prog-fill');
-  // 1. fill to 100%
-  if(progFill) progFill.style.width='100%';
-  // 2. gold fill state
-  bar&&bar.classList.add('gbb-goal-hit');
-  // 3. screen flash
-  if(flash){flash.classList.remove('fire');void flash.offsetWidth;flash.classList.add('fire');}
-  // 4. stamp the prize name then DARE UNLOCKED
-  if(prizeName) prizeName.textContent=gbbPrizeName||'';
-  if(stamp){stamp.classList.remove('stamp');void stamp.offsetWidth;stamp.classList.add('stamp');}
-  // 5. screen pulse
-  const sp=document.getElementById('screen-pulse');
-  [0,600,1200].forEach(d=>setTimeout(()=>{
-    sp.style.boxShadow='inset 0 0 180px 80px rgba(251,191,36,0.45)';
-    sp.style.opacity='1';
-    setTimeout(()=>{sp.style.opacity='0';},700);
-  },d));
-  // 6. clean up after animation
-  setTimeout(()=>{
-    bar&&bar.classList.remove('gbb-goal-hit');
-    if(stamp) stamp.classList.remove('stamp');
-  },5000);
-}
-
-function gbbStartTimer(){
-  gbbStopTimer();
-  if(gbbTimerLeft===null||gbbTimerLeft<=0)return;
-  gbbTimerInterval=setInterval(()=>{
-    if(gbbTimerLeft>0){gbbTimerLeft--;gbbUpdateDisplay();}
-    if(gbbTimerLeft<=0)gbbStopTimer();
-  },1000);
-}
-
-function gbbStopTimer(){
-  if(gbbTimerInterval){clearInterval(gbbTimerInterval);gbbTimerInterval=null;}
-}
-
-function gbbShowAnnounce(mode){
-  const el=document.getElementById('gbb-announce');
-  const txt=document.getElementById('gbb-ann-text');
-  txt.textContent=mode==='progress'?'🎯 SHARED PROGRESS!':'⚔ GIFT BATTLE!';
-  el.classList.remove('show');
-  void el.offsetWidth; // force reflow to restart animation
-  el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'),3600);
-}
-
-function gbbGiftPop(data){
-  if(gbbMode==='off')return;
-  const plat=(data.platform||'').toLowerCase();
-  const spend=gbbComputeSpend(data.amount,data.type);
-  const tier=spend>=50?'lg':spend>=8?'md':'sm';
-  const dir=plat==='youtube'?'yt':'tt';
-  const isProgress=gbbMode==='progress';
-  const layer=document.getElementById('gbb-pop-layer');
-  // Name pop — battle shoots sideways, progress bursts and floats
-  const nameEl=document.createElement('div');
-  nameEl.className=`gbb-pop-name gbb-pop-${tier} gbb-pop-${dir}${isProgress?' gbb-pop-prog':''}`;
-  nameEl.textContent=(data.name||'').toUpperCase();
-  layer.appendChild(nameEl);
-  // Flash text
-  const flashEl=document.createElement('div');
-  flashEl.className='gbb-pop-flash';
-  flashEl.textContent=(data.name||'')+' sent '+fmtAmount(data.amount,data.type);
-  layer.appendChild(flashEl);
-  setTimeout(()=>{nameEl.remove();flashEl.remove();},2100);
-}
-
-let gbbPrizeName='';
-function gbbHandleCmd(data){
-  const{mode,timerSeconds,goalAmount,prizeName}=data||{};
-  gbbPrizeName=prizeName||'';
-  gbbStopTimer();
-  const bar=document.getElementById('gift-battle-bar');
-  if(!mode||mode==='off'){
-    gbbMode='off';
-    bar.classList.remove('active','gbb-mode-battle','gbb-mode-progress','gbb-shelf-active','gbb-goal-hit');
-    document.getElementById('gbb-goal-shimmer').classList.remove('active');
-    const offShelf=document.getElementById('gbb-timer-shelf');
-    if(offShelf)offShelf.className='';
-    const offPf=document.getElementById('gbb-prog-fill');
-    if(offPf){offPf.style.width='0%';offPf.style.background='';}
-    const offPu=document.getElementById('gbb-prog-unlock');
-    if(offPu) offPu.classList.remove('stamp');
-    return;
-  }
-  // Reset and activate
-  gbbMode=mode;
-  gbbYtSpend=0;gbbTtSpend=0;gbbTtCoins=0;gbbGoalHit=false;
-  gbbGoalAmount=Number(goalAmount)||100;
-  gbbTimerLeft=timerSeconds?Number(timerSeconds):null;
-  document.getElementById('gbb-goal-shimmer').classList.remove('active');
-  // Initial fills + divider reset
-  const divEl=document.getElementById('gbb-divider');
-  const ytPctEl2=document.getElementById('gbb-yt-pct');
-  const ttPctEl2=document.getElementById('gbb-tt-pct');
-  if(mode==='battle'){
-    document.getElementById('gbb-yt-fill').style.width='50%';
-    document.getElementById('gbb-tt-fill').style.width='50%';
-    if(divEl){divEl.style.left='50%';divEl.classList.remove('surge');}
-    if(ytPctEl2) ytPctEl2.textContent='50%';
-    if(ttPctEl2) ttPctEl2.textContent='50%';
-  }else{
-    document.getElementById('gbb-yt-fill').style.width='0%';
-    document.getElementById('gbb-tt-fill').style.width='0%';
-    if(divEl){divEl.style.left='0%';divEl.classList.remove('surge');}
-    if(ytPctEl2) ytPctEl2.textContent='0%';
-    if(ttPctEl2) ttPctEl2.textContent='0%';
-    // Reset progress mode elements
-    const pf=document.getElementById('gbb-prog-fill');
-    if(pf){pf.style.width='0%';pf.style.background='';}
-    const pe=document.getElementById('gbb-prog-edge');
-    if(pe) pe.classList.remove('surge');
-    const pu=document.getElementById('gbb-prog-unlock');
-    if(pu) pu.classList.remove('stamp');
-    const pfl=document.getElementById('gbb-prog-flash');
-    if(pfl) pfl.classList.remove('fire');
-    bar.classList.remove('gbb-goal-hit');
-    // Set prize text
-    const pt=document.getElementById('gbb-prog-prize-text');
-    if(pt) pt.textContent=(gbbPrizeName||'DARE').toUpperCase();
-    const up=document.getElementById('gbb-unlock-prize');
-    if(up) up.textContent=(gbbPrizeName||'').toUpperCase();
-    // Reset contribution pills
-    const pyp=document.getElementById('gbb-prog-yt-pct');
-    const ptp=document.getElementById('gbb-prog-tt-pct');
-    if(pyp) pyp.textContent='0%';
-    if(ptp) ptp.textContent='0%';
-    const pys=document.getElementById('gbb-prog-yt-seg');
-    const pts=document.getElementById('gbb-prog-tt-seg');
-    if(pys) pys.style.width='50%';
-    if(pts) pts.style.width='50%';
-  }
-  bar.classList.remove('gbb-mode-battle','gbb-mode-progress');
-  bar.classList.add('active','gbb-mode-'+mode);
-  gbbUpdateDisplay();
-  gbbShowAnnounce(mode);
-  if(gbbTimerLeft!==null)gbbStartTimer();
-}
 
 /* ══════════════════════════════════════════════════
    SPLAT OVERLAY JS
@@ -3077,11 +2371,11 @@ ablyChannel.subscribe('event-promo',msg=>{
   else if(d.type==='event-promo-auto'){if(d.enabled)startEventPromoAuto(d.intervalMs);else stopEventPromoAuto();}
 });
 
-// Gift alert → bar animation + gift battle tracker
+// Gift alert → bar animation + hype meter injection + geyser card animation
 ablyChannel.subscribe('gift-alert',msg=>{
   if(!msg.data)return;
   onGiftAlert(msg.data);
-  gbbTrackGift(msg.data);
+  if(typeof fireGiftAnim === 'function') fireGiftAnim(msg.data);
 });
 
 // Giftr leaderboard
@@ -3092,10 +2386,191 @@ ablyChannel.subscribe('giftr',msg=>{
   else onGiftrData(d);
 });
 
-// Gift battle bar
-ablyChannel.subscribe('gift-battle',msg=>{
-  if(msg.data)gbbHandleCmd(msg.data);
-});
+
+/* ══════════════════════════════════════════════════════════════════
+   GIFT ANIMATION SYSTEM
+   Bottom geyser EQ bars + flying notification card.
+   Variants assigned by type + tier:
+     • comet — small/TT gifts (tier 1–3): compressed streak, spring-snaps open
+     • lift  — YouTube SuperChats: grows from glow point, slow premium rise
+     • blast — large gifts (tier 4+): shockwave rings + fast burst
+══════════════════════════════════════════════════════════════════ */
+(function initGiftAnim(){
+  const _geqEl  = document.getElementById('gift-eq-canvas');
+  const _gblEl  = document.getElementById('gift-blast-canvas');
+  const _gcCard = document.getElementById('gift-card');
+  if(!_geqEl || !_gblEl || !_gcCard) return;
+
+  _geqEl.width  = 1080; _geqEl.height  = 120;
+  _gblEl.width  = 1080; _gblEl.height  = 1920;
+  const _geqCtx = _geqEl.getContext('2d');
+  const _gblCtx = _gblEl.getContext('2d');
+
+  /* ── Geyser EQ constants ── */
+  const GEQ_W = 8, GEQ_G = 5.5, GEQ_S = GEQ_W + GEQ_G;
+  const GEQ_N = Math.floor(1080 / GEQ_S);   // ~79 bars
+  const GEQ_H = 120;
+  let _geqFireT = -100;   // secs since epoch of last fire
+  let _geqReact = 0;
+  let _geqPR = 105, _geqPG = 201, _geqPB = 208;   // default teal
+
+  function _geqSetPlat(plat){
+    if(plat === 'youtube'){ _geqPR=255; _geqPG=68;  _geqPB=68;  }
+    else                  { _geqPR=105; _geqPG=201; _geqPB=208; }
+  }
+  function _geqFire(){ _geqFireT = Date.now()/1000; _geqReact = 1.0; }
+
+  /* ── Geyser draw loop (always running) ── */
+  (function _geqDraw(){
+    const t = Date.now() / 1000;
+    _geqCtx.clearRect(0, 0, 1080, GEQ_H);
+    _geqReact = Math.max(0, _geqReact * 0.966);
+    const tFire = Math.max(0, t - _geqFireT);
+
+    for(let i = 0; i < GEQ_N; i++){
+      const x  = i * GEQ_S;
+      const xf = i / (GEQ_N - 1);
+      // Idle sine wave
+      const idle = 0.10 + 0.09 * Math.sin(t * 1.6 + xf * 7.5)
+                        + 0.06 * Math.sin(t * 2.9 + xf * 13 + 1.1);
+      // Inward ripple: bars at edges peak first, center last
+      const distFromEdge = 1 - Math.abs(xf - 0.5) * 2;  // 0=edge 1=center
+      const peakT  = distFromEdge * 0.38;
+      const dPeak  = tFire - peakT;
+      const ripple = _geqReact * Math.max(0,
+        dPeak >= 0 ? Math.exp(-dPeak * 6) : Math.exp(dPeak * 22)
+      );
+      const h = Math.max(3, (idle * 0.55 + ripple) * GEQ_H * 0.90);
+      const a = Math.min(0.95, 0.14 + ripple * 0.82 + idle * 0.10);
+
+      _geqCtx.fillStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${a})`;
+      _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, h);
+      if(a > 0.22){
+        _geqCtx.fillStyle = `rgba(255,255,255,${a * 0.30})`;
+        _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, Math.min(3, h * 0.09));
+      }
+    }
+    requestAnimationFrame(_geqDraw);
+  })();
+
+  /* ── Blast shockwave rings ── */
+  function _fireBlastRings(tier){
+    const cx = 540, cy = 1860;
+    const rings  = tier >= 5 ? 3 : 2;
+    const maxR   = Math.min(320, 90 + tier * 46);
+    const startMs = performance.now();
+    const DUR    = 850;
+    (function drawRings(){
+      const t = (performance.now() - startMs) / DUR;
+      _gblCtx.clearRect(0, 0, 1080, 1920);
+      if(t > 1.0) return;
+      for(let ri = 0; ri < rings; ri++){
+        const tOff = ri * 0.18;
+        const rt   = Math.max(0, Math.min(1, (t - tOff) / (1 - tOff)));
+        if(rt <= 0) continue;
+        _gblCtx.beginPath();
+        _gblCtx.arc(cx, cy, rt * maxR, 0, Math.PI * 2);
+        _gblCtx.strokeStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${(1 - rt) * 0.70})`;
+        _gblCtx.lineWidth   = (1 - rt) * 7 + 0.5;
+        _gblCtx.stroke();
+      }
+      requestAnimationFrame(drawRings);
+    })();
+  }
+
+  /* ── Populate card content ── */
+  const _gcPlatNm = document.getElementById('gc-plat-name');
+  const _gcSender = document.getElementById('gc-sender-name');
+  const _gcLabel  = document.getElementById('gc-gift-label');
+  const _gcAmt    = document.getElementById('gc-amount-str');
+  const _gcImg    = document.getElementById('gc-img');
+  const _gcFb     = document.getElementById('gc-img-fallback');
+
+  function _populateCard(data, tier, plat){
+    const sizeClass = tier <= 2 ? 'tier-sm' : tier <= 4 ? 'tier-md' : 'tier-lg';
+    _gcCard.className = `plat-${plat} ${sizeClass}`;
+    _gcPlatNm.textContent = plat === 'tiktok' ? '♪ TikTok'
+                          : plat === 'youtube' ? '▶ YouTube' : '🎁 Gift';
+    _gcSender.textContent = '@' + (data.name || 'Anonymous');
+    _gcLabel.textContent  = data.giftLabel || data.giftTitle || data.contentImg
+      ? (data.giftLabel || data.giftTitle || '')
+      : (data.type === 'youtube_superchat' ? 'Super Chat' : '');
+    _gcAmt.textContent = fmtAmount(data.amount, data.type);
+    if(data.contentImg){
+      _gcImg.src = data.contentImg; _gcImg.style.display = 'block';
+      _gcFb.style.display = 'none';
+      _gcImg.onerror = () => { _gcImg.style.display='none'; _gcFb.style.display='block'; };
+    } else {
+      _gcImg.style.display = 'none'; _gcFb.style.display = 'block';
+      _gcFb.textContent = plat === 'youtube' ? '⭐' : '🎁';
+    }
+  }
+
+  /* ── Card position animation ── */
+  const HOLD_Y   = 822;   // px — center of card lands at ~962px (canvas center)
+  const ABSORB_Y = 420;   // px — flies up to bar area
+  let _holdTmr = null, _absorbTmr = null;
+
+  function _cancelCard(){
+    clearTimeout(_holdTmr); clearTimeout(_absorbTmr);
+    _gcCard.style.transition = 'none'; _gcCard.style.opacity = '0';
+  }
+
+  function _launchCard(variant, tier){
+    _cancelCard();
+    const launchMs = variant === 'lift' ? 2100 : variant === 'blast' ? 480 : 680;
+    const holdMs   = variant === 'lift' ? 3600 : variant === 'blast' ? 2600 : 2000;
+    const ease     = variant === 'lift'  ? 'cubic-bezier(0.16,1,0.30,1)'
+                   : variant === 'blast' ? 'cubic-bezier(0.00,0.00,0.15,1)'
+                   :                       'cubic-bezier(0.34,1.56,0.64,1)';
+    // Set start state with no transition
+    _gcCard.style.transition = 'none';
+    _gcCard.style.top        = '1790px';
+    _gcCard.style.opacity    = variant === 'lift' ? '0.04' : '1';
+    _gcCard.style.transform  = variant === 'comet'
+        ? 'translateX(-50%) scaleX(0.38) scaleY(0.07)'
+        : variant === 'lift' ? 'translateX(-50%) scale(0.04)'
+        :                      'translateX(-50%) scale(0.86)';
+    void _gcCard.offsetHeight; // force reflow
+    // Animate to hold position
+    _gcCard.style.transition = `top ${launchMs}ms ${ease}, transform ${launchMs}ms ${ease}, opacity ${Math.round(launchMs*0.5)}ms ease`;
+    _gcCard.style.top        = HOLD_Y + 'px';
+    _gcCard.style.transform  = 'translateX(-50%) scale(1)';
+    _gcCard.style.opacity    = '1';
+    // Lift: gentle bob during hold
+    if(variant === 'lift'){
+      _holdTmr = setTimeout(() => {
+        _gcCard.style.transition = 'top 0.85s ease-in-out';
+        _gcCard.style.top = (HOLD_Y - 12) + 'px';
+        setTimeout(() => { _gcCard.style.top = HOLD_Y + 'px'; }, 850);
+        _absorbTmr = setTimeout(_absorbCard, holdMs);
+      }, launchMs);
+    } else {
+      _holdTmr = setTimeout(_absorbCard, launchMs + holdMs);
+    }
+  }
+
+  function _absorbCard(){
+    _gcCard.style.transition = 'top 430ms ease-in, transform 430ms ease-in, opacity 370ms ease-in';
+    _gcCard.style.top        = ABSORB_Y + 'px';
+    _gcCard.style.transform  = 'translateX(-50%) scale(0.08)';
+    _gcCard.style.opacity    = '0';
+  }
+
+  /* ── Public entry point ── */
+  window.fireGiftAnim = function(data){
+    const tier    = getTier(data.amount, data.type);
+    if(tier === 0) return;
+    const plat    = platKey(data.platform);
+    const variant = data.type === 'youtube_superchat' ? 'lift'
+                  : tier >= 4 ? 'blast' : 'comet';
+    _geqSetPlat(plat);
+    if(variant === 'blast') _fireBlastRings(tier);
+    _geqFire();
+    _populateCard(data, tier, plat);
+    setTimeout(() => _launchCard(variant, tier), variant === 'blast' ? 180 : 380);
+  };
+})();
 
 // Announce box (live text)
 ablyChannel.subscribe('announce',msg=>{
@@ -3315,6 +2790,66 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _notifZone.style.top  = _notifPos.y + 'px';
   }
 
+  /* ── v3: Platform notification spawner ──────────────────────────────────
+     TT pings → #notif-zone-tt (above bar), YT pings → #notif-zone-yt (below)
+     Pills spawn at fill-edge x%, stack outward with jitter for chaos feel.
+  ─────────────────────────────────────────────────────────────────────── */
+  const _ntZoneTT = document.getElementById('notif-zone-tt');
+  const _ntZoneYT = document.getElementById('notif-zone-yt');
+  const _ntPoolTT = [];   // active TT pills above bar
+  const _ntPoolYT = [];   // active YT pills below bar
+  const NT_MAX = 4;       // max simultaneous pills per platform
+  const NT_TTL = 3500;    // ms each pill lives before auto-exit
+
+  function _spawnNotif(platform, html){
+    const zone = platform === 'tt' ? _ntZoneTT : _ntZoneYT;
+    const pool = platform === 'tt' ? _ntPoolTT : _ntPoolYT;
+    if(!zone) return;
+
+    // Evict oldest pill if at cap
+    while(pool.length >= NT_MAX){
+      _ntEvict(pool.shift(), pool);
+    }
+
+    // Snap x to current fill edge (clamped away from bar edges)
+    const fillPct  = Math.min(92, Math.max(8, (rawScore / MAX_RAW) * 100));
+    const stackIdx = pool.length;          // how many already showing
+    const yOffset  = stackIdx * 38;        // px outward from bar edge per pill
+    const xJitter  = (Math.random() - 0.5) * 22;
+    const rot       = (Math.random() - 0.5) * 5;
+
+    // TT anchors bottom (stacks upward), YT anchors top (stacks downward)
+    const anchorProp = platform === 'tt' ? 'bottom' : 'top';
+
+    const pill = document.createElement('div');
+    pill.className = `nt-pill nt-pill-${platform}`;
+    pill.innerHTML = `<span class="nt-pill-dot"></span>${html}`;
+    pill.style.left            = `calc(${fillPct}% + ${xJitter}px)`;
+    pill.style[anchorProp]     = `${yOffset}px`;
+    pill.style.transform       = `translateX(-50%) rotate(${rot}deg) scale(0.7)`;
+    pill.style.opacity         = '0';
+    zone.appendChild(pill);
+    pool.push(pill);
+
+    // Animate in — double rAF so transition fires after paint
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      pill.style.transform = `translateX(-50%) rotate(${rot}deg) scale(1)`;
+      pill.style.opacity   = '1';
+    }));
+
+    pill._ntTimer = setTimeout(() => _ntEvict(pill, pool), NT_TTL);
+  }
+
+  function _ntEvict(pill, pool){
+    if(!pill) return;
+    clearTimeout(pill._ntTimer);
+    pill.classList.add('nt-exit');
+    setTimeout(() => {
+      pill.remove();
+      if(pool){ const i = pool.indexOf(pill); if(i >= 0) pool.splice(i, 1); }
+    }, 280);
+  }
+
   /* ── user pill — who just moved the meter ── */
   const _nameTagEl    = document.getElementById('gb-notif-user');
   let   _nameTagTimer = null;
@@ -3395,14 +2930,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
     // v3: boost scalar energy and fire edge burst
     _v3ttE = Math.min(1, _v3ttE + amount * 0.72);
     _v3FireEdgeBurst('tt', amount);
-    _moveNotifToEdge();
   }
   function injectYT(amount, spread, pos){ // pos: 0.4-1.0 (centre-right)
     injectPlatEnergy(ytEnergy, pos ?? (0.45 + Math.random() * 0.5), amount, spread ?? 5);
     // v3: boost scalar energy and fire edge burst
     _v3ytE = Math.min(1, _v3ytE + amount * 0.72);
     _v3FireEdgeBurst('yt', amount);
-    _moveNotifToEdge();
   }
 
   /* ── Ably audio relay — receives freq data from dock via mic-freq channel ── */
@@ -3555,21 +3088,23 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _boostMult[type] = mult;
     giftBarEl?.classList.add('hm-surge-active', 'gb-boost-active');
 
-    const barText = document.getElementById('gb-bar-text');
+    const barText  = document.getElementById('gb-bar-text');
+    const bPill    = document.getElementById('v3-boost-pill');
+    const bpText   = document.getElementById('v3bp-text');
+    const bpTimer  = document.getElementById('v3bp-timer');
+    // Hide in-bar text; route to above-bar pill instead
+    if(barText){ barText.classList.remove('visible','boost','surge','urgent'); barText.style.opacity = '0'; }
     let remaining = Math.round(durMs / 1000) + STREAM_DELAY_S;
-    function _boostText() { return `⚡ ${mult}X ${icon}  ${cta}  ${remaining}s  ·  ${_currentPct}%`; }
-    function _updateBoostBar() {
-      if(barText){
-        barText.textContent = _boostText();
-        barText.style.opacity = '';  // full opacity — clear pct-driven value
-        barText.classList.add('visible', 'boost');
-        barText.classList.remove('surge', 'urgent');
-      }
+    function _boostPillText() { return `⚡ ${mult}X ${icon}  ${cta}`; }
+    function _updateBoostPill() {
+      if(bpText)  bpText.innerHTML  = `⚡ <span class="v3bp-mult">${mult}X</span> ${icon} &nbsp;${cta}`;
+      if(bpTimer) bpTimer.textContent = `${remaining}s · ${_currentPct}%`;
+      if(bPill)   bPill.classList.add('visible');
     }
-    _updateBoostBar();
+    _updateBoostPill();
     boostTimer = setInterval(() => {
       remaining--;
-      if(barText) barText.textContent = _boostText();
+      if(bpTimer) bpTimer.textContent = `${remaining}s · ${_currentPct}%`;
       if(remaining <= 0) _endBoost(true);
     }, 1000);
   }
@@ -3582,7 +3117,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
     boostTimer = null;
     giftBarEl?.classList.remove('hm-surge-active', 'gb-boost-active');
     const barText = document.getElementById('gb-bar-text');
-    if(barText) barText.classList.remove('boost');
+    if(barText){ barText.classList.remove('boost'); barText.style.opacity = ''; }
+    const bPill = document.getElementById('v3-boost-pill');
+    if(bPill) bPill.classList.remove('visible');
     // Next drawHype frame restores CTA text/visibility naturally
     if(reschedule) _scheduleAutoBoost();
   }
@@ -3765,17 +3302,19 @@ ablyChannel.subscribe('top-gifters',msg=>{
       const _tMap = { comment:'💬 comment', like:'👍 like', like_batch:'👍 likes',
         join:'🚪 join/follow', heart_me:'💝 Heart Me', heart_me_first:'✨ first Heart Me',
         yt_sub:'📹 YT sub', comment_match:'🎯 chat command' };
-      const _lbl = tickerLabel || _tMap[inputType] || inputType;
+      const _lbl  = tickerLabel || _tMap[inputType] || inputType;
       const _pStr = pts < 1 ? '+'+pts.toFixed(1) : '+'+Math.round(pts);
-      _tickerAdd(`${_lbl}  ${_pStr}pts`);
       // Ripple at current fill edge — always
       const _pctNow = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
       _triggerRipple(_pctNow, pts);
-      // Name tag — only when we have a username
-      if(username) {
-        const _nameAction = tickerLabel ? tickerLabel.replace(/^\S+\s*/,'') : `+${_pStr}pts`;
-        _triggerNameTag(username, _nameAction);
-      }
+      // Spawn platform-routed pill at fill edge (TT above bar, YT below)
+      const _notifPlat = plat === 'yt' ? 'yt' : 'tt';
+      const _userHtml  = username
+        ? `<span class="nt-user">@${username}</span>&nbsp;`
+        : '';
+      _spawnNotif(_notifPlat,
+        `${_userHtml}<span class="nt-label">${_lbl}</span><span class="nt-pts">${_pStr}</span>`
+      );
     }
 
     // ── Platform energy injection for visual waveform ──
@@ -3845,21 +3384,24 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }, SURGE_DURATION_MS + STREAM_DELAY_S * 1000);
   }
 
-  /* ── Surge flash: shows type label + live countdown in bar text ── */
+  /* ── Surge flash: shows type label + live countdown in pill above bar ── */
   function _showSurgeFlash(st){
     const barText = document.getElementById('gb-bar-text');
     const gb      = document.getElementById('gift-bar');
+    const bPill   = document.getElementById('v3-boost-pill');
+    const bpText  = document.getElementById('v3bp-text');
+    const bpTimer = document.getElementById('v3bp-timer');
     if(gb) gb.classList.add('gb-surge-active');
-    if(!barText) return;
+    // Hide in-bar text during surge
+    if(barText){ barText.classList.remove('visible','surge','boost','urgent'); barText.style.opacity = '0'; }
 
     let remaining = Math.round(SURGE_DURATION_MS / 1000) + STREAM_DELAY_S;
     function _updateSurgeText(){
-      barText.textContent = `⚡ 2X ${st.label} — ${remaining}s  ·  ${_currentPct}%`;
+      if(bpText)  bpText.innerHTML  = `⚡ <span class="v3bp-mult">2X</span> ${st.label}`;
+      if(bpTimer) bpTimer.textContent = `${remaining}s · ${_currentPct}%`;
     }
     _updateSurgeText();
-    barText.style.opacity = '';
-    barText.classList.add('visible', 'surge');
-    barText.classList.remove('urgent');
+    if(bPill) bPill.classList.add('visible');
 
     clearInterval(_surgeCountdown);
     _surgeCountdown = setInterval(() => {
@@ -3874,9 +3416,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _surgeCountdown = null;
     const barText = document.getElementById('gb-bar-text');
     const gb      = document.getElementById('gift-bar');
+    const bPill   = document.getElementById('v3-boost-pill');
     if(gb) gb.classList.remove('gb-surge-active');
-    // Strip surge — next drawHype frame restores CTA text/visibility naturally
-    if(barText) barText.classList.remove('surge');
+    if(bPill) bPill.classList.remove('visible');
+    // Restore in-bar text — next drawHype frame sets CTA text/visibility naturally
+    if(barText){ barText.classList.remove('surge'); barText.style.opacity = ''; }
   }
 
   function _playSurgeSound(){
@@ -3937,21 +3481,17 @@ ablyChannel.subscribe('top-gifters',msg=>{
   ── */
   const SEG_GAP = 3;
   const SEG_W   = (HMW - (SEG_COUNT - 1) * SEG_GAP) / SEG_COUNT;
-  // v3 EQ bar layout constants
-  const EQ_BW   = 5;    // bar width px
+  // v3 EQ bar constants (bar canvas = 1080×55px)
+  const EQ_BW   = 4;    // bar width px
   const EQ_GAP  = 3;    // gap between bars px
   const EQ_STEP = EQ_BW + EQ_GAP;
-  const EQ_MID  = Math.round(HMH / 2); // 55 — midpoint splits TT (top) from YT (bottom)
 
+  /* ── v3 drawHype: EQ bars live on eCtx (inside bar), drips on hmCtx (below) ── */
   (function drawHype(){
-    const amp  = hypeAmp();        // 0.30 → 1.0
-    const freq = getFreqNorm();    // audio per-segment
+    const amp  = hypeAmp();
+    const freq = getFreqNorm();
     const t    = Date.now() / 1000;
     const boost = boostActive;
-
-    hmCtx.clearRect(0, 0, HMW, HMH);
-    hmCtx.shadowBlur = 0;
-    hmCtx.globalAlpha = 1;
 
     // ── Decay platform energies ──
     const platDecay = 0.975;
@@ -3960,365 +3500,164 @@ ablyChannel.subscribe('top-gifters',msg=>{
       ytEnergy[i] *= platDecay;
       smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
     }
-    // Decay v3 scalar energies (slightly faster for snappier feel)
     _v3ttE *= 0.9920;
     _v3ytE *= 0.9920;
 
-    // ── Fill clipping boundary ──
+    // ── Fill geometry ──
     const fillFrac = Math.min(1, rawScore / MAX_RAW);
-    const fillX    = Math.round(fillFrac * HMW);
-    const cols     = Math.floor(fillX / EQ_STEP);
+    const fillXe   = Math.round(fillFrac * EW);   // fill edge on bar canvas (1080px wide)
+    const fillXh   = Math.round(fillFrac * HMW);  // fill edge on hype canvas (1074px wide)
+    const BAR_HALF = Math.floor(EH / 2);           // 27px — half of the 55px bar height
 
-    // ── Surge/boost: render full-width white/pink flash overlay ──
-    if(_surgeActive || boost){
-      const surgeAlpha = _surgeActive ? 0.82 + Math.sin(t*12)*0.18 : 0.55 + amp*0.30;
-      const surgeColor = _surgeActive
-        ? `rgba(255,255,255,${surgeAlpha})`
-        : `rgba(232,121,249,${surgeAlpha})`;
-      for(let i = 0; i < SEG_COUNT; i++){
-        const x = i * (SEG_W + SEG_GAP);
-        const audioA = smoothed[i];
-        const h = Math.max(MIN_H + 18, (MAX_H * 0.75) * audioA + MIN_H);
-        const grad = hmCtx.createLinearGradient(x, 0, x, h);
-        grad.addColorStop(0, surgeColor);
-        grad.addColorStop(1, 'rgba(59,7,100,0.1)');
-        hmCtx.fillStyle = grad;
-        hmCtx.shadowColor = _surgeActive ? 'rgba(255,255,255,0.9)' : 'rgba(232,121,249,0.85)';
-        hmCtx.shadowBlur  = _surgeActive ? 22 + Math.sin(t*10+i)*8 : 14;
-        hmCtx.beginPath();
-        hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3, SEG_W/2), Math.min(3, SEG_W/2)]);
-        hmCtx.fill();
-      }
-      hmCtx.shadowBlur  = 0;
-      hmCtx.shadowColor = 'transparent';
-    }
+    // ════════════════════════════════════════════════════════
+    // eCtx (1080×55) — EQ bars rendered INSIDE the gift bar
+    //   TT teal: grows UP from BAR_HALF (center line)
+    //   YT red:  grows DOWN from BAR_HALF (center line)
+    //   ALL columns span full bar width at all times:
+    //     • Fill zone (x < fillXe): bright, platform-energy-reactive
+    //     • Unfilled zone (x >= fillXe): dim ambient idle sine wave
+    // ════════════════════════════════════════════════════════
+    eCtx.clearRect(0, 0, EW, EH);
 
-    // ── EQ bars — only drawn within fill width ──
-    if(cols > 0 && !_surgeActive && !boost){
+    {
+      const ALL_COLS  = Math.floor(EW / EQ_STEP);
+      const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
+      const CENTER    = BAR_HALF;   // 27 — draw from here outward
 
-      // Audio-driven subtle purple base (always visible in fill zone)
-      hmCtx.shadowBlur = 0;
-      for(let i = 0; i < cols; i++){
-        const x   = i * EQ_STEP;
-        const xf  = (x + EQ_BW / 2) / fillX;
-        const audioA = smoothed[Math.floor(xf * SEG_COUNT)] ?? 0;
-        const combined = Math.min(1, audioA * 0.6 + amp * 0.4);
-        const h = Math.max(MIN_H, (EQ_MID * 0.38) * combined);
-        // Both halves get a dim purple tint
-        hmCtx.fillStyle = `rgba(109,40,217,${0.10 + amp * 0.12})`;
-        hmCtx.fillRect(x, 0,      EQ_BW, h);
-        hmCtx.fillRect(x, EQ_MID, EQ_BW, h);
-      }
+      for(let i = 0; i < ALL_COLS; i++){
+        const x      = i * EQ_STEP;
+        const xGlob  = (x + EQ_BW / 2) / EW;   // 0–1 across entire bar width
+        const inFill = x < fillXe;
 
-      // ── TikTok teal bars (top half: y=0 down toward EQ_MID) ──
-      for(let i = 0; i < cols; i++){
-        const x   = i * EQ_STEP;
-        const xf  = (x + EQ_BW / 2) / fillX;          // 0–1 position within fill
-        const pos = Math.pow(xf, 0.40);                 // right-weighted brightness
-        const audioMod = smoothed[Math.floor(xf * SEG_COUNT)] ?? 0;
-        // Animated sine gives each bar a different phase — equalizer feel
-        const ttSin = Math.pow(
-          ((Math.sin(xf * 10 + t * 3.8) + 1) / 2) * ((Math.sin(xf * 5 + t * 2.0) + 1) / 2),
-          0.4
-        );
-        const ttH = Math.max(2,
-          (0.05 + _v3ttE * 0.95) * EQ_MID * 0.92 * pos * (0.30 + ttSin * 0.70)
-          + audioMod * EQ_MID * 0.12
-        );
-        const ttA = 0.10 + _v3ttE * 0.82 * pos;
-        hmCtx.fillStyle = `rgba(105,201,208,${Math.min(0.92, ttA)})`;
-        hmCtx.fillRect(x, 0, EQ_BW, ttH);
-        // Bright top edge highlight on active bars
-        if(_v3ttE > 0.12){
-          hmCtx.fillStyle = `rgba(180,240,245,${_v3ttE * pos * 0.55})`;
-          hmCtx.fillRect(x, 0, EQ_BW, Math.min(2.5, ttH));
+        // Idle sine: always animating, slower in unfilled zone
+        const idleSin = 0.30 + 0.26 * Math.sin(t * 2.2 + xGlob * 9)
+                              + 0.12 * Math.sin(t * 3.7 + xGlob * 15);
+
+        let ttH, ttA, ytH, ytA;
+        let ttR=105,ttG=201,ttB=208;  // TikTok teal
+        let ytR=255,ytG=85, ytB=85;   // YouTube red
+
+        if(inFill){
+          // ── FILL ZONE: platform-energy reactive ──
+          const xf  = (x + EQ_BW / 2) / Math.max(1, fillXe);  // 0–1 within fill
+          const pos = Math.pow(xf, 0.32);   // right-edge bars brighter/taller
+          const aSeg    = Math.min(SEG_COUNT - 1, Math.floor(xGlob * SEG_COUNT));
+          const audioMod = smoothed[aSeg] ?? 0;
+
+          if(_surgeActive){ ttR=255;ttG=255;ttB=255; ytR=255;ytG=220;ytB=220; }
+          else if(boost)  { ttR=196;ttG=156;ttB=255; ytR=255;ytG=165;ytB=100; }
+
+          const ttSin = Math.pow(
+            ((Math.sin(xf*12 + t*4.2) + 1)/2) * ((Math.sin(xf*6 + t*2.2) + 1)/2), 0.38
+          );
+          ttH = Math.max(1.5,
+            (_v3ttE * 0.88 * pos * surgeAmp + 0.06 + audioMod * 0.22) * CENTER * (0.22 + ttSin * 0.78)
+          );
+          ttA = Math.min(0.95, 0.10 + _v3ttE * 0.84 * pos + audioMod * 0.12
+                + (_surgeActive ? 0.35 : boost ? 0.22 : 0));
+
+          const ytSin = Math.pow(
+            ((Math.sin(xf*11 + t*3.8 + 1.5) + 1)/2) * ((Math.sin(xf*5.5 + t*1.9 + 0.8) + 1)/2), 0.38
+          );
+          ytH = Math.max(1.5,
+            (_v3ytE * 0.88 * pos * surgeAmp + 0.06 + audioMod * 0.22) * CENTER * (0.22 + ytSin * 0.78)
+          );
+          ytA = Math.min(0.95, 0.10 + _v3ytE * 0.84 * pos + audioMod * 0.12
+                + (_surgeActive ? 0.35 : boost ? 0.22 : 0));
+
+        } else {
+          // ── IDLE ZONE: ambient sine only, very dim ──
+          ttH = Math.max(1.5, idleSin * CENTER * 0.30);
+          ttA = 0.06 + idleSin * 0.06;
+          ytH = Math.max(1.5, idleSin * CENTER * 0.30);
+          ytA = 0.06 + idleSin * 0.06;
+        }
+
+        // TT — grows UP from center line
+        eCtx.fillStyle = `rgba(${ttR},${ttG},${ttB},${ttA})`;
+        eCtx.fillRect(x, CENTER - ttH, EQ_BW, ttH);
+        // Bright tip at top of TT bar
+        if(ttA > 0.14){
+          eCtx.fillStyle = `rgba(${Math.min(255,ttR+60)},${Math.min(255,ttG+45)},${Math.min(255,ttB+30)},${ttA*0.55})`;
+          eCtx.fillRect(x, CENTER - ttH, EQ_BW, Math.min(2, ttH));
+        }
+
+        // YT — grows DOWN from center line
+        eCtx.fillStyle = `rgba(${ytR},${ytG},${ytB},${ytA})`;
+        eCtx.fillRect(x, CENTER, EQ_BW, ytH);
+        // Bright tip at bottom of YT bar
+        if(ytA > 0.14){
+          eCtx.fillStyle = `rgba(${Math.min(255,ytR+50)},${ytG},${ytB},${ytA*0.55})`;
+          eCtx.fillRect(x, CENTER + ytH - Math.min(2, ytH), EQ_BW, Math.min(2, ytH));
         }
       }
 
-      // ── YouTube red bars (bottom half: y=EQ_MID down toward HMH) ──
-      for(let i = 0; i < cols; i++){
-        const x   = i * EQ_STEP;
-        const xf  = (x + EQ_BW / 2) / fillX;
-        const pos = Math.pow(xf, 0.40);
-        const audioMod = smoothed[Math.floor(xf * SEG_COUNT)] ?? 0;
-        const ytSin = Math.pow(
-          ((Math.sin(xf * 9 + t * 3.4 + 1.6) + 1) / 2) * ((Math.sin(xf * 4.8 + t * 1.8 + 0.9) + 1) / 2),
-          0.4
-        );
-        const ytH = Math.max(2,
-          (0.05 + _v3ytE * 0.95) * EQ_MID * 0.92 * pos * (0.30 + ytSin * 0.70)
-          + audioMod * EQ_MID * 0.12
-        );
-        const ytA = 0.10 + _v3ytE * 0.82 * pos;
-        hmCtx.fillStyle = `rgba(255,90,90,${Math.min(0.92, ytA)})`;
-        hmCtx.fillRect(x, EQ_MID, EQ_BW, ytH);
-        // Bright top edge highlight
-        if(_v3ytE > 0.12){
-          hmCtx.fillStyle = `rgba(255,170,160,${_v3ytE * pos * 0.55})`;
-          hmCtx.fillRect(x, EQ_MID, EQ_BW, Math.min(2.5, ytH));
-        }
+      // Center hairline — full width
+      eCtx.fillStyle = 'rgba(255,255,255,0.055)';
+      eCtx.fillRect(0, CENTER - 0.5, EW, 1);
+
+      // Fill edge accent — vertical line marking fill boundary
+      if(fillXe > 2){
+        const edgeA = 0.40 + 0.28 * Math.sin(t * 6.2);
+        eCtx.fillStyle = `rgba(168,85,247,${edgeA})`;
+        eCtx.fillRect(fillXe - 1, 0, 2, EH);
       }
-
-      // ── Center divider hairline (within fill width only) ──
-      hmCtx.fillStyle = 'rgba(255,255,255,0.07)';
-      hmCtx.fillRect(0, EQ_MID - 0.5, fillX, 1);
-
-      // ── Fill edge accent line ──
-      hmCtx.fillStyle = 'rgba(168,85,247,0.55)';
-      hmCtx.fillRect(fillX - 1, 0, 1, HMH);
     }
 
-    hmCtx.globalAlpha = 1;
-    hmCtx.shadowBlur  = 0;
-    hmCtx.shadowColor = 'transparent';
-
-    // ── Draw edge pulse rings on the bar canvas ──
+    // Edge pulse rings drawn on top of EQ bars (same canvas)
     drawEdgePulse();
 
-    // ── Milk % UI ──
-    const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
-    _mmUpdateStatus(pct);
+    // ════════════════════════════════════════════════════════
+    // hmCtx (1074×110) — ambient glow drips BELOW the bar
+    //   During surge/boost: electric spray effect
+    //   Normally: platform-tinted glow fading to transparent
+    // ════════════════════════════════════════════════════════
+    hmCtx.clearRect(0, 0, HMW, HMH);
+    hmCtx.shadowBlur  = 0;
+    hmCtx.globalAlpha = 1;
 
-    requestAnimationFrame(drawHype);
-  })();
-
-  /* ── Unique gifter tracker (session) ──
-     First gift from any user = uniqueness bonus regardless of amount.
-     Below 50k coins / $50: uniqueness is the main reward, value barely matters.
-     At 50k+ coins / $50+: value scales up significantly regardless of uniqueness. */
-  const _milkGiftersSeen = new Set();
-
-  function milkGiftPts(gifterKey, coins, dollars){
-    const isNew = gifterKey && !_milkGiftersSeen.has(gifterKey);
-    if(gifterKey) _milkGiftersSeen.add(gifterKey);
-    // Normalize to dollar value — works for TT coins, YT superchats, jewels, etc.
-    const dollarVal = dollars > 0 ? dollars : (coins > 0 ? coins / 100 : 0);
-    // Walk dynamic tiers from highest to lowest
-    const sorted = [..._giftRanges].sort((a,b) => b.minD - a.minD);
-    for(const tier of sorted){
-      if(dollarVal >= tier.minD) return isNew ? tier.isNew : tier.rpt;
-    }
-    return isNew ? 20 : 3; // fallback if no tiers defined
-  }
-
-  /* ── Ably subscriptions ── */
-  ablyChannel.subscribe('milk-event', msg => {
-    const d = msg?.data, type = d?.type, plat = d?.platform || 'other';
-    if(!type) return;
-    trackEvt(type, plat);
-    const _who = d.gifterKey || d.username || null;
-    switch(type){
-      case 'comment': case 'comment_match':
-        addPts(PTS[type] ?? 0.5, plat, type, null, _who); break;
-      case 'join':
-        addPts(PTS.join ?? 1, plat, 'join', null, _who);
-        _fireEntryBanner(_currentPct);
-        break;
-      case 'like': {
-        // Accumulate likes — show small ripple per like, add pts every LIKE_BATCH_SIZE
-        _likeAccum++;
-        _likeAccumPlat = plat || _likeAccumPlat;
-        // Small visual feedback per like (no pts yet)
-        const _likePct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
-        _triggerRipple(_likePct, 0.05);
-        if (LIKE_BATCH_SIZE <= 1) {
-          // Batch size 1 = count every like (legacy behaviour)
-          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
-          _likeAccum = 0;
-        } else if (_likeAccum >= LIKE_BATCH_SIZE) {
-          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
-          _likeAccum = 0;
-        }
-        break;
+    if(_surgeActive || boost){
+      // Electric rain dripping below bar during surge/boost
+      const sA = _surgeActive ? 0.68 + Math.sin(t*12)*0.22 : 0.38 + amp*0.20;
+      for(let i = 0; i < SEG_COUNT; i++){
+        const x  = i * (SEG_W + SEG_GAP);
+        const a  = smoothed[i];
+        const h  = Math.max(MIN_H + 10, (MAX_H * 0.70) * a + MIN_H + 10);
+        const c  = _surgeActive ? `rgba(255,255,255,${sA*(0.5+a*0.5)})`
+                                : `rgba(232,121,249,${sA*(0.5+a*0.5)})`;
+        const grad = hmCtx.createLinearGradient(x, 0, x, h);
+        grad.addColorStop(0, c);
+        grad.addColorStop(1, 'rgba(59,7,100,0)');
+        hmCtx.fillStyle = grad;
+        hmCtx.shadowColor = _surgeActive ? 'rgba(255,255,255,0.45)' : 'rgba(232,121,249,0.50)';
+        hmCtx.shadowBlur  = _surgeActive ? 14 + Math.sin(t*8+i)*5 : 9;
+        hmCtx.beginPath();
+        hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3,SEG_W/2), Math.min(3,SEG_W/2)]);
+        hmCtx.fill();
       }
-      case 'like_batch':
-        addPts(PTS.like_batch, plat, 'like_batch'); break;
-      case 'yt_sub':
-        addPts(PTS.yt_sub, 'yt', 'yt_sub', '📹 YT sub', _who); fireFirstFlash(); break;
-
-      case 'heart_me':
-        addPts(milkGiftPts(d.gifterKey, 1, 0), 'tt', 'heart_me', '💝 Heart Me', _who); break;
-      case 'heart_me_first':
-        if(d.gifterKey) _milkGiftersSeen.add(d.gifterKey);
-        addPts(PTS.heart_me_first, 'tt', 'heart_me', '✨ first Heart Me', _who); fireFirstFlash(); break;
-
-      case 'tiktok_gift': {
-        const _gKey = d.giftName ? 'gift_' + d.giftName.toLowerCase().replace(/\s+/g,'_') : null;
-        const _gPts = (_gKey && PTS[_gKey] != null) ? PTS[_gKey]
-                    : milkGiftPts(d.gifterKey, d.coins || 0, 0);
-        if(_instantSaveCoins > 0 && (d.coins||0) >= _instantSaveCoins &&
-           typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
-          _tickerAdd(`⚡ ${d.giftName||'Gift'} — INSTANT SAVE!`);
-          if(_who) _triggerNameTag(_who, `sent ${d.giftName||'gift'} — SAVED IT!`);
-          splatEnterSaved();
-          setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
-          break;
+    } else {
+      // Ambient teal/red-tinted glow drips proportional to fill and platform energy
+      const tensionWave = Math.abs(Math.sin(t * Math.PI / 15));
+      for(let i = 0; i < SEG_COUNT; i++){
+        const x  = i * (SEG_W + SEG_GAP);
+        const xf = i / SEG_COUNT;
+        const a  = smoothed[i];
+        const h  = Math.max(MIN_H, (MAX_H * 0.52) * (a * 0.65 + amp * 0.35) + tensionWave * 5);
+        let r, g, b, alpha;
+        if(xf < fillFrac){
+          // Platform-tinted below fill
+          r = Math.round(110 + 130 * _v3ytE);
+          g = Math.round(55  + 135 * _v3ttE);
+          b = Math.round(155 + 65  * _v3ttE - 55 * _v3ytE);
+          alpha = 0.055 + (_v3ttE + _v3ytE) * 0.14 + amp * 0.055;
+        } else {
+          // Dim purple beyond fill edge
+          r=109; g=40; b=217; alpha = 0.025 + amp * 0.04;
         }
-        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`, _who); break;
-      }
-
-      case 'yt_superchat': {
-        const _sPts = milkGiftPts(d.gifterKey, 0, d.dollars||0);
-        if(_instantSaveDollars > 0 && (d.dollars||0) >= _instantSaveDollars &&
-           typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
-          _tickerAdd(`⚡ $${d.dollars} Super Chat — INSTANT SAVE!`);
-          if(_who) _triggerNameTag(_who, `sent $${d.dollars} — SAVED IT!`);
-          splatEnterSaved();
-          setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
-          break;
-        }
-        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`, _who); break;
-      }
-    }
-  });
-
-  // Manual milk boost fired from dock
-  ablyChannel.subscribe('milk-boost', msg => {
-    const d    = msg?.data;
-    if(!d) return;
-    // durSec:0 or mult<=1 = "end boost" signal from dock's End Boost button
-    if(d.durSec === 0 || (d.mult != null && d.mult <= 1)){ _endBoost(false); return; }
-    const type  = d.type  || 'comments';  // 'comments' | 'likes' | 'gifts'
-    const mult  = Math.max(2, Math.min(10, d.mult  || 2));
-    const durMs = Math.max(10, Math.min(120, d.durSec || 30)) * 1000;
-    const cta   = d.cta   || (type === 'likes' ? 'LIKES & FOLLOWS' : type === 'gifts' ? 'GIFTS & SUBS' : 'COMMENTS & JOINS');
-    const icon  = type === 'likes' ? '👍' : type === 'gifts' ? '🎁' : '💬';
-    _triggerBoost(type, mult, durMs, cta, icon);
-  });
-
-  // Smart milk mode from dock
-  ablyChannel.subscribe('milk-smart', msg => {
-    const mode = msg?.data?.mode; // 'auto' | 'manual' | 'both'
-    if(!mode) return;
-    _smartMode = mode;
-    if(mode === 'auto' || mode === 'both') _scheduleAutoBoost();
-    // 'manual': auto scheduler won't re-run after current ends
-  });
-
-  ablyChannel.subscribe('milk-intensity', msg => {
-    _intensityMult = Math.max(0, Math.min(3, msg.data?.mult ?? 1));
-  });
-
-  ablyChannel.subscribe('gift-bar-pos', msg => {
-    const top = msg.data?.top;
-    if(typeof top !== 'number') return;
-    const gb = document.getElementById('gift-bar');
-    if(gb) gb.style.top = top + 'px';
-  });
-
-  ablyChannel.subscribe('mission-strip-config', msg => {
-    const d = msg?.data;
-    if(!d) return;
-    const strip = document.getElementById('mission-strip');
-    const txt   = document.getElementById('mission-strip-text');
-    if(strip && typeof d.top === 'number') strip.style.top = d.top + 'px';
-    if(txt   && typeof d.text === 'string' && d.text.trim()) txt.textContent = d.text;
-  });
-
-  ablyChannel.subscribe('milk-cta', msg => {
-    const text = msg.data?.text || '';
-    const el = document.getElementById('bb-cta-text');
-    if(el) el.textContent = text || 'to Bean Boozled';
-  });
-
-  // New: dock sends full goal config
-  ablyChannel.subscribe('milk-cta-config', msg => {
-    const d = msg?.data;
-    if(!d) return;
-    if(d.baitText !== undefined) {
-      _mmBaitText = d.baitText || 'MILK METER 🫟';
-      const el = document.getElementById('mm-status-text');
-      if(el) el.textContent = _mmBaitText;
-    }
-    if(d.goalText !== undefined) {
-      _mmGoalText = d.goalText || 'LETS GOOO!!';
-    }
-    if(d.forceVisible !== undefined) {
-      _mmForceVisible = !!d.forceVisible;
-    }
-    if(d.visible !== undefined) {
-      _mmGoalVisible = !!d.visible;
-    }
-    // Re-evaluate visibility immediately
-    const pct = Math.round((rawScore / MAX_RAW) * 100);
-    _mmUpdateStatus(pct);
-  });
-
-  /* ── Live scoring config from dock's Milk Scoring panel ── */
-  ablyChannel.subscribe('milk-scoring-config', msg => {
-    const d = msg?.data;
-    if(!d) return;
-
-    // Update base PTS values
-    if(d.pts && typeof d.pts === 'object'){
-      Object.assign(PTS, d.pts);
-    }
-
-    // Update gift tier ranges (dollar-based: minD/maxD)
-    if(Array.isArray(d.ranges) && d.ranges.length && d.ranges[0]?.minD != null){
-      _giftRanges = d.ranges.map(r => ({
-        minD:  Number(r.minD)  || 0,
-        maxD:  Number(r.maxD)  || 9999,
-        rpt:   Number(r.rpt)   || 0,
-        isNew: Number(r.isNew) || 0,
-      }));
-    }
-
-    // Update fill target (100% threshold)
-    if(d.target != null && Number(d.target) > 0){
-      MAX_RAW = Number(d.target);
-    }
-
-    // Update like batch size
-    if(d.likeBatchSize != null && Number(d.likeBatchSize) >= 1){
-      LIKE_BATCH_SIZE = Math.round(Number(d.likeBatchSize));
-      _likeAccum = 0; // reset accumulator when config changes
-    }
-
-    // Update chat command matchers
-    if(Array.isArray(d.cmds)){
-      _milkCmds = d.cmds.filter(c => c.phrase?.trim());
-    }
-
-    // Update per-event PTS for specific TT gifts (keyed by name)
-    if(Array.isArray(d.specific)){
-      d.specific.forEach(sg => {
-        if(sg.name && sg.pts != null) PTS['gift_' + sg.name.toLowerCase().replace(/\s+/g,'_')] = Number(sg.pts);
-      });
-    }
-
-    // Instant save thresholds
-    if(d.instantSaveCoins   != null) _instantSaveCoins   = Number(d.instantSaveCoins)   || 0;
-    if(d.instantSaveDollars != null) _instantSaveDollars = Number(d.instantSaveDollars) || 0;
-  });
-
-  ablyChannel.subscribe('bb-reset', () => {
-    rawScore    = 0;
-    _bbFired    = false;
-    _bbCooldown = false;
-    _bbBan.classList.remove('bb-active');
-  });
-
-  // Exposed so the outer cmd handler can reset milk on each rescue countdown
-  window._milkResetForRescue = function(){
-    rawScore    = 0;
-    _bbFired    = false;
-    _bbCooldown = false;
-    _mmUpdateStatus(0);
-  };
-
-})();
-</script>
-<div id="mission-strip">
-  <span id="mission-strip-text">🥛 MILK METER — comment or gift to fill it</span>
-  <span id="mission-strip-pct">0%</span>
-</div>
-
-<div id="entry-banner">
-  <div id="entry-banner-inner">
-    <span id="entry-banner-text">👋 Chat just hit 0% — jump in!</span>
-  </div>
-</div>
-
-</body>
-</html>
+        const grad = hmCtx.createLinearGradient(x, 0, x, h);
+        grad.addColorStop(0, `rgba(${r},${g},${b},${Math.min(0.52, alpha)})`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        hmCtx.fillStyle = grad;
+        hmCtx.shadowBlur = 0;
+        hmCtx.beginPath();
+        hmCtx.roundRect(x, 0, SEG_W, h,
