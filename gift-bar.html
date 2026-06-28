@@ -2387,6 +2387,7 @@ ablyChannel.subscribe('giftr',msg=>{
 });
 
 
+
 /* ══════════════════════════════════════════════════════════════════
    GIFT ANIMATION SYSTEM
    Bottom geyser EQ bars + flying notification card.
@@ -3384,25 +3385,23 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }, SURGE_DURATION_MS + STREAM_DELAY_S * 1000);
   }
 
-  /* ── Surge flash: shows type label + live countdown in pill above bar ── */
+  /* ── Surge flash: shows type label + live countdown in boost pill (v3) ── */
   function _showSurgeFlash(st){
-    const barText = document.getElementById('gb-bar-text');
-    const gb      = document.getElementById('gift-bar');
-    const bPill   = document.getElementById('v3-boost-pill');
-    const bpText  = document.getElementById('v3bp-text');
-    const bpTimer = document.getElementById('v3bp-timer');
+    const gb     = document.getElementById('gift-bar');
+    const bPill  = document.getElementById('v3-boost-pill');
+    const bpText = document.getElementById('v3bp-text');
+    const bpTimer= document.getElementById('v3bp-timer');
+    const barText= document.getElementById('gb-bar-text');
     if(gb) gb.classList.add('gb-surge-active');
-    // Hide in-bar text during surge
-    if(barText){ barText.classList.remove('visible','surge','boost','urgent'); barText.style.opacity = '0'; }
-
+    // Hide in-bar text — route surge to pill
+    if(barText){ barText.classList.remove('visible','boost','surge','urgent'); barText.style.opacity = '0'; }
     let remaining = Math.round(SURGE_DURATION_MS / 1000) + STREAM_DELAY_S;
     function _updateSurgeText(){
       if(bpText)  bpText.innerHTML  = `⚡ <span class="v3bp-mult">2X</span> ${st.label}`;
       if(bpTimer) bpTimer.textContent = `${remaining}s · ${_currentPct}%`;
+      if(bPill)   bPill.classList.add('visible');
     }
     _updateSurgeText();
-    if(bPill) bPill.classList.add('visible');
-
     clearInterval(_surgeCountdown);
     _surgeCountdown = setInterval(() => {
       remaining--;
@@ -3414,19 +3413,18 @@ ablyChannel.subscribe('top-gifters',msg=>{
   function _hideSurgeFlash(){
     clearInterval(_surgeCountdown);
     _surgeCountdown = null;
-    const barText = document.getElementById('gb-bar-text');
-    const gb      = document.getElementById('gift-bar');
-    const bPill   = document.getElementById('v3-boost-pill');
+    const gb     = document.getElementById('gift-bar');
+    const bPill  = document.getElementById('v3-boost-pill');
+    const barText= document.getElementById('gb-bar-text');
     if(gb) gb.classList.remove('gb-surge-active');
     if(bPill) bPill.classList.remove('visible');
-    // Restore in-bar text — next drawHype frame sets CTA text/visibility naturally
-    if(barText){ barText.classList.remove('surge'); barText.style.opacity = ''; }
+    // Restore bar text — next drawHype frame sets content + opacity naturally
+    if(barText){ barText.style.opacity = ''; }
   }
 
   function _playSurgeSound(){
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // Ascending power-up burst: 5 notes
       [[200,0.00],[300,0.07],[440,0.13],[600,0.19],[880,0.25]].forEach(([freq, delay]) => {
         const osc  = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -3438,7 +3436,6 @@ ablyChannel.subscribe('top-gifters',msg=>{
         gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
         osc.start(t); osc.stop(t + 0.33);
       });
-      // White noise swoosh underneath
       const buf  = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.45), ctx.sampleRate);
       const data = buf.getChannelData(0);
       for(let i = 0; i < data.length; i++) data[i] = (Math.random()*2-1) * (1 - i/data.length);
@@ -3455,17 +3452,17 @@ ablyChannel.subscribe('top-gifters',msg=>{
     } catch(e) {}
   }
 
-  _scheduleAutoBoost(); // kick off on load
+  _scheduleAutoBoost(); // kick off auto surge on load
 
-  /* ── decay (randomized 3–5% per tick so it feels organic, pauses during BB cooldown) ── */
+  /* ── Decay (3–5% per tick, pauses during cooldown) ── */
   setInterval(() => {
     if(!_bbCooldown){
-      const rate = 0.03 + Math.random() * 0.02; // 3–5% of MAX_RAW
+      const rate = 0.03 + Math.random() * 0.02;
       rawScore = Math.max(0, rawScore - MAX_RAW * rate);
     }
   }, DECAY_TICK_MS);
 
-  /* ── publish hype % to Ably so dock can mirror it ── */
+  /* ── Publish hype % to dock every 2s (only when it changes ≥2%) ── */
   let _lastPubPct = -1;
   setInterval(() => {
     const pct = Math.round((rawScore / MAX_RAW) * 100);
@@ -3475,189 +3472,370 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }, 2000);
 
-  /* ── v3: EQ bar renderer — TT teal top half, YT red bottom half
-     Clipped to fill width. Heights scale with platform energy × position.
-     Audio drives subtle base animation. Surge/boost override with white/pink flash.
-  ── */
+  /* ── Below-bar waveform helper ── */
   const SEG_GAP = 3;
   const SEG_W   = (HMW - (SEG_COUNT - 1) * SEG_GAP) / SEG_COUNT;
-  // v3 EQ bar constants (bar canvas = 1080×55px)
-  const EQ_BW   = 4;    // bar width px
-  const EQ_GAP  = 3;    // gap between bars px
-  const EQ_STEP = EQ_BW + EQ_GAP;
 
-  /* ── v3 drawHype: EQ bars live on eCtx (inside bar), drips on hmCtx (below) ── */
+  function drawBar(x, h, colorBot, colorTop, glowColor, glowBlur){
+    const grad = hmCtx.createLinearGradient(x, 0, x, h);
+    grad.addColorStop(0, colorTop);
+    grad.addColorStop(1, colorBot);
+    hmCtx.fillStyle = grad;
+    hmCtx.shadowColor = glowColor;
+    hmCtx.shadowBlur  = glowBlur;
+    hmCtx.beginPath();
+    hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3, SEG_W/2), Math.min(3, SEG_W/2)]);
+    hmCtx.fill();
+  }
+
+  /* ── Combined rAF loop: full-width in-bar EQ (eCtx) + below-bar waveform (hmCtx) ── */
+  const EQ_BW   = 4;
+  const EQ_STEP = 7;
+  const EQ_CENTER = Math.floor(EH / 2);   // 27 — bars grow up/down from here
+  const ALL_COLS  = Math.floor(EW / EQ_STEP); // 154
+
   (function drawHype(){
-    const amp  = hypeAmp();
-    const freq = getFreqNorm();
-    const t    = Date.now() / 1000;
+    const t     = Date.now() / 1000;
     const boost = boostActive;
+    const amp   = hypeAmp();
 
-    // ── Decay platform energies ──
-    const platDecay = 0.975;
-    for(let i = 0; i < SEG_COUNT; i++){
-      ttEnergy[i] *= platDecay;
-      ytEnergy[i] *= platDecay;
-      smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
-    }
-    _v3ttE *= 0.9920;
-    _v3ytE *= 0.9920;
+    /* ── Decay v3 scalar platform energies ── */
+    _v3ttE = Math.max(0, _v3ttE - 0.008);
+    _v3ytE = Math.max(0, _v3ytE - 0.008);
 
-    // ── Fill geometry ──
-    const fillFrac = Math.min(1, rawScore / MAX_RAW);
-    const fillXe   = Math.round(fillFrac * EW);   // fill edge on bar canvas (1080px wide)
-    const fillXh   = Math.round(fillFrac * HMW);  // fill edge on hype canvas (1074px wide)
-    const BAR_HALF = Math.floor(EH / 2);           // 27px — half of the 55px bar height
+    const fillFrac  = Math.min(1, rawScore / MAX_RAW);
+    const fillXe    = Math.round(fillFrac * EW);
+    const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
 
-    // ════════════════════════════════════════════════════════
-    // eCtx (1080×55) — EQ bars rendered INSIDE the gift bar
-    //   TT teal: grows UP from BAR_HALF (center line)
-    //   YT red:  grows DOWN from BAR_HALF (center line)
-    //   ALL columns span full bar width at all times:
-    //     • Fill zone (x < fillXe): bright, platform-energy-reactive
-    //     • Unfilled zone (x >= fillXe): dim ambient idle sine wave
-    // ════════════════════════════════════════════════════════
+    /* ── Full-width EQ bars on eCtx ── */
     eCtx.clearRect(0, 0, EW, EH);
 
-    {
-      const ALL_COLS  = Math.floor(EW / EQ_STEP);
-      const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
-      const CENTER    = BAR_HALF;   // 27 — draw from here outward
+    for(let i = 0; i < ALL_COLS; i++){
+      const x     = i * EQ_STEP;
+      const xGlob = (x + EQ_BW / 2) / EW;
+      const inFill = x < fillXe;
+      const idleSin = 0.30 + 0.26*Math.sin(t*2.2+xGlob*9)
+                           + 0.12*Math.sin(t*3.7+xGlob*15);
 
-      for(let i = 0; i < ALL_COLS; i++){
-        const x      = i * EQ_STEP;
-        const xGlob  = (x + EQ_BW / 2) / EW;   // 0–1 across entire bar width
-        const inFill = x < fillXe;
+      let ttH, ttA, ytH, ytA;
 
-        // Idle sine: always animating, slower in unfilled zone
-        const idleSin = 0.30 + 0.26 * Math.sin(t * 2.2 + xGlob * 9)
-                              + 0.12 * Math.sin(t * 3.7 + xGlob * 15);
-
-        let ttH, ttA, ytH, ytA;
-        let ttR=105,ttG=201,ttB=208;  // TikTok teal
-        let ytR=255,ytG=85, ytB=85;   // YouTube red
-
-        if(inFill){
-          // ── FILL ZONE: platform-energy reactive ──
-          const xf  = (x + EQ_BW / 2) / Math.max(1, fillXe);  // 0–1 within fill
-          const pos = Math.pow(xf, 0.32);   // right-edge bars brighter/taller
-          const aSeg    = Math.min(SEG_COUNT - 1, Math.floor(xGlob * SEG_COUNT));
-          const audioMod = smoothed[aSeg] ?? 0;
-
-          if(_surgeActive){ ttR=255;ttG=255;ttB=255; ytR=255;ytG=220;ytB=220; }
-          else if(boost)  { ttR=196;ttG=156;ttB=255; ytR=255;ytG=165;ytB=100; }
-
-          const ttSin = Math.pow(
-            ((Math.sin(xf*12 + t*4.2) + 1)/2) * ((Math.sin(xf*6 + t*2.2) + 1)/2), 0.38
-          );
-          ttH = Math.max(1.5,
-            (_v3ttE * 0.88 * pos * surgeAmp + 0.06 + audioMod * 0.22) * CENTER * (0.22 + ttSin * 0.78)
-          );
-          ttA = Math.min(0.95, 0.10 + _v3ttE * 0.84 * pos + audioMod * 0.12
-                + (_surgeActive ? 0.35 : boost ? 0.22 : 0));
-
-          const ytSin = Math.pow(
-            ((Math.sin(xf*11 + t*3.8 + 1.5) + 1)/2) * ((Math.sin(xf*5.5 + t*1.9 + 0.8) + 1)/2), 0.38
-          );
-          ytH = Math.max(1.5,
-            (_v3ytE * 0.88 * pos * surgeAmp + 0.06 + audioMod * 0.22) * CENTER * (0.22 + ytSin * 0.78)
-          );
-          ytA = Math.min(0.95, 0.10 + _v3ytE * 0.84 * pos + audioMod * 0.12
-                + (_surgeActive ? 0.35 : boost ? 0.22 : 0));
-
-        } else {
-          // ── IDLE ZONE: ambient sine only, very dim ──
-          ttH = Math.max(1.5, idleSin * CENTER * 0.30);
-          ttA = 0.06 + idleSin * 0.06;
-          ytH = Math.max(1.5, idleSin * CENTER * 0.30);
-          ytA = 0.06 + idleSin * 0.06;
-        }
-
-        // TT — grows UP from center line
-        eCtx.fillStyle = `rgba(${ttR},${ttG},${ttB},${ttA})`;
-        eCtx.fillRect(x, CENTER - ttH, EQ_BW, ttH);
-        // Bright tip at top of TT bar
-        if(ttA > 0.14){
-          eCtx.fillStyle = `rgba(${Math.min(255,ttR+60)},${Math.min(255,ttG+45)},${Math.min(255,ttB+30)},${ttA*0.55})`;
-          eCtx.fillRect(x, CENTER - ttH, EQ_BW, Math.min(2, ttH));
-        }
-
-        // YT — grows DOWN from center line
-        eCtx.fillStyle = `rgba(${ytR},${ytG},${ytB},${ytA})`;
-        eCtx.fillRect(x, CENTER, EQ_BW, ytH);
-        // Bright tip at bottom of YT bar
-        if(ytA > 0.14){
-          eCtx.fillStyle = `rgba(${Math.min(255,ytR+50)},${ytG},${ytB},${ytA*0.55})`;
-          eCtx.fillRect(x, CENTER + ytH - Math.min(2, ytH), EQ_BW, Math.min(2, ytH));
-        }
+      if(inFill){
+        const ttReact = Math.min(1, _v3ttE * surgeAmp);
+        const ytReact = Math.min(1, _v3ytE * surgeAmp);
+        ttH = Math.max(2, idleSin * EQ_CENTER * 0.30 + ttReact * EQ_CENTER * 0.82);
+        ytH = Math.max(2, idleSin * EQ_CENTER * 0.30 + ytReact * EQ_CENTER * 0.82);
+        ttA = _surgeActive ? 0.88 + Math.random()*0.12
+            : boost        ? 0.72 + ttReact * 0.22
+            :                0.38 + ttReact * 0.57 + idleSin * 0.05;
+        ytA = _surgeActive ? 0.82 + Math.random()*0.12
+            : boost        ? 0.68 + ytReact * 0.22
+            :                0.32 + ytReact * 0.57 + idleSin * 0.05;
+      } else {
+        ttH = Math.max(1.5, idleSin * EQ_CENTER * 0.28);
+        ytH = ttH;
+        ttA = 0.055 + idleSin * 0.055;
+        ytA = ttA;
       }
 
-      // Center hairline — full width
-      eCtx.fillStyle = 'rgba(255,255,255,0.055)';
-      eCtx.fillRect(0, CENTER - 0.5, EW, 1);
-
-      // Fill edge accent — vertical line marking fill boundary
-      if(fillXe > 2){
-        const edgeA = 0.40 + 0.28 * Math.sin(t * 6.2);
-        eCtx.fillStyle = `rgba(168,85,247,${edgeA})`;
-        eCtx.fillRect(fillXe - 1, 0, 2, EH);
+      // TT — teal, grows UP from center
+      if(ttH > 0.5){
+        eCtx.fillStyle = _surgeActive
+          ? `rgba(255,255,255,${ttA})`
+          : `rgba(105,201,208,${ttA})`;
+        eCtx.fillRect(x, EQ_CENTER - ttH, EQ_BW, ttH);
+      }
+      // YT — red, grows DOWN from center
+      if(ytH > 0.5){
+        eCtx.fillStyle = _surgeActive
+          ? `rgba(255,200,200,${ytA})`
+          : `rgba(255,68,68,${ytA})`;
+        eCtx.fillRect(x, EQ_CENTER, EQ_BW, ytH);
       }
     }
 
-    // Edge pulse rings drawn on top of EQ bars (same canvas)
-    drawEdgePulse();
+    // Center hairline
+    eCtx.fillStyle = 'rgba(255,255,255,0.16)';
+    eCtx.fillRect(0, EQ_CENTER - 0.5, EW, 1);
 
-    // ════════════════════════════════════════════════════════
-    // hmCtx (1074×110) — ambient glow drips BELOW the bar
-    //   During surge/boost: electric spray effect
-    //   Normally: platform-tinted glow fading to transparent
-    // ════════════════════════════════════════════════════════
-    hmCtx.clearRect(0, 0, HMW, HMH);
-    hmCtx.shadowBlur  = 0;
-    hmCtx.globalAlpha = 1;
+    // Fill edge accent glow
+    if(fillXe > 4){
+      const edgeGrad = eCtx.createLinearGradient(fillXe - 8, 0, fillXe + 2, 0);
+      edgeGrad.addColorStop(0, 'rgba(255,255,255,0)');
+      edgeGrad.addColorStop(1, 'rgba(255,255,255,0.52)');
+      eCtx.fillStyle = edgeGrad;
+      eCtx.fillRect(fillXe - 8, 0, 10, EH);
+    }
 
-    if(_surgeActive || boost){
-      // Electric rain dripping below bar during surge/boost
-      const sA = _surgeActive ? 0.68 + Math.sin(t*12)*0.22 : 0.38 + amp*0.20;
-      for(let i = 0; i < SEG_COUNT; i++){
-        const x  = i * (SEG_W + SEG_GAP);
-        const a  = smoothed[i];
-        const h  = Math.max(MIN_H + 10, (MAX_H * 0.70) * a + MIN_H + 10);
-        const c  = _surgeActive ? `rgba(255,255,255,${sA*(0.5+a*0.5)})`
-                                : `rgba(232,121,249,${sA*(0.5+a*0.5)})`;
-        const grad = hmCtx.createLinearGradient(x, 0, x, h);
-        grad.addColorStop(0, c);
-        grad.addColorStop(1, 'rgba(59,7,100,0)');
-        hmCtx.fillStyle = grad;
-        hmCtx.shadowColor = _surgeActive ? 'rgba(255,255,255,0.45)' : 'rgba(232,121,249,0.50)';
-        hmCtx.shadowBlur  = _surgeActive ? 14 + Math.sin(t*8+i)*5 : 9;
-        hmCtx.beginPath();
-        hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3,SEG_W/2), Math.min(3,SEG_W/2)]);
-        hmCtx.fill();
+    /* ── Edge burst rings on top of EQ ── */
+    for(let i = _v3EdgeBursts.length - 1; i >= 0; i--){
+      const b = _v3EdgeBursts[i]; b.age++;
+      if(b.age < 0) continue;
+      if(b.age >= b.max){ _v3EdgeBursts.splice(i, 1); continue; }
+      const p = b.age / b.max;
+      const a = (1 - p) * b.intensity;
+      const r = p * EH * 0.72;
+      eCtx.beginPath(); eCtx.arc(b.x, EH / 2, r, 0, Math.PI * 2);
+      eCtx.strokeStyle = b.col + (a * 0.9) + ')';
+      eCtx.lineWidth = 3.2 * (1 - p * 0.5) + 0.3;
+      eCtx.stroke();
+      if(r > 6){
+        eCtx.beginPath(); eCtx.arc(b.x, EH / 2, r * 0.48, 0, Math.PI * 2);
+        eCtx.strokeStyle = b.col + (a * 0.38) + ')';
+        eCtx.lineWidth = 1.3;
+        eCtx.stroke();
       }
-    } else {
-      // Ambient teal/red-tinted glow drips proportional to fill and platform energy
-      const tensionWave = Math.abs(Math.sin(t * Math.PI / 15));
-      for(let i = 0; i < SEG_COUNT; i++){
-        const x  = i * (SEG_W + SEG_GAP);
-        const xf = i / SEG_COUNT;
-        const a  = smoothed[i];
-        const h  = Math.max(MIN_H, (MAX_H * 0.52) * (a * 0.65 + amp * 0.35) + tensionWave * 5);
-        let r, g, b, alpha;
-        if(xf < fillFrac){
-          // Platform-tinted below fill
-          r = Math.round(110 + 130 * _v3ytE);
-          g = Math.round(55  + 135 * _v3ttE);
-          b = Math.round(155 + 65  * _v3ttE - 55 * _v3ytE);
-          alpha = 0.055 + (_v3ttE + _v3ytE) * 0.14 + amp * 0.055;
-        } else {
-          // Dim purple beyond fill edge
-          r=109; g=40; b=217; alpha = 0.025 + amp * 0.04;
+    }
+
+    /* ── Below-bar waveform (hmCtx) ── */
+    const freq = getFreqNorm();
+    for(let i = 0; i < SEG_COUNT; i++){
+      ttEnergy[i] *= 0.975;
+      ytEnergy[i] *= 0.975;
+      smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
+    }
+    const tensionWave = Math.abs(Math.sin(t * Math.PI / 15));
+    const surgeGlow   = _surgeActive ? 1 : 0;
+    hmCtx.clearRect(0, 0, HMW, HMH);
+    hmCtx.shadowBlur = 0;
+    hmCtx.globalAlpha = 1;
+    for(let i = 0; i < SEG_COUNT; i++){
+      const x       = i * (SEG_W + SEG_GAP);
+      const audioA  = smoothed[i];
+      const combined= Math.min(1, audioA * 0.7 + amp * 0.3);
+      const tFloor  = tensionWave * 12 + surgeGlow * 18;
+      const h       = Math.max(MIN_H + tFloor, (MAX_H * 0.65) * combined + MIN_H);
+      const purple  = _surgeActive
+        ? `rgba(255,255,255,${0.85 + Math.sin(t*12+i*0.4)*0.15})`
+        : boost ? `rgba(232,121,249,${0.55 + amp*0.30})`
+        : `rgba(${Math.round(100+amp*68)},${Math.round(7+amp*44)},${Math.round(150+amp*97)},${0.12+amp*0.22})`;
+      const purpleTop = _surgeActive
+        ? `rgba(232,121,249,${0.9 + Math.sin(t*15+i*0.6)*0.1})`
+        : boost ? `rgba(255,255,255,${0.4+Math.sin(t*8+i*0.5)*0.3})`
+        : `rgba(${Math.round(147+amp*45)},${Math.round(51+amp*81)},${Math.round(234+amp*13)},${0.18+amp*0.30})`;
+      const glow    = _surgeActive ? 'rgba(255,255,255,0.95)' : boost ? 'rgba(232,121,249,0.9)' : `rgba(147,51,234,${0.06+amp*0.22})`;
+      drawBar(x, h, `rgba(59,7,100,${0.08+amp*0.15})`, purpleTop, glow,
+              _surgeActive ? 22+Math.sin(t*10+i)*8 : boost ? 14+Math.sin(t*6+i)*6 : 3+amp*6);
+    }
+    for(let i = 0; i < SEG_COUNT; i++){
+      const e = ttEnergy[i]; if(e < 0.015) continue;
+      const x = i * (SEG_W + SEG_GAP);
+      const h = Math.max(0, (MAX_H + 40) * e); if(h < 1) continue;
+      hmCtx.globalAlpha = Math.min(1, e * 1.6);
+      drawBar(x, h, `rgba(29,78,216,${0.35+e*0.25})`, `rgba(147,197,253,${0.92+e*0.08})`, `rgba(59,130,246,${0.90*e})`, 12+e*22);
+    }
+    for(let i = 0; i < SEG_COUNT; i++){
+      const e = ytEnergy[i]; if(e < 0.015) continue;
+      const x = i * (SEG_W + SEG_GAP);
+      const h = Math.max(0, (MAX_H + 40) * e); if(h < 1) continue;
+      hmCtx.globalAlpha = Math.min(1, e * 1.6);
+      drawBar(x, h, `rgba(127,29,29,${0.35+e*0.25})`, `rgba(252,165,165,${0.92+e*0.08})`, `rgba(239,68,68,${0.90*e})`, 12+e*22);
+    }
+    hmCtx.globalAlpha = 1;
+    hmCtx.shadowBlur  = 0;
+    hmCtx.shadowColor = 'transparent';
+
+    /* ── Update CTA text / fill UI ── */
+    const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+    _mmUpdateStatus(pct);
+
+    requestAnimationFrame(drawHype);
+  })();
+
+  /* ── Unique gifter tracker ── */
+  const _milkGiftersSeen = new Set();
+
+  function milkGiftPts(gifterKey, coins, dollars){
+    const isNew = gifterKey && !_milkGiftersSeen.has(gifterKey);
+    if(gifterKey) _milkGiftersSeen.add(gifterKey);
+    const dollarVal = dollars > 0 ? dollars : (coins > 0 ? coins / 100 : 0);
+    const sorted = [..._giftRanges].sort((a,b) => b.minD - a.minD);
+    for(const tier of sorted){
+      if(dollarVal >= tier.minD) return isNew ? tier.isNew : tier.rpt;
+    }
+    return isNew ? 20 : 3;
+  }
+
+  /* ── Ably subscriptions ── */
+  ablyChannel.subscribe('milk-event', msg => {
+    const d = msg?.data, type = d?.type, plat = d?.platform || 'other';
+    if(!type) return;
+    trackEvt(type, plat);
+    const _who = d.gifterKey || d.username || null;
+    switch(type){
+      case 'comment': case 'comment_match':
+        addPts(PTS[type] ?? 0.5, plat, type, null, _who); break;
+      case 'join':
+        addPts(PTS.join ?? 1, plat, 'join', null, _who);
+        _fireEntryBanner(_currentPct);
+        break;
+      case 'like': {
+        _likeAccum++;
+        _likeAccumPlat = plat || _likeAccumPlat;
+        const _likePct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+        _triggerRipple(_likePct, 0.05);
+        if (LIKE_BATCH_SIZE <= 1) {
+          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
+          _likeAccum = 0;
+        } else if (_likeAccum >= LIKE_BATCH_SIZE) {
+          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
+          _likeAccum = 0;
         }
-        const grad = hmCtx.createLinearGradient(x, 0, x, h);
-        grad.addColorStop(0, `rgba(${r},${g},${b},${Math.min(0.52, alpha)})`);
-        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
-        hmCtx.fillStyle = grad;
-        hmCtx.shadowBlur = 0;
-        hmCtx.beginPath();
-        hmCtx.roundRect(x, 0, SEG_W, h,
+        break;
+      }
+      case 'like_batch':
+        addPts(PTS.like_batch, plat, 'like_batch'); break;
+      case 'yt_sub':
+        addPts(PTS.yt_sub, 'yt', 'yt_sub', '📹 YT sub', _who); fireFirstFlash(); break;
+      case 'heart_me':
+        addPts(milkGiftPts(d.gifterKey, 1, 0), 'tt', 'heart_me', '💝 Heart Me', _who); break;
+      case 'heart_me_first':
+        if(d.gifterKey) _milkGiftersSeen.add(d.gifterKey);
+        addPts(PTS.heart_me_first, 'tt', 'heart_me', '✨ first Heart Me', _who); fireFirstFlash(); break;
+      case 'tiktok_gift': {
+        const _gKey = d.giftName ? 'gift_' + d.giftName.toLowerCase().replace(/\s+/g,'_') : null;
+        const _gPts = (_gKey && PTS[_gKey] != null) ? PTS[_gKey]
+                    : milkGiftPts(d.gifterKey, d.coins || 0, 0);
+        if(_instantSaveCoins > 0 && (d.coins||0) >= _instantSaveCoins &&
+           typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
+          _spawnNotif('tt', `⚡ ${d.giftName||'Gift'} — INSTANT SAVE!`);
+          splatEnterSaved();
+          setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
+          break;
+        }
+        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`, _who); break;
+      }
+      case 'yt_superchat': {
+        const _sPts = milkGiftPts(d.gifterKey, 0, d.dollars||0);
+        if(_instantSaveDollars > 0 && (d.dollars||0) >= _instantSaveDollars &&
+           typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
+          _spawnNotif('yt', `⚡ $${d.dollars} Super Chat — INSTANT SAVE!`);
+          splatEnterSaved();
+          setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
+          break;
+        }
+        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`, _who); break;
+      }
+    }
+  });
+
+  // Manual boost from dock
+  ablyChannel.subscribe('milk-boost', msg => {
+    const d = msg?.data;
+    if(!d) return;
+    if(d.durSec === 0 || (d.mult != null && d.mult <= 1)){ _endBoost(false); return; }
+    const type  = d.type  || 'comments';
+    const mult  = Math.max(2, Math.min(10, d.mult  || 2));
+    const durMs = Math.max(10, Math.min(120, d.durSec || 30)) * 1000;
+    const cta   = d.cta   || (type === 'likes' ? 'LIKES & FOLLOWS' : type === 'gifts' ? 'GIFTS & SUBS' : 'COMMENTS & JOINS');
+    const icon  = type === 'likes' ? '👍' : type === 'gifts' ? '🎁' : '💬';
+    _triggerBoost(type, mult, durMs, cta, icon);
+  });
+
+  // Smart mode from dock
+  ablyChannel.subscribe('milk-smart', msg => {
+    const mode = msg?.data?.mode;
+    if(!mode) return;
+    _smartMode = mode;
+    if(mode === 'auto' || mode === 'both') _scheduleAutoBoost();
+  });
+
+  ablyChannel.subscribe('milk-intensity', msg => {
+    _intensityMult = Math.max(0, Math.min(3, msg.data?.mult ?? 1));
+  });
+
+  ablyChannel.subscribe('gift-bar-pos', msg => {
+    const top = msg.data?.top;
+    if(typeof top !== 'number') return;
+    const gb = document.getElementById('gift-bar');
+    if(gb) gb.style.top = top + 'px';
+  });
+
+  ablyChannel.subscribe('mission-strip-config', msg => {
+    const d = msg?.data;
+    if(!d) return;
+    const strip = document.getElementById('mission-strip');
+    const txt   = document.getElementById('mission-strip-text');
+    if(strip && typeof d.top === 'number') strip.style.top = d.top + 'px';
+    if(txt   && typeof d.text === 'string' && d.text.trim()) txt.textContent = d.text;
+  });
+
+  ablyChannel.subscribe('milk-cta', msg => {
+    const text = msg.data?.text || '';
+    const el = document.getElementById('bb-cta-text');
+    if(el) el.textContent = text || 'to Bean Boozled';
+  });
+
+  // Dock controls bait text + visibility
+  ablyChannel.subscribe('milk-cta-config', msg => {
+    const d = msg?.data;
+    if(!d) return;
+    if(d.baitText !== undefined) _mmBaitText = d.baitText || 'MILK METER 🫟';
+    if(d.goalText !== undefined) _mmGoalText = d.goalText || 'LETS GOOO!!';
+    if(d.forceVisible !== undefined) _mmForceVisible = !!d.forceVisible;
+    if(d.visible    !== undefined) _mmGoalVisible  = !!d.visible;
+    _mmUpdateStatus(Math.round((rawScore / MAX_RAW) * 100));
+  });
+
+  // Live scoring config
+  ablyChannel.subscribe('milk-scoring-config', msg => {
+    const d = msg?.data;
+    if(!d) return;
+    if(d.pts && typeof d.pts === 'object') Object.assign(PTS, d.pts);
+    if(Array.isArray(d.ranges) && d.ranges.length && d.ranges[0]?.minD != null){
+      _giftRanges = d.ranges.map(r => ({
+        minD:  Number(r.minD)  || 0,
+        maxD:  Number(r.maxD)  || 9999,
+        rpt:   Number(r.rpt)   || 0,
+        isNew: Number(r.isNew) || 0,
+      }));
+    }
+    if(d.target != null && Number(d.target) > 0) MAX_RAW = Number(d.target);
+    if(d.likeBatchSize != null && Number(d.likeBatchSize) >= 1){
+      LIKE_BATCH_SIZE = Math.round(Number(d.likeBatchSize));
+      _likeAccum = 0;
+    }
+    if(Array.isArray(d.cmds)) _milkCmds = d.cmds.filter(c => c.phrase?.trim());
+    if(Array.isArray(d.specific)){
+      d.specific.forEach(sg => {
+        if(sg.name && sg.pts != null)
+          PTS['gift_' + sg.name.toLowerCase().replace(/\s+/g,'_')] = Number(sg.pts);
+      });
+    }
+    if(d.instantSaveCoins   != null) _instantSaveCoins   = Number(d.instantSaveCoins)   || 0;
+    if(d.instantSaveDollars != null) _instantSaveDollars = Number(d.instantSaveDollars) || 0;
+  });
+
+  ablyChannel.subscribe('bb-reset', () => {
+    rawScore    = 0;
+    _bbFired    = false;
+    _bbCooldown = false;
+    _bbBan.classList.remove('bb-active');
+  });
+
+  // Reset milk on each rescue countdown
+  window._milkResetForRescue = function(){
+    rawScore    = 0;
+    _bbFired    = false;
+    _bbCooldown = false;
+    _mmUpdateStatus(0);
+  };
+
+  // Show CTA immediately on load
+  _mmUpdateStatus(0);
+
+})();
+</script>
+
+<div id="mission-strip">
+  <span id="mission-strip-text">🫟 MILK METER — comment, join, or gift to fill it!</span>
+  <span id="mission-strip-pct">0%</span>
+</div>
+
+<div id="entry-banner">
+  <div id="entry-banner-inner">
+    <span id="entry-banner-text">👋 Chat just hit 0% — jump in!</span>
+  </div>
+</div>
+
+</body>
+</html>

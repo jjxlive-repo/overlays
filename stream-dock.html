@@ -4193,12 +4193,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const likeBatchEl = document.getElementById('msc-like-batch');
   if (likeBatchEl) likeBatchEl.value = parseInt(localStorage.getItem('likeBatchSize') || '20', 10);
 
-  // Restore Gist ID (token is never persisted — user re-enters it each session)
+  // Restore Gist ID and token from localStorage
   const savedGistId = localStorage.getItem('jjx-gist-id');
   if (savedGistId) {
     const idEl = document.getElementById('gist-id');
     if (idEl) idEl.value = savedGistId;
-    // Dot stays grey until user saves/loads — just show it's configured
+  }
+  const savedToken = localStorage.getItem('jjx-gist-token');
+  if (savedToken) {
+    const tokenEl = document.getElementById('gist-token');
+    if (tokenEl) tokenEl.value = savedToken;
+    if (savedGistId) {
+      _gistStatus('Token restored — ready to sync', null);
+    } else {
+      _gistStatus('Token restored — enter Gist ID to sync', null);
+    }
+  } else if (savedGistId) {
     _gistStatus('Enter token to sync', null);
   }
 });
@@ -4682,7 +4692,8 @@ function applyGistConfig(cfg) {
 async function gistCreate() {
   const token = document.getElementById('gist-token')?.value.trim();
   if (!token) { _gistStatus('⚠ Enter a GitHub token first', false); return; }
-  _gistStatus('Creating…', null);
+  localStorage.setItem('jjx-gist-token', token);
+_gistStatus('Creating…', null);
   try {
     const initialContent = JSON.stringify(gistGetConfig(), null, 2);
     const res = await fetch('https://api.github.com/gists', {
@@ -4710,6 +4721,7 @@ async function doGistSave() {
   const token = document.getElementById('gist-token')?.value.trim();
   let   id    = document.getElementById('gist-id')?.value.trim();
   if (!token) { _gistStatus('⚠ Enter GitHub token', false); return; }
+  localStorage.setItem('jjx-gist-token', token);
   // Auto-create if no ID yet
   if (!id) { await gistCreate(); return; }
   _gistStatus('Syncing…', null);
@@ -4743,6 +4755,7 @@ async function doGistLoad() {
   const token = document.getElementById('gist-token')?.value.trim();
   const id    = document.getElementById('gist-id')?.value.trim();
   if (!token) { _gistStatus('⚠ Enter GitHub token', false); return; }
+  localStorage.setItem('jjx-gist-token', token);
   if (!id)    { _gistStatus('⚠ Enter a Gist ID', false); return; }
   _gistStatus('Pulling…', null);
   try {
@@ -4786,6 +4799,7 @@ function gistDisconnect() {
   if (tokenEl) tokenEl.value = '';
   if (idEl)    idEl.value    = '';
   localStorage.removeItem('jjx-gist-id');
+  localStorage.removeItem('jjx-gist-token');
   const dot = document.getElementById('gist-dot');
   if (dot) { dot.style.background = '#4b5563'; dot.style.boxShadow = '0 0 0 2px rgba(0,0,0,.4)'; }
   _gistStatus('Disconnected', false);
