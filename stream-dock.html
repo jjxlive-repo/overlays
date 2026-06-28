@@ -1803,6 +1803,56 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="tf-btn tf-btn-gold" onclick="testFireSuperchat()">💛 Superchat $5</button>
             <button class="tf-btn tf-btn-danger" onclick="testFireMilkReset()">💀 Full Reset</button>
           </div>
+
+          <!-- Gift animation variant test buttons -->
+          <div style="margin-top:8px;font-size:9px;color:var(--txt-dim);margin-bottom:4px;letter-spacing:.05em;">GIFT ANIMATION TEST</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+            <button class="tf-btn tf-btn-gift" onclick="testFireGiftAnim('comet')" title="Fast TT streak">🌠 Comet</button>
+            <button class="tf-btn tf-btn-gold" onclick="testFireGiftAnim('lift')"  title="Slow YT premium rise">🪄 Lift</button>
+            <button class="tf-btn tf-btn-danger" onclick="testFireGiftAnim('blast')" title="Tier 4+ explosion">💥 Blast</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ GIFT ANIMATION TIER CONFIG ══ -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCard('ctrl-gifttiers')">
+          <span class="ctrl-hd-title">🎁 Gift Animation Tiers</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-gifttiers" style="padding:8px;display:none;">
+          <div style="font-size:9px;color:var(--txt-dim);margin-bottom:8px;">
+            Set minimum values per animation. <strong>Comet</strong> fires below blast threshold. <strong>Lift</strong> = all YouTube SuperChats above min. <strong>Blast</strong> fires at/above the blast threshold.
+          </div>
+
+          <!-- TikTok Coins -->
+          <div style="font-size:10px;color:#69C9D0;font-weight:700;margin-bottom:4px;">♪ TIKTOK COINS</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+            <div>
+              <label style="font-size:9px;color:var(--txt-dim);">Min coins (comet)</label>
+              <input class="ctrl-in" id="gt-coins-min" type="number" value="50" min="0" style="margin-top:2px;">
+            </div>
+            <div>
+              <label style="font-size:9px;color:var(--txt-dim);">Min coins (blast)</label>
+              <input class="ctrl-in" id="gt-coins-blast" type="number" value="25000" min="0" style="margin-top:2px;">
+            </div>
+          </div>
+
+          <!-- YouTube Dollars -->
+          <div style="font-size:10px;color:#FF7070;font-weight:700;margin-bottom:4px;">▶ YOUTUBE SUPERCHAT $</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+            <div>
+              <label style="font-size:9px;color:var(--txt-dim);">Min $ (lift)</label>
+              <input class="ctrl-in" id="gt-dollars-min" type="number" value="1" min="0" style="margin-top:2px;">
+            </div>
+            <div>
+              <label style="font-size:9px;color:var(--txt-dim);">Min $ (blast)</label>
+              <input class="ctrl-in" id="gt-dollars-blast" type="number" value="100" min="0" style="margin-top:2px;">
+            </div>
+          </div>
+
+          <button class="ctrl-btn c-on" style="width:100%;" onclick="sendGiftTierConfig()">💾 Apply Tier Config</button>
+          <div id="gt-status" style="font-size:9px;color:var(--txt-dim);text-align:center;margin-top:4px;min-height:14px;"></div>
         </div>
       </div>
 
@@ -5054,6 +5104,63 @@ function testFireMilk(type, label, username) {
   const payload = { type, platform: platMap[type] || 'tt' };
   if (username) payload.username = username;
   ablyChannel.publish('milk-event', payload).catch(() => {});
+  doFlash('purple');
+}
+
+// Direct gift animation variant test — bypasses tier logic
+function testFireGiftAnim(variant) {
+  if(!ablyChannel){ doFlash('red'); return; }
+  const isYT = variant === 'lift';
+  // Use amounts that hit the right tier for each variant
+  const coinAmt   = variant === 'blast' ? 50000 : 500;
+  const dollarAmt = variant === 'blast' ? 200   : 5;
+  ablyChannel.publish('milk-event', {
+    type:      isYT ? 'yt_superchat' : 'tiktok_gift',
+    giftName:  variant === 'comet' ? 'Rose' : variant === 'blast' ? 'Lion' : null,
+    coins:     isYT ? 0 : coinAmt,
+    dollars:   isYT ? dollarAmt : 0,
+    gifterKey: 'test_anim_' + variant,
+    username:  variant === 'comet' ? 'comet_tester'
+             : variant === 'lift'  ? 'lift_supporter'
+             :                       'blast_whale',
+    platform:  isYT ? 'yt' : 'tt',
+  }).catch(() => {});
+  doFlash('purple');
+}
+
+function sendGiftTierConfig() {
+  if(!ablyChannel){ doFlash('red'); return; }
+  const coinsMin   = Number(document.getElementById('gt-coins-min')?.value)   || 50;
+  const coinsBlast = Number(document.getElementById('gt-coins-blast')?.value) || 25000;
+  const dolMin     = Number(document.getElementById('gt-dollars-min')?.value)  || 1;
+  const dolBlast   = Number(document.getElementById('gt-dollars-blast')?.value)|| 100;
+
+  // Build full 6-tier arrays: tier1=min, tier4=blast, interpolate tiers 2-3 and 5-6
+  const coinsArr = [
+    coinsMin,
+    Math.round(coinsMin * 10),
+    Math.round(coinsMin * 100),
+    coinsBlast,
+    coinsBlast * 4,
+    coinsBlast * 10,
+  ];
+  const dolArr = [
+    dolMin,
+    Math.max(dolMin + 1, Math.round(dolMin * 5)),
+    Math.max(dolMin + 5, Math.round(dolMin * 25)),
+    dolBlast,
+    dolBlast * 2.5,
+    dolBlast * 4,
+  ].map(Math.round);
+
+  ablyChannel.publish('gift-tier-config', {
+    coins:     coinsArr,
+    dollars:   dolArr,
+    blastTier: 4,
+  }).catch(() => {});
+
+  const st = document.getElementById('gt-status');
+  if(st){ st.textContent = `✓ Sent — comet ≥${coinsMin.toLocaleString()} coins / ≥$${dolMin} · blast ≥${coinsBlast.toLocaleString()} coins / ≥$${dolBlast}`; setTimeout(()=>{ st.textContent=''; }, 4000); }
   doFlash('purple');
 }
 
