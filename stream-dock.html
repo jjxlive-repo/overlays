@@ -2430,25 +2430,17 @@ function mapAlertType(evt, isTT, isYT) {
   return 'direct_donation';
 }
 
-/* ── Hype score mirror (dock-side estimate, drives BB bar independently of overlay) ── */
-const _DOCK_MAX_RAW    = 200;
-const _DOCK_DECAY_RATE = 0.035;
-const _DOCK_PTS = { comment:0.5, join:1, like:0.1, like_batch:1, comment_match:3, heart_me:15, heart_me_first:50, yt_sub:40 };
-let _dockRawScore = 0;
-
-function _dockAddPts(type) {
-  _dockRawScore = Math.min(_dockRawScore + (_DOCK_PTS[type] ?? 0.5), _DOCK_MAX_RAW);
-  _updateDockBB(Math.round((_dockRawScore / _DOCK_MAX_RAW) * 100));
-}
-setInterval(() => {
-  _dockRawScore = Math.max(0, _dockRawScore - _DOCK_MAX_RAW * _DOCK_DECAY_RATE);
-  _updateDockBB(Math.round((_dockRawScore / _DOCK_MAX_RAW) * 100));
-}, 10_000);
+/* ── Hype score mirror — dock bar is a pure mirror of overlay's milk-pct ── */
+// Local estimate removed: it used different point values / no boost awareness
+// and caused the dock to show 100% / fire "eat bean" when overlay wasn't full.
+// The overlay now publishes milk-pct every 500ms so the dock stays in sync.
+let _dockRawScore = 0;  // kept for bean-boozled reset only
+const _DOCK_MAX_RAW = 200;  // kept so bean-boozled reset math works
 
 /* ── Publish engagement event → gift-bar hype meter ── */
 function publishMilk(type, platform) {
   if (ablyChannel) ablyChannel.publish('milk-event', { type, platform: platform || 'other' }).catch(() => {});
-  _dockAddPts(type); // mirror locally so dock BB bar moves without needing overlay
+  // No local scoring — dock bar syncs exclusively via milk-pct from overlay
 }
 
 function handleMsg(data) {
