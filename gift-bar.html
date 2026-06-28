@@ -244,12 +244,22 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 /* ── Milk fill — sweeps L→R inside bar based on milk % ── */
 #gb-milk-fill {
   position: absolute; top: 0; left: 0; bottom: 0; width: 0%;
-  background: linear-gradient(90deg, rgba(109,40,217,0.55) 0%, rgba(192,132,252,0.38) 100%);
-  transition: width 0.5s ease, background 0.4s ease;
+  /* Opaque enough to fully cover gifter slides underneath */
+  background: linear-gradient(90deg,
+    rgba(59,7,100,0.96)  0%,
+    rgba(109,40,217,0.94) 60%,
+    rgba(168,85,247,0.90) 100%);
+  /* Glowing leading-edge line on the right */
+  box-shadow: inset -2px 0 0 rgba(232,121,249,0.85), inset -8px 0 16px rgba(168,85,247,0.35);
+  transition: width 0.5s ease, background 0.4s ease, box-shadow 0.4s ease;
   pointer-events: none; z-index: 1;
 }
 #gb-milk-fill.urgent {
-  background: linear-gradient(90deg, rgba(168,85,247,0.72) 0%, rgba(232,121,249,0.58) 100%);
+  background: linear-gradient(90deg,
+    rgba(109,40,217,0.97) 0%,
+    rgba(168,85,247,0.95) 55%,
+    rgba(232,121,249,0.92) 100%);
+  box-shadow: inset -2px 0 0 rgba(249,168,232,0.95), inset -12px 0 22px rgba(232,121,249,0.5);
 }
 /* ── In-bar CTA / surge text ── */
 #gb-bar-text {
@@ -3212,12 +3222,14 @@ ablyChannel.subscribe('top-gifters',msg=>{
   else document.body.appendChild(_mmExplosion);
 
   /* ── Mission strip — always-on top bar explaining the game ── */
-  const _missionStrip    = document.getElementById('mission-strip');
-  const _missionStripPct = document.getElementById('mission-strip-pct');
+  // #mission-strip lives after the script tag, so getElementById at IIFE
+  // init time returns null. Lazy-lookup at call time instead of caching.
   function _updateMissionStrip(pct, show) {
-    if (!_missionStrip) return;
-    if (_missionStripPct) _missionStripPct.textContent = pct + '%';
-    _missionStrip.classList.toggle('visible', !!show);
+    const strip = document.getElementById('mission-strip');
+    const pctEl = document.getElementById('mission-strip-pct');
+    if (!strip) return;
+    if (pctEl) pctEl.textContent = pct + '%';
+    strip.classList.toggle('visible', !!show);
   }
 
   /* ── Entry banner — fires on join events ── */
@@ -3798,8 +3810,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _mmUpdateStatus(0);
   };
 
-  // Show CTA immediately on load
-  _mmUpdateStatus(0);
+  // Show CTA on load — deferred so browser finishes parsing #mission-strip
+  // (div lives after the script tag; setTimeout(0) lets DOM catch up)
+  setTimeout(() => _mmUpdateStatus(0), 0);
 
 })();
 </script>
