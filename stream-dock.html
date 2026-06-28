@@ -2124,6 +2124,16 @@ body.gc-shake { animation: gcShake 0.5s ease; }
       <button class="sp-pos-btn" data-pos="lower"  onclick="setSplatPos('lower')">Lower</button>
       <button class="sp-pos-btn" data-pos="bottom" onclick="setSplatPos('bottom')">Bottom</button>
     </div>
+    <!-- Row 4: Notification pill position -->
+    <div class="splat-bar-row" style="gap:5px;align-items:center;">
+      <span class="sp-pos-label">Notif:</span>
+      <button class="sp-pos-btn" onclick="nudgeNotif(-10,0)" title="Move left" style="padding:3px 10px;font-size:14px;">←</button>
+      <button class="sp-pos-btn" onclick="nudgeNotif(0,-8)"  title="Move up"   style="padding:3px 10px;font-size:14px;">↑</button>
+      <button class="sp-pos-btn" onclick="nudgeNotif(0,8)"   title="Move down" style="padding:3px 10px;font-size:14px;">↓</button>
+      <button class="sp-pos-btn" onclick="nudgeNotif(10,0)"  title="Move right" style="padding:3px 10px;font-size:14px;">→</button>
+      <button class="sp-pos-btn" onclick="resetNotifPos()" title="Reset to center" style="padding:3px 8px;font-size:11px;opacity:0.6;">⊙</button>
+      <span id="notif-pos-display" style="font-size:9px;color:var(--txt-dim);font-family:monospace;min-width:60px;">50%, -38px</span>
+    </div>
   </div>
 
   <!-- EVENT PROMO SYSTEM (controls in overlay-control.html — hidden here) -->
@@ -3773,6 +3783,22 @@ function setSplatPos(pos) {
   });
 }
 
+/* ── Notification pill position controls ── */
+let _dockNotifPos = { x: 50, y: -38 };
+function nudgeNotif(dx, dy) {
+  _dockNotifPos.x = Math.max(5, Math.min(95, _dockNotifPos.x + dx));
+  _dockNotifPos.y = Math.min(-6, _dockNotifPos.y + dy);
+  const disp = document.getElementById('notif-pos-display');
+  if (disp) disp.textContent = `${_dockNotifPos.x}%, ${_dockNotifPos.y}px`;
+  ablyChannel.publish('notif-pos', { dx, dy }).catch(() => {});
+}
+function resetNotifPos() {
+  _dockNotifPos = { x: 50, y: -38 };
+  const disp = document.getElementById('notif-pos-display');
+  if (disp) disp.textContent = '50%, -38px';
+  ablyChannel.publish('notif-pos', { reset: true }).catch(() => {});
+}
+
 /* ═══════════════════════════════════════════
    BAIT VISIBLE TOGGLE
 ═══════════════════════════════════════════ */
@@ -4610,6 +4636,26 @@ function scheduleGistSave() {
   _gistSaveTimer = setTimeout(doGistSave, 3000);
 }
 
+/* Check rate limit and show reset time if exhausted */
+async function _gistCheckRateLimit(token) {
+  try {
+    const r = await fetch('https://api.github.com/rate_limit', {
+      headers: { Authorization: 'token ' + token }
+    });
+    const d = await r.json();
+    const core = d?.resources?.core;
+    if (!core) return null;
+    return { remaining: core.remaining, reset: core.reset }; // reset = Unix timestamp
+  } catch(e) { return null; }
+}
+
+function _gistRateLimitMsg(resetTs) {
+  const resetDate = new Date(resetTs * 1000);
+  const mins = Math.ceil((resetDate - Date.now()) / 60000);
+  const t = resetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `✗ Rate limit hit — resets at ${t} (~${mins} min)`;
+}
+
 function gistCredentialChanged() {
   // Persist Gist ID (but NEVER the token) so it survives page reloads
   const id = document.getElementById('gist-id')?.value.trim();
@@ -4764,8 +4810,18 @@ async function doGistSave() {
     if (res.ok) {
       _gistStatus('✓ In sync (' + new Date().toLocaleTimeString() + ')', true);
     } else {
-      const data = await res.json().catch(() => ({}));
-      _gistStatus('✗ ' + (data.message || 'Save failed'), false);
+      const resetTs = res.headers.get('X-RateLimit-Reset');
+      if (res.status === 403 && resetTs) {
+        _gistStatus(_gistRateLimitMsg(Number(resetTs)), false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (data.message?.includes('rate limit')) {
+          const rl = await _gistCheckRateLimit(token);
+          _gistStatus(rl ? _gistRateLimitMsg(rl.reset) : '✗ Rate limit hit — try again in ~1 hour', false);
+        } else {
+          _gistStatus('✗ ' + (data.message || 'Save failed'), false);
+        }
+      }
     }
   } catch(e) { _gistStatus('✗ Network error — check token & internet', false); }
 }
