@@ -3485,15 +3485,16 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }, DECAY_TICK_MS);
 
-  /* ── Publish hype % to dock every 2s (only when it changes ≥2%) ── */
+  /* ── Publish hype % to dock every 500ms (only when it changes ≥1%) ── */
+  // Dock no longer has its own local scoring — it depends on this for accuracy.
   let _lastPubPct = -1;
   setInterval(() => {
     const pct = Math.round((rawScore / MAX_RAW) * 100);
-    if(Math.abs(pct - _lastPubPct) >= 2){
+    if(Math.abs(pct - _lastPubPct) >= 1){
       _lastPubPct = pct;
       try { ablyChannel.publish('milk-pct', { pct }); } catch(e) {}
     }
-  }, 2000);
+  }, 500);
 
   /* ── Below-bar waveform helper ── */
   const SEG_GAP = 3;
@@ -3814,6 +3815,40 @@ ablyChannel.subscribe('top-gifters',msg=>{
   // (div lives after the script tag; setTimeout(0) lets DOM catch up)
   setTimeout(() => _mmUpdateStatus(0), 0);
 
+})();
+</script>
+
+<!-- ══ DEBUG POSITION BARS — delete after finding TikTok clip boundary ══ -->
+<div id="debug-pos-bars" style="position:absolute;top:0;left:0;width:1080px;height:1920px;pointer-events:none;z-index:9999;">
+</div>
+<script>
+(function(){
+  const root = document.getElementById('debug-pos-bars');
+  if(!root) return;
+  // Draw a labeled bar every 100px from y=800 down to y=1900
+  for(let y = 800; y <= 1900; y += 100){
+    const hue = Math.round(((y - 800) / 1100) * 240); // blue→red gradient
+    const bar = document.createElement('div');
+    bar.style.cssText = [
+      'position:absolute',
+      'left:0','width:1080px','height:4px',
+      `top:${y}px`,
+      `background:hsl(${hue},100%,55%)`,
+      'opacity:0.9',
+    ].join(';');
+    const label = document.createElement('div');
+    label.textContent = `▶ y=${y}px`;
+    label.style.cssText = [
+      'position:absolute',
+      'left:10px',`top:${y + 6}px`,
+      'font-family:monospace','font-size:22px','font-weight:bold',
+      `color:hsl(${hue},100%,65%)`,
+      'text-shadow:0 1px 4px rgba(0,0,0,0.9)',
+      'white-space:nowrap',
+    ].join(';');
+    root.appendChild(bar);
+    root.appendChild(label);
+  }
 })();
 </script>
 
