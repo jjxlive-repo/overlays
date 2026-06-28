@@ -1274,13 +1274,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 /* ══ HYPE METER — audio-reactive waveform ══ */
 #hype-meter {
-  position: absolute;
-  top: 100%;
-  left: 3px; right: 3px;
-  height: 110px;
-  pointer-events: none; z-index: 13;
-  display: block;
-  overflow: visible;
+  display: none; /* v3: EQ moved inside bar on eCtx — below-bar waveform retired */
 }
 /* Segment classes kept for compat but not rendered — canvas does all drawing */
 .hm-seg { display: none; }
@@ -1467,7 +1461,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   width: 1080px; height: 1920px;
   pointer-events: none; z-index: 20; overflow: hidden;
 }
-#gift-eq-canvas   { position: absolute; bottom: 0; left: 0; width: 1080px; height: 120px; }
+#gift-eq-canvas   { position: absolute; top: 1800px; left: 0; width: 1080px; height: 120px; }
 #gift-blast-canvas{ position: absolute; top: 0;    left: 0; width: 1080px; height: 1920px; }
 
 /* Notification card */
@@ -3586,53 +3580,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
       }
     }
 
-    /* ── Below-bar waveform (hmCtx) ── */
-    const freq = getFreqNorm();
-    for(let i = 0; i < SEG_COUNT; i++){
-      ttEnergy[i] *= 0.975;
-      ytEnergy[i] *= 0.975;
-      smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
-    }
-    const tensionWave = Math.abs(Math.sin(t * Math.PI / 15));
-    const surgeGlow   = _surgeActive ? 1 : 0;
-    hmCtx.clearRect(0, 0, HMW, HMH);
-    hmCtx.shadowBlur = 0;
-    hmCtx.globalAlpha = 1;
-    for(let i = 0; i < SEG_COUNT; i++){
-      const x       = i * (SEG_W + SEG_GAP);
-      const audioA  = smoothed[i];
-      const combined= Math.min(1, audioA * 0.7 + amp * 0.3);
-      const tFloor  = tensionWave * 12 + surgeGlow * 18;
-      const h       = Math.max(MIN_H + tFloor, (MAX_H * 0.65) * combined + MIN_H);
-      const purple  = _surgeActive
-        ? `rgba(255,255,255,${0.85 + Math.sin(t*12+i*0.4)*0.15})`
-        : boost ? `rgba(232,121,249,${0.55 + amp*0.30})`
-        : `rgba(${Math.round(100+amp*68)},${Math.round(7+amp*44)},${Math.round(150+amp*97)},${0.12+amp*0.22})`;
-      const purpleTop = _surgeActive
-        ? `rgba(232,121,249,${0.9 + Math.sin(t*15+i*0.6)*0.1})`
-        : boost ? `rgba(255,255,255,${0.4+Math.sin(t*8+i*0.5)*0.3})`
-        : `rgba(${Math.round(147+amp*45)},${Math.round(51+amp*81)},${Math.round(234+amp*13)},${0.18+amp*0.30})`;
-      const glow    = _surgeActive ? 'rgba(255,255,255,0.95)' : boost ? 'rgba(232,121,249,0.9)' : `rgba(147,51,234,${0.06+amp*0.22})`;
-      drawBar(x, h, `rgba(59,7,100,${0.08+amp*0.15})`, purpleTop, glow,
-              _surgeActive ? 22+Math.sin(t*10+i)*8 : boost ? 14+Math.sin(t*6+i)*6 : 3+amp*6);
-    }
-    for(let i = 0; i < SEG_COUNT; i++){
-      const e = ttEnergy[i]; if(e < 0.015) continue;
-      const x = i * (SEG_W + SEG_GAP);
-      const h = Math.max(0, (MAX_H + 40) * e); if(h < 1) continue;
-      hmCtx.globalAlpha = Math.min(1, e * 1.6);
-      drawBar(x, h, `rgba(29,78,216,${0.35+e*0.25})`, `rgba(147,197,253,${0.92+e*0.08})`, `rgba(59,130,246,${0.90*e})`, 12+e*22);
-    }
-    for(let i = 0; i < SEG_COUNT; i++){
-      const e = ytEnergy[i]; if(e < 0.015) continue;
-      const x = i * (SEG_W + SEG_GAP);
-      const h = Math.max(0, (MAX_H + 40) * e); if(h < 1) continue;
-      hmCtx.globalAlpha = Math.min(1, e * 1.6);
-      drawBar(x, h, `rgba(127,29,29,${0.35+e*0.25})`, `rgba(252,165,165,${0.92+e*0.08})`, `rgba(239,68,68,${0.90*e})`, 12+e*22);
-    }
-    hmCtx.globalAlpha = 1;
-    hmCtx.shadowBlur  = 0;
-    hmCtx.shadowColor = 'transparent';
+    /* ── Below-bar waveform retired in v3 (EQ lives inside bar on eCtx) ── */
 
     /* ── Update CTA text / fill UI ── */
     const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
