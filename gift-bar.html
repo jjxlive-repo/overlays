@@ -1842,7 +1842,24 @@ let alertTimeout=null, infoFadeTimer=null, monthlyTimer=null, activePlat='defaul
 function fmtAmount(a,t){const n=Number(a)||0;if(t==='tiktok_coins')return n.toLocaleString()+' COINS';if(t==='youtube_jewels')return n.toLocaleString()+' JEWELS';if(t==='youtube_superchat'||t==='direct_donation')return '$'+(Number.isInteger(n)?n.toLocaleString():n.toFixed(2));return n.toLocaleString();}
 function platKey(p){return['tiktok','youtube','direct'].includes(p)?p:'default';}
 function platLabel(p){if(p==='tiktok')return'♪ TikTok';if(p==='youtube')return'▶ YouTube';if(p==='direct')return'💚 Direct';return'🎁 Gift';}
-function getTier(a,t){const n=Number(a)||0;if(t==='tiktok_coins'||t==='youtube_jewels'){if(n<50)return 0;if(n<1000)return 1;if(n<5000)return 2;if(n<25000)return 3;if(n<100000)return 4;if(n<250000)return 5;return 6;}if(n<1)return 0;if(n<10)return 1;if(n<50)return 2;if(n<100)return 3;if(n<250)return 4;if(n<400)return 5;return 6;}
+// Gift animation tier thresholds — configurable from dock via gift-tier-config
+let _giftTierCfg = {
+  coins:     [50, 1000, 5000, 25000, 100000, 250000], // tier 1–6 min coins
+  dollars:   [1,  10,   50,  100,   250,    400],     // tier 1–6 min dollars
+  blastTier: 4,   // tier >= this fires blast; below = comet/lift
+};
+function getTier(a,t){
+  const n = Number(a)||0;
+  const thresh = (t==='tiktok_coins'||t==='youtube_jewels') ? _giftTierCfg.coins : _giftTierCfg.dollars;
+  for(let i = thresh.length-1; i >= 0; i--){ if(n >= thresh[i]) return i+1; }
+  return 0;
+}
+ablyChannel.subscribe('gift-tier-config', msg => {
+  const d = msg?.data; if(!d) return;
+  if(Array.isArray(d.coins))   _giftTierCfg.coins   = d.coins;
+  if(Array.isArray(d.dollars)) _giftTierCfg.dollars = d.dollars;
+  if(d.blastTier != null)      _giftTierCfg.blastTier = Number(d.blastTier);
+});
 
 /* ══ GIFT BAR PARTICLES ══ */
 const pCanvas=document.getElementById('particle-canvas'),pCtx=pCanvas.getContext('2d');
@@ -2558,7 +2575,7 @@ ablyChannel.subscribe('giftr',msg=>{
     if(tier === 0) return;
     const plat    = platKey(data.platform);
     const variant = data.type === 'youtube_superchat' ? 'lift'
-                  : tier >= 4 ? 'blast' : 'comet';
+                  : tier >= _giftTierCfg.blastTier ? 'blast' : 'comet';
     _geqSetPlat(plat);
     if(variant === 'blast') _fireBlastRings(tier);
     _geqFire();
@@ -3650,7 +3667,14 @@ ablyChannel.subscribe('top-gifters',msg=>{
           setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
           break;
         }
-        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`, _who); break;
+        addPts(_gPts, 'tt', 'heart_me', `🎁 ${d.giftName||'gift'}`, _who);
+        if(typeof fireGiftAnim === 'function') fireGiftAnim({
+          name: _who || 'Anonymous', amount: d.coins || 0,
+          type: 'tiktok_coins', platform: 'tiktok',
+          giftTitle: d.giftName || '', giftLabel: d.giftName || '',
+          contentImg: d.contentImg || null,
+        });
+        break;
       }
       case 'yt_superchat': {
         const _sPts = milkGiftPts(d.gifterKey, 0, d.dollars||0);
@@ -3661,7 +3685,13 @@ ablyChannel.subscribe('top-gifters',msg=>{
           setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
           break;
         }
-        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`, _who); break;
+        addPts(_sPts, 'yt', 'heart_me', `💛 Super Chat $${d.dollars||0}`, _who);
+        if(typeof fireGiftAnim === 'function') fireGiftAnim({
+          name: _who || 'Anonymous', amount: d.dollars || 0,
+          type: 'youtube_superchat', platform: 'youtube',
+          giftTitle: 'Super Chat', giftLabel: `$${d.dollars || 0}`,
+        });
+        break;
       }
     }
   });
