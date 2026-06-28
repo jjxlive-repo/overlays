@@ -2439,9 +2439,12 @@ ablyChannel.subscribe('giftr',msg=>{
   const GEQ_W = 8, GEQ_G = 5.5, GEQ_S = GEQ_W + GEQ_G;
   const GEQ_N = Math.floor(1080 / GEQ_S);   // ~79 bars
   const GEQ_H = 200;
-  let _geqFireT = -100;   // secs since epoch of last fire
+  let _geqFireT = -100;
   let _geqReact = 0;
   let _geqPR = 105, _geqPG = 201, _geqPB = 208;   // default teal
+
+  // Per-bar random seeds — drives independent spike timing & color
+  const _geqSeeds = Array.from({length: GEQ_N}, () => Math.random() * 100);
 
   function _geqSetPlat(plat){
     if(plat === 'youtube'){ _geqPR=255; _geqPG=68;  _geqPB=68;  }
@@ -2457,26 +2460,47 @@ ablyChannel.subscribe('giftr',msg=>{
     const tFire = Math.max(0, t - _geqFireT);
 
     for(let i = 0; i < GEQ_N; i++){
-      const x  = i * GEQ_S;
-      const xf = i / (GEQ_N - 1);
-      // Idle sine wave — boosted amplitude so bars are visible at rest
-      const idle = 0.22 + 0.14 * Math.sin(t * 1.6 + xf * 7.5)
-                        + 0.09 * Math.sin(t * 2.9 + xf * 13 + 1.1);
-      // Inward ripple: bars at edges peak first, center last
-      const distFromEdge = 1 - Math.abs(xf - 0.5) * 2;  // 0=edge 1=center
+      const x   = i * GEQ_S;
+      const xf  = i / (GEQ_N - 1);
+      const sd  = _geqSeeds[i];
+
+      // Base idle wave — taller and more active at rest
+      const idle = 0.32 + 0.20 * Math.sin(t * 1.6 + xf * 7.5 + sd * 0.3)
+                        + 0.12 * Math.sin(t * 2.9 + xf * 13   + sd * 0.7 + 1.1)
+                        + 0.07 * Math.sin(t * 4.1 + xf * 5    + sd * 1.2 + 2.3);
+
+      // Random sharp spikes: Math.pow(...,8) makes them rare & pointy
+      const spikeRaw = Math.pow(Math.max(0,
+        Math.sin(t * (0.5 + sd * 0.04) + sd * 6.28)
+      ), 8);
+      const spike = spikeRaw * 0.75;  // 0–0.75 height boost on spike bars
+
+      // Inward ripple on gift fire
+      const distFromEdge = 1 - Math.abs(xf - 0.5) * 2;
       const peakT  = distFromEdge * 0.38;
       const dPeak  = tFire - peakT;
       const ripple = _geqReact * Math.max(0,
         dPeak >= 0 ? Math.exp(-dPeak * 6) : Math.exp(dPeak * 22)
       );
-      const h = Math.max(4, (idle * 0.55 + ripple) * GEQ_H * 0.90);
-      const a = Math.min(0.95, 0.35 + ripple * 0.60 + idle * 0.18);
 
-      _geqCtx.fillStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${a})`;
+      const h = Math.max(5, (idle * 0.60 + spike + ripple) * GEQ_H * 0.92);
+      const a = Math.min(0.97, 0.48 + spike * 0.45 + ripple * 0.50 + idle * 0.12);
+
+      // Spike color: alternate red / blue per bar's seed
+      const spikeBlend = Math.min(1, spike * 1.4);
+      const spR = sd < 0.5 ? 255 : 100;   // red spike or blue spike
+      const spG = sd < 0.5 ?  55 :  80;
+      const spB = sd < 0.5 ?  55 : 255;
+      const bR = _geqPR + Math.round((spR - _geqPR) * spikeBlend);
+      const bG = _geqPG + Math.round((spG - _geqPG) * spikeBlend);
+      const bB = _geqPB + Math.round((spB - _geqPB) * spikeBlend);
+
+      _geqCtx.fillStyle = `rgba(${bR},${bG},${bB},${a})`;
       _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, h);
-      if(a > 0.22){
-        _geqCtx.fillStyle = `rgba(255,255,255,${a * 0.30})`;
-        _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, Math.min(3, h * 0.09));
+      // Bright tip on taller bars
+      if(h > 12){
+        _geqCtx.fillStyle = `rgba(255,255,255,${a * 0.40})`;
+        _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, Math.min(4, h * 0.10));
       }
     }
     requestAnimationFrame(_geqDraw);
