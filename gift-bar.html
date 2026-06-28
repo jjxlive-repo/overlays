@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
-<title>Gift Bar + Splat Overlay</title>
+<title>Gift Bar + Splat Overlay v3</title>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Boogaloo&family=DM+Sans:wght@700&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
@@ -120,34 +120,49 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   width: 1080px; height: 55px;
   pointer-events: none; overflow: visible; z-index: 6;
 }
-/* ── Name tag — who just moved the meter (right-anchored above bar) ── */
-#gb-name-tag {
-  position: absolute; top: -28px; right: 16px;
-  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 600;
-  color: rgba(255,255,255,0.82); letter-spacing: 0.04em;
-  background: rgba(59,7,100,0.75);
-  border: 1px solid rgba(168,85,247,0.35);
-  border-radius: 20px; padding: 3px 12px;
-  pointer-events: none; z-index: 9; white-space: nowrap;
-  opacity: 0; transform: translateY(4px);
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-#gb-name-tag.visible { opacity: 1; transform: translateY(0); }
-
-/* ── Contribution ticker — floats above the gift bar ── */
-#gb-event-ticker {
-  position: absolute; top: -30px; left: 0; right: 0;
-  height: 24px; display: flex; align-items: center; justify-content: center;
-  pointer-events: none; z-index: 8;
-}
-#gb-ticker-text {
-  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
-  color: rgba(255,255,255,0.68); letter-spacing: 0.05em;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
-  opacity: 0; transition: opacity 0.25s ease;
+/* ── NOTIFICATION ZONE — unified purple pill zone above the bar ── */
+#gb-notif-zone {
+  position: absolute;
+  left: var(--nz-x, 50%);
+  top: var(--nz-y, -38px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 9;
   white-space: nowrap;
+  transition: left 0.25s ease, top 0.25s ease;
 }
-#gb-ticker-text.visible { opacity: 1; }
+.gb-notif-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(59,7,100,0.86);
+  border: 1px solid rgba(168,85,247,0.55);
+  border-radius: 24px;
+  padding: 5px 18px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 24px rgba(124,58,237,0.40), 0 0 0 1px rgba(168,85,247,0.12) inset;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #FAF5FF;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  opacity: 0;
+  transform: translateY(5px) scale(0.93);
+  transition: opacity 0.22s ease, transform 0.28s cubic-bezier(.34,1.56,.64,1);
+}
+.gb-notif-pill.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+/* ticker pill — slightly dimmer accent */
+#gb-notif-ticker { border-color: rgba(168,85,247,0.38); }
+/* user pill — brighter, with purple accent on the @username */
+#gb-notif-user .notif-user-name { color: #C084FC; }
 
 /* ── Milk fill — sweeps L→R inside bar based on milk % ── */
 #gb-milk-fill {
@@ -1726,6 +1741,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   0%,100%{opacity:0} 10%,80%{opacity:1}
 }
 
+/* ── v3: edge pulse canvas — sits inside bar, draws shockwave rings at fill edge ── */
+#hm-edge-canvas {
+  position: absolute; top: 0; left: 0;
+  width: 1080px; height: 55px;
+  pointer-events: none; z-index: 4; overflow: visible;
+}
+
 /* ══ COMMENT PROMPT — free-floating engagement CTA ══ */
 #comment-prompt {
   --cpx: 540px; --cpy: 1620px; --cpw: 720px; --cpfm: 44px; --cpfs: 22px;
@@ -1893,8 +1915,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 </div>
 
 <div id="gift-bar">
-  <div id="gb-event-ticker"><span id="gb-ticker-text"></span></div>
-  <div id="gb-name-tag"></div>
+  <div id="gb-notif-zone">
+    <div class="gb-notif-pill" id="gb-notif-ticker"></div>
+    <div class="gb-notif-pill" id="gb-notif-user"></div>
+  </div>
   <div id="gb-ripple-layer"></div>
   <div id="bar-bg-layer">
     <div id="bar-bg"></div><div id="bar-wash"></div>
@@ -2024,6 +2048,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
       <span class="lts-subtitle" id="lts-subtitle-el"></span>
     </div>
   </div>
+  <!-- ══ v3: EDGE PULSE CANVAS — shockwave rings at fill edge ══ -->
+  <canvas id="hm-edge-canvas"></canvas>
   <!-- ══ HYPE METER — segmented notch row at bar bottom ══ -->
   <div id="hype-meter"></div>
 </div>
@@ -3136,6 +3162,16 @@ ablyChannel.subscribe('splat-pos',msg=>{
   else if(typeof d==='string')setSplatPosition(d);
 });
 
+// Notification zone position
+ablyChannel.subscribe('notif-pos', msg => {
+  const d = msg.data;
+  if (!d) return;
+  if (d.dx !== undefined) _notifPos.x = Math.max(5, Math.min(95, _notifPos.x + d.dx));
+  if (d.dy !== undefined) _notifPos.y = Math.min(-6, _notifPos.y + d.dy);
+  if (d.reset) _notifPos = { x: 50, y: -38 };
+  _applyNotifPos();
+});
+
 // Splat idle bait toggle + content config
 ablyChannel.subscribe('splat-bait',msg=>{
   const d=msg.data;
@@ -3270,19 +3306,28 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }
 
-  /* ── name tag — who just moved the meter ── */
-  const _nameTagEl    = document.getElementById('gb-name-tag');
+  /* ── notification zone: unified purple pill positioning ── */
+  const _notifZone = document.getElementById('gb-notif-zone');
+  let   _notifPos  = { x: 50, y: -38 }; // % left, px top (negative = above bar)
+  function _applyNotifPos(){
+    if(!_notifZone) return;
+    _notifZone.style.left = _notifPos.x + '%';
+    _notifZone.style.top  = _notifPos.y + 'px';
+  }
+
+  /* ── user pill — who just moved the meter ── */
+  const _nameTagEl    = document.getElementById('gb-notif-user');
   let   _nameTagTimer = null;
   function _triggerNameTag(username, action) {
     if (!_nameTagEl || !username) return;
-    _nameTagEl.textContent = `@${username}  ${action}`;
+    _nameTagEl.innerHTML = `<span class="notif-user-name">@${username}</span>&nbsp;&nbsp;${action}`;
     _nameTagEl.classList.add('visible');
     clearTimeout(_nameTagTimer);
-    _nameTagTimer = setTimeout(() => _nameTagEl.classList.remove('visible'), 2600);
+    _nameTagTimer = setTimeout(() => _nameTagEl.classList.remove('visible'), 2800);
   }
 
-  /* ── contribution ticker ── */
-  const _tickerEl = document.getElementById('gb-ticker-text');
+  /* ── ticker pill — contribution events ── */
+  const _tickerEl = document.getElementById('gb-notif-ticker');
   let _tickerQueue   = [];
   let _tickerRunning = false;
   function _tickerAdd(text){
@@ -3330,6 +3375,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let ttEnergy = new Float32Array(SEG_COUNT).fill(0); // TikTok (blue)
   let ytEnergy = new Float32Array(SEG_COUNT).fill(0); // YouTube (red)
 
+  /* ── v3: Scalar platform energy — drives EQ bar amplitude ── */
+  let _v3ttE = 0;  // 0-1, decays per frame
+  let _v3ytE = 0;  // 0-1, decays per frame
+  const _v3EdgeBursts = [];  // { x, col, age, max, platform }
+
   /* ── Inject platform energy at a position with a spread ── */
   function injectPlatEnergy(arr, centerFrac, amount, spread){
     const center = Math.round(centerFrac * (SEG_COUNT - 1));
@@ -3342,9 +3392,17 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   function injectTT(amount, spread, pos){ // pos: 0-0.6 (left-centre)
     injectPlatEnergy(ttEnergy, pos ?? (0.1 + Math.random() * 0.5), amount, spread ?? 5);
+    // v3: boost scalar energy and fire edge burst
+    _v3ttE = Math.min(1, _v3ttE + amount * 0.72);
+    _v3FireEdgeBurst('tt', amount);
+    _moveNotifToEdge();
   }
   function injectYT(amount, spread, pos){ // pos: 0.4-1.0 (centre-right)
     injectPlatEnergy(ytEnergy, pos ?? (0.45 + Math.random() * 0.5), amount, spread ?? 5);
+    // v3: boost scalar energy and fire edge burst
+    _v3ytE = Math.min(1, _v3ytE + amount * 0.72);
+    _v3FireEdgeBurst('yt', amount);
+    _moveNotifToEdge();
   }
 
   /* ── Ably audio relay — receives freq data from dock via mic-freq channel ── */
@@ -3374,6 +3432,56 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   const firstFlash  = document.getElementById('hm-first-gifter-flash');
   const giftBarEl   = document.getElementById('gift-bar');
+
+  /* ── v3: Edge pulse canvas — shockwave rings at fill edge ── */
+  const edgeCv = document.getElementById('hm-edge-canvas');
+  edgeCv.width  = 1080;
+  edgeCv.height = 55;
+  const eCtx = edgeCv.getContext('2d');
+  const EW = 1080, EH = 55;
+
+  function _v3FireEdgeBurst(platform, amount){
+    const fillFrac = Math.min(1, rawScore / MAX_RAW);
+    const x = Math.round(fillFrac * EW);
+    const col = platform === 'tt' ? 'rgba(105,201,208,' : 'rgba(255,90,90,';
+    const intensity = Math.min(1, 0.55 + amount * 0.45);
+    _v3EdgeBursts.push({ x, col, age: 0, max: 54, intensity });
+    // Fire a second smaller ring slightly delayed for larger contributions
+    if(amount > 0.5){
+      _v3EdgeBursts.push({ x, col, age: -8, max: 54, intensity: intensity * 0.55 });
+    }
+  }
+
+  function _moveNotifToEdge(){
+    const fillPct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+    // Clamp slightly inset so pill doesn't bleed off bar edges
+    _notifPos.x = Math.max(4, Math.min(96, fillPct));
+    _applyNotifPos();
+  }
+
+  function drawEdgePulse(){
+    eCtx.clearRect(0, 0, EW, EH);
+    for(let i = _v3EdgeBursts.length - 1; i >= 0; i--){
+      const b = _v3EdgeBursts[i]; b.age++;
+      if(b.age < 0) continue; // delayed ring not started yet
+      if(b.age >= b.max){ _v3EdgeBursts.splice(i, 1); continue; }
+      const p = b.age / b.max;
+      const a = (1 - p) * b.intensity;
+      const r = p * EH * 0.72;  // max radius ~40px — clips top/bottom of bar nicely
+      // Outer ring
+      eCtx.beginPath(); eCtx.arc(b.x, EH / 2, r, 0, Math.PI * 2);
+      eCtx.strokeStyle = b.col + (a * 0.9) + ')';
+      eCtx.lineWidth = 3.2 * (1 - p * 0.5) + 0.3;
+      eCtx.stroke();
+      // Inner echo ring
+      if(r > 6){
+        eCtx.beginPath(); eCtx.arc(b.x, EH / 2, r * 0.48, 0, Math.PI * 2);
+        eCtx.strokeStyle = b.col + (a * 0.38) + ')';
+        eCtx.lineWidth = 1.3;
+        eCtx.stroke();
+      }
+    }
+  }
 
   /* ── log-scale: raw score → 0-1 amplitude ── */
   /* ── log-scale: raw score → 0-1 display amplitude ── */
@@ -3823,26 +3931,17 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }, 2000);
 
-  /* ── Canvas bar renderer — 3 overlapping waveforms ──
-     Layer 0: purple baseline (audio-driven, always present)
-     Layer 1: blue TikTok spikes (injected on TT events, decay per frame)
-     Layer 2: red YouTube spikes (injected on YT events, decay per frame)
+  /* ── v3: EQ bar renderer — TT teal top half, YT red bottom half
+     Clipped to fill width. Heights scale with platform energy × position.
+     Audio drives subtle base animation. Surge/boost override with white/pink flash.
   ── */
   const SEG_GAP = 3;
   const SEG_W   = (HMW - (SEG_COUNT - 1) * SEG_GAP) / SEG_COUNT;
-
-  function drawBar(x, h, colorBot, colorTop, glowColor, glowBlur){
-    // Bars grow DOWN from y=0 (top of canvas = bottom edge of gift bar)
-    const grad = hmCtx.createLinearGradient(x, 0, x, h);
-    grad.addColorStop(0, colorTop);   // bright end at the gift-bar edge
-    grad.addColorStop(1, colorBot);   // fade toward tip
-    hmCtx.fillStyle = grad;
-    hmCtx.shadowColor = glowColor;
-    hmCtx.shadowBlur  = glowBlur;
-    hmCtx.beginPath();
-    hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3, SEG_W/2), Math.min(3, SEG_W/2)]);
-    hmCtx.fill();
-  }
+  // v3 EQ bar layout constants
+  const EQ_BW   = 5;    // bar width px
+  const EQ_GAP  = 3;    // gap between bars px
+  const EQ_STEP = EQ_BW + EQ_GAP;
+  const EQ_MID  = Math.round(HMH / 2); // 55 — midpoint splits TT (top) from YT (bottom)
 
   (function drawHype(){
     const amp  = hypeAmp();        // 0.30 → 1.0
@@ -3852,82 +3951,129 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     hmCtx.clearRect(0, 0, HMW, HMH);
     hmCtx.shadowBlur = 0;
+    hmCtx.globalAlpha = 1;
 
-    // ── Decay platform energies (slower = more visible reaction) ──
+    // ── Decay platform energies ──
     const platDecay = 0.975;
     for(let i = 0; i < SEG_COUNT; i++){
       ttEnergy[i] *= platDecay;
       ytEnergy[i] *= platDecay;
       smoothed[i]  = smoothed[i] * AUDIO_SMOOTH + freq[i] * (1 - AUDIO_SMOOTH);
     }
+    // Decay v3 scalar energies (slightly faster for snappier feel)
+    _v3ttE *= 0.9920;
+    _v3ytE *= 0.9920;
 
-    // ── 30-second tension cycle: slow sine drives a visual build→peak→release rhythm ──
-    // Period = 30s (2π / (π/15) = 30). abs() makes it always positive → peaks every 15s.
-    const tensionWave = Math.abs(Math.sin(t * Math.PI / 15)); // 0→1→0 every 15s, full cycle 30s
-    const surgeGlow   = _surgeActive ? 1 : 0; // extra brightness during surge
+    // ── Fill clipping boundary ──
+    const fillFrac = Math.min(1, rawScore / MAX_RAW);
+    const fillX    = Math.round(fillFrac * HMW);
+    const cols     = Math.floor(fillX / EQ_STEP);
 
-    // ── Layer 0: Purple baseline — kept faint so YT/TT platform spikes visually pop ──
-    hmCtx.globalAlpha = 1;
-    for(let i = 0; i < SEG_COUNT; i++){
-      const x        = i * (SEG_W + SEG_GAP);
-      const audioA   = smoothed[i];
-      const combined = Math.min(1, audioA * 0.7 + amp * 0.3);
-      // Tension wave lifts the floor 0→12px over each 15s build, plus surge spike
-      const tensionFloor = tensionWave * 12 + surgeGlow * 18;
-      const h        = Math.max(MIN_H + tensionFloor, (MAX_H * 0.65) * combined + MIN_H);
-
-      // surge: white/electric flash; boost: pink; normal: very faint purple at rest
-      const purple   = _surgeActive
-        ? `rgba(255,255,255,${0.85 + Math.sin(t*12+i*0.4)*0.15})`
-        : boost
-        ? `rgba(232,121,249,${0.55 + amp*0.30})`
-        : `rgba(${Math.round(100+amp*68)},${Math.round(7+amp*44)},${Math.round(150+amp*97)},${0.12+amp*0.22})`;
-      const purpleTop= _surgeActive
-        ? `rgba(232,121,249,${0.9 + Math.sin(t*15+i*0.6)*0.1})`
-        : boost
-        ? `rgba(255,255,255,${0.4+Math.sin(t*8+i*0.5)*0.3})`
-        : `rgba(${Math.round(147+amp*45)},${Math.round(51+amp*81)},${Math.round(234+amp*13)},${0.18+amp*0.30})`;
-      const glow     = _surgeActive ? 'rgba(255,255,255,0.95)' : boost ? 'rgba(232,121,249,0.9)' : `rgba(147,51,234,${0.06+amp*0.22})`;
-      const glowBlur = _surgeActive ? 22+Math.sin(t*10+i)*8 : boost ? 14+Math.sin(t*6+i)*6 : 3+amp*6;
-
-      drawBar(x, h, `rgba(59,7,100,${0.08+amp*0.15})`, purpleTop, glow, glowBlur);
+    // ── Surge/boost: render full-width white/pink flash overlay ──
+    if(_surgeActive || boost){
+      const surgeAlpha = _surgeActive ? 0.82 + Math.sin(t*12)*0.18 : 0.55 + amp*0.30;
+      const surgeColor = _surgeActive
+        ? `rgba(255,255,255,${surgeAlpha})`
+        : `rgba(232,121,249,${surgeAlpha})`;
+      for(let i = 0; i < SEG_COUNT; i++){
+        const x = i * (SEG_W + SEG_GAP);
+        const audioA = smoothed[i];
+        const h = Math.max(MIN_H + 18, (MAX_H * 0.75) * audioA + MIN_H);
+        const grad = hmCtx.createLinearGradient(x, 0, x, h);
+        grad.addColorStop(0, surgeColor);
+        grad.addColorStop(1, 'rgba(59,7,100,0.1)');
+        hmCtx.fillStyle = grad;
+        hmCtx.shadowColor = _surgeActive ? 'rgba(255,255,255,0.9)' : 'rgba(232,121,249,0.85)';
+        hmCtx.shadowBlur  = _surgeActive ? 22 + Math.sin(t*10+i)*8 : 14;
+        hmCtx.beginPath();
+        hmCtx.roundRect(x, 0, SEG_W, h, [0, 0, Math.min(3, SEG_W/2), Math.min(3, SEG_W/2)]);
+        hmCtx.fill();
+      }
+      hmCtx.shadowBlur  = 0;
+      hmCtx.shadowColor = 'transparent';
     }
 
-    // ── Layer 1: TikTok blue — boosted visibility ──
-    for(let i = 0; i < SEG_COUNT; i++){
-      const e = ttEnergy[i];
-      if(e < 0.015) continue;
-      const x = i * (SEG_W + SEG_GAP);
-      const h = Math.max(0, (MAX_H + 40) * e); // height independent of amp so spikes always tall
-      if(h < 1) continue;
-      hmCtx.globalAlpha = Math.min(1, e * 1.6);
-      drawBar(x, h,
-        `rgba(29,78,216,${0.35+e*0.25})`,
-        `rgba(147,197,253,${0.92+e*0.08})`,
-        `rgba(59,130,246,${0.90*e})`,
-        12 + e * 22
-      );
-    }
+    // ── EQ bars — only drawn within fill width ──
+    if(cols > 0 && !_surgeActive && !boost){
 
-    // ── Layer 2: YouTube red — boosted visibility ──
-    for(let i = 0; i < SEG_COUNT; i++){
-      const e = ytEnergy[i];
-      if(e < 0.015) continue;
-      const x = i * (SEG_W + SEG_GAP);
-      const h = Math.max(0, (MAX_H + 40) * e); // height independent of amp
-      if(h < 1) continue;
-      hmCtx.globalAlpha = Math.min(1, e * 1.6);
-      drawBar(x, h,
-        `rgba(127,29,29,${0.35+e*0.25})`,
-        `rgba(252,165,165,${0.92+e*0.08})`,
-        `rgba(239,68,68,${0.90*e})`,
-        12 + e * 22
-      );
+      // Audio-driven subtle purple base (always visible in fill zone)
+      hmCtx.shadowBlur = 0;
+      for(let i = 0; i < cols; i++){
+        const x   = i * EQ_STEP;
+        const xf  = (x + EQ_BW / 2) / fillX;
+        const audioA = smoothed[Math.floor(xf * SEG_COUNT)] ?? 0;
+        const combined = Math.min(1, audioA * 0.6 + amp * 0.4);
+        const h = Math.max(MIN_H, (EQ_MID * 0.38) * combined);
+        // Both halves get a dim purple tint
+        hmCtx.fillStyle = `rgba(109,40,217,${0.10 + amp * 0.12})`;
+        hmCtx.fillRect(x, 0,      EQ_BW, h);
+        hmCtx.fillRect(x, EQ_MID, EQ_BW, h);
+      }
+
+      // ── TikTok teal bars (top half: y=0 down toward EQ_MID) ──
+      for(let i = 0; i < cols; i++){
+        const x   = i * EQ_STEP;
+        const xf  = (x + EQ_BW / 2) / fillX;          // 0–1 position within fill
+        const pos = Math.pow(xf, 0.40);                 // right-weighted brightness
+        const audioMod = smoothed[Math.floor(xf * SEG_COUNT)] ?? 0;
+        // Animated sine gives each bar a different phase — equalizer feel
+        const ttSin = Math.pow(
+          ((Math.sin(xf * 10 + t * 3.8) + 1) / 2) * ((Math.sin(xf * 5 + t * 2.0) + 1) / 2),
+          0.4
+        );
+        const ttH = Math.max(2,
+          (0.05 + _v3ttE * 0.95) * EQ_MID * 0.92 * pos * (0.30 + ttSin * 0.70)
+          + audioMod * EQ_MID * 0.12
+        );
+        const ttA = 0.10 + _v3ttE * 0.82 * pos;
+        hmCtx.fillStyle = `rgba(105,201,208,${Math.min(0.92, ttA)})`;
+        hmCtx.fillRect(x, 0, EQ_BW, ttH);
+        // Bright top edge highlight on active bars
+        if(_v3ttE > 0.12){
+          hmCtx.fillStyle = `rgba(180,240,245,${_v3ttE * pos * 0.55})`;
+          hmCtx.fillRect(x, 0, EQ_BW, Math.min(2.5, ttH));
+        }
+      }
+
+      // ── YouTube red bars (bottom half: y=EQ_MID down toward HMH) ──
+      for(let i = 0; i < cols; i++){
+        const x   = i * EQ_STEP;
+        const xf  = (x + EQ_BW / 2) / fillX;
+        const pos = Math.pow(xf, 0.40);
+        const audioMod = smoothed[Math.floor(xf * SEG_COUNT)] ?? 0;
+        const ytSin = Math.pow(
+          ((Math.sin(xf * 9 + t * 3.4 + 1.6) + 1) / 2) * ((Math.sin(xf * 4.8 + t * 1.8 + 0.9) + 1) / 2),
+          0.4
+        );
+        const ytH = Math.max(2,
+          (0.05 + _v3ytE * 0.95) * EQ_MID * 0.92 * pos * (0.30 + ytSin * 0.70)
+          + audioMod * EQ_MID * 0.12
+        );
+        const ytA = 0.10 + _v3ytE * 0.82 * pos;
+        hmCtx.fillStyle = `rgba(255,90,90,${Math.min(0.92, ytA)})`;
+        hmCtx.fillRect(x, EQ_MID, EQ_BW, ytH);
+        // Bright top edge highlight
+        if(_v3ytE > 0.12){
+          hmCtx.fillStyle = `rgba(255,170,160,${_v3ytE * pos * 0.55})`;
+          hmCtx.fillRect(x, EQ_MID, EQ_BW, Math.min(2.5, ytH));
+        }
+      }
+
+      // ── Center divider hairline (within fill width only) ──
+      hmCtx.fillStyle = 'rgba(255,255,255,0.07)';
+      hmCtx.fillRect(0, EQ_MID - 0.5, fillX, 1);
+
+      // ── Fill edge accent line ──
+      hmCtx.fillStyle = 'rgba(168,85,247,0.55)';
+      hmCtx.fillRect(fillX - 1, 0, 1, HMH);
     }
 
     hmCtx.globalAlpha = 1;
     hmCtx.shadowBlur  = 0;
     hmCtx.shadowColor = 'transparent';
+
+    // ── Draw edge pulse rings on the bar canvas ──
+    drawEdgePulse();
 
     // ── Milk % UI ──
     const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
