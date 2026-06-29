@@ -2378,11 +2378,13 @@ function handleCommentPrompt(data){
 /* ══ ABLY INIT + ALL SUBSCRIPTIONS ══ */
 const ablyClient=new Ably.Realtime({key:CONFIG.ABLY_KEY});
 const ablyChannel=ablyClient.channels.get(CONFIG.ABLY_CHANNEL);
+window._geyserY = 1100; // mirrors dock geyser position; updated live via Ably
 ablyChannel.subscribe('geyser-pos', msg => {
   const top = msg?.data?.top;
   if(top == null) return;
   const el = document.getElementById('gift-eq-canvas');
   if(el) el.style.top = top + 'px';
+  window._geyserY = top; // keep in sync so initGiftAnim reads correct position
 });
 
 ablyChannel.subscribe('gift-tier-config', msg => {
@@ -2520,7 +2522,7 @@ ablyChannel.subscribe('giftr',msg=>{
 
   /* ── Blast shockwave rings ── */
   function _fireBlastRings(tier){
-    const cx = 540, cy = 1100;  // base of geyser (top:900 + height:200)
+    const cx = 540, cy = window._geyserY ?? 1100; // tracks live geyser position
     const rings  = tier >= 5 ? 3 : 2;
     const maxR   = Math.min(320, 90 + tier * 46);
     const startMs = performance.now();
@@ -2575,6 +2577,7 @@ ablyChannel.subscribe('giftr',msg=>{
   const HOLD_Y   = 822;   // px — center of card lands at ~962px (canvas center)
   const ABSORB_Y = 420;   // px — flies up to bar area
   let _holdTmr = null, _absorbTmr = null;
+  let _currentPlat = 'tiktok', _currentTier = 1; // set on each fireGiftAnim call
 
   function _cancelCard(){
     clearTimeout(_holdTmr); clearTimeout(_absorbTmr);
@@ -2590,7 +2593,7 @@ ablyChannel.subscribe('giftr',msg=>{
                    :                       'cubic-bezier(0.34,1.56,0.64,1)';
     // Set start state with no transition
     _gcCard.style.transition = 'none';
-    _gcCard.style.top        = '1790px';
+    _gcCard.style.top        = ((window._geyserY ?? 1100) + 100) + 'px'; // erupts from EQ center
     _gcCard.style.opacity    = variant === 'lift' ? '0.04' : '1';
     _gcCard.style.transform  = variant === 'comet'
         ? 'translateX(-50%) scaleX(0.38) scaleY(0.07)'
@@ -2620,6 +2623,16 @@ ablyChannel.subscribe('giftr',msg=>{
     _gcCard.style.top        = ABSORB_Y + 'px';
     _gcCard.style.transform  = 'translateX(-50%) scale(0.08)';
     _gcCard.style.opacity    = '0';
+    // At the moment the card arrives at the bar (~390ms into the 430ms transition):
+    // 1. Splash into the milk meter edge — platform-colored ring burst at fill edge
+    // 2. EQ rebound — energy bounces back down through geyser bars
+    setTimeout(() => {
+      if(typeof window._milkAbsorbSplash === 'function')
+        window._milkAbsorbSplash(_currentPlat === 'youtube' ? 'yt' : 'tt', _currentTier);
+      // Rebound: re-fire the geyser ripple at reduced intensity
+      _geqReact = Math.max(_geqReact, 0.35 + _currentTier * 0.09);
+      _geqFireT = Date.now() / 1000;
+    }, 390);
   }
 
   /* ── Public entry point ── */
@@ -2629,6 +2642,7 @@ ablyChannel.subscribe('giftr',msg=>{
     const plat    = platKey(data.platform);
     const variant = data.type === 'youtube_superchat' ? 'lift'
                   : tier >= _giftTierCfg.blastTier ? 'blast' : 'comet';
+    _currentPlat = plat; _currentTier = tier; // used by _absorbCard for splash
     _geqSetPlat(plat);
     if(variant === 'blast') _fireBlastRings(tier);
     _geqFire();
@@ -3051,6 +3065,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
       _v3EdgeBursts.push({ x, col, age: -8, max: 54, intensity: intensity * 0.55 });
     }
   }
+
+  // Called by initGiftAnim when the notification card absorbs into the bar.
+  // Fires platform-colored edge burst rings at the milk meter fill edge.
+  window._milkAbsorbSplash = function(plat, tier){
+    const amount = Math.min(1, 0.3 + (tier / 6) * 0.7);
+    _v3FireEdgeBurst(plat, amount);
+    if(tier >= 4) setTimeout(() => _v3FireEdgeBurst(plat, amount * 0.55), 90);
+    if(tier >= 5) setTimeout(() => _v3FireEdgeBurst(plat, amount * 0.30), 190);
+  };
 
   function _moveNotifToEdge(){
     const fillPct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
@@ -3880,6 +3903,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
       }));
     }
     if(d.target != null && Number(d.target) > 0) MAX_RAW = Number(d.target);
+    if(d.likeBatchSize != null && Number(d.likeBatchSize) >= 1){
     if(d.likeBatchSize != null && Number(d.likeBatchSize) >= 1){
       LIKE_BATCH_SIZE = Math.round(Number(d.likeBatchSize));
       _likeAccum = 0;
