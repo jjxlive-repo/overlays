@@ -2443,9 +2443,6 @@ ablyChannel.subscribe('giftr',msg=>{
   let _geqReact = 0;
   let _geqPR = 105, _geqPG = 201, _geqPB = 208;   // default teal
 
-  // Per-bar random seeds — drives independent spike timing & color
-  const _geqSeeds = Array.from({length: GEQ_N}, () => Math.random() * 100);
-
   function _geqSetPlat(plat){
     if(plat === 'youtube'){ _geqPR=255; _geqPG=68;  _geqPB=68;  }
     else                  { _geqPR=105; _geqPG=201; _geqPB=208; }
@@ -2460,47 +2457,24 @@ ablyChannel.subscribe('giftr',msg=>{
     const tFire = Math.max(0, t - _geqFireT);
 
     for(let i = 0; i < GEQ_N; i++){
-      const x   = i * GEQ_S;
-      const xf  = i / (GEQ_N - 1);
-      const sd  = _geqSeeds[i];
-
-      // Base idle wave — taller and more active at rest
-      const idle = 0.32 + 0.20 * Math.sin(t * 1.6 + xf * 7.5 + sd * 0.3)
-                        + 0.12 * Math.sin(t * 2.9 + xf * 13   + sd * 0.7 + 1.1)
-                        + 0.07 * Math.sin(t * 4.1 + xf * 5    + sd * 1.2 + 2.3);
-
-      // Random sharp spikes: Math.pow(...,8) makes them rare & pointy
-      const spikeRaw = Math.pow(Math.max(0,
-        Math.sin(t * (0.5 + sd * 0.04) + sd * 6.28)
-      ), 8);
-      const spike = spikeRaw * 0.75;  // 0–0.75 height boost on spike bars
-
-      // Inward ripple on gift fire
+      const x  = i * GEQ_S;
+      const xf = i / (GEQ_N - 1);
+      const idle = 0.22 + 0.14 * Math.sin(t * 1.6 + xf * 7.5)
+                        + 0.09 * Math.sin(t * 2.9 + xf * 13 + 1.1);
       const distFromEdge = 1 - Math.abs(xf - 0.5) * 2;
       const peakT  = distFromEdge * 0.38;
       const dPeak  = tFire - peakT;
       const ripple = _geqReact * Math.max(0,
         dPeak >= 0 ? Math.exp(-dPeak * 6) : Math.exp(dPeak * 22)
       );
+      const h = Math.max(3, (idle * 0.55 + ripple) * GEQ_H * 0.90);
+      const a = Math.min(0.95, 0.14 + ripple * 0.82 + idle * 0.10);
 
-      const h = Math.max(5, (idle * 0.60 + spike + ripple) * GEQ_H * 0.92);
-      const a = Math.min(0.97, 0.48 + spike * 0.45 + ripple * 0.50 + idle * 0.12);
-
-      // Spike color: alternate red / blue per bar's seed
-      const spikeBlend = Math.min(1, spike * 1.4);
-      const spR = sd < 0.5 ? 255 : 100;   // red spike or blue spike
-      const spG = sd < 0.5 ?  55 :  80;
-      const spB = sd < 0.5 ?  55 : 255;
-      const bR = _geqPR + Math.round((spR - _geqPR) * spikeBlend);
-      const bG = _geqPG + Math.round((spG - _geqPG) * spikeBlend);
-      const bB = _geqPB + Math.round((spB - _geqPB) * spikeBlend);
-
-      _geqCtx.fillStyle = `rgba(${bR},${bG},${bB},${a})`;
+      _geqCtx.fillStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${a})`;
       _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, h);
-      // Bright tip on taller bars
-      if(h > 12){
-        _geqCtx.fillStyle = `rgba(255,255,255,${a * 0.40})`;
-        _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, Math.min(4, h * 0.10));
+      if(a > 0.22){
+        _geqCtx.fillStyle = `rgba(255,255,255,${a * 0.30})`;
+        _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, Math.min(3, h * 0.09));
       }
     }
     requestAnimationFrame(_geqDraw);
@@ -3548,6 +3522,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const EQ_STEP = 7;
   const EQ_CENTER = Math.floor(EH / 2);   // 27 — bars grow up/down from here
   const ALL_COLS  = Math.floor(EW / EQ_STEP); // 154
+  const _eqSeeds  = Array.from({length: ALL_COLS}, () => Math.random() * 100);
 
   (function drawHype(){
     const t     = Date.now() / 1000;
@@ -3573,6 +3548,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
                            + 0.12*Math.sin(t*3.7+xGlob*15);
 
       let ttH, ttA, ytH, ytA;
+      let spike = 0, spIsRed = false;
 
       if(inFill){
         const ttReact = Math.min(1, _v3ttE * surgeAmp);
@@ -3586,24 +3562,34 @@ ablyChannel.subscribe('top-gifters',msg=>{
             : boost        ? 0.68 + ytReact * 0.22
             :                0.32 + ytReact * 0.57 + idleSin * 0.05;
       } else {
-        ttH = Math.max(1.5, idleSin * EQ_CENTER * 0.28);
+        const sd  = _eqSeeds[i];
+        const spN = Math.pow(Math.max(0, Math.sin(t*(0.38+sd*0.028)+sd*6.28)), 10);
+        spike    = spN * 0.88;
+        spIsRed  = sd < 0.5;
+        ttH = Math.max(3, idleSin * EQ_CENTER * 0.55 + spike * EQ_CENTER * 0.82);
         ytH = ttH;
-        ttA = 0.055 + idleSin * 0.055;
+        ttA = Math.min(0.92, 0.26 + idleSin * 0.20 + spike * 0.68);
         ytA = ttA;
       }
 
-      // TT — teal, grows UP from center
+      // TT — grows UP from center
       if(ttH > 0.5){
-        eCtx.fillStyle = _surgeActive
-          ? `rgba(255,255,255,${ttA})`
-          : `rgba(105,201,208,${ttA})`;
+        let ttCol;
+        if(_surgeActive)      ttCol = `rgba(255,255,255,${ttA})`;
+        else if(inFill)       ttCol = `rgba(105,201,208,${ttA})`;
+        else if(spike > 0.08) ttCol = spIsRed ? `rgba(255,50,50,${ttA})` : `rgba(80,80,255,${ttA})`;
+        else                  ttCol = `rgba(105,201,208,${ttA})`;
+        eCtx.fillStyle = ttCol;
         eCtx.fillRect(x, EQ_CENTER - ttH, EQ_BW, ttH);
       }
-      // YT — red, grows DOWN from center
+      // YT — grows DOWN from center
       if(ytH > 0.5){
-        eCtx.fillStyle = _surgeActive
-          ? `rgba(255,200,200,${ytA})`
-          : `rgba(255,68,68,${ytA})`;
+        let ytCol;
+        if(_surgeActive)      ytCol = `rgba(255,200,200,${ytA})`;
+        else if(inFill)       ytCol = `rgba(255,68,68,${ytA})`;
+        else if(spike > 0.08) ytCol = spIsRed ? `rgba(255,50,50,${ytA})` : `rgba(80,80,255,${ytA})`;
+        else                  ytCol = `rgba(105,201,208,${ytA})`;
+        eCtx.fillStyle = ytCol;
         eCtx.fillRect(x, EQ_CENTER, EQ_BW, ytH);
       }
     }
