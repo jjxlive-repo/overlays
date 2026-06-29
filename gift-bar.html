@@ -184,19 +184,14 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   transition: opacity 0.28s ease, transform 0.40s cubic-bezier(.34,1.56,.64,1);
 }
 .nt-pill-tt {
-  background: rgba(4,24,28,.92); border-color: rgba(105,201,208,.58);
-  color: #b4edf2; box-shadow: 0 0 18px rgba(105,201,208,.22), 0 2px 8px rgba(0,0,0,.55);
+  background: rgba(105,201,208,.22); border-color: rgba(105,201,208,.6);
+  color: #b4edf2; box-shadow: 0 0 18px rgba(105,201,208,.28), 0 2px 8px rgba(0,0,0,.55);
 }
 .nt-pill-yt {
-  background: rgba(36,5,5,.92); border-color: rgba(255,85,85,.58);
-  color: #ffb5b5; box-shadow: 0 0 18px rgba(255,85,85,.22), 0 2px 8px rgba(0,0,0,.55);
+  background: rgba(255,85,85,.22); border-color: rgba(255,85,85,.6);
+  color: #ffb5b5; box-shadow: 0 0 18px rgba(255,85,85,.28), 0 2px 8px rgba(0,0,0,.55);
 }
-.nt-pill-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-}
-.nt-pill-tt .nt-pill-dot { background: #69C9D0; box-shadow: 0 0 6px rgba(105,201,208,.95); }
-.nt-pill-yt .nt-pill-dot { background: #FF5555; box-shadow: 0 0 6px rgba(255,85,85,.95); }
-.nt-user { color: rgba(255,255,255,.92); }
+.nt-user { color: #fff; font-weight: 800; }
 .nt-label { color: inherit; }
 .nt-pts  { margin-left: 5px; opacity: .62; font-size: 10px; letter-spacing: .04em; }
 .nt-pill.nt-exit {
@@ -1471,7 +1466,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   width: 1080px; height: 1920px;
   pointer-events: none; z-index: 20; overflow: hidden;
 }
-#gift-eq-canvas   { position: absolute; top: 900px; left: 0; width: 1080px; height: 200px; }
+#gift-eq-canvas   { position: absolute; top: 1100px; left: 0; width: 1080px; height: 200px; }
 #gift-blast-canvas{ position: absolute; top: 0;    left: 0; width: 1080px; height: 1920px; }
 
 /* Notification card */
@@ -1895,6 +1890,8 @@ function showSlot(idx){if(!activeSlots.length)return;currentIdx=((idx%activeSlot
 /* ══ GIFT BAR ROTATION ══ */
 function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTimer=setInterval(()=>{if(!pinned&&!alertActive)showSlot(currentIdx+1);},CONFIG.ROTATE_MS);}
 function stopRotation(){if(rotateTimer){clearInterval(rotateTimer);rotateTimer=null;}if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}}
+// Watchdog: restart rotation if it silently died (no alert, no pin, timer null)
+setInterval(()=>{if(!alertActive&&!pinned&&activeSlots.length&&!rotateTimer)startRotation();},8000);
 
 /* ══ GIFT BAR GIFTR DATA ══ */
 function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];activeSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!data.custom:enabled.includes(d.key));const bar=document.getElementById('gift-bar');if(!hasAny||!activeSlots.length){if(!alertActive)bar.classList.remove('visible');stopRotation();return;}bar.classList.add('visible');if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
@@ -1954,7 +1951,7 @@ function dismissAlert(){clearTimeout(alertTimeout);stopLinePulse();deactivateLin
 
 /* ══ GIFT BAR MONTHLY MOMENT ══ */
 function runMonthlyMoment(){const monthly=leaderboard.monthly;if(!monthly){resumeFromAlert();return;}const plat=platKey(monthly.platform),pc=PLAT_COLORS[plat];setBarInfo('MONTHLY TOTAL',monthly.name.toUpperCase(),fmtAmount(monthly.amount,monthly.type),pc.edge,pc.edgeRgb,platLabel(monthly.platform),'bar-plat plat-'+plat,true);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;const top=document.getElementById('line-top'),bot=document.getElementById('line-bot');top.style.background=bot.style.background=`rgba(${pc.edgeRgb},0.25)`;top.style.boxShadow=bot.style.boxShadow=`0 0 8px rgba(${pc.edgeRgb},0.4)`;clearTimeout(monthlyTimer);monthlyTimer=setTimeout(resumeFromAlert,CONFIG.MONTHLY_LINGER_MS);}
-function resumeFromAlert(){document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');document.getElementById('bar-progress').style.width='0%';deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
+function resumeFromAlert(){pinned=false;document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');document.getElementById('bar-progress').style.width='0%';deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
 
 /* ══ GIFT BAR GIFTR CMD ══ */
 function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=false;if(!alertActive)startRotation();}else if(cmd.startsWith('slot:')){const key=cmd.slice(5),idx=activeSlots.findIndex(s=>s.key===key);if(idx>=0){pinned=true;stopRotation();showSlot(idx);}}}
@@ -2236,12 +2233,8 @@ function _orchOnAlertEnd() {
   const sw = document.getElementById('gb-bar-text');
   if (sw) sw.style.opacity = '';
 
-  // Fire queued goal explosion if pending
-  if (_pendingGoalExplosion) {
-    _pendingGoalExplosion = false;
-    setTimeout(fireMilkGoal, 200); // small gap for bar to settle
-    return; // don't fire boost or monthly moment yet — let explosion run
-  }
+  // Goal explosions now fire immediately in addPts — clear any stale flag
+  _pendingGoalExplosion = false;
 
   // Fire queued boost if pending (and explosion not pending)
   if (_pendingBoostData) {
@@ -2750,9 +2743,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
   };
 
   // Like batching — accumulate N likes before adding pts to meter
-  let LIKE_BATCH_SIZE = 20;   // configurable from dock via milk-scoring-config.likeBatchSize
+  let LIKE_BATCH_SIZE = 20;   // legacy — kept for like_batch events from dock
+  const LIKE_PILL_EVERY = 20; // spawn a pill once per this many likes per user
   let _likeAccum = 0;
   let _likeAccumPlat = 'other';
+  const _likePillCounts = {};  // username → running like count for pill throttle
 
   // Mutable gift tier ranges — dollar values, updated via milk-scoring-config
   let _giftRanges = [
@@ -2850,7 +2845,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
     const pill = document.createElement('div');
     pill.className = `nt-pill nt-pill-${platform}`;
-    pill.innerHTML = `<span class="nt-pill-dot"></span>${html}`;
+    pill.innerHTML = html;
     pill.style.left            = `calc(${fillPct}% + ${xJitter}px)`;
     pill.style[anchorProp]     = `${yOffset}px`;
     pill.style.transform       = `translateX(-50%) rotate(${rot}deg) scale(0.7)`;
@@ -3317,7 +3312,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── add points ── */
   /* ── addPts: type maps to boost category + injects platform energy ── */
-  function addPts(base, plat, inputType, tickerLabel, username){
+  function addPts(base, plat, inputType, tickerLabel, username, noNotif){
     if(plat && plat !== 'other') setPlatMode(plat);
     const cat  = (inputType === 'like' || inputType === 'like_batch') ? 'likes'
                : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
@@ -3337,13 +3332,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
       const _pctNow = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
       _triggerRipple(_pctNow, pts);
       // Spawn platform-routed pill at fill edge (TT above bar, YT below)
-      const _notifPlat = plat === 'yt' ? 'yt' : 'tt';
-      const _userHtml  = username
-        ? `<span class="nt-user">@${username}</span>&nbsp;`
-        : '';
-      _spawnNotif(_notifPlat,
-        `${_userHtml}<span class="nt-label">${_lbl}</span><span class="nt-pts">${_pStr}</span>`
-      );
+      if (!noNotif) {
+        const _notifPlat = plat === 'yt' ? 'yt' : 'tt';
+        const _userHtml  = username
+          ? `<span class="nt-user">@${username}</span>&nbsp;`
+          : '';
+        _spawnNotif(_notifPlat,
+          `${_userHtml}<span class="nt-label">${_lbl}</span><span class="nt-pts">${_pStr}</span>`
+        );
+      }
     }
 
     // ── Platform energy injection for visual waveform ──
@@ -3363,15 +3360,14 @@ ablyChannel.subscribe('top-gifters',msg=>{
       injectYT(Math.min(0.5, energy), Math.max(2, spread - 2));
     }
 
-    if(rawScore >= MAX_RAW * 0.995 && !_bbFired){
+    if(rawScore >= MAX_RAW * 0.995 && !_bbFired && !_bbCooldown){
       _bbFired = true;
       if(typeof splatState !== 'undefined' && splatState === SPLAT_STATE.COUNTDOWN){
         // Milk filled during rescue → auto-save the run!
         splatEnterSaved();
         setTimeout(()=>{ rawScore=0; _bbFired=false; _bbCooldown=false; _mmUpdateStatus(0); }, 600);
-      } else if(alertActive){
-        _pendingGoalExplosion = true;
       } else {
+        // Fire immediately — explosion overlays fine on top of gift alerts
         fireMilkGoal();
       }
     }
@@ -3523,6 +3519,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const EQ_CENTER = Math.floor(EH / 2);   // 27 — bars grow up/down from here
   const ALL_COLS  = Math.floor(EW / EQ_STEP); // 154
   const _eqSeeds  = Array.from({length: ALL_COLS}, () => Math.random() * 100);
+  const _barInfoEl = document.getElementById('bar-info');
 
   (function drawHype(){
     const t     = Date.now() / 1000;
@@ -3536,6 +3533,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const fillFrac  = Math.min(1, rawScore / MAX_RAW);
     const fillXe    = Math.round(fillFrac * EW);
     const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
+    // Gifter slides live at the right edge — read actual width each frame so it adapts to content
+    const gifterX   = _barInfoEl ? Math.max(0, EW - _barInfoEl.offsetWidth) : EW - 280;
 
     /* ── Full-width EQ bars on eCtx ── */
     eCtx.clearRect(0, 0, EW, EH);
@@ -3561,7 +3560,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
         ytA = _surgeActive ? 0.82 + Math.random()*0.12
             : boost        ? 0.68 + ytReact * 0.22
             :                0.32 + ytReact * 0.57 + idleSin * 0.05;
-      } else {
+      } else if (x < gifterX) {
         const sd   = _eqSeeds[i];
         // Traveling waves — spatially coherent so adjacent bars move together
         const flow = 0.50 + 0.30 * Math.sin(t * 1.3 - xGlob * 6.5)
@@ -3569,9 +3568,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
                          + 0.07 * Math.sin(t * 0.6 + xGlob * 3.5  + sd * 0.15);
         spike   = Math.max(0, Math.min(1, flow));
         spIsRed = sd < 0.5;
-        ttH = Math.max(2, spike * EQ_CENTER * 0.60);
+        ttH = Math.max(2, spike * EQ_CENTER * 0.82);
         ytH = ttH;
-        ttA = Math.min(0.28, 0.04 + spike * 0.18);
+        ttA = Math.min(0.48, 0.10 + spike * 0.32);
         ytA = ttA;
       }
 
@@ -3667,16 +3666,17 @@ ablyChannel.subscribe('top-gifters',msg=>{
         _fireEntryBanner(_currentPct);
         break;
       case 'like': {
-        _likeAccum++;
-        _likeAccumPlat = plat || _likeAccumPlat;
-        const _likePct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
-        _triggerRipple(_likePct, 0.05);
-        if (LIKE_BATCH_SIZE <= 1) {
-          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
-          _likeAccum = 0;
-        } else if (_likeAccum >= LIKE_BATCH_SIZE) {
-          addPts(PTS.like_batch, _likeAccumPlat, 'like_batch');
-          _likeAccum = 0;
+        // Score every individual like — silently (no pill)
+        addPts(PTS.like ?? 0.1, plat || 'tt', 'like', null, null, /*noNotif=*/true);
+        // Per-user pill throttle: show pill every LIKE_PILL_EVERY likes per user
+        const _likeKey = _who || '__anon__';
+        _likePillCounts[_likeKey] = (_likePillCounts[_likeKey] || 0) + 1;
+        if (_likePillCounts[_likeKey] % LIKE_PILL_EVERY === 0) {
+          const _notifPlat = (plat === 'yt') ? 'yt' : 'tt';
+          const _userHtml  = _who ? `<span class="nt-user">@${_who}</span>&nbsp;` : '';
+          _spawnNotif(_notifPlat,
+            `${_userHtml}<span class="nt-label">👍 ×${_likePillCounts[_likeKey]}</span>`
+          );
         }
         break;
       }
@@ -3757,8 +3757,18 @@ ablyChannel.subscribe('top-gifters',msg=>{
   ablyChannel.subscribe('gift-bar-pos', msg => {
     const top = msg.data?.top;
     if(typeof top !== 'number') return;
+    // #gift-bar itself
     const gb = document.getElementById('gift-bar');
     if(gb) gb.style.top = top + 'px';
+    // #bar-lines — absolute sibling at same top
+    const bl = document.getElementById('bar-lines');
+    if(bl) bl.style.top = top + 'px';
+    // #ep-passive — absolute sibling inside .ep-root at same top
+    const ep = document.getElementById('ep-passive');
+    if(ep) ep.style.top = top + 'px';
+    // #ep-card — positioned bottom-up, sits 8px above bar top
+    const ec = document.getElementById('ep-card');
+    if(ec) ec.style.bottom = (1928 - top) + 'px';
   });
 
   ablyChannel.subscribe('mission-strip-config', msg => {

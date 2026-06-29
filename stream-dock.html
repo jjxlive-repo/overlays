@@ -950,14 +950,14 @@ body.gc-shake { animation: gcShake 0.5s ease; }
   background: rgba(123,47,190,.07);
 }
 .umsg.tt-member {
-  border: 1px solid rgba(250,204,21,.42);
-  box-shadow: 0 0 8px rgba(250,204,21,.18);
-  background: rgba(250,204,21,.04);
+  border: 1px solid rgba(105,201,208,.42);
+  box-shadow: 0 0 8px rgba(105,201,208,.18);
+  background: rgba(105,201,208,.04);
 }
-.umsg.tt-member .msg-name { color: #facc15; }
+.umsg.tt-member .msg-name { color: #69C9D0; }
 .umsg.tt-member.tt-top-gifter {
-  border-color: rgba(250,204,21,.65);
-  box-shadow: 0 0 12px rgba(250,204,21,.28), 0 0 5px rgba(192,132,252,.22);
+  border-color: rgba(105,201,208,.65);
+  box-shadow: 0 0 12px rgba(105,201,208,.28), 0 0 5px rgba(192,132,252,.22);
 }
 .umsg.yt-member {
   border: 1px solid rgba(255,68,68,.32);
@@ -984,7 +984,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 .tt-badge.lv10 { background: rgba(192,132,252,0.25); color:#c084fc; }
 .tt-badge.lv20 { background: rgba(250,204,21,0.2);   color:#facc15; }
 .tt-badge.lv50 { background: rgba(244,63,94,0.25);   color:#f43f5e; }
-.tt-badge.fan  { background: linear-gradient(135deg,rgba(250,204,21,.2),rgba(217,119,6,.2)); color:#facc15; }
+.tt-badge.fan  { background: rgba(105,201,208,.2); color:#69C9D0; }
 
 /* Glow on TikTok rows by badge tier */
 .msg.tt-gifter {
@@ -998,14 +998,14 @@ body.gc-shake { animation: gcShake 0.5s ease; }
   background: rgba(123,47,190,.07);
 }
 .msg.tt-member {
-  border: 1px solid rgba(250,204,21,.4);
-  box-shadow: 0 0 9px rgba(250,204,21,.22);
-  background: rgba(250,204,21,.04);
+  border: 1px solid rgba(105,201,208,.4);
+  box-shadow: 0 0 9px rgba(105,201,208,.22);
+  background: rgba(105,201,208,.04);
 }
-.msg.tt-member .msg-name { color: #facc15; }
+.msg.tt-member .msg-name { color: #69C9D0; }
 .msg.tt-member.tt-top-gifter {
-  border-color: rgba(250,204,21,.6);
-  box-shadow: 0 0 12px rgba(250,204,21,.3), 0 0 5px rgba(192,132,252,.25);
+  border-color: rgba(105,201,208,.6);
+  box-shadow: 0 0 12px rgba(105,201,208,.3), 0 0 5px rgba(192,132,252,.25);
 }
 
 /* YouTube member highlight */
@@ -1867,7 +1867,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:8px;">
             <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(-50)">▲</button>
             <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(-10)">△</button>
-            <span id="geyser-pos-lbl" style="font-family:var(--mono);font-size:13px;color:#e879f9;min-width:60px;text-align:center;">y=900</span>
+            <span id="geyser-pos-lbl" style="font-family:var(--mono);font-size:13px;color:#e879f9;min-width:60px;text-align:center;">y=1100</span>
             <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(10)">▽</button>
             <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(50)">▼</button>
           </div>
@@ -2125,6 +2125,10 @@ body.gc-shake { animation: gcShake 0.5s ease; }
     <div class="splat-bar-row" style="justify-content:center;padding:1px 0;">
       <span id="vc-debug" style="font-size:8px;color:var(--txt-dim);font-family:monospace;">vc: waiting for SSN viewer event…</span>
     </div>
+    <!-- Event counter debug — counts key event types since page load -->
+    <div class="splat-bar-row" style="justify-content:center;padding:1px 0;">
+      <span id="evt-debug" style="font-size:8px;color:var(--txt-dim);font-family:monospace;">evts: —</span>
+    </div>
     <!-- Mic device selector for audio relay -->
     <div class="splat-bar-row" style="gap:5px;padding:2px 0;">
       <span style="font-size:10px;">🎙</span>
@@ -2312,6 +2316,27 @@ function wsConnect() {
   ws.onerror = () => { wsUpdateStatus('disconnected'); ws.close(); };
 }
 
+/* SSN extension injects viewer/system events directly via window.postMessage —
+   these don't go through the relay WebSocket so we need a separate listener.
+   SSN posts either { detail: {...} } or the raw event object directly.         */
+window.addEventListener('message', e => {
+  if (!e.data) return;
+  // Unwrap: SSN may send { detail: {...} }, { action:'content', value:'...' }, or raw object
+  let raw = e.data;
+  if (raw.detail && typeof raw.detail === 'object') raw = raw.detail;
+  if (raw.action === 'content' && raw.value) {
+    try { raw = JSON.parse(raw.value); } catch(_){ return; }
+  }
+  if (typeof raw !== 'object') return;
+  const evt = (raw.event || '').toLowerCase();
+  const isViewerEvt = evt.includes('viewer') || evt === 'roomstats' || evt === 'liveviewers';
+  if (isViewerEvt) {
+    const dbg = document.getElementById('vc-debug');
+    if (dbg) dbg.textContent = `vc postMsg: ${JSON.stringify(raw).slice(0,120)}`;
+    handleMsg(raw);
+  }
+});
+
 /* sendChat via HTTP GET — simplest, no socket channel confusion */
 function sendChatMessage() {
   const inp = document.getElementById('send-input');
@@ -2456,9 +2481,16 @@ let _dockRawScore = 0;  // kept for bean-boozled reset only
 const _DOCK_MAX_RAW = 200;  // kept so bean-boozled reset math works
 
 /* ── Publish engagement event → gift-bar hype meter ── */
-function publishMilk(type, platform) {
-  if (ablyChannel) ablyChannel.publish('milk-event', { type, platform: platform || 'other' }).catch(() => {});
+function publishMilk(type, platform, username) {
+  if (ablyChannel) ablyChannel.publish('milk-event', { type, platform: platform || 'other', username: username || null }).catch(() => {});
   // No local scoring — dock bar syncs exclusively via milk-pct from overlay
+}
+
+const _evtCounts = { tt_like:0, yt_like:0, tt_comment:0, yt_comment:0, tt_join:0, yt_join:0 };
+function _updateEvtDebug() {
+  const el = document.getElementById('evt-debug');
+  if (el) el.textContent =
+    `tt👍${_evtCounts.tt_like} yt👍${_evtCounts.yt_like} | tt💬${_evtCounts.tt_comment} yt💬${_evtCounts.yt_comment} | tt🚪${_evtCounts.tt_join} yt🚪${_evtCounts.yt_join}`;
 }
 
 function handleMsg(data) {
@@ -2471,7 +2503,7 @@ function handleMsg(data) {
     const _plat0 = p.includes('tiktok') ? 'tt' : p.includes('youtube') ? 'yt' : 'other';
     if (evt === 'follow' || evt === 'follower')                       publishMilk('join',          _plat0);
     else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter') publishMilk('join',          _plat0);
-    else if (evt === 'like' || evt === 'like_batch')                  publishMilk('like',          _plat0);
+    else if (evt === 'like' || evt === 'like_batch')                  { if(_plat0==='tt')_evtCounts.tt_like++; if(_plat0==='yt')_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _plat0); }
     else if (evt === 'heart_me')                                      publishMilk('heart_me',      _plat0);
     else if (evt === 'heart_me_first')                                publishMilk('heart_me_first',_plat0);
     else if (evt === 'subscribe' && p.includes('youtube'))            publishMilk('yt_sub',        'yt');
@@ -2487,34 +2519,45 @@ function handleMsg(data) {
         typeof data.meta === 'number' ||
         (typeof data.meta === 'object' && (
           data.meta.viewers != null || data.meta.viewCount != null ||
-          data.meta.liveViewCount != null || data.meta.concurrentViewers != null
+          data.meta.liveViewCount != null || data.meta.concurrentViewers != null ||
+          data.meta.tiktok != null || data.meta.youtube != null
         ))
       ));
     if (isViewerEvt) {
-      let count = null;
-      if (data.viewers != null)         count = parseInt(data.viewers);
-      else if (data.viewerCount != null) count = parseInt(data.viewerCount);
-      else if (data.totalUserCount != null) count = parseInt(data.totalUserCount);
-      else if (data.totalUser != null)   count = parseInt(data.totalUser);
-      else if (data.meta != null) {
-        count = typeof data.meta === 'object'
-          ? parseInt(data.meta.viewers ?? data.meta.viewCount ?? data.meta.liveViewCount ?? data.meta.concurrentViewers ?? data.meta.count ?? 0)
-          : parseInt(data.meta);
-      }
-      let isTTvc = p.includes('tiktok');
-      let isYTvc = p.includes('youtube');
-      if (!isTTvc && !isYTvc) {
-        if (evt === 'roomstats') isTTvc = true;
-        else if (evt === 'liveviewers' || evt === 'viewer_update' || evt === 'viewer_updates') isYTvc = true;
-      }
-      if (count != null && !isNaN(count) && count >= 0) {
-        const dbg = document.getElementById('vc-debug');
-        if (dbg) dbg.textContent = `vc: evt=${evt||'—'} p=${p||'—'} n=${count} tt=${isTTvc} yt=${isYTvc}`;
-        if (isTTvc) updateViewerCount('tt', count);
-        if (isYTvc) updateViewerCount('yt', count);
+      const dbg = document.getElementById('vc-debug');
+      // SSN background script aggregates into viewer_updates with meta = { tiktok: N, youtube: M }
+      if (evt === 'viewer_updates' && data.meta && typeof data.meta === 'object' &&
+          (data.meta.tiktok != null || data.meta.youtube != null)) {
+        const ttN = parseInt(data.meta.tiktok);
+        const ytN = parseInt(data.meta.youtube);
+        if (dbg) dbg.textContent = `vc: aggregated tt=${isNaN(ttN)?'—':ttN} yt=${isNaN(ytN)?'—':ytN}`;
+        if (!isNaN(ttN) && ttN >= 0) updateViewerCount('tt', ttN);
+        if (!isNaN(ytN) && ytN >= 0) updateViewerCount('yt', ytN);
       } else {
-        const dbg = document.getElementById('vc-debug');
-        if (dbg) dbg.textContent = `vc hit, no count: ${JSON.stringify(data).slice(0,80)}`;
+        // Single-platform viewer event (data.type tells us which platform)
+        let count = null;
+        if (data.viewers != null)             count = parseInt(data.viewers);
+        else if (data.viewerCount != null)    count = parseInt(data.viewerCount);
+        else if (data.totalUserCount != null) count = parseInt(data.totalUserCount);
+        else if (data.totalUser != null)      count = parseInt(data.totalUser);
+        else if (data.meta != null) {
+          count = typeof data.meta === 'object'
+            ? parseInt(data.meta.viewers ?? data.meta.viewCount ?? data.meta.liveViewCount ?? data.meta.concurrentViewers ?? data.meta.count ?? 0)
+            : parseInt(data.meta);
+        }
+        let isTTvc = p.includes('tiktok');
+        let isYTvc = p.includes('youtube');
+        if (!isTTvc && !isYTvc) {
+          if (evt === 'roomstats') isTTvc = true;
+          else if (evt === 'liveviewers' || evt === 'viewer_update') isYTvc = true;
+        }
+        if (count != null && !isNaN(count) && count >= 0) {
+          if (dbg) dbg.textContent = `vc: evt=${evt||'—'} p=${p||'—'} n=${count} tt=${isTTvc} yt=${isYTvc}`;
+          if (isTTvc) updateViewerCount('tt', count);
+          if (isYTvc) updateViewerCount('yt', count);
+        } else {
+          if (dbg) dbg.textContent = `vc hit, no count: ${JSON.stringify(data).slice(0,80)}`;
+        }
       }
     }
     return;
@@ -2558,13 +2601,13 @@ function handleMsg(data) {
   // ── Milk meter engagement events (messages WITH chatname) ──
   const _platH = isTT ? 'tt' : isYT ? 'yt' : 'other';
   let _hypeSent = false;
-  if (evt === 'follow' || evt === 'follower')                          { publishMilk('join',          _platH); _hypeSent=true; }
-  else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter')    { publishMilk('join',          _platH); _hypeSent=true; }
-  else if (evt === 'like' || evt === 'like_batch')                     { publishMilk('like',          _platH); _hypeSent=true; }
-  else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH); _hypeSent=true; }
-  else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH); _hypeSent=true; }
-  else if ((evt === 'subscribe' || evt === 'yt_sub') && isYT)         { publishMilk('yt_sub',        'yt');   _hypeSent=true; }
-  else if (evt === 'member' && isYT)                                   { publishMilk('yt_sub',        'yt');   _hypeSent=true; }
+  if (evt === 'follow' || evt === 'follower')                          { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter')    { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'like' || evt === 'like_batch')                     { if(isTT)_evtCounts.tt_like++; if(isYT)_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _platH); _hypeSent=true; }
+  else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH, data.chatname); _hypeSent=true; }
+  else if ((evt === 'subscribe' || evt === 'yt_sub') && isYT)         { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
+  else if (evt === 'member' && isYT)                                   { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
   // YouTube superchats, stickers, jewels, gift purchases → milk event with correct value
   else if (isYT && ytGiftEvt) {
     const _isJewels = evt === 'jeweldonation';
@@ -2623,7 +2666,8 @@ function handleMsg(data) {
         }).catch(() => {});
       }
     }
-    publishMilk('comment', _platH);
+    if(isTT)_evtCounts.tt_comment++; if(isYT)_evtCounts.yt_comment++; _updateEvtDebug();
+    publishMilk('comment', _platH, data.chatname);
   }
 
   if (isGift) {
@@ -2737,6 +2781,7 @@ function addMsg(data, key) {
       : null)
     : null;
   const isTTMember = isTikTok && !!(data.subBadge || data.isSubscriber
+    || data.hasMembership
     || (data.membership != null && data.badgeLevel == null));
   const isGifter    = badgeLevel != null && badgeLevel > 0;
   const isTopGifter = isGifter && badgeLevel >= 10;
@@ -2821,8 +2866,9 @@ function addUnified(data, platform, isTT, isYT, isGift) {
     : null;
 
   // Fan Club member = paid TikTok subscriber (isSubscriber flag or subBadge URL present)
+  // data.hasMembership is set by SSN when "Treat TikTok fans/teamer as members" is enabled
   // NOT data.membership alone — that field appears on too many non-subscriber messages
-  const isTTMember  = isTT && !!(data.isSubscriber === true ||
+  const isTTMember  = isTT && !!(data.isSubscriber === true || data.hasMembership === true ||
     (data.subBadge && typeof data.subBadge === 'string' && data.subBadge.length > 4));
   const isGifter    = badgeLevel != null && badgeLevel > 0;
   const isTopGifter = isGifter && badgeLevel >= 10;
@@ -5139,7 +5185,7 @@ function testFireGiftAnim(variant) {
 }
 
 /* ── Geyser position control ── */
-let _geyserY = 900;
+let _geyserY = 1100;
 function geyserMove(delta) {
   _geyserY = Math.max(505, Math.min(1800, _geyserY + delta));
   const lbl = document.getElementById('geyser-pos-lbl');
