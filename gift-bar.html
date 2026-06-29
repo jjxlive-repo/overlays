@@ -260,7 +260,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #gb-bar-text {
   position: absolute; top: 50%; left: var(--wave-center, 50%); transform: translate(-50%, -50%);
   font-family: 'Anton', sans-serif; font-size: 22px; color: #ffffff;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 16px rgba(168,85,247,0.5);
+  text-shadow:
+    0 0 6px  rgba(0,0,0,1),
+    0 0 14px rgba(0,0,0,0.98),
+    0 0 28px rgba(0,0,0,0.85),
+    0 2px 4px rgba(0,0,0,1),
+    0 0 22px rgba(168,85,247,0.55);
   white-space: nowrap; letter-spacing: 0.07em; text-transform: uppercase;
   line-height: 1; pointer-events: none; z-index: 7;
   opacity: 0; transition: opacity 0.3s ease, font-size 0.3s ease;
@@ -271,8 +276,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   animation: gbTextBreath 3s ease-in-out infinite;
 }
 @keyframes gbTextBreath {
-  0%, 100% { filter: brightness(0.8); }
-  50%      { filter: brightness(1.2); }
+  0%, 100% { filter: brightness(0.92); }
+  50%      { filter: brightness(1.25); }
 }
 #gb-bar-text.urgent {
   font-size: 26px;
@@ -394,7 +399,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 /* ══ GIFT BAR INFO (rotating carousel slot) ══ */
 #bar-info {
-  position: absolute; right: 0; top: 0; width: auto; min-width: 260px; height: 55px; overflow: hidden;
+  position: absolute; right: 0; top: 0; width: 300px; height: 55px; overflow: hidden;
   background: rgba(5,0,14,0.76); border-left: 1px solid rgba(255,255,255,0.06);
   display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
   padding: 9px 14px 2px 14px; gap: 1px; transition: opacity 0.28s ease;
@@ -407,7 +412,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #bar-info-bot { display: flex; align-items: baseline; gap: 9px; }
 #bar-info-name {
   font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 2px; color: #fff;
-  white-space: nowrap; flex-shrink: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+  white-space: nowrap; flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9);
 }
 #bar-info-amount {
   font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px;
@@ -3521,15 +3527,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const _eqSeeds  = Array.from({length: ALL_COLS}, () => Math.random() * 100);
   const _barInfoEl = document.getElementById('bar-info');
   const _giftBarEl = document.getElementById('gift-bar');
-  function _updateWaveCenter() {
-    const infoW = _barInfoEl ? _barInfoEl.offsetWidth : 0;
-    const center = Math.round((EW - infoW) / 2);
-    if (_giftBarEl) _giftBarEl.style.setProperty('--wave-center', center + 'px');
-  }
-  _updateWaveCenter();
-  if (_barInfoEl && window.ResizeObserver) {
-    new ResizeObserver(_updateWaveCenter).observe(_barInfoEl);
-  }
+  // Bar-info is fixed-width (300px) so wave center is constant: (1080 - 300) / 2 = 390px
+  const _WAVE_CENTER = Math.round((EW - 300) / 2);
+  if (_giftBarEl) _giftBarEl.style.setProperty('--wave-center', _WAVE_CENTER + 'px');
 
   (function drawHype(){
     const t     = Date.now() / 1000;
