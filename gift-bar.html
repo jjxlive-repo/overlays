@@ -3802,15 +3802,13 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }, DECAY_TICK_MS);
 
-  /* ── Publish hype % to dock every 250ms (any change) ── */
-  let _lastPubPct = -1;
+  /* ── Publish hype % to dock every 500ms (unconditional) ── */
+  // Unconditional publish ensures dock stays in sync even if TikTok Studio
+  // throttles timers — the dock always gets a fresh value every 500ms.
   setInterval(() => {
-    const pct = Math.round((rawScore / MAX_RAW) * 100);
-    if(pct !== _lastPubPct){
-      _lastPubPct = pct;
-      try { ablyChannel.publish('milk-pct', { pct }); } catch(e) {}
-    }
-  }, 250);
+    const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
+    try { ablyChannel.publish('milk-pct', { pct }); } catch(e) {}
+  }, 500);
 
   /* ── Below-bar waveform helper ── */
   const SEG_GAP = 3;
