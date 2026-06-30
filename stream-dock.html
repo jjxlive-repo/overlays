@@ -2560,6 +2560,7 @@ function publishMilk(type, platform, username) {
 }
 
 const _evtCounts = { tt_like:0, yt_like:0, tt_comment:0, yt_comment:0, tt_join:0, yt_join:0 };
+let _lastTTLikes = 0; // tracks cumulative TikTok like count from roomstats
 function _updateEvtDebug() {
   const el = document.getElementById('evt-debug');
   if (el) el.textContent =
@@ -2574,8 +2575,8 @@ function handleMsg(data) {
   if (!data.chatname) {
     // Engagement events
     const _plat0 = p.includes('tiktok') ? 'tt' : p.includes('youtube') ? 'yt' : 'other';
-    if (evt === 'follow' || evt === 'follower')                       publishMilk('join',          _plat0);
-    else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter') publishMilk('join',          _plat0);
+    if (evt === 'follow' || evt === 'follower')                       { if(_plat0==='tt')_evtCounts.tt_join++; if(_plat0==='yt')_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _plat0); }
+    else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter') { if(_plat0==='tt')_evtCounts.tt_join++; if(_plat0==='yt')_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _plat0); }
     else if (evt === 'like' || evt === 'like_batch')                  { if(_plat0==='tt')_evtCounts.tt_like++; if(_plat0==='yt')_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _plat0); }
     else if (evt === 'heart_me')                                      publishMilk('heart_me',      _plat0);
     else if (evt === 'heart_me_first')                                publishMilk('heart_me_first',_plat0);
@@ -2630,6 +2631,25 @@ function handleMsg(data) {
           if (isYTvc) updateViewerCount('yt', count);
         } else {
           if (dbg) dbg.textContent = `vc hit, no count: ${JSON.stringify(data).slice(0,80)}`;
+        }
+      }
+    }
+    // ── TikTok like delta from roomstats ──────────────────────────────────
+    // TikTok Studio sends cumulative like counts via roomstats, not individual
+    // like events. Track the delta and publish one milk-event per new like.
+    if (evt === 'roomstats' && data.likes != null) {
+      const _ttLikeTotal = parseInt(data.likes) || 0;
+      if (_lastTTLikes === 0 && _ttLikeTotal > 0) {
+        // First roomstats of session — baseline so we don't flood with old likes
+        _lastTTLikes = _ttLikeTotal;
+      } else {
+        const _delta = Math.max(0, _ttLikeTotal - _lastTTLikes);
+        if (_delta > 0) {
+          _lastTTLikes = _ttLikeTotal;
+          _evtCounts.tt_like += _delta;
+          _updateEvtDebug();
+          // Cap at 50 publishes per event to avoid floods
+          for (let _i = 0; _i < Math.min(_delta, 50); _i++) publishMilk('like', 'tt');
         }
       }
     }
