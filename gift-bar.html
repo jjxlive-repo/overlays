@@ -2599,33 +2599,37 @@ ablyChannel.subscribe('gift-alert',msg=>{
     const isHtml = d.videoUrl.toLowerCase().endsWith('.html');
 
     if (isHtml) {
-      // ── HTML animation stinger via transparent iframe + postMessage handshake ──
+      // ── HTML animation stinger via transparent iframe ──
+      // Simple one-way: iframe sends 'stinger-ready' when animation is about to start,
+      // parent fades in and starts hide timer. No play command needed.
       canvas.style.display = 'none';
       iframe.style.display = 'block';
 
-      // Cancel any pending ready-listener from a previous stinger
       if (wrap._stgReadyFn) {
         window.removeEventListener('message', wrap._stgReadyFn);
         wrap._stgReadyFn = null;
       }
 
-      // Wait for 'stinger-ready' — sent by the HTML right before it boots the animation.
-      // No source check: contentWindow changes during about:blank → real URL navigation.
       wrap._stgReadyFn = (e) => {
         if (!e.data || e.data.type !== 'stinger-ready') return;
         window.removeEventListener('message', wrap._stgReadyFn);
         wrap._stgReadyFn = null;
-        // Fade in the overlay
         wrap.classList.add('stg-in');
-        // After fade-in completes, tell the animation to start from 0:00
-        setTimeout(() => {
-          try { iframe.contentWindow.postMessage({ type: 'stinger-play' }, '*'); } catch(e) {}
-          _stgTimer = setTimeout(_stgHide, d.durationMs || 25000);
-        }, 350);
+        _stgTimer = setTimeout(_stgHide, d.durationMs || 25000);
       };
       window.addEventListener('message', wrap._stgReadyFn);
 
-      // Force a completely fresh page load every time
+      // Fallback: if stinger-ready never arrives, show after 2s anyway
+      setTimeout(() => {
+        if (wrap._stgReadyFn) {
+          window.removeEventListener('message', wrap._stgReadyFn);
+          wrap._stgReadyFn = null;
+          wrap.classList.add('stg-in');
+          _stgTimer = setTimeout(_stgHide, d.durationMs || 25000);
+        }
+      }, 2000);
+
+      // Fresh load every time
       iframe.src = 'about:blank';
       setTimeout(() => { iframe.src = d.videoUrl + '?t=' + Date.now(); }, 80);
 
