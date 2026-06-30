@@ -1590,6 +1590,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   width: 100%; height: 100%;
   object-fit: contain;
 }
+#stinger-iframe {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  border: none; background: transparent;
+  display: none;
+}
 </style>
 </head>
 <body>
@@ -2541,7 +2547,8 @@ ablyChannel.subscribe('gift-alert',msg=>{
   }
 
   function _stgHide() {
-    const wrap = document.getElementById('stinger-wrap');
+    const wrap   = document.getElementById('stinger-wrap');
+    const iframe = document.getElementById('stinger-iframe');
     if (!wrap) return;
     if (_stgTimer) { clearTimeout(_stgTimer); _stgTimer = null; }
     if (_rafId)    { cancelAnimationFrame(_rafId); _rafId = null; }
@@ -2550,6 +2557,7 @@ ablyChannel.subscribe('gift-alert',msg=>{
     setTimeout(() => {
       wrap.classList.remove('stg-out');
       if (_stgVid) _stgVid.src = '';
+      if (iframe)  { iframe.src = ''; iframe.style.display = 'none'; }
       if (_stgAudio) { _stgAudio.pause(); _stgAudio = null; }
     }, 450);
   }
@@ -2557,20 +2565,10 @@ ablyChannel.subscribe('gift-alert',msg=>{
   ablyChannel.subscribe('stinger', msg => {
     const wrap   = document.getElementById('stinger-wrap');
     const canvas = document.getElementById('stinger-canvas');
-    if (!wrap || !canvas) return;
+    const iframe = document.getElementById('stinger-iframe');
+    if (!wrap || !canvas || !iframe) return;
     const d = msg?.data;
     if (!d || !d.videoUrl) return;
-
-    // Init WebGL + hidden video element once
-    if (!_gl) {
-      canvas.width  = 1080;
-      canvas.height = 1920;
-      if (!_initGL(canvas)) return;  // WebGL unavailable
-      _stgVid = document.createElement('video');
-      _stgVid.muted = true;
-      _stgVid.playsInline = true;
-      _stgVid.crossOrigin = 'anonymous';
-    }
 
     // Reset previous stinger
     if (_stgTimer) clearTimeout(_stgTimer);
@@ -2578,20 +2576,45 @@ ablyChannel.subscribe('gift-alert',msg=>{
     wrap.classList.remove('stg-in', 'stg-out');
     if (_stgAudio) { _stgAudio.pause(); _stgAudio = null; }
 
-    // Load & play through hidden video → WebGL draws each frame to canvas
-    _stgVid.src = d.videoUrl;
-    _stgVid.load();
-    _stgVid.play().then(() => { _drawLoop(); }).catch(() => {});
+    const isHtml = d.videoUrl.toLowerCase().endsWith('.html');
 
-    if (d.audioUrl) {
-      _stgAudio = new Audio(d.audioUrl);
-      _stgAudio.play().catch(() => {});
+    if (isHtml) {
+      // ── HTML animation stinger via transparent iframe ──
+      canvas.style.display = 'none';
+      iframe.style.display = 'block';
+      iframe.src = d.videoUrl;
+      if (d.audioUrl) {
+        _stgAudio = new Audio(d.audioUrl);
+        _stgAudio.play().catch(() => {});
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('stg-in')));
+      // HTML animations don't fire onended — use a fixed duration (default 10s)
+      _stgTimer = setTimeout(_stgHide, d.durationMs || 10000);
+
+    } else {
+      // ── Video stinger via WebGL chromakey canvas ──
+      iframe.style.display = 'none';
+      canvas.style.display = 'block';
+      if (!_gl) {
+        canvas.width  = 1080;
+        canvas.height = 1920;
+        if (!_initGL(canvas)) return;
+        _stgVid = document.createElement('video');
+        _stgVid.muted = true;
+        _stgVid.playsInline = true;
+        _stgVid.crossOrigin = 'anonymous';
+      }
+      _stgVid.src = d.videoUrl;
+      _stgVid.load();
+      _stgVid.play().then(() => { _drawLoop(); }).catch(() => {});
+      if (d.audioUrl) {
+        _stgAudio = new Audio(d.audioUrl);
+        _stgAudio.play().catch(() => {});
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('stg-in')));
+      _stgVid.onended = _stgHide;
+      _stgTimer = setTimeout(_stgHide, 30000);
     }
-
-    requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('stg-in')));
-
-    _stgVid.onended = _stgHide;
-    _stgTimer = setTimeout(_stgHide, 30000);
   });
 })();
 
@@ -4117,6 +4140,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
 <div id="stinger-wrap">
   <canvas id="stinger-canvas"></canvas>
+  <iframe id="stinger-iframe" src="" allowtransparency="true" scrolling="no" frameborder="0"></iframe>
 </div>
 
 </body>
