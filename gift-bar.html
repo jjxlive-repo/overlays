@@ -181,7 +181,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 700;
   white-space: nowrap; border: 1px solid;
   will-change: transform, opacity;
-  transition: opacity 0.28s ease, transform 0.40s cubic-bezier(.34,1.56,.64,1);
+  transition: opacity 0.28s ease, transform 0.40s cubic-bezier(.34,1.56,.64,1), bottom 0.22s ease, top 0.22s ease;
 }
 .nt-pill-tt {
   background: rgba(105,201,208,.22); border-color: rgba(105,201,208,.6);
@@ -2978,6 +2978,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const pill = document.createElement('div');
     pill.className = `nt-pill nt-pill-${platform}`;
     pill.innerHTML = html;
+    pill._ntAnchor             = anchorProp;
     pill.style.left            = `calc(${fillPct}% + ${xJitter}px)`;
     pill.style[anchorProp]     = `${yOffset}px`;
     pill.style.transform       = `translateX(-50%) rotate(${rot}deg) scale(0.7)`;
@@ -2998,9 +2999,15 @@ ablyChannel.subscribe('top-gifters',msg=>{
     if(!pill) return;
     clearTimeout(pill._ntTimer);
     pill.classList.add('nt-exit');
+    const anchor = pill._ntAnchor;
     setTimeout(() => {
       pill.remove();
-      if(pool){ const i = pool.indexOf(pill); if(i >= 0) pool.splice(i, 1); }
+      if(pool){
+        const i = pool.indexOf(pill);
+        if(i >= 0) pool.splice(i, 1);
+        // Reflow remaining pills so they fill the vacated slot
+        if(anchor) pool.forEach((p, idx) => { p.style[anchor] = `${idx * 38}px`; });
+      }
     }, 280);
   }
 
