@@ -2582,14 +2582,24 @@ ablyChannel.subscribe('gift-alert',msg=>{
       // ── HTML animation stinger via transparent iframe ──
       canvas.style.display = 'none';
       iframe.style.display = 'block';
-      iframe.src = d.videoUrl + '?t=' + Date.now();
-      if (d.audioUrl) {
-        _stgAudio = new Audio(d.audioUrl);
-        _stgAudio.play().catch(() => {});
-      }
-      requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('stg-in')));
-      // HTML animations don't fire onended — use a fixed duration (default 25s)
-      _stgTimer = setTimeout(_stgHide, d.durationMs || 25000);
+      iframe.onload = null;
+
+      // Step 1: force blank so the new URL always triggers a fresh onload
+      iframe.src = 'about:blank';
+
+      setTimeout(() => {
+        // Step 2: load animation; fade in only after it's fully ready
+        iframe.onload = () => {
+          iframe.onload = null;
+          wrap.classList.add('stg-in');
+          if (d.audioUrl) {
+            _stgAudio = new Audio(d.audioUrl);
+            _stgAudio.play().catch(() => {});
+          }
+          _stgTimer = setTimeout(_stgHide, d.durationMs || 25000);
+        };
+        iframe.src = d.videoUrl + '?t=' + Date.now();
+      }, 80);
 
     } else {
       // ── Video stinger via WebGL chromakey canvas ──
