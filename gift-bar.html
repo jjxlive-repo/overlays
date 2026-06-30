@@ -2498,7 +2498,8 @@ ablyChannel.subscribe('gift-alert',msg=>{
     wrap.classList.remove('stg-in', 'stg-out');
     if (_stgAudio) { _stgAudio.pause(); _stgAudio = null; }
 
-    // Load + play video
+    // Load + play video (muted so TikTok Studio allows autoplay; audio plays via separate Audio element)
+    vid.muted = true;
     vid.src = d.videoUrl;
     vid.load();
     vid.play().catch(() => {});
@@ -3409,7 +3410,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const barText  = document.getElementById('gb-bar-text');
     const show = _mmGoalVisible || _mmForceVisible;
     if (milkFill) {
-      milkFill.style.width = show ? pct + '%' : '0%';
+      // Cap fill so 100% stops at gifterX (left edge of gift slide), never overlaps slide
+      const _gx = _barInfoEl ? Math.max(0, EW - _barInfoEl.offsetWidth) : EW - 280;
+      const cappedPct = pct * (_gx / EW);
+      milkFill.style.width = show ? cappedPct + '%' : '0%';
       milkFill.classList.toggle('urgent', pct >= 80);
     }
     if (barText && !_surgeActive && !boostActive) {
@@ -3764,9 +3768,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
       }
     }
 
-    // Center hairline
+    // Center hairline — stops at gifterX, never crosses into gift slide
     eCtx.fillStyle = 'rgba(255,255,255,0.16)';
-    eCtx.fillRect(0, EQ_CENTER - 0.5, EW, 1);
+    eCtx.fillRect(0, EQ_CENTER - 0.5, gifterX, 1);
 
     // Fill edge accent glow
     if(fillXe > 4){
