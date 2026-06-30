@@ -5554,14 +5554,14 @@ function _tfConnect() {
     const data = msg.data  || {};
     switch (evt) {
       case 'like': {
-        // Publish ONE milk-event per Tikfinity packet regardless of likeCount.
-        // likeCount (1-15) tells how many likes were in this burst, but scoring
-        // each one individually fills the meter too fast on active streams.
-        // The count is tracked in the debug counter only.
+        // Score proportional to likeCount but cap at 3 events per packet.
+        // likeCount = 1-15 per burst. Cap prevents meter floods on heavy streams
+        // while still showing visible movement (1 like = 0.1pts, 3 likes = 0.3pts).
         const n = parseInt(data.likeCount) || 1;
         _evtCounts.tt_like += n;
         _updateEvtDebug();
-        publishMilk('like', 'tt', data.uniqueId || null);
+        const _toPublish = Math.min(n, 3);
+        for (let i = 0; i < _toPublish; i++) publishMilk('like', 'tt', data.uniqueId || null);
         break;
       }
       case 'follow':
@@ -5574,7 +5574,6 @@ function _tfConnect() {
         if (data.repeatEnd === true || data.giftType !== 1) {
           const coins = (data.diamondCount || 0) * (data.repeatCount || 1);
           if (coins > 0) {
-            publishMilk('tiktok_gift', 'tt', data.uniqueId || null);
             if (ablyChannel) ablyChannel.publish('milk-event', {
               type: 'tiktok_gift',
               platform: 'tt',
