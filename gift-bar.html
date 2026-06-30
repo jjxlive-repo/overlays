@@ -2472,13 +2472,16 @@ ablyChannel.subscribe('gift-alert',msg=>{
 });
 
 // ── Stinger overlay ──
+// NOTE: getElementById is called lazily inside callbacks (not at init time)
+// because #stinger-wrap lives after this <script> block in the DOM.
 (function(){
-  const wrap = document.getElementById('stinger-wrap');
-  const vid  = document.getElementById('stinger-vid');
   let _stgAudio = null;
   let _stgTimer = null;
 
   function _stgHide() {
+    const wrap = document.getElementById('stinger-wrap');
+    const vid  = document.getElementById('stinger-vid');
+    if (!wrap || !vid) return;
     if (_stgTimer) { clearTimeout(_stgTimer); _stgTimer = null; }
     wrap.classList.remove('stg-in');
     wrap.classList.add('stg-out');
@@ -2490,6 +2493,9 @@ ablyChannel.subscribe('gift-alert',msg=>{
   }
 
   ablyChannel.subscribe('stinger', msg => {
+    const wrap = document.getElementById('stinger-wrap');
+    const vid  = document.getElementById('stinger-vid');
+    if (!wrap || !vid) return;
     const d = msg?.data;
     if (!d || !d.videoUrl) return;
 
