@@ -3128,7 +3128,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   function _v3FireEdgeBurst(platform, amount){
     const fillFrac = Math.min(1, rawScore / MAX_RAW);
-    const x = Math.round(fillFrac * EW);
+    const slideX   = _barInfoEl ? Math.max(0, EW - _barInfoEl.offsetWidth) : EW - 280;
+    const x = Math.round(fillFrac * slideX);   // stays left of slide
     const col = platform === 'tt' ? 'rgba(105,201,208,' : 'rgba(255,90,90,';
     const intensity = Math.min(1, 0.55 + amount * 0.45);
     _v3EdgeBursts.push({ x, col, age: 0, max: 54, intensity });
@@ -3148,9 +3149,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
   };
 
   function _moveNotifToEdge(){
-    const fillPct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
-    // Clamp slightly inset so pill doesn't bleed off bar edges
-    _notifPos.x = Math.max(4, Math.min(96, fillPct));
+    const fillFrac  = Math.min(1, rawScore / MAX_RAW);
+    const slideX    = _barInfoEl ? Math.max(0, EW - _barInfoEl.offsetWidth) : EW - 280;
+    const slidePct  = (slideX / EW) * 100;            // slide left edge as % of bar width
+    const rawPct    = fillFrac * slidePct;             // fill pct relative to usable width
+    // Clamp slightly inset so pill doesn't bleed off bar edges or into slide
+    _notifPos.x = Math.max(4, Math.min(slidePct - 4, rawPct));
     _applyNotifPos();
   }
 
@@ -3694,11 +3698,11 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _v3ttE = Math.max(0, _v3ttE - 0.008);
     _v3ytE = Math.max(0, _v3ytE - 0.008);
 
-    const fillFrac  = Math.min(1, rawScore / MAX_RAW);
-    const fillXe    = Math.round(fillFrac * EW);
-    const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
-    // Gifter slides live at the right edge — read actual width each frame so it adapts to content
+    // Gifter slides live at the right edge — 100% fill stops here, never overlaps slide
     const gifterX   = _barInfoEl ? Math.max(0, EW - _barInfoEl.offsetWidth) : EW - 280;
+    const fillFrac  = Math.min(1, rawScore / MAX_RAW);
+    const fillXe    = Math.round(fillFrac * gifterX);   // capped at slide left edge
+    const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
 
     /* ── Full-width EQ bars on eCtx ── */
     eCtx.clearRect(0, 0, EW, EH);
