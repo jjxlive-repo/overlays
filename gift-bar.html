@@ -2552,6 +2552,7 @@ ablyChannel.subscribe('gift-alert',msg=>{
     if (!wrap) return;
     if (_stgTimer) { clearTimeout(_stgTimer); _stgTimer = null; }
     if (_rafId)    { cancelAnimationFrame(_rafId); _rafId = null; }
+    if (wrap._stgReadyFn) { window.removeEventListener('message', wrap._stgReadyFn); wrap._stgReadyFn = null; }
     wrap.classList.remove('stg-in');
     wrap.classList.add('stg-out');
     setTimeout(() => {
@@ -2579,27 +2580,36 @@ ablyChannel.subscribe('gift-alert',msg=>{
     const isHtml = d.videoUrl.toLowerCase().endsWith('.html');
 
     if (isHtml) {
-      // ── HTML animation stinger via transparent iframe ──
+      // ── HTML animation stinger via transparent iframe + postMessage handshake ──
       canvas.style.display = 'none';
       iframe.style.display = 'block';
       iframe.onload = null;
 
-      // Step 1: force blank so the new URL always triggers a fresh onload
-      iframe.src = 'about:blank';
+      // Remove any previous ready-listener
+      if (wrap._stgReadyFn) { window.removeEventListener('message', wrap._stgReadyFn); }
 
-      setTimeout(() => {
-        // Step 2: load animation; fade in only after it's fully ready
-        iframe.onload = () => {
-          iframe.onload = null;
-          wrap.classList.add('stg-in');
+      // Listen for 'stinger-ready' from iframe — fires after assets unpack but BEFORE animation starts
+      wrap._stgReadyFn = (e) => {
+        if (e.source !== iframe.contentWindow) return;
+        if (!e.data || e.data.type !== 'stinger-ready') return;
+        window.removeEventListener('message', wrap._stgReadyFn);
+        wrap._stgReadyFn = null;
+        // Fade in, then tell animation to start
+        wrap.classList.add('stg-in');
+        setTimeout(() => {
+          iframe.contentWindow.postMessage({ type: 'stinger-play' }, '*');
           if (d.audioUrl) {
             _stgAudio = new Audio(d.audioUrl);
             _stgAudio.play().catch(() => {});
           }
           _stgTimer = setTimeout(_stgHide, d.durationMs || 25000);
-        };
-        iframe.src = d.videoUrl + '?t=' + Date.now();
-      }, 80);
+        }, 320); // after fade-in transition (350ms)
+      };
+      window.addEventListener('message', wrap._stgReadyFn);
+
+      // Load fresh each time
+      iframe.src = 'about:blank';
+      setTimeout(() => { iframe.src = d.videoUrl + '?t=' + Date.now(); }, 50);
 
     } else {
       // ── Video stinger via WebGL chromakey canvas ──

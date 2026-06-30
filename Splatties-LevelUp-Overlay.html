@@ -139,6 +139,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     // createElement so they execute, awaiting onload for src scripts to
     // preserve ordering (React before ReactDOM before Babel before text/babel).
     const doc = new DOMParser().parseFromString(template, 'text/html');
+    // ── Stinger handshake: signal parent assets are ready, wait for play ──
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'stinger-ready' }, '*');
+      await new Promise(resolve => {
+        window.addEventListener('message', function _h(e) {
+          if (e.data && e.data.type === 'stinger-play') {
+            window.removeEventListener('message', _h);
+            resolve();
+          }
+        });
+      });
+    }
     document.documentElement.replaceWith(doc.documentElement);
     const dead = Array.from(document.scripts);
     for (const old of dead) {
