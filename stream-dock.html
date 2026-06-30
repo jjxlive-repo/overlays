@@ -2149,7 +2149,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
       <label>Name</label>
       <input type="text" id="stg-name" placeholder="e.g. Level Up">
 
-      <label>Video URL <span style="color:#555;">(GitHub Pages — shows on overlay)</span></label>
+      <label>Video URL <span style="color:#555;">(GitHub Pages — plays on overlay)</span></label>
       <input type="text" id="stg-video-url" placeholder="https://…github.io/…/animation.mp4">
       <p class="stg-hint">Upload the .mp4 to your GitHub repo first, then paste the https://…github.io/… URL.</p>
 
@@ -5490,7 +5490,7 @@ ablyChannel.subscribe('milk-pct', msg => {
 const _STG_KEY = 'splat_stingers_v1';
 let _stingers   = [];
 let _stgEditId  = null;
-let _stgLocalAudio = null; // base64 data URL for dock-local audio
+let _stgLocalAudio = null;
 
 function _stgLoad() {
   try { _stingers = JSON.parse(localStorage.getItem(_STG_KEY) || '[]'); } catch(e) { _stingers = []; }
@@ -5524,7 +5524,6 @@ function stgRender() {
 function stgFire(id) {
   const s = _stingers.find(x => x.id === id);
   if (!s) return;
-  // Send to overlay
   if (ablyChannel) {
     ablyChannel.publish('stinger', {
       name:     s.name,
@@ -5532,7 +5531,6 @@ function stgFire(id) {
       audioUrl: s.audioUrl || null,
     }).catch(() => {});
   }
-  // Play audio locally in dock
   const src = s.localAudio || s.audioUrl;
   if (src) { try { const a = new Audio(src); a.volume = 0.8; a.play().catch(()=>{}); } catch(e){} }
   doFlash('purple');
@@ -5599,7 +5597,6 @@ function stgModalSave() {
   stgModalClose();
 }
 
-// Backdrop click closes modal
 document.getElementById('stg-modal').addEventListener('click', e => {
   if (e.target.id === 'stg-modal') stgModalClose();
 });
