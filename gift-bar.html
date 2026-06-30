@@ -1565,6 +1565,31 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #gift-card.tier-lg #gc-img { width: 80px; height: 80px; }
 #gift-card.tier-lg #gc-sender-name { font-size: 14px; }
 #gift-card.tier-lg #gc-amount-str  { font-size: 15px; }
+
+/* ── STINGER OVERLAY ── */
+#stinger-wrap {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.85);
+  width: 1080px; height: 1920px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 900;
+  transition: transform 350ms cubic-bezier(.34,1.56,.64,1), opacity 280ms ease-out;
+}
+#stinger-wrap.stg-in {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+#stinger-wrap.stg-out {
+  transform: translate(-50%, -50%) scale(0.92);
+  opacity: 0;
+  transition: transform 420ms ease-in, opacity 360ms ease-in;
+}
+#stinger-vid {
+  width: 100%; height: 100%;
+  object-fit: contain;
+}
 </style>
 </head>
 <body>
@@ -2445,6 +2470,53 @@ ablyChannel.subscribe('gift-alert',msg=>{
   onGiftAlert(msg.data);
   if(typeof fireGiftAnim === 'function') fireGiftAnim(msg.data);
 });
+
+// ── Stinger overlay ──
+(function(){
+  const wrap = document.getElementById('stinger-wrap');
+  const vid  = document.getElementById('stinger-vid');
+  let _stgAudio = null;
+  let _stgTimer = null;
+
+  function _stgHide() {
+    if (_stgTimer) { clearTimeout(_stgTimer); _stgTimer = null; }
+    wrap.classList.remove('stg-in');
+    wrap.classList.add('stg-out');
+    setTimeout(() => {
+      wrap.classList.remove('stg-out');
+      vid.src = '';
+      if (_stgAudio) { _stgAudio.pause(); _stgAudio = null; }
+    }, 450);
+  }
+
+  ablyChannel.subscribe('stinger', msg => {
+    const d = msg?.data;
+    if (!d || !d.videoUrl) return;
+
+    // Reset state
+    if (_stgTimer) clearTimeout(_stgTimer);
+    wrap.classList.remove('stg-in', 'stg-out');
+    if (_stgAudio) { _stgAudio.pause(); _stgAudio = null; }
+
+    // Load + play video
+    vid.src = d.videoUrl;
+    vid.load();
+    vid.play().catch(() => {});
+
+    // Optional separate audio track
+    if (d.audioUrl) {
+      _stgAudio = new Audio(d.audioUrl);
+      _stgAudio.play().catch(() => {});
+    }
+
+    // Pop in (next frame so transition fires)
+    requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('stg-in')));
+
+    // Pop out when video ends or after 30s failsafe
+    vid.onended = _stgHide;
+    _stgTimer = setTimeout(_stgHide, 30000);
+  });
+})();
 
 // Giftr leaderboard
 ablyChannel.subscribe('giftr',msg=>{
@@ -3950,6 +4022,10 @@ ablyChannel.subscribe('top-gifters',msg=>{
   <div id="entry-banner-inner">
     <span id="entry-banner-text">👋 Chat just hit 0% — jump in!</span>
   </div>
+</div>
+
+<div id="stinger-wrap">
+  <video id="stinger-vid" playsinline></video>
 </div>
 
 </body>

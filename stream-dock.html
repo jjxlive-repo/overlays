@@ -1413,6 +1413,40 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 .tf-btn-danger { border-color:rgba(239,68,68,0.5);background:rgba(239,68,68,0.10);color:#f87171; }
 .tf-btn-danger:hover  { background:rgba(239,68,68,0.28);color:#fff; }
 .tf-btn-danger:active { background:#991b1b; }
+
+/* ── STINGERS ── */
+.stg-row { display:flex; gap:4px; align-items:center; margin-bottom:4px; }
+.stg-fire { flex:1; background:rgba(168,85,247,.22); border:1px solid rgba(168,85,247,.5);
+  color:#E879F9; border-radius:5px; padding:6px 8px; font-size:11px; cursor:pointer;
+  font-family:inherit; transition:background .15s; text-align:left; }
+.stg-fire:hover  { background:rgba(168,85,247,.38); }
+.stg-fire:active { background:rgba(168,85,247,.55); transform:scale(.97); }
+.stg-ico { background:none; border:1px solid rgba(255,255,255,.12); color:var(--txt);
+  border-radius:4px; padding:4px 6px; font-size:11px; cursor:pointer; }
+.stg-ico:hover { background:rgba(255,255,255,.08); }
+#stg-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.72);
+  z-index:9999; align-items:center; justify-content:center; }
+.stg-box { background:#1a0d2e; border:1px solid rgba(168,85,247,.4);
+  border-radius:10px; padding:16px; width:320px; max-width:92vw; }
+.stg-box h3 { margin:0 0 10px; font-size:13px; color:#e879f9; }
+.stg-box label { display:block; font-size:10px; color:var(--txt-dim); margin:8px 0 3px; }
+.stg-box input[type=text] { width:100%; box-sizing:border-box; background:#0d0d1a;
+  border:1px solid rgba(255,255,255,.15); border-radius:5px; color:var(--txt);
+  padding:5px 8px; font-size:11px; font-family:inherit; }
+.stg-box input[type=text]:focus { outline:none; border-color:rgba(168,85,247,.6); }
+.stg-file-row { display:flex; gap:4px; align-items:center; }
+.stg-file-row input { flex:1; }
+.stg-pick { background:none; border:1px solid rgba(255,255,255,.2); color:var(--txt-dim);
+  border-radius:4px; padding:4px 7px; font-size:10px; cursor:pointer; white-space:nowrap; }
+.stg-pick:hover { background:rgba(255,255,255,.08); }
+.stg-hint { font-size:9px; color:#666; margin:3px 0 0; line-height:1.4; }
+.stg-modal-btns { display:flex; gap:6px; margin-top:14px; }
+.stg-modal-btns button { flex:1; padding:6px; border-radius:5px; font-size:11px;
+  font-family:inherit; cursor:pointer; border:1px solid rgba(255,255,255,.15); }
+.stg-btn-save   { background:rgba(168,85,247,.35); color:#fff; border-color:rgba(168,85,247,.5) !important; }
+.stg-btn-save:hover { background:rgba(168,85,247,.55); }
+.stg-btn-cancel { background:none; color:var(--txt-dim); }
+.stg-btn-cancel:hover { background:rgba(255,255,255,.06); }
 </style>
 </head>
 <body>
@@ -2091,9 +2125,48 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         </div>
       </div>
 
+      <!-- ── STINGERS ── -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('stg')">
+          <span class="ctrl-hd-title">🎬 Stingers</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-stg">
+          <div id="stg-list"></div>
+          <button class="ctrl-btn" style="width:100%;margin-top:4px;" onclick="stgAdd()">＋ New Stinger</button>
+        </div>
+      </div>
+
     </div><!-- /col-controls -->
 
   </div><!-- /main-row -->
+
+  <!-- STINGER MODAL -->
+  <div id="stg-modal">
+    <div class="stg-box">
+      <h3 id="stg-modal-title">New Stinger</h3>
+
+      <label>Name</label>
+      <input type="text" id="stg-name" placeholder="e.g. Level Up">
+
+      <label>Video URL <span style="color:#555;">(GitHub Pages — shows on overlay)</span></label>
+      <input type="text" id="stg-video-url" placeholder="https://…github.io/…/animation.mp4">
+      <p class="stg-hint">Upload the .mp4 to your GitHub repo first, then paste the https://…github.io/… URL.</p>
+
+      <label>Audio <span style="color:#555;">(URL or pick a local file for dock-only playback)</span></label>
+      <div class="stg-file-row">
+        <input type="text" id="stg-audio-url" placeholder="https://…/sound.mp3  or  leave blank">
+        <button class="stg-pick" onclick="document.getElementById('stg-audio-file').click()">📁 Local</button>
+      </div>
+      <input type="file" id="stg-audio-file" accept="audio/*" style="display:none" onchange="stgAudioPicked(this)">
+      <p class="stg-hint" id="stg-audio-hint"></p>
+
+      <div class="stg-modal-btns">
+        <button class="stg-btn-cancel" onclick="stgModalClose()">Cancel</button>
+        <button class="stg-btn-save"   onclick="stgModalSave()">Save</button>
+      </div>
+    </div>
+  </div>
 
   <!-- SPLAT BAR -->
   <div class="splat-bar">
@@ -5412,11 +5485,133 @@ ablyChannel.subscribe('milk-pct', msg => {
 });
 
 /* ════════════════════════════════════════
+   STINGERS
+════════════════════════════════════════ */
+const _STG_KEY = 'splat_stingers_v1';
+let _stingers   = [];
+let _stgEditId  = null;
+let _stgLocalAudio = null; // base64 data URL for dock-local audio
+
+function _stgLoad() {
+  try { _stingers = JSON.parse(localStorage.getItem(_STG_KEY) || '[]'); } catch(e) { _stingers = []; }
+  if (!_stingers.length) {
+    _stingers = [{
+      id: 'stg-levelup',
+      name: 'Level Up 🎉',
+      videoUrl: 'https://jjxlive-repo.github.io/overlays/Splatties%20Level%20Up.mp4',
+      audioUrl: 'https://jjxlive-repo.github.io/overlays/w-level-up%21-%28melodic-anthem-mix%29.mp3',
+      localAudio: null,
+    }];
+    localStorage.setItem(_STG_KEY, JSON.stringify(_stingers));
+  }
+}
+
+function stgRender() {
+  const list = document.getElementById('stg-list');
+  if (!list) return;
+  if (!_stingers.length) {
+    list.innerHTML = '<p style="font-size:10px;color:var(--txt-dim);margin:0 0 4px;">No stingers yet.</p>';
+    return;
+  }
+  list.innerHTML = _stingers.map(s => `
+    <div class="stg-row">
+      <button class="stg-fire" onclick="stgFire('${s.id}')">▶ ${s.name}</button>
+      <button class="stg-ico"  onclick="stgEdit('${s.id}')" title="Edit">✏️</button>
+      <button class="stg-ico"  onclick="stgDelete('${s.id}')" title="Delete" style="color:#f43f5e;">✕</button>
+    </div>`).join('');
+}
+
+function stgFire(id) {
+  const s = _stingers.find(x => x.id === id);
+  if (!s) return;
+  // Send to overlay
+  if (ablyChannel) {
+    ablyChannel.publish('stinger', {
+      name:     s.name,
+      videoUrl: s.videoUrl || null,
+      audioUrl: s.audioUrl || null,
+    }).catch(() => {});
+  }
+  // Play audio locally in dock
+  const src = s.localAudio || s.audioUrl;
+  if (src) { try { const a = new Audio(src); a.volume = 0.8; a.play().catch(()=>{}); } catch(e){} }
+  doFlash('purple');
+}
+
+function stgAdd()      { _stgOpenModal(null); }
+function stgEdit(id)   { _stgOpenModal(id); }
+function stgDelete(id) {
+  if (!confirm('Delete this stinger?')) return;
+  _stingers = _stingers.filter(s => s.id !== id);
+  localStorage.setItem(_STG_KEY, JSON.stringify(_stingers));
+  stgRender();
+}
+
+function _stgOpenModal(editId) {
+  _stgEditId    = editId;
+  _stgLocalAudio = null;
+  const s = editId ? _stingers.find(x => x.id === editId) : null;
+  document.getElementById('stg-modal-title').textContent = s ? 'Edit Stinger' : 'New Stinger';
+  document.getElementById('stg-name').value      = s?.name     || '';
+  document.getElementById('stg-video-url').value = s?.videoUrl || '';
+  document.getElementById('stg-audio-url').value = s?.audioUrl || '';
+  document.getElementById('stg-audio-hint').textContent =
+    s?.localAudio ? '📁 Local audio stored — plays in dock' : '';
+  if (s?.localAudio) _stgLocalAudio = s.localAudio;
+  document.getElementById('stg-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('stg-name').focus(), 50);
+}
+
+function stgModalClose() {
+  document.getElementById('stg-modal').style.display = 'none';
+  _stgLocalAudio = null;
+}
+
+function stgAudioPicked(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _stgLocalAudio = e.target.result;
+    document.getElementById('stg-audio-hint').textContent =
+      `📁 "${file.name}" loaded — plays in dock only (overlay needs a URL)`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function stgModalSave() {
+  const name     = document.getElementById('stg-name').value.trim();
+  const videoUrl = document.getElementById('stg-video-url').value.trim();
+  const audioUrl = document.getElementById('stg-audio-url').value.trim();
+  if (!name) { document.getElementById('stg-name').focus(); return; }
+  if (_stgEditId) {
+    const s = _stingers.find(x => x.id === _stgEditId);
+    if (s) {
+      s.name = name; s.videoUrl = videoUrl; s.audioUrl = audioUrl;
+      if (_stgLocalAudio) s.localAudio = _stgLocalAudio;
+    }
+  } else {
+    _stingers.push({ id: 'stg-' + Date.now(), name, videoUrl, audioUrl,
+      localAudio: _stgLocalAudio || null });
+  }
+  localStorage.setItem(_STG_KEY, JSON.stringify(_stingers));
+  stgRender();
+  stgModalClose();
+}
+
+// Backdrop click closes modal
+document.getElementById('stg-modal').addEventListener('click', e => {
+  if (e.target.id === 'stg-modal') stgModalClose();
+});
+
+/* ════════════════════════════════════════
    BOOT
 ════════════════════════════════════════ */
 gbInit();
 cpRenderPresetList();
 wsConnect();
+_stgLoad();
+stgRender();
 
 </script>
 </body>
