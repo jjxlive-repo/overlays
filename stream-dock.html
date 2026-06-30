@@ -5554,13 +5554,14 @@ function _tfConnect() {
     const data = msg.data  || {};
     switch (evt) {
       case 'like': {
-        // data.likeCount = likes in this batch; data.totalLikeCount = cumulative
-        const n = Math.min(parseInt(data.likeCount) || 1, 50);
-        if(n > 0) {
-          _evtCounts.tt_like += n;
-          _updateEvtDebug();
-          for (let i = 0; i < n; i++) publishMilk('like', 'tt', data.uniqueId || null);
-        }
+        // Publish ONE milk-event per Tikfinity packet regardless of likeCount.
+        // likeCount (1-15) tells how many likes were in this burst, but scoring
+        // each one individually fills the meter too fast on active streams.
+        // The count is tracked in the debug counter only.
+        const n = parseInt(data.likeCount) || 1;
+        _evtCounts.tt_like += n;
+        _updateEvtDebug();
+        publishMilk('like', 'tt', data.uniqueId || null);
         break;
       }
       case 'follow':
