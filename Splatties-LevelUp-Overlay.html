@@ -151,6 +151,21 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
       });
     }
+    // Signal parent that assets are ready; wait for play command (3s fallback)
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'stinger-ready' }, '*');
+      let _resolved = false;
+      await new Promise(resolve => {
+        window.addEventListener('message', function _h(e) {
+          if (e.data && e.data.type === 'stinger-play' && !_resolved) {
+            _resolved = true;
+            window.removeEventListener('message', _h);
+            resolve();
+          }
+        });
+        setTimeout(() => { if (!_resolved) { _resolved = true; resolve(); } }, 3000);
+      });
+    }
     document.documentElement.replaceWith(doc.documentElement);
     const dead = Array.from(document.scripts);
     for (const old of dead) {
