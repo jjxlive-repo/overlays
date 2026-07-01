@@ -800,6 +800,7 @@ function tick(now) {
   if (TIMER_ENABLED && !TIMER_PAUSED && !resetPending) {
     const rem = timerRemainingMs();
     if (rem != null && rem <= 0) {
+      console.log('[NEW HERE] countdown timer hit 0:00 — triggering pile reset');
       TIMER_ENABLED = false;
       TIMER_END_AT  = null;
       saveDisplayCfg();
@@ -1019,7 +1020,10 @@ function connectAbly() {
     if (username && source) enqueue(username, source);
   });
 
-  ch.subscribe('new-here-reset', () => resetOverlay());
+  ch.subscribe('new-here-reset', () => {
+    console.log('[NEW HERE] received new-here-reset from stream-dock');
+    resetOverlay();
+  });
 
   ch.subscribe('new-here-config', msg => {
     const d = msg.data || {};
@@ -1166,6 +1170,7 @@ function hardReset() {
 // clears the pile once the burst finishes. Used for both manual "Reset Pile"
 // and the timer hitting 0:00.
 function explodeAndReset() {
+  console.log('[NEW HERE] explodeAndReset() —', figures.length, 'figures flying apart');
   if (!figures.length) { hardReset(); return; }
   for (const f of figures) {
     const ang   = rnd() * Math.PI * 2;
@@ -1195,6 +1200,7 @@ window.resetOverlay = function () {
 // BOOT
 // ═══════════════════════════════════════════════════════════════════
 document.fonts.ready.then(() => {
+  console.log('[NEW HERE] overlay build: explode-reset + countdown timer — if you don\'t see this after a hard refresh, OBS/browser is serving a cached copy.');
   loadState();
   connectAbly();
   requestAnimationFrame(frame);
