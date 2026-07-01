@@ -36,6 +36,9 @@ let SIGN_SCALE    = 1.0;
 let SIGN_Y_OFFSET = 0;
 let CTR_SCALE     = 1.0;
 let CTR_Y_OFFSET  = 0;
+let SIGN_LABEL    = 'JUST JOINED';
+let CTR_LABEL     = 'NEW HERE';
+let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
 
 (function loadDisplayCfg() {
   try {
@@ -44,6 +47,9 @@ let CTR_Y_OFFSET  = 0;
     if (c.signYOffset  != null) SIGN_Y_OFFSET = c.signYOffset;
     if (c.ctrScale     != null) CTR_SCALE     = c.ctrScale;
     if (c.ctrYOffset   != null) CTR_Y_OFFSET  = c.ctrYOffset;
+    if (c.signLabel    != null) SIGN_LABEL    = c.signLabel;
+    if (c.ctrLabel     != null) CTR_LABEL     = c.ctrLabel;
+    if (c.ctrFormat    != null) CTR_FORMAT    = c.ctrFormat;
   } catch {}
 })();
 
@@ -441,12 +447,24 @@ function drawFloor(ctx) {
 }
 
 function drawCounter(ctx, n) {
+  const countText = CTR_FORMAT.replace('{n}', n);
+
+  // Measure both lines and size pill to fit the wider one
+  ctx.font = '700 44px Fredoka, sans-serif';
+  const countW = ctx.measureText(countText).width;
+  ctx.font = '700 28px "Space Grotesk", sans-serif';
+  ctx.letterSpacing = '4px';
+  const labelW = ctx.measureText(CTR_LABEL).width + CTR_LABEL.length * 4; // approx for letterSpacing
+  ctx.letterSpacing = '0px';
+  const pillW  = Math.max(300, Math.max(countW, labelW) + 100);
+  const pillX  = 540 - pillW / 2;
+
   ctx.save();
   ctx.globalAlpha = 0.97;
   ctx.fillStyle   = '#141019';
   ctx.strokeStyle = '#F1F5F9';
   ctx.lineWidth   = 3;
-  roundRect(ctx, 330, 120, 420, 122, 30);
+  roundRect(ctx, pillX, 120, pillW, 122, 30);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
@@ -454,24 +472,29 @@ function drawCounter(ctx, n) {
   // Live dot
   ctx.fillStyle = '#34D399';
   ctx.beginPath();
-  ctx.arc(392, 160, 9, 0, Math.PI * 2);
+  ctx.arc(pillX + 38, 160, 9, 0, Math.PI * 2);
   ctx.fill();
 
-  // "NEW HERE"
-  ctx.fillStyle    = '#CBD5E1';
-  ctx.font         = '700 28px "Space Grotesk", sans-serif';
+  // Label line
+  ctx.fillStyle     = '#CBD5E1';
+  ctx.font          = '700 28px "Space Grotesk", sans-serif';
   ctx.letterSpacing = '4px';
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('NEW HERE', 552, 162);
+  ctx.textAlign     = 'center';
+  ctx.textBaseline  = 'middle';
+  ctx.fillText(CTR_LABEL, 540 + 14, 162);
   ctx.letterSpacing = '0px';
 
-  // "N joined"
+  // Count line — auto-shrink font if it would overflow the pill
+  let fs = 44;
+  ctx.font = `700 ${fs}px Fredoka, sans-serif`;
+  while (ctx.measureText(countText).width > pillW - 40 && fs > 20) {
+    fs -= 2;
+    ctx.font = `700 ${fs}px Fredoka, sans-serif`;
+  }
   ctx.fillStyle    = '#fff';
-  ctx.font         = '700 44px Fredoka, sans-serif';
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`${n} joined`, 540, 222);
+  ctx.fillText(countText, 540, 222);
 }
 
 // peakY = feet-Y of the topmost figure in the pile
@@ -480,14 +503,32 @@ function drawJoinSign(ctx, name, source, peakY) {
   const bg     = pal ? pal.plate  : '#141019';
   const stroke = pal ? pal.accent : '#F1F5F9';
   const label  = pal ? pal.accent2 : '#CBD5E1';
-  const by     = peakY - 108;  // sign vertical center reference
+  const by     = peakY - 108;
+  const x      = 540;
+  const MAX_W  = 760; // max sign width inside safe zone
 
-  ctx.font = '700 42px Fredoka, sans-serif';
+  // Auto-fit username: shrink font until it fits within MAX_W - padding
+  let nameFontSize = 42;
+  ctx.font = `700 ${nameFontSize}px Fredoka, sans-serif`;
+  while (ctx.measureText(name).width > MAX_W - 80 && nameFontSize > 18) {
+    nameFontSize -= 2;
+    ctx.font = `700 ${nameFontSize}px Fredoka, sans-serif`;
+  }
   const nw = ctx.measureText(name).width;
-  const w  = Math.max(240, nw + 130);
-  const x  = 540;
 
-  // Downward pointer triangle (below the rect, tip points toward pile)
+  // Auto-fit label line
+  let labelFontSize = 22;
+  ctx.font = `700 ${labelFontSize}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '3px';
+  while (ctx.measureText(SIGN_LABEL).width + SIGN_LABEL.length * 3 > MAX_W - 100 && labelFontSize > 12) {
+    labelFontSize -= 1;
+    ctx.font = `700 ${labelFontSize}px "Space Grotesk", sans-serif`;
+  }
+  ctx.letterSpacing = '0px';
+
+  const w = Math.min(MAX_W, Math.max(260, nw + 80));
+
+  // Downward pointer triangle
   ctx.fillStyle = stroke;
   ctx.beginPath();
   ctx.moveTo(x - 18, peakY - 64);
@@ -507,21 +548,21 @@ function drawJoinSign(ctx, name, source, peakY) {
   // Live dot
   ctx.fillStyle = '#34D399';
   ctx.beginPath();
-  ctx.arc(x - w / 2 + 40, by - 22, 8, 0, Math.PI * 2);
+  ctx.arc(x - w / 2 + 36, by - 22, 8, 0, Math.PI * 2);
   ctx.fill();
 
-  // "JUST JOINED"
+  // Label
   ctx.fillStyle     = label;
-  ctx.font          = '700 22px "Space Grotesk", sans-serif';
+  ctx.font          = `700 ${labelFontSize}px "Space Grotesk", sans-serif`;
   ctx.letterSpacing = '3px';
   ctx.textAlign     = 'center';
   ctx.textBaseline  = 'middle';
-  ctx.fillText('JUST JOINED', x + 14, by - 14);
+  ctx.fillText(SIGN_LABEL, x + 14, by - 14);
   ctx.letterSpacing = '0px';
 
   // Username
   ctx.fillStyle    = '#fff';
-  ctx.font         = '700 42px Fredoka, sans-serif';
+  ctx.font         = `700 ${nameFontSize}px Fredoka, sans-serif`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(name, x, by + 30);
@@ -787,12 +828,24 @@ function connectAbly() {
     if (d.signYOffset  != null) SIGN_Y_OFFSET = d.signYOffset;
     if (d.ctrScale     != null) CTR_SCALE     = d.ctrScale;
     if (d.ctrYOffset   != null) CTR_Y_OFFSET  = d.ctrYOffset;
-    try { localStorage.setItem('nh_display_cfg', JSON.stringify({ signScale: SIGN_SCALE, signYOffset: SIGN_Y_OFFSET, ctrScale: CTR_SCALE, ctrYOffset: CTR_Y_OFFSET })); } catch {}
+    if (d.signLabel    != null) SIGN_LABEL    = d.signLabel || SIGN_LABEL;
+    if (d.ctrLabel     != null) CTR_LABEL     = d.ctrLabel  || CTR_LABEL;
+    if (d.ctrFormat    != null) CTR_FORMAT    = d.ctrFormat  || CTR_FORMAT;
+    try { localStorage.setItem('nh_display_cfg', JSON.stringify({ signScale: SIGN_SCALE, signYOffset: SIGN_Y_OFFSET, ctrScale: CTR_SCALE, ctrYOffset: CTR_Y_OFFSET, signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT })); } catch {}
   });
+
+  // Respond to ping from stream-dock so it can show connection status
+  ch.subscribe('new-here-ping', () => {
+    ch.publish('new-here-alive', {}).catch(() => {});
+  });
+
+  const sendAlive = () => ch.publish('new-here-alive', {}).catch(() => {});
 
   client.connection.on('connected', () => {
     console.log('[Ably] connected →', ABLY_CH);
-    ch.publish('new-here-alive', {}).catch(() => {});
+    sendAlive();
+    // Repeat every 25s so stream-dock stays green even after it reloads
+    setInterval(sendAlive, 25000);
   });
   client.connection.on('failed', () => console.error('[Ably] connection failed'));
 }
