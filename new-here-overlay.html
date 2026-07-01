@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NEW HERE — Crowd Pile Overlay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1080px;
+    height: 1920px;
+    background: transparent;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 1080px;
+    height: 1920px;
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG — receives events from stream-dock via Ably pub/sub
+// ═══════════════════════════════════════════════════════════════════
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+
+const CONFIG = {
+  dedupe: true,             // ignore repeat joins from the same user/platform
+  maxFigures: 200,          // beyond this, count keeps rising but no new bodies render
+  maxPerSec: 5,             // throttle burst events to this rate
+  persist: true,            // save crowd to localStorage so OBS refresh doesn't reset
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════════
+const W = 1080, H = 1920;
+const FLOOR_Y = 1788;
+const S = 0.46;             // figure scale (body ≈ 90 px tall at this scale)
+const PACK_R = 55 * S;      // packing radius ≈ 25.3 px
+const BIN_W = 2 * PACK_R * 0.9;   // ≈ 45.5 px per column
+const LAYER_H = 2 * PACK_R * 0.78; // ≈ 39.5 px per row
+const LO_X = 150 + PACK_R;
+const HI_X = 930 - PACK_R;
+const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 16 columns
+
+const ENTER_DUR  = 1100;  // ms for a figure to travel to its resting position
+const SPLAT_DUR  = 420;   // ms for the squash+burst animation on landing
+const QUEUE_GAP  = 1000 / CONFIG.maxPerSec;
+
+// ═══════════════════════════════════════════════════════════════════
+// PALETTES
+// ═══════════════════════════════════════════════════════════════════
+const YT = {
+  source:      'youtube',
+  figs:        ['#7F1D1D','#991B1B','#B91C1C','#DC2626','#EF4444','#F87171','#FCA5A5','#FB7185'],
+  accent:      '#F87171',
+  accent2:     '#FCA5A5',
+  plate:       '#2a0808',
+  plateTx:     '#FECACA',
+  plateStroke: '#F87171',
+  deep:        '#1a0505',
+  glow:        '#DC2626',
+};
+const TK = {
+  source:      'tiktok',
+  figs:        ['#1E3A8A','#1D4ED8','#2563EB','#3B82F6','#60A5FA','#93C5FD','#38BDF8','#22D3EE'],
+  accent:      '#38BDF8',
+  accent2:     '#93C5FD',
+  plate:       '#081026',
+  plateTx:     '#BFDBFE',
+  plateStroke: '#38BDF8',
+  deep:        '#05091c',
+  glow:        '#2563EB',
+};
+const PALETTES = { youtube: YT, tiktok: TK };
+
+// ═══════════════════════════════════════════════════════════════════
+// SEEDED RNG (xorshift32 — not for security, just reproducible placement)
+// ═══════════════════════════════════════════════════════════════════
+let _seed = (Date.now() ^ 0xDEAD_BEEF) >>> 0 || 1;
+function rnd() {
+  _seed ^= _seed << 13;
+  _seed ^= _seed >>> 17;
+  _seed ^= _seed << 5;
+  return (_seed >>> 0) / 4294967296;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let figures  = [];
+let heights  = new Array(N_BINS).fill(0);
+let queue    = [];
+let count    = 0;
+let newestName   = '';
+let newestSource = null;
+let pilePeakY    = FLOOR_Y;   // min feet-Y of settled figures
+let signPeakY    = FLOOR_Y;   // tweened version of pilePeakY for smooth sign rise
+let lastSpawn    = 0;
+let seenUsers    = new Set();
+let figIdSeq     = 0;
+
+// ═══════════════════════════════════════════════════════════════════
+// HEIGHTMAP DEPOSITION
+// Center-biased column pick, then roll to the lowest neighbor (±2 bins)
+// so the heap stays wide and rounded, never spiked.
+// ═══════════════════════════════════════════════════════════════════
+function getDepositionPos() {
+  const g = (rnd() + rnd() + rnd() - 1.5) / 1.5; // approx normal(-1..1)
+  let b = Math.max(0, Math.min(N_BINS - 1, Math.round((g * 0.5 + 0.5) * (N_BINS - 1))));
+  let best = b;
+  for (let dd = -2; dd <= 2; dd++) {
+    const bb = b + dd;
+    if (bb < 0 || bb >= N_BINS) continue;
+    if (heights[bb] < heights[best]) best = bb;
+  }
+  const level = heights[best]++;
+  const x = LO_X + (best + 0.5) * BIN_W + (rnd() - 0.5) * BIN_W * 0.55;
+  const y = FLOOR_Y - level * LAYER_H + (rnd() * 8 - 4);
+  return { x: Math.max(LO_X, Math.min(HI_X, x)), y };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PILE PEAK
+// ═══════════════════════════════════════════════════════════════════
+function updatePilePeak() {
+  const resting = figures.filter(f => f.phase !== 'entering');
+  pilePeakY = resting.length > 0 ? Math.min(...resting.map(f => f.y)) : FLOOR_Y;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SPAWN — places one figure and starts its enter animation
+// ═══════════════════════════════════════════════════════════════════
+function spawnFigure(username, source) {
+  const pal   = PALETTES[source] || YT;
+  const color = pal.figs[Math.floor(rnd() * pal.figs.length)];
+
+  if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
+    const { x: tx, y: ty } = getDepositionPos();
+
+    // Show name pill only on surface figures; cap total shown at 12
+    const namedCount = figures.filter(f => f.showName).length;
+    const showName   = namedCount < 12;
+
+    // Entry path: 60% fall from top, 40% run in from side
+    const useTop   = rnd() < 0.6;
+    const fromLeft = rnd() < 0.5;
+    let startX, startY;
+    if (useTop) {
+      startX = 540 + (rnd() * 180 - 90);
+      startY = 120 + rnd() * 60;
+    } else {
+      startX = fromLeft ? -80 : W + 80;
+      startY = Math.max(ty - 260, 380) - rnd() * 80;
+    }
+
+    figures.push({
+      id:            ++figIdSeq,
+      x:             tx,
+      y:             ty,
+      color,
+      source,
+      username,
+      showName,
+      phase:         'entering',  // entering | splatting | settled
+      enterProgress: 0,
+      splatProgress: 0,
+      useTop,
+      fromLeft,
+      startX,
+      startY,
+      rot:           rnd() * 10 - 5,
+      pal,
+    });
+  }
+
+  count++;
+  newestName   = username;
+  newestSource = source;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// QUEUE — deduplication + rate limiting
+// ═══════════════════════════════════════════════════════════════════
+function enqueue(username, source) {
+  if (CONFIG.dedupe) {
+    const key = `${source}:${username.toLowerCase()}`;
+    if (seenUsers.has(key)) return;
+    seenUsers.add(key);
+  }
+  queue.push({ username, source });
+}
+
+function processQueue(now) {
+  if (!queue.length) return;
+  if (now - lastSpawn < QUEUE_GAP) return;
+  // Allow at most 2 figures traveling at once (for burst feel without chaos)
+  if (figures.filter(f => f.phase === 'entering').length >= 2) return;
+  const { username, source } = queue.shift();
+  lastSpawn = now;
+  spawnFigure(username, source);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CANVAS HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x, y + h - r,     r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x,     y,     x + r, y,          r);
+  ctx.closePath();
+}
+
+function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+
+// ═══════════════════════════════════════════════════════════════════
+// FIGURE DRAWING
+// Origin = feet center; body extends upward (negative y).
+// All coords are in local "large" space; caller scales by S.
+// ═══════════════════════════════════════════════════════════════════
+function drawMascot(ctx, color, pal, username, showName, splatPhase, splatT) {
+  // Squash-and-stretch: splatPhase=true means we're in the splat animation
+  // splatT goes 0→1; max squash at splatT≈0.4 then springs back
+  let sx = 1, sy = 1;
+  if (splatPhase) {
+    const squash = Math.sin(splatT * Math.PI); // 0 → peak → 0
+    sx = 1 + squash * 0.22;
+    sy = 1 - squash * 0.22;
+  }
+
+  ctx.save();
+  ctx.scale(sx, sy);
+
+  // Ground shadow
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = '#0c0a12';
+  ctx.beginPath();
+  ctx.ellipse(0, 8, 58, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Ears
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(-38, -126, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 38, -126, 17, 0, Math.PI * 2); ctx.fill();
+
+  // Arms
+  ctx.save(); ctx.translate(-60, -50);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(0, 0, 15, 22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.translate(60, -50);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(0, 0, 15, 22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, -70, 64, 72, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Depth shade (vertical linear gradient)
+  {
+    const g = ctx.createLinearGradient(0, -142, 0, 2);
+    g.addColorStop(0,   'rgba(255,255,255,0.10)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0)');
+    g.addColorStop(1,   'rgba(12,10,18,0.50)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, -70, 64, 72, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Gloss sheen (radial highlight, upper-left)
+  {
+    const g = ctx.createRadialGradient(-22, -98, 0, -22, -98, 34);
+    g.addColorStop(0, 'rgba(255,255,255,0.65)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(-22, -98, 26, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Eye whites
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-22, -78, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 22, -78, 16, 0, Math.PI * 2); ctx.fill();
+
+  // Pupils
+  ctx.fillStyle = '#23052e';
+  ctx.beginPath(); ctx.arc(-19, -76, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 25, -76, 8, 0, Math.PI * 2); ctx.fill();
+
+  // Catch-lights
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-16, -79, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 28, -79, 3, 0, Math.PI * 2); ctx.fill();
+
+  // Blush
+  ctx.save();
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = '#F9A8D4';
+  ctx.beginPath(); ctx.ellipse(-40, -56, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( 40, -56, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // Mouth (smile arc)
+  ctx.strokeStyle = '#23052e';
+  ctx.lineWidth   = 4;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-10, -50);
+  ctx.quadraticCurveTo(0, -42, 10, -50);
+  ctx.stroke();
+
+  ctx.restore(); // end squash transform — name pill is NOT squashed
+
+  // Name pill
+  if (showName && username) {
+    ctx.font = '600 23px Fredoka, sans-serif';
+    const tw    = ctx.measureText(username).width;
+    const pillW = Math.max(70, tw + 32);
+    const pillY = -172;
+
+    ctx.fillStyle   = pal.plate;
+    ctx.strokeStyle = pal.plateStroke;
+    ctx.lineWidth   = 3;
+    roundRect(ctx, -pillW / 2, pillY - 30, pillW, 46, 23);
+    ctx.fill();
+    ctx.stroke();
+
+    // Downward pointer nub
+    ctx.fillStyle = pal.plate;
+    ctx.beginPath();
+    ctx.moveTo(-9, pillY + 13);
+    ctx.lineTo( 0, pillY + 27);
+    ctx.lineTo( 9, pillY + 13);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle    = pal.plateTx;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(username, 0, pillY - 1);
+  }
+}
+
+// Speed streaks shown while figure is in transit
+function drawStreaks(ctx, useTop, fromLeft, pal) {
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.lineCap     = 'round';
+
+  if (useTop) {
+    // Vertical trails
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth   = 4;
+    ctx.beginPath(); ctx.moveTo(-30, -150); ctx.lineTo(-30,  -92); ctx.stroke();
+    ctx.strokeStyle = pal.accent2;
+    ctx.lineWidth   = 4;
+    ctx.beginPath(); ctx.moveTo( 34, -168); ctx.lineTo( 34, -110); ctx.stroke();
+  } else {
+    // Horizontal trails
+    const d = fromLeft ? -1 : 1;
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth   = 5;
+    ctx.beginPath(); ctx.moveTo(d * 72, -72); ctx.lineTo(d * 132,  -72); ctx.stroke();
+    ctx.strokeStyle = pal.accent2;
+    ctx.lineWidth   = 5;
+    ctx.beginPath(); ctx.moveTo(d * 64, -112); ctx.lineTo(d * 114, -112); ctx.stroke();
+    ctx.lineWidth   = 4;
+    ctx.beginPath(); ctx.moveTo(d * 60,  -42); ctx.lineTo(d * 106,  -42); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Impact burst ring + spark lines
+function drawSplatBurst(ctx, pal, t) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, 1 - t) * 0.70;
+  ctx.strokeStyle = pal.accent2;
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 80 * (1 + t * 0.5), 15 * (1 + t * 0.3), 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth   = 4;
+  ctx.lineCap     = 'round';
+  const d = t * 28;
+  ctx.beginPath(); ctx.moveTo(-74, -34); ctx.lineTo(-96 - d, -50 - d); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 74, -34); ctx.lineTo( 96 + d, -50 - d); ctx.stroke();
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENE ELEMENTS
+// ═══════════════════════════════════════════════════════════════════
+function drawFloor(ctx) {
+  const g = ctx.createRadialGradient(540, FLOOR_Y, 0, 540, FLOOR_Y, 420);
+  g.addColorStop(0, 'rgba(71,85,105,0.45)');
+  g.addColorStop(1, 'rgba(71,85,105,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(540, FLOOR_Y, 420, 62, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCounter(ctx, n) {
+  ctx.save();
+  ctx.globalAlpha = 0.97;
+  ctx.fillStyle   = '#141019';
+  ctx.strokeStyle = '#F1F5F9';
+  ctx.lineWidth   = 3;
+  roundRect(ctx, 330, 120, 420, 122, 30);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // Live dot
+  ctx.fillStyle = '#34D399';
+  ctx.beginPath();
+  ctx.arc(392, 160, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // "NEW HERE"
+  ctx.fillStyle    = '#CBD5E1';
+  ctx.font         = '700 28px "Space Grotesk", sans-serif';
+  ctx.letterSpacing = '4px';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NEW HERE', 552, 162);
+  ctx.letterSpacing = '0px';
+
+  // "N joined"
+  ctx.fillStyle    = '#fff';
+  ctx.font         = '700 44px Fredoka, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${n} joined`, 540, 222);
+}
+
+// peakY = feet-Y of the topmost figure in the pile
+function drawJoinSign(ctx, name, source, peakY) {
+  const pal    = source ? PALETTES[source] : null;
+  const bg     = pal ? pal.plate  : '#141019';
+  const stroke = pal ? pal.accent : '#F1F5F9';
+  const label  = pal ? pal.accent2 : '#CBD5E1';
+  const by     = peakY - 108;  // sign vertical center reference
+
+  ctx.font = '700 42px Fredoka, sans-serif';
+  const nw = ctx.measureText(name).width;
+  const w  = Math.max(240, nw + 130);
+  const x  = 540;
+
+  // Downward pointer triangle (below the rect, tip points toward pile)
+  ctx.fillStyle = stroke;
+  ctx.beginPath();
+  ctx.moveTo(x - 18, peakY - 64);
+  ctx.lineTo(x + 18, peakY - 64);
+  ctx.lineTo(x,      peakY - 24);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sign background rect
+  ctx.fillStyle   = bg;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth   = 4;
+  roundRect(ctx, x - w / 2, by - 58, w, 100, 24);
+  ctx.fill();
+  ctx.stroke();
+
+  // Live dot
+  ctx.fillStyle = '#34D399';
+  ctx.beginPath();
+  ctx.arc(x - w / 2 + 40, by - 22, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // "JUST JOINED"
+  ctx.fillStyle     = label;
+  ctx.font          = '700 22px "Space Grotesk", sans-serif';
+  ctx.letterSpacing = '3px';
+  ctx.textAlign     = 'center';
+  ctx.textBaseline  = 'middle';
+  ctx.fillText('JUST JOINED', x + 14, by - 14);
+  ctx.letterSpacing = '0px';
+
+  // Username
+  ctx.fillStyle    = '#fff';
+  ctx.font         = '700 42px Fredoka, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, x, by + 30);
+}
+
+function drawIdleState(ctx, now) {
+  const t    = now / 1000;
+  const PI2  = Math.PI * 2;
+  const bob1 = Math.sin(t * (PI2 / 3.2)) * 12;
+  const bob2 = Math.sin(t * (PI2 / 3.2) + 1.2) * 12;
+
+  // YouTube host (red)
+  ctx.save();
+  ctx.translate(455, 1650 + bob1);
+  ctx.scale(1.05, 1.05);   // slightly larger than pile figures for visibility
+  drawMascot(ctx, '#DC2626', YT, '', false, false, 0);
+  ctx.restore();
+
+  // TikTok host (blue)
+  ctx.save();
+  ctx.translate(625, 1665 + bob2);
+  ctx.scale(1.05, 1.05);
+  drawMascot(ctx, '#2563EB', TK, '', false, false, 0);
+  ctx.restore();
+
+  // Speech bubble
+  ctx.fillStyle   = '#1a0808';
+  ctx.strokeStyle = '#F87171';
+  ctx.lineWidth   = 3;
+  roundRect(ctx, 330, 1300, 420, 120, 34);
+  ctx.fill();
+  ctx.stroke();
+
+  // Bubble tail
+  ctx.fillStyle = '#1a0808';
+  ctx.beginPath();
+  ctx.moveTo(520, 1418);
+  ctx.lineTo(545, 1458);
+  ctx.lineTo(570, 1418);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle    = '#fff';
+  ctx.font         = '600 30px Fredoka, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Be the first!', 540, 1352);
+
+  ctx.fillStyle     = '#FCA5A5';
+  ctx.font          = '700 24px "Space Grotesk", sans-serif';
+  ctx.letterSpacing = '1px';
+  ctx.textAlign     = 'center';
+  ctx.textBaseline  = 'middle';
+  ctx.fillText('type NEW HERE', 540, 1394);
+  ctx.letterSpacing = '0px';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CURRENT POSITION OF A FIGURE (interpolated during entry)
+// ═══════════════════════════════════════════════════════════════════
+function currentPos(fig) {
+  if (fig.phase !== 'entering') return { x: fig.x, y: fig.y };
+
+  const t = easeOutQuart(Math.min(1, fig.enterProgress));
+
+  if (fig.useTop) {
+    // Falls from top: x drifts to target in first 25% of travel, y eases down
+    const xt = easeOutQuart(Math.min(1, fig.enterProgress * 4));
+    return {
+      x: fig.startX + (fig.x - fig.startX) * xt,
+      y: fig.startY + (fig.y - fig.startY) * t,
+    };
+  } else {
+    // Runs from side: horizontal dash (0-70% of time), then drops (60-100%)
+    const runT  = easeOutQuart(Math.min(1, fig.enterProgress / 0.70));
+    const dropT = easeOutQuart(Math.max(0, (fig.enterProgress - 0.60) / 0.40));
+    return {
+      x: fig.startX + (fig.x - fig.startX) * runT,
+      y: fig.startY + (fig.y - fig.startY) * dropT,
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let lastTime = 0;
+
+function frame(now) {
+  const dt = Math.min(now - lastTime, 100); // cap delta to avoid spiral after tab focus
+  lastTime = now;
+
+  // Tick queue
+  processQueue(now);
+
+  // Tick animations
+  for (const fig of figures) {
+    if (fig.phase === 'entering') {
+      fig.enterProgress += dt / ENTER_DUR;
+      if (fig.enterProgress >= 1) {
+        fig.enterProgress = 1;
+        fig.phase         = 'splatting';
+        fig.splatProgress = 0;
+        updatePilePeak();
+      }
+    } else if (fig.phase === 'splatting') {
+      fig.splatProgress += dt / SPLAT_DUR;
+      if (fig.splatProgress >= 1) {
+        fig.splatProgress = 1;
+        fig.phase         = 'settled';
+        updatePilePeak();
+        saveState();
+      }
+    }
+  }
+
+  // Tween sign Y: exponential ease toward pilePeakY
+  const tweenK = Math.min(1, dt * 0.0035);
+  signPeakY += (pilePeakY - signPeakY) * tweenK;
+
+  // ── Draw ──────────────────────────────────────────────────
+  ctx.clearRect(0, 0, W, H);
+
+  drawFloor(ctx);
+
+  if (count === 0) {
+    drawIdleState(ctx, now);
+  } else {
+    // Sort back-to-front by current y so overlapping figures look correct
+    const sorted = [...figures].sort((a, b) => currentPos(a).y - currentPos(b).y);
+
+    for (const fig of sorted) {
+      const pos = currentPos(fig);
+
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.scale(S, S);
+      ctx.rotate(fig.rot * Math.PI / 180);
+
+      // Speed streaks (fade out in last 15% of entry)
+      if (fig.phase === 'entering' && fig.enterProgress < 0.85) {
+        const fade = 1 - fig.enterProgress / 0.85;
+        ctx.save();
+        ctx.globalAlpha = fade;
+        drawStreaks(ctx, fig.useTop, fig.fromLeft, fig.pal);
+        ctx.restore();
+      }
+
+      // Splat burst
+      if (fig.phase === 'splatting') {
+        drawSplatBurst(ctx, fig.pal, fig.splatProgress);
+      }
+
+      // The figure itself
+      drawMascot(
+        ctx,
+        fig.color,
+        fig.pal,
+        fig.username,
+        fig.showName,
+        fig.phase === 'splatting',
+        fig.splatProgress,
+      );
+
+      ctx.restore();
+    }
+
+    // JUST JOINED sign (clamped to safe zone top)
+    if (newestName) {
+      const clampedPeak = Math.max(600, signPeakY); // don't go above y:600
+      drawJoinSign(ctx, newestName, newestSource, clampedPeak);
+    }
+  }
+
+  // Counter is always visible
+  drawCounter(ctx, count);
+
+  requestAnimationFrame(frame);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PERSISTENCE (localStorage)
+// ═══════════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'newhere_overlay_v1';
+
+function saveState() {
+  if (!CONFIG.persist) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      count,
+      newestName,
+      newestSource,
+      heights: Array.from(heights),
+      figures: figures.filter(f => f.phase === 'settled').map(f => ({
+        id: f.id, x: f.x, y: f.y, color: f.color,
+        source: f.source, username: f.username, showName: f.showName, rot: f.rot,
+      })),
+      seenUsers: Array.from(seenUsers),
+    }));
+  } catch {}
+}
+
+function loadState() {
+  if (!CONFIG.persist) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    count       = s.count || 0;
+    newestName  = s.newestName || '';
+    newestSource = s.newestSource || null;
+    heights     = s.heights || new Array(N_BINS).fill(0);
+    seenUsers   = new Set(s.seenUsers || []);
+    figures     = (s.figures || []).map(f => ({
+      ...f,
+      phase:         'settled',
+      enterProgress: 1,
+      splatProgress: 1,
+      useTop:        false,
+      fromLeft:      false,
+      startX:        f.x,
+      startY:        f.y,
+      pal:           PALETTES[f.source] || YT,
+    }));
+    updatePilePeak();
+    signPeakY = pilePeakY; // snap sign to current peak without tweening
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ABLY ADAPTER — listens for events published by stream-dock.html
+// ═══════════════════════════════════════════════════════════════════
+function connectAbly() {
+  const client = new Ably.Realtime({ key: ABLY_KEY });
+  const ch     = client.channels.get(ABLY_CH);
+  ch.subscribe('new-here', msg => {
+    const { username, source } = msg.data || {};
+    if (username && source) enqueue(username, source);
+  });
+  ch.subscribe('new-here-reset', () => resetOverlay());
+  client.connection.on('connected', () => console.log('[Ably] connected →', ABLY_CH));
+  client.connection.on('failed',    () => console.error('[Ably] connection failed'));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PUBLIC API (browser console or test page)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * simulateJoin(username, source)
+ * Add a single viewer to the pile. Open browser console in OBS or a
+ * normal browser tab to call this for local testing.
+ *   source: 'youtube' | 'tiktok'  (defaults to random)
+ */
+window.simulateJoin = function (username, source) {
+  source   = source || (Math.random() < 0.5 ? 'youtube' : 'tiktok');
+  username = username || 'viewer' + Math.floor(Math.random() * 9999);
+  enqueue(username, source);
+};
+
+/**
+ * simulateBurst(n, source)
+ * Quickly add n viewers (default 10) to stress-test the pile.
+ */
+window.simulateBurst = function (n, source) {
+  const names = [
+    'PixelPanda','vortex_xX','luna92','GG_Mango','sleepydino','bunnyhopz',
+    'toastykat','vibeLord','mochi_','crimsonFox','zephyr_','jellybean',
+    'novaaa','pochi','sunnyD','kiwibyte','grumpcat','m0onpie','flux',
+    'dazzleq','snackman','tofu_','blip','wandr','echo7','peachy',
+    'goblin','riptide','cozyfox','muffn','zappy','larkz','quokka',
+    'byteme','plush','glitchk','marmot','dewdrop','spark_','yumz',
+  ];
+  for (let i = 0; i < (n || 10); i++) {
+    const src  = source || (Math.random() < 0.5 ? 'youtube' : 'tiktok');
+    const name = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 99);
+    enqueue(name, src);
+  }
+};
+
+/**
+ * resetOverlay()
+ * Clear everything and start fresh. Also clears localStorage.
+ */
+window.resetOverlay = function () {
+  figures       = [];
+  heights       = new Array(N_BINS).fill(0);
+  queue         = [];
+  count         = 0;
+  newestName    = '';
+  newestSource  = null;
+  pilePeakY     = FLOOR_Y;
+  signPeakY     = FLOOR_Y;
+  seenUsers     = new Set();
+  if (CONFIG.persist) localStorage.removeItem(STORAGE_KEY);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════════
+document.fonts.ready.then(() => {
+  loadState();
+  connectAbly();
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

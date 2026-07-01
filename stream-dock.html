@@ -1848,6 +1848,49 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         </div>
       </div>
 
+      <!-- ══ NEW HERE OVERLAY CONTROLS ══ -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('newhere')">
+          <span style="width:7px;height:7px;border-radius:50%;background:#F87171;flex-shrink:0;display:inline-block;"></span>
+          <span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;flex-shrink:0;display:inline-block;margin-left:3px;"></span>
+          <span class="ctrl-hd-title" style="margin-left:4px;">NEW HERE Crowd Pile</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-newhere" style="padding:7px 9px 9px;gap:6px;">
+          <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">
+            When chat matches the command below, a mascot spawns on the pile.<br>
+            <span style="color:#F87171;">■</span> Red = YouTube &nbsp;·&nbsp; <span style="color:#38BDF8;">■</span> Blue = TikTok. Add <code style="font-size:9px;background:rgba(255,255,255,0.07);padding:1px 4px;border-radius:3px;">new-here-overlay.html</code> as a Browser Source (1080×1920, transparent BG).
+          </div>
+          <!-- Command config -->
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;white-space:nowrap;">Command</label>
+            <input class="ctrl-in" id="nh-cmd" type="text" value="new here" placeholder="e.g. new here" style="flex:1;min-width:0;" oninput="nhSaveSettings()">
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;white-space:nowrap;">Match</label>
+            <select class="ctrl-in" id="nh-match" style="flex:1;cursor:pointer;" onchange="nhSaveSettings()">
+              <option value="exact">Exactly matches</option>
+              <option value="starts">Starts with</option>
+              <option value="contains">Contains</option>
+            </select>
+          </div>
+          <div class="ctrl-row" style="gap:5px;">
+            <input class="ctrl-in" id="nh-test-name" type="text" placeholder="username" style="flex:1;min-width:0;">
+            <select class="ctrl-in" id="nh-test-src" style="flex:0 0 auto;width:auto;padding:4px 6px;cursor:pointer;">
+              <option value="youtube">YouTube</option>
+              <option value="tiktok">TikTok</option>
+            </select>
+            <button class="ctrl-btn c-act" onclick="nhTestJoin()" title="Simulate a single NEW HERE join">Join</button>
+          </div>
+          <div class="ctrl-row" style="gap:5px;flex-wrap:wrap;">
+            <button class="ctrl-btn" onclick="nhBurst(5)" style="flex:1;">Burst ×5</button>
+            <button class="ctrl-btn" onclick="nhBurst(20)" style="flex:1;">Burst ×20</button>
+            <button class="ctrl-btn" style="flex:1;border-color:rgba(244,63,94,0.35);color:#fb7185;background:rgba(244,63,94,0.1);" onclick="nhReset()">Reset Pile</button>
+          </div>
+          <div class="ctrl-status" id="nh-status" style="font-size:9px;color:var(--txt-dim);">—</div>
+        </div>
+      </div>
+
       <!-- ══ GIFT ANIMATION TIER CONFIG ══ -->
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('gifttiers')">
@@ -2739,6 +2782,11 @@ function handleMsg(data) {
   // Regular chat messages add a small energy pulse; check command boost trigger
   if (!_hypeSent && data.chatmessage) {
     const msgLower = (data.chatmessage || '').toLowerCase().trim();
+    // NEW HERE crowd overlay — detect configured command and forward to overlay via Ably
+    if (nhMatches(msgLower)) {
+      const nhSource = isTT ? 'tiktok' : 'youtube';
+      if (ablyChannel) ablyChannel.publish('new-here', { username: data.chatname, source: nhSource }).catch(() => {});
+    }
     // Command boost: if message matches the configured command, trigger a boost
     // Cooldown = the boost's own duration so it can't re-fire until it expires
     if (_mmCommandStr && msgLower === _mmCommandStr) {
@@ -5661,6 +5709,64 @@ wsConnect();
 _tfConnect();
 _stgLoad();
 stgRender();
+nhLoadSettings();
+
+/* ── NEW HERE overlay helpers ── */
+
+function nhMatches(msgLower) {
+  const cmd   = (document.getElementById('nh-cmd')?.value || 'new here').toLowerCase().trim();
+  const mode  = document.getElementById('nh-match')?.value || 'exact';
+  if (!cmd) return false;
+  if (mode === 'starts')   return msgLower.startsWith(cmd);
+  if (mode === 'contains') return msgLower.includes(cmd);
+  return msgLower === cmd; // 'exact'
+}
+
+function nhSaveSettings() {
+  try {
+    localStorage.setItem('nh_cmd',   document.getElementById('nh-cmd')?.value   ?? 'new here');
+    localStorage.setItem('nh_match', document.getElementById('nh-match')?.value ?? 'exact');
+  } catch {}
+}
+
+function nhLoadSettings() {
+  try {
+    const cmd   = localStorage.getItem('nh_cmd');
+    const match = localStorage.getItem('nh_match');
+    if (cmd   != null) { const el = document.getElementById('nh-cmd');   if (el) el.value = cmd; }
+    if (match != null) { const el = document.getElementById('nh-match'); if (el) el.value = match; }
+  } catch {}
+}
+
+const _nhNames = ['PixelPanda','vortex_xX','luna92','GG_Mango','sleepydino','bunnyhopz',
+  'toastykat','vibeLord','mochi_','crimsonFox','zephyr_','jellybean','novaaa','pochi',
+  'sunnyD','kiwibyte','grumpcat','m0onpie','flux','dazzleq','snackman','tofu_','blip',
+  'wandr','echo7','peachy','goblin','riptide','cozyfox','muffn','zappy','larkz'];
+
+function nhTestJoin() {
+  const name = document.getElementById('nh-test-name').value.trim()
+    || _nhNames[Math.floor(Math.random() * _nhNames.length)] + Math.floor(Math.random() * 99);
+  const source = document.getElementById('nh-test-src').value;
+  if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ sent: ${name} (${source})`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+
+function nhBurst(n) {
+  for (let i = 0; i < n; i++) {
+    const name = _nhNames[Math.floor(Math.random() * _nhNames.length)] + Math.floor(Math.random() * 99);
+    const source = Math.random() < 0.5 ? 'youtube' : 'tiktok';
+    if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+  }
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ burst ×${n} sent`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+
+function nhReset() {
+  if (ablyChannel) ablyChannel.publish('new-here-reset', {}).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = 'Pile reset'; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
 
 </script>
 </body>
