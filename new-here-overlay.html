@@ -64,6 +64,7 @@ let SIGN_PILL_ENABLED  = true; // false = text only, no pill background
 let CTR_PILL_ENABLED   = true;
 let TIMER_PILL_ENABLED = true;
 let NAME_PILL_ENABLED  = true;
+let DEDUPE_ENABLED     = true; // false = same viewer can join/splat repeatedly
 
 function saveDisplayCfg() {
   try {
@@ -82,6 +83,7 @@ function saveDisplayCfg() {
       timerSeconds: TIMER_SECONDS, timerEndAt: TIMER_END_AT, timerRemainingMs: TIMER_REMAINING_MS,
       signPillOn: SIGN_PILL_ENABLED, ctrPillOn: CTR_PILL_ENABLED,
       timerPillOn: TIMER_PILL_ENABLED, namePillOn: NAME_PILL_ENABLED,
+      dedupeOn: DEDUPE_ENABLED,
     }));
   } catch {}
 }
@@ -121,11 +123,11 @@ function saveDisplayCfg() {
     if (c.ctrPillOn    != null) CTR_PILL_ENABLED   = c.ctrPillOn;
     if (c.timerPillOn  != null) TIMER_PILL_ENABLED = c.timerPillOn;
     if (c.namePillOn   != null) NAME_PILL_ENABLED  = c.namePillOn;
+    if (c.dedupeOn     != null) DEDUPE_ENABLED     = c.dedupeOn;
   } catch {}
 })();
 
 const CONFIG = {
-  dedupe: true,             // ignore repeat joins from the same user/platform
   maxFigures: 200,          // beyond this, count keeps rising but no new bodies render
   maxPerSec: 5,             // throttle burst events to this rate
   persist: true,            // save crowd to localStorage so OBS refresh doesn't reset
@@ -298,7 +300,7 @@ function spawnFigure(username, source) {
 // QUEUE — deduplication + rate limiting
 // ═══════════════════════════════════════════════════════════════════
 function enqueue(username, source) {
-  if (CONFIG.dedupe) {
+  if (DEDUPE_ENABLED) {
     const key = `${source}:${username.toLowerCase()}`;
     if (seenUsers.has(key)) return;
     seenUsers.add(key);
@@ -1054,6 +1056,7 @@ function connectAbly() {
     if (d.ctrPillOn    != null) CTR_PILL_ENABLED   = d.ctrPillOn;
     if (d.timerPillOn  != null) TIMER_PILL_ENABLED = d.timerPillOn;
     if (d.namePillOn   != null) NAME_PILL_ENABLED  = d.namePillOn;
+    if (d.dedupeOn     != null) DEDUPE_ENABLED     = d.dedupeOn;
     saveDisplayCfg();
   });
 
