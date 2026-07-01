@@ -33,8 +33,10 @@ const ABLY_CH  = 'splat-overlay';
 
 // Display params — adjustable live from stream-dock via 'new-here-config' Ably event
 let SIGN_SCALE    = 1.0;
+let SIGN_X_OFFSET = 0;
 let SIGN_Y_OFFSET = 0;
 let CTR_SCALE     = 1.0;
+let CTR_X_OFFSET  = 0;
 let CTR_Y_OFFSET  = 0;
 let SIGN_LABEL    = 'JUST JOINED';
 let CTR_LABEL     = 'NEW HERE';
@@ -42,15 +44,38 @@ let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
 let IDLE_TITLE    = 'Be the first!';
 let IDLE_SUB      = 'type NEW HERE';
 let FLOOR_OFFSET  = 0;   // shifts the pile floor up/down from its base position
+let BLOB_SCALE    = 1.0; // multiplier on mascot body render size (packing geometry unaffected)
+let NAME_SCALE    = 1.0; // per-figure name pill scale
+let NAME_X_OFFSET = 0;
+let NAME_Y_OFFSET = 0;
+let IDLE_SCALE    = 1.0;
+let IDLE_X_OFFSET = 0;
+let IDLE_Y_OFFSET = 0;
+let TIMER_ENABLED = false;
+let TIMER_PAUSED  = false;
+let TIMER_SECONDS = 300;
+let TIMER_END_AT       = null; // epoch ms when timer finishes (running state)
+let TIMER_REMAINING_MS = null; // frozen remaining time while paused
+let TIMER_LABEL   = 'STARTING SOON';
+let TIMER_SCALE   = 1.0;
+let TIMER_X_OFFSET = 0;
+let TIMER_Y_OFFSET = 0;
 
 function saveDisplayCfg() {
   try {
     localStorage.setItem('nh_display_cfg', JSON.stringify({
-      signScale: SIGN_SCALE, signYOffset: SIGN_Y_OFFSET,
-      ctrScale: CTR_SCALE, ctrYOffset: CTR_Y_OFFSET,
+      signScale: SIGN_SCALE, signXOffset: SIGN_X_OFFSET, signYOffset: SIGN_Y_OFFSET,
+      ctrScale: CTR_SCALE, ctrXOffset: CTR_X_OFFSET, ctrYOffset: CTR_Y_OFFSET,
       signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT,
       idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
       floorOffset: FLOOR_OFFSET,
+      blobScale: BLOB_SCALE,
+      nameScale: NAME_SCALE, nameXOffset: NAME_X_OFFSET, nameYOffset: NAME_Y_OFFSET,
+      idleScale: IDLE_SCALE, idleXOffset: IDLE_X_OFFSET, idleYOffset: IDLE_Y_OFFSET,
+      timerLabel: TIMER_LABEL, timerScale: TIMER_SCALE,
+      timerXOffset: TIMER_X_OFFSET, timerYOffset: TIMER_Y_OFFSET,
+      timerEnabled: TIMER_ENABLED, timerPaused: TIMER_PAUSED,
+      timerSeconds: TIMER_SECONDS, timerEndAt: TIMER_END_AT, timerRemainingMs: TIMER_REMAINING_MS,
     }));
   } catch {}
 }
@@ -59,8 +84,10 @@ function saveDisplayCfg() {
   try {
     const c = JSON.parse(localStorage.getItem('nh_display_cfg') || '{}');
     if (c.signScale    != null) SIGN_SCALE    = c.signScale;
+    if (c.signXOffset  != null) SIGN_X_OFFSET = c.signXOffset;
     if (c.signYOffset  != null) SIGN_Y_OFFSET = c.signYOffset;
     if (c.ctrScale     != null) CTR_SCALE     = c.ctrScale;
+    if (c.ctrXOffset   != null) CTR_X_OFFSET  = c.ctrXOffset;
     if (c.ctrYOffset   != null) CTR_Y_OFFSET  = c.ctrYOffset;
     if (c.signLabel    != null) SIGN_LABEL    = c.signLabel;
     if (c.ctrLabel     != null) CTR_LABEL     = c.ctrLabel;
@@ -68,6 +95,22 @@ function saveDisplayCfg() {
     if (c.idleTitle    != null) IDLE_TITLE    = c.idleTitle;
     if (c.idleSub      != null) IDLE_SUB      = c.idleSub;
     if (c.floorOffset  != null) FLOOR_OFFSET  = c.floorOffset;
+    if (c.blobScale    != null) BLOB_SCALE    = c.blobScale;
+    if (c.nameScale    != null) NAME_SCALE    = c.nameScale;
+    if (c.nameXOffset  != null) NAME_X_OFFSET = c.nameXOffset;
+    if (c.nameYOffset  != null) NAME_Y_OFFSET = c.nameYOffset;
+    if (c.idleScale    != null) IDLE_SCALE    = c.idleScale;
+    if (c.idleXOffset  != null) IDLE_X_OFFSET = c.idleXOffset;
+    if (c.idleYOffset  != null) IDLE_Y_OFFSET = c.idleYOffset;
+    if (c.timerLabel   != null) TIMER_LABEL   = c.timerLabel;
+    if (c.timerScale   != null) TIMER_SCALE   = c.timerScale;
+    if (c.timerXOffset != null) TIMER_X_OFFSET = c.timerXOffset;
+    if (c.timerYOffset != null) TIMER_Y_OFFSET = c.timerYOffset;
+    if (c.timerEnabled != null) TIMER_ENABLED = c.timerEnabled;
+    if (c.timerPaused  != null) TIMER_PAUSED  = c.timerPaused;
+    if (c.timerSeconds != null) TIMER_SECONDS = c.timerSeconds;
+    if (c.timerEndAt   != null) TIMER_END_AT  = c.timerEndAt;
+    if (c.timerRemainingMs != null) TIMER_REMAINING_MS = c.timerRemainingMs;
   } catch {}
 })();
 
@@ -202,10 +245,6 @@ function spawnFigure(username, source) {
   if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
     const { x: tx, y: ty } = getDepositionPos();
 
-    // Show name pill only on surface figures; cap total shown at 12
-    const namedCount = figures.filter(f => f.showName).length;
-    const showName   = namedCount < 12;
-
     // Entry path: 60% fall from top, 40% run in from side
     const useTop   = rnd() < 0.6;
     const fromLeft = rnd() < 0.5;
@@ -225,7 +264,6 @@ function spawnFigure(username, source) {
       color,
       source,
       username,
-      showName,
       phase:         'entering',  // entering | splatting | settled
       enterProgress: 0,
       splatProgress: 0,
@@ -289,7 +327,7 @@ function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
 // Origin = feet center; body extends upward (negative y).
 // All coords are in local "large" space; caller scales by S.
 // ═══════════════════════════════════════════════════════════════════
-function drawMascot(ctx, color, pal, username, showName, splatPhase, splatT) {
+function drawMascot(ctx, color, pal, splatPhase, splatT) {
   // Squash-and-stretch: splatPhase=true means we're in the splat animation
   // splatT goes 0→1; max squash at splatT≈0.4 then springs back
   let sx = 1, sy = 1;
@@ -387,36 +425,46 @@ function drawMascot(ctx, color, pal, username, showName, splatPhase, splatT) {
   ctx.quadraticCurveTo(0, -42, 10, -50);
   ctx.stroke();
 
-  ctx.restore(); // end squash transform — name pill is NOT squashed
+  ctx.restore(); // end squash transform
+}
 
-  // Name pill
-  if (showName && username) {
-    ctx.font = '600 23px Fredoka, sans-serif';
-    const tw    = ctx.measureText(username).width;
-    const pillW = Math.max(70, tw + 32);
-    const pillY = -172;
-
-    ctx.fillStyle   = pal.plate;
-    ctx.strokeStyle = pal.plateStroke;
-    ctx.lineWidth   = 3;
-    roundRect(ctx, -pillW / 2, pillY - 30, pillW, 46, 23);
-    ctx.fill();
-    ctx.stroke();
-
-    // Downward pointer nub
-    ctx.fillStyle = pal.plate;
-    ctx.beginPath();
-    ctx.moveTo(-9, pillY + 13);
-    ctx.lineTo( 0, pillY + 27);
-    ctx.lineTo( 9, pillY + 13);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle    = pal.plateTx;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(username, 0, pillY - 1);
+// Small pill above a mascot's head — drawn with its own independent
+// scale/offset transform (NAME_SCALE etc.) so it doesn't inherit the
+// blob's S*BLOB_SCALE sizing. cx/cy are the pill's own local center.
+function drawNamePill(ctx, cx, cy, pal, username) {
+  const padX = 12, padY = 8;
+  let fsize = 16;
+  ctx.font = `600 ${fsize}px Fredoka, sans-serif`;
+  let tw = ctx.measureText(username).width;
+  while (tw > 140 && fsize > 10) {
+    fsize -= 1;
+    ctx.font = `600 ${fsize}px Fredoka, sans-serif`;
+    tw = ctx.measureText(username).width;
   }
+  const pillW = Math.max(50, tw + padX * 2);
+  const pillH = fsize + padY * 2;
+
+  ctx.fillStyle   = pal.plate;
+  ctx.strokeStyle = pal.plateStroke;
+  ctx.lineWidth   = 2;
+  roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, pillH / 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Downward pointer nub
+  ctx.fillStyle = pal.plate;
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy + pillH / 2 - 2);
+  ctx.lineTo(cx,     cy + pillH / 2 + 8);
+  ctx.lineTo(cx + 6, cy + pillH / 2 - 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle    = pal.plateTx;
+  ctx.font         = `600 ${fsize}px Fredoka, sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(username, cx, cy);
 }
 
 // Speed streaks shown while figure is in transit
@@ -539,6 +587,30 @@ function drawPill(ctx, opts) {
   ctx.fillText(value, labelX + labelW + gapLabelValue, cy);
 }
 
+function timerRemainingMs() {
+  if (!TIMER_ENABLED) return null;
+  if (TIMER_PAUSED) return Math.max(0, TIMER_REMAINING_MS ?? 0);
+  if (TIMER_END_AT == null) return null;
+  return Math.max(0, TIMER_END_AT - Date.now());
+}
+
+function drawTimer(ctx) {
+  const remMs = timerRemainingMs();
+  if (remMs == null) return;
+  const totalSec = Math.ceil(remMs / 1000);
+  const mm = Math.floor(totalSec / 60);
+  const ss = totalSec % 60;
+  const value = `${mm}:${String(ss).padStart(2, '0')}`;
+  drawPill(ctx, {
+    cx: 540, cy: 210,
+    dotColor: remMs > 0 ? '#FBBF24' : '#F87171',
+    bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
+    labelColor: '#CBD5E1', label: TIMER_LABEL, labelSize: 14,
+    value, valueColor: '#fff', valueSize: 20,
+    maxWidth: 420,
+  });
+}
+
 function drawCounter(ctx, n) {
   drawPill(ctx, {
     cx: 540, cy: 150,
@@ -573,14 +645,14 @@ function drawIdleState(ctx, now) {
   ctx.save();
   ctx.translate(455, 1650 + bob1);
   ctx.scale(1.05, 1.05);   // slightly larger than pile figures for visibility
-  drawMascot(ctx, '#DC2626', YT, '', false, false, 0);
+  drawMascot(ctx, '#DC2626', YT, false, 0);
   ctx.restore();
 
   // TikTok host (blue)
   ctx.save();
   ctx.translate(625, 1665 + bob2);
   ctx.scale(1.05, 1.05);
-  drawMascot(ctx, '#2563EB', TK, '', false, false, 0);
+  drawMascot(ctx, '#2563EB', TK, false, 0);
   ctx.restore();
 
   // Speech bubble — auto-size to fit both editable lines
@@ -709,17 +781,36 @@ function frame(now) {
   drawFloor(ctx);
 
   if (count === 0) {
+    const iCX = 540, iCY = 1500;
+    ctx.save();
+    ctx.translate(iCX + IDLE_X_OFFSET, iCY + IDLE_Y_OFFSET);
+    ctx.scale(IDLE_SCALE, IDLE_SCALE);
+    ctx.translate(-iCX, -iCY);
     drawIdleState(ctx, now);
+    ctx.restore();
   } else {
     // Sort back-to-front by current y so overlapping figures look correct
     const sorted = [...figures].sort((a, b) => currentPos(a).y - currentPos(b).y);
 
+    // Names shown on: any figure still in flight (entering/splatting — the
+    // "just landed" ones), plus the topmost settled figures (the visible
+    // surface of the pile). Recomputed every frame so names always track
+    // who's actually on top, instead of freezing on the first 12 joiners.
+    const NAME_CAP = 12;
+    const topSettled = figures
+      .filter(f => f.phase === 'settled')
+      .sort((a, b) => a.y - b.y)
+      .slice(0, NAME_CAP);
+    const nameIds = new Set(topSettled.map(f => f.id));
+    for (const f of figures) { if (f.phase !== 'settled') nameIds.add(f.id); }
+
     for (const fig of sorted) {
       const pos = currentPos(fig);
+      const blobS = S * BLOB_SCALE;
 
       ctx.save();
       ctx.translate(pos.x, pos.y);
-      ctx.scale(S, S);
+      ctx.scale(blobS, blobS);
       ctx.rotate(fig.rot * Math.PI / 180);
 
       // Speed streaks (fade out in last 15% of entry)
@@ -737,17 +828,19 @@ function frame(now) {
       }
 
       // The figure itself
-      drawMascot(
-        ctx,
-        fig.color,
-        fig.pal,
-        fig.username,
-        fig.showName,
-        fig.phase === 'splatting',
-        fig.splatProgress,
-      );
+      drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress);
 
       ctx.restore();
+
+      // Name pill — independent scale/offset from the blob itself
+      if (nameIds.has(fig.id) && fig.username) {
+        const headY = pos.y - 172 * blobS; // sits just above the head, tracks blob size
+        ctx.save();
+        ctx.translate(pos.x + NAME_X_OFFSET, headY + NAME_Y_OFFSET);
+        ctx.scale(NAME_SCALE, NAME_SCALE);
+        drawNamePill(ctx, 0, 0, fig.pal, fig.username);
+        ctx.restore();
+      }
     }
 
     // JUST JOINED sign (clamped to safe zone top)
@@ -755,7 +848,7 @@ function frame(now) {
       const clampedPeak = Math.max(600, signPeakY);
       const sCX = 540, sCY = clampedPeak - SIGN_GAP;
       ctx.save();
-      ctx.translate(sCX, sCY + SIGN_Y_OFFSET);
+      ctx.translate(sCX + SIGN_X_OFFSET, sCY + SIGN_Y_OFFSET);
       ctx.scale(SIGN_SCALE, SIGN_SCALE);
       ctx.translate(-sCX, -sCY);
       drawJoinSign(ctx, newestName, newestSource, clampedPeak);
@@ -767,10 +860,21 @@ function frame(now) {
   {
     const cCX = 540, cCY = 150;
     ctx.save();
-    ctx.translate(cCX, cCY + CTR_Y_OFFSET);
+    ctx.translate(cCX + CTR_X_OFFSET, cCY + CTR_Y_OFFSET);
     ctx.scale(CTR_SCALE, CTR_SCALE);
     ctx.translate(-cCX, -cCY);
     drawCounter(ctx, count);
+    ctx.restore();
+  }
+
+  // Countdown timer (always visible when enabled)
+  if (TIMER_ENABLED) {
+    const tCX = 540, tCY = 210;
+    ctx.save();
+    ctx.translate(tCX + TIMER_X_OFFSET, tCY + TIMER_Y_OFFSET);
+    ctx.scale(TIMER_SCALE, TIMER_SCALE);
+    ctx.translate(-tCX, -tCY);
+    drawTimer(ctx);
     ctx.restore();
   }
 
@@ -792,7 +896,7 @@ function saveState() {
       heights: Array.from(heights),
       figures: figures.filter(f => f.phase === 'settled').map(f => ({
         id: f.id, x: f.x, y: f.y, color: f.color,
-        source: f.source, username: f.username, showName: f.showName, rot: f.rot,
+        source: f.source, username: f.username, rot: f.rot,
       })),
       seenUsers: Array.from(seenUsers),
     }));
@@ -843,8 +947,10 @@ function connectAbly() {
   ch.subscribe('new-here-config', msg => {
     const d = msg.data || {};
     if (d.signScale    != null) SIGN_SCALE    = d.signScale;
+    if (d.signXOffset  != null) SIGN_X_OFFSET = d.signXOffset;
     if (d.signYOffset  != null) SIGN_Y_OFFSET = d.signYOffset;
     if (d.ctrScale     != null) CTR_SCALE     = d.ctrScale;
+    if (d.ctrXOffset   != null) CTR_X_OFFSET  = d.ctrXOffset;
     if (d.ctrYOffset   != null) CTR_Y_OFFSET  = d.ctrYOffset;
     if (d.signLabel    != null) SIGN_LABEL    = d.signLabel || SIGN_LABEL;
     if (d.ctrLabel     != null) CTR_LABEL     = d.ctrLabel  || CTR_LABEL;
@@ -852,6 +958,46 @@ function connectAbly() {
     if (d.idleTitle    != null) IDLE_TITLE    = d.idleTitle  || IDLE_TITLE;
     if (d.idleSub      != null) IDLE_SUB      = d.idleSub    || IDLE_SUB;
     if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
+    if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
+    if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
+    if (d.nameXOffset  != null) NAME_X_OFFSET = d.nameXOffset;
+    if (d.nameYOffset  != null) NAME_Y_OFFSET = d.nameYOffset;
+    if (d.idleScale    != null) IDLE_SCALE    = d.idleScale;
+    if (d.idleXOffset  != null) IDLE_X_OFFSET = d.idleXOffset;
+    if (d.idleYOffset  != null) IDLE_Y_OFFSET = d.idleYOffset;
+    if (d.timerLabel   != null) TIMER_LABEL   = d.timerLabel || TIMER_LABEL;
+    if (d.timerScale   != null) TIMER_SCALE   = d.timerScale;
+    if (d.timerXOffset != null) TIMER_X_OFFSET = d.timerXOffset;
+    if (d.timerYOffset != null) TIMER_Y_OFFSET = d.timerYOffset;
+    saveDisplayCfg();
+  });
+
+  // Countdown timer commands — kept separate from the config snapshot above
+  // since these are one-shot state transitions, not cosmetic settings.
+  ch.subscribe('new-here-timer-cmd', msg => {
+    const { action, seconds } = msg.data || {};
+    if (action === 'start') {
+      TIMER_ENABLED = true;
+      TIMER_PAUSED  = false;
+      TIMER_SECONDS = seconds || TIMER_SECONDS;
+      TIMER_END_AT  = Date.now() + TIMER_SECONDS * 1000;
+      TIMER_REMAINING_MS = null;
+    } else if (action === 'pause') {
+      if (TIMER_ENABLED && !TIMER_PAUSED) {
+        TIMER_REMAINING_MS = Math.max(0, TIMER_END_AT - Date.now());
+        TIMER_PAUSED = true;
+      }
+    } else if (action === 'resume') {
+      if (TIMER_ENABLED && TIMER_PAUSED) {
+        TIMER_END_AT = Date.now() + (TIMER_REMAINING_MS ?? 0);
+        TIMER_PAUSED = false;
+      }
+    } else if (action === 'reset') {
+      TIMER_ENABLED = false;
+      TIMER_PAUSED  = false;
+      TIMER_END_AT  = null;
+      TIMER_REMAINING_MS = null;
+    }
     saveDisplayCfg();
   });
 
