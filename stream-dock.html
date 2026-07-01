@@ -1903,6 +1903,20 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <input type="range" id="nh-ctr-y" min="-200" max="600" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-ctr-y','nh-ctr-y-v')">
             <span id="nh-ctr-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
           </div>
+          <!-- Text editing -->
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Text</div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Sign label</label>
+            <input class="ctrl-in" id="nh-sign-label" type="text" value="JUST JOINED" style="flex:1;min-width:0;">
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Counter label</label>
+            <input class="ctrl-in" id="nh-ctr-label" type="text" value="NEW HERE" style="flex:1;min-width:0;">
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Count format</label>
+            <input class="ctrl-in" id="nh-ctr-format" type="text" value="{n} joined" style="flex:1;min-width:0;" title="Use {n} for the count">
+          </div>
           <button class="ctrl-btn c-act" onclick="nhApplyConfig()" style="width:100%;margin-top:1px;">Apply to Overlay</button>
           <!-- Test controls -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Test</div>
@@ -3249,16 +3263,21 @@ function trim(el) {
 const ably = new Ably.Realtime({ key: ABLY_KEY });
 const ablyChannel = ably.channels.get(ABLY_CH);
 
-// NEW HERE overlay alive signal — update status indicator
+// NEW HERE overlay connection — ping on load, show LIVE/offline status
 let _nhAliveTimer = null;
-ablyChannel.subscribe('new-here-alive', () => {
+function _nhMarkLive() {
   const el = document.getElementById('nh-overlay-status');
   if (el) el.innerHTML = '<span style="color:#34D399">● LIVE</span>';
   clearTimeout(_nhAliveTimer);
   _nhAliveTimer = setTimeout(() => {
     const el = document.getElementById('nh-overlay-status');
     if (el) el.innerHTML = '<span style="color:#6b7280">● offline</span>';
-  }, 60000);
+  }, 35000);
+}
+ablyChannel.subscribe('new-here-alive', _nhMarkLive);
+// Ping the overlay when stream-dock loads (overlay responds with new-here-alive)
+ably.connection.once('connected', () => {
+  ablyChannel.publish('new-here-ping', {}).catch(() => {});
 });
 
 /* ══ Ably usage counter ══
@@ -5777,8 +5796,12 @@ function nhApplyConfig() {
   const signYOffset = parseInt(document.getElementById('nh-sign-y').value);
   const ctrScale    = parseInt(document.getElementById('nh-ctr-scale').value) / 100;
   const ctrYOffset  = parseInt(document.getElementById('nh-ctr-y').value);
-  if (ablyChannel) ablyChannel.publish('new-here-config', { signScale, signYOffset, ctrScale, ctrYOffset }).catch(() => {});
-  try { localStorage.setItem('nh_display_cfg', JSON.stringify({ signScale, signYOffset, ctrScale, ctrYOffset })); } catch {}
+  const signLabel   = document.getElementById('nh-sign-label').value.trim()  || 'JUST JOINED';
+  const ctrLabel    = document.getElementById('nh-ctr-label').value.trim()   || 'NEW HERE';
+  const ctrFormat   = document.getElementById('nh-ctr-format').value.trim()  || '{n} joined';
+  const cfg = { signScale, signYOffset, ctrScale, ctrYOffset, signLabel, ctrLabel, ctrFormat };
+  if (ablyChannel) ablyChannel.publish('new-here-config', cfg).catch(() => {});
+  try { localStorage.setItem('nh_display_cfg', JSON.stringify(cfg)); } catch {}
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = '↑ config applied'; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }
@@ -5804,6 +5827,9 @@ function nhLoadDisplayConfig() {
       const el = document.getElementById('nh-ctr-y'); if (el) el.value = c.ctrYOffset;
       const lv = document.getElementById('nh-ctr-y-v'); if (lv) lv.textContent = (c.ctrYOffset > 0 ? '+' : '') + c.ctrYOffset + 'px';
     }
+    if (c.signLabel  != null) { const el = document.getElementById('nh-sign-label');  if (el) el.value = c.signLabel; }
+    if (c.ctrLabel   != null) { const el = document.getElementById('nh-ctr-label');   if (el) el.value = c.ctrLabel; }
+    if (c.ctrFormat  != null) { const el = document.getElementById('nh-ctr-format');  if (el) el.value = c.ctrFormat; }
   } catch {}
 }
 
