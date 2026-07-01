@@ -31,6 +31,22 @@
 const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
 const ABLY_CH  = 'splat-overlay';
 
+// Display params — adjustable live from stream-dock via 'new-here-config' Ably event
+let SIGN_SCALE    = 1.0;
+let SIGN_Y_OFFSET = 0;
+let CTR_SCALE     = 1.0;
+let CTR_Y_OFFSET  = 0;
+
+(function loadDisplayCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem('nh_display_cfg') || '{}');
+    if (c.signScale    != null) SIGN_SCALE    = c.signScale;
+    if (c.signYOffset  != null) SIGN_Y_OFFSET = c.signYOffset;
+    if (c.ctrScale     != null) CTR_SCALE     = c.ctrScale;
+    if (c.ctrYOffset   != null) CTR_Y_OFFSET  = c.ctrYOffset;
+  } catch {}
+})();
+
 const CONFIG = {
   dedupe: true,             // ignore repeat joins from the same user/platform
   maxFigures: 200,          // beyond this, count keeps rising but no new bodies render
@@ -677,13 +693,27 @@ function frame(now) {
 
     // JUST JOINED sign (clamped to safe zone top)
     if (newestName) {
-      const clampedPeak = Math.max(600, signPeakY); // don't go above y:600
+      const clampedPeak = Math.max(600, signPeakY);
+      const sCX = 540, sCY = clampedPeak - 108;
+      ctx.save();
+      ctx.translate(sCX, sCY + SIGN_Y_OFFSET);
+      ctx.scale(SIGN_SCALE, SIGN_SCALE);
+      ctx.translate(-sCX, -sCY);
       drawJoinSign(ctx, newestName, newestSource, clampedPeak);
+      ctx.restore();
     }
   }
 
-  // Counter is always visible
-  drawCounter(ctx, count);
+  // Counter (always visible)
+  {
+    const cCX = 540, cCY = 181;
+    ctx.save();
+    ctx.translate(cCX, cCY + CTR_Y_OFFSET);
+    ctx.scale(CTR_SCALE, CTR_SCALE);
+    ctx.translate(-cCX, -cCY);
+    drawCounter(ctx, count);
+    ctx.restore();
+  }
 
   requestAnimationFrame(frame);
 }
@@ -743,13 +773,28 @@ function loadState() {
 function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
   const ch     = client.channels.get(ABLY_CH);
+
   ch.subscribe('new-here', msg => {
     const { username, source } = msg.data || {};
     if (username && source) enqueue(username, source);
   });
+
   ch.subscribe('new-here-reset', () => resetOverlay());
-  client.connection.on('connected', () => console.log('[Ably] connected →', ABLY_CH));
-  client.connection.on('failed',    () => console.error('[Ably] connection failed'));
+
+  ch.subscribe('new-here-config', msg => {
+    const d = msg.data || {};
+    if (d.signScale    != null) SIGN_SCALE    = d.signScale;
+    if (d.signYOffset  != null) SIGN_Y_OFFSET = d.signYOffset;
+    if (d.ctrScale     != null) CTR_SCALE     = d.ctrScale;
+    if (d.ctrYOffset   != null) CTR_Y_OFFSET  = d.ctrYOffset;
+    try { localStorage.setItem('nh_display_cfg', JSON.stringify({ signScale: SIGN_SCALE, signYOffset: SIGN_Y_OFFSET, ctrScale: CTR_SCALE, ctrYOffset: CTR_Y_OFFSET })); } catch {}
+  });
+
+  client.connection.on('connected', () => {
+    console.log('[Ably] connected →', ABLY_CH);
+    ch.publish('new-here-alive', {}).catch(() => {});
+  });
+  client.connection.on('failed', () => console.error('[Ably] connection failed'));
 }
 
 // ═══════════════════════════════════════════════════════════════════
