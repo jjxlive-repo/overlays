@@ -60,6 +60,10 @@ let TIMER_LABEL   = 'STARTING SOON';
 let TIMER_SCALE   = 1.0;
 let TIMER_X_OFFSET = 0;
 let TIMER_Y_OFFSET = 0;
+let SIGN_PILL_ENABLED  = true; // false = text only, no pill background
+let CTR_PILL_ENABLED   = true;
+let TIMER_PILL_ENABLED = true;
+let NAME_PILL_ENABLED  = true;
 
 function saveDisplayCfg() {
   try {
@@ -76,6 +80,8 @@ function saveDisplayCfg() {
       timerXOffset: TIMER_X_OFFSET, timerYOffset: TIMER_Y_OFFSET,
       timerEnabled: TIMER_ENABLED, timerPaused: TIMER_PAUSED,
       timerSeconds: TIMER_SECONDS, timerEndAt: TIMER_END_AT, timerRemainingMs: TIMER_REMAINING_MS,
+      signPillOn: SIGN_PILL_ENABLED, ctrPillOn: CTR_PILL_ENABLED,
+      timerPillOn: TIMER_PILL_ENABLED, namePillOn: NAME_PILL_ENABLED,
     }));
   } catch {}
 }
@@ -111,6 +117,10 @@ function saveDisplayCfg() {
     if (c.timerSeconds != null) TIMER_SECONDS = c.timerSeconds;
     if (c.timerEndAt   != null) TIMER_END_AT  = c.timerEndAt;
     if (c.timerRemainingMs != null) TIMER_REMAINING_MS = c.timerRemainingMs;
+    if (c.signPillOn   != null) SIGN_PILL_ENABLED  = c.signPillOn;
+    if (c.ctrPillOn    != null) CTR_PILL_ENABLED   = c.ctrPillOn;
+    if (c.timerPillOn  != null) TIMER_PILL_ENABLED = c.timerPillOn;
+    if (c.namePillOn   != null) NAME_PILL_ENABLED  = c.namePillOn;
   } catch {}
 })();
 
@@ -136,8 +146,9 @@ const LO_X = 150 + PACK_R;
 const HI_X = 930 - PACK_R;
 const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 16 columns
 
-const ENTER_DUR  = 1100;  // ms for a figure to travel to its resting position
-const SPLAT_DUR  = 420;   // ms for the squash+burst animation on landing
+const ENTER_DUR   = 1100;  // ms for a figure to travel to its resting position
+const SPLAT_DUR   = 420;   // ms for the squash+burst animation on landing
+const EXPLODE_DUR = 950;   // ms for the pile-clear burst animation
 const QUEUE_GAP  = 1000 / CONFIG.maxPerSec;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -192,6 +203,8 @@ let signPeakY    = FLOOR_Y;   // tweened version of pilePeakY for smooth sign ri
 let lastSpawn    = 0;
 let seenUsers    = new Set();
 let figIdSeq     = 0;
+let resetPending = false;  // true while the explode-and-clear animation is playing
+let resetAt      = 0;      // timestamp when the explosion finishes and hardReset() fires
 
 // ═══════════════════════════════════════════════════════════════════
 // HEIGHTMAP DEPOSITION
@@ -441,6 +454,16 @@ function drawNamePill(ctx, cx, cy, pal, username) {
     ctx.font = `600 ${fsize}px Fredoka, sans-serif`;
     tw = ctx.measureText(username).width;
   }
+
+  if (!NAME_PILL_ENABLED) {
+    ctx.fillStyle    = pal.plateTx;
+    ctx.font         = `600 ${fsize}px Fredoka, sans-serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(username, cx, cy);
+    return;
+  }
+
   const pillW = Math.max(50, tw + padX * 2);
   const pillH = fsize + padY * 2;
 
@@ -530,10 +553,13 @@ function drawFloor(ctx) {
 
 // Compact single-row pill — sized to match gift-bar.html's notification pills
 // (dot + label + value, ~44-48px tall, auto-width with tight padding).
+// showBg=false drops the rounded background/border/dot and centers the
+// label+value text alone ("text only" mode).
 function drawPill(ctx, opts) {
   const {
     cx, cy, dotColor, bg, stroke, labelColor, label, labelSize,
     value, valueColor, valueSize, valueFont = 'Fredoka', maxWidth = 560,
+    showBg = true,
   } = opts;
 
   const dotR = 5, padL = 16, padR = 18, gapDotLabel = 8, gapLabelValue = 10, pillH = 46;
@@ -546,14 +572,36 @@ function drawPill(ctx, opts) {
   let vSize = valueSize;
   ctx.font = `700 ${vSize}px ${valueFont}, sans-serif`;
   let valueW = ctx.measureText(value).width;
-  const availW = maxWidth - (padL + padR + dotR * 2 + gapDotLabel + labelW + gapLabelValue);
+  const reserveDot = showBg ? dotR * 2 + gapDotLabel : 0;
+  const availW = maxWidth - (padL + padR + reserveDot + labelW + gapLabelValue);
   while (valueW > availW && vSize > 13) {
     vSize -= 1;
     ctx.font = `700 ${vSize}px ${valueFont}, sans-serif`;
     valueW = ctx.measureText(value).width;
   }
 
-  const contentW = dotR * 2 + gapDotLabel + labelW + gapLabelValue + valueW;
+  if (!showBg) {
+    // Text-only: center label+value as one group directly on cx, no box/dot.
+    const totalW = labelW + gapLabelValue + valueW;
+    const labelX = cx - totalW / 2;
+
+    ctx.fillStyle     = labelColor;
+    ctx.font          = `700 ${labelSize}px "Space Grotesk", sans-serif`;
+    ctx.letterSpacing = '2px';
+    ctx.textAlign     = 'left';
+    ctx.textBaseline  = 'middle';
+    ctx.fillText(label, labelX, cy + 1);
+    ctx.letterSpacing = '0px';
+
+    ctx.fillStyle    = valueColor;
+    ctx.font         = `700 ${vSize}px ${valueFont}, sans-serif`;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(value, labelX + labelW + gapLabelValue, cy);
+    return;
+  }
+
+  const contentW = reserveDot + labelW + gapLabelValue + valueW;
   const pillW = Math.min(maxWidth, contentW + padL + padR);
   const left = cx - pillW / 2;
 
@@ -607,6 +655,7 @@ function drawTimer(ctx) {
     bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
     labelColor: '#CBD5E1', label: TIMER_LABEL, labelSize: 14,
     value, valueColor: '#fff', valueSize: 20,
+    showBg: TIMER_PILL_ENABLED,
     maxWidth: 420,
   });
 }
@@ -618,6 +667,7 @@ function drawCounter(ctx, n) {
     labelColor: '#CBD5E1', label: CTR_LABEL, labelSize: 15,
     value: CTR_FORMAT.replace('{n}', n), valueColor: '#fff', valueSize: 21,
     maxWidth: 480,
+    showBg: CTR_PILL_ENABLED,
   });
 }
 
@@ -632,6 +682,7 @@ function drawJoinSign(ctx, name, source, peakY) {
     labelColor: pal ? pal.accent2 : '#CBD5E1', label: SIGN_LABEL, labelSize: 15,
     value: name, valueColor: '#fff', valueSize: 21,
     maxWidth: 560,
+    showBg: SIGN_PILL_ENABLED,
   });
 }
 
@@ -745,6 +796,30 @@ function tick(now) {
   const dt = Math.min(now - lastTick, 100);
   lastTick = now;
 
+  // Countdown timer — auto-explode the pile the instant it hits 0:00
+  if (TIMER_ENABLED && !TIMER_PAUSED && !resetPending) {
+    const rem = timerRemainingMs();
+    if (rem != null && rem <= 0) {
+      TIMER_ENABLED = false;
+      TIMER_END_AT  = null;
+      saveDisplayCfg();
+      explodeAndReset();
+    }
+  }
+
+  if (resetPending) {
+    const dtSec = dt / 1000;
+    for (const fig of figures) {
+      fig.explodeT += dt / EXPLODE_DUR;
+      fig.vy += 1500 * dtSec; // gravity
+      fig.x  += fig.vx * dtSec;
+      fig.y  += fig.vy * dtSec;
+      fig.rot += fig.rotSpeed * dtSec;
+    }
+    if (now >= resetAt) hardReset();
+    return;
+  }
+
   processQueue(now);
 
   for (const fig of figures) {
@@ -802,14 +877,16 @@ function frame(now) {
       .sort((a, b) => a.y - b.y)
       .slice(0, NAME_CAP);
     const nameIds = new Set(topSettled.map(f => f.id));
-    for (const f of figures) { if (f.phase !== 'settled') nameIds.add(f.id); }
+    for (const f of figures) { if (f.phase !== 'settled' && f.phase !== 'exploding') nameIds.add(f.id); }
 
     for (const fig of sorted) {
       const pos = currentPos(fig);
       const blobS = S * BLOB_SCALE;
+      const exploding = fig.phase === 'exploding';
 
       ctx.save();
       ctx.translate(pos.x, pos.y);
+      if (exploding) ctx.globalAlpha = Math.max(0, 1 - fig.explodeT);
       ctx.scale(blobS, blobS);
       ctx.rotate(fig.rot * Math.PI / 180);
 
@@ -833,7 +910,7 @@ function frame(now) {
       ctx.restore();
 
       // Name pill — independent scale/offset from the blob itself
-      if (nameIds.has(fig.id) && fig.username) {
+      if (!exploding && nameIds.has(fig.id) && fig.username) {
         const headY = pos.y - 172 * blobS; // sits just above the head, tracks blob size
         ctx.save();
         ctx.translate(pos.x + NAME_X_OFFSET, headY + NAME_Y_OFFSET);
@@ -969,6 +1046,10 @@ function connectAbly() {
     if (d.timerScale   != null) TIMER_SCALE   = d.timerScale;
     if (d.timerXOffset != null) TIMER_X_OFFSET = d.timerXOffset;
     if (d.timerYOffset != null) TIMER_Y_OFFSET = d.timerYOffset;
+    if (d.signPillOn   != null) SIGN_PILL_ENABLED  = d.signPillOn;
+    if (d.ctrPillOn    != null) CTR_PILL_ENABLED   = d.ctrPillOn;
+    if (d.timerPillOn  != null) TIMER_PILL_ENABLED = d.timerPillOn;
+    if (d.namePillOn   != null) NAME_PILL_ENABLED  = d.namePillOn;
     saveDisplayCfg();
   });
 
@@ -1065,11 +1146,9 @@ window.simulateBurst = function (n, source) {
   }
 };
 
-/**
- * resetOverlay()
- * Clear everything and start fresh. Also clears localStorage.
- */
-window.resetOverlay = function () {
+// Immediately clears all state — the actual "instant" reset, called once the
+// explode animation (below) finishes playing.
+function hardReset() {
   figures       = [];
   heights       = new Array(N_BINS).fill(0);
   queue         = [];
@@ -1079,7 +1158,37 @@ window.resetOverlay = function () {
   pilePeakY     = FLOOR_Y;
   signPeakY     = FLOOR_Y;
   seenUsers     = new Set();
+  resetPending  = false;
   if (CONFIG.persist) localStorage.removeItem(STORAGE_KEY);
+}
+
+// Sends every current figure flying outward/upward with gravity + spin, then
+// clears the pile once the burst finishes. Used for both manual "Reset Pile"
+// and the timer hitting 0:00.
+function explodeAndReset() {
+  if (!figures.length) { hardReset(); return; }
+  for (const f of figures) {
+    const ang   = rnd() * Math.PI * 2;
+    const speed = 320 + rnd() * 520;
+    f.phase     = 'exploding';
+    f.explodeT  = 0;
+    f.vx        = Math.cos(ang) * speed;
+    f.vy        = Math.sin(ang) * speed - 480; // upward bias so it reads as a burst
+    f.rotSpeed  = (rnd() - 0.5) * 720;          // deg/sec spin
+  }
+  queue = []; // don't spawn queued joins mid-explosion
+  newestName = ''; // hide the JUST JOINED sign immediately
+  resetPending = true;
+  resetAt = performance.now() + EXPLODE_DUR;
+}
+
+/**
+ * resetOverlay()
+ * Explode the current pile outward, then clear everything. Also clears
+ * localStorage once the animation completes.
+ */
+window.resetOverlay = function () {
+  explodeAndReset();
 };
 
 // ═══════════════════════════════════════════════════════════════════
