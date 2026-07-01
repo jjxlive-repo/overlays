@@ -1874,6 +1874,10 @@ body.gc-shake { animation: gcShake 0.5s ease; }
               <option value="contains">Contains</option>
             </select>
           </div>
+          <label class="ctrl-row" style="gap:6px;align-items:center;cursor:pointer;">
+            <input type="checkbox" id="nh-dedupe" checked style="cursor:pointer;" onchange="nhApplyConfig()">
+            <span style="font-size:9px;color:var(--txt-dim);">One join per viewer (uncheck to let the same viewer splat repeatedly)</span>
+          </label>
           <!-- Overlay live status -->
           <div class="ctrl-row" style="gap:5px;align-items:center;justify-content:space-between;">
             <span style="font-size:9px;color:var(--txt-dim);">Overlay status</span>
@@ -4981,6 +4985,9 @@ function gistGetConfig() {
     missionStripY:        localStorage.getItem('missionStripY'),
     giftBarY:             localStorage.getItem('giftBarY'),
     [EVENT_PROMO_STORAGE_KEY]: localStorage.getItem(EVENT_PROMO_STORAGE_KEY),
+    nh_cmd:               localStorage.getItem('nh_cmd'),
+    nh_match:             localStorage.getItem('nh_match'),
+    nh_display_cfg:       localStorage.getItem('nh_display_cfg'),
   };
 }
 
@@ -5061,6 +5068,13 @@ function applyGistConfig(cfg) {
       eventPromoPopulateFields(epCfg);
     } catch(e) {}
   }
+
+  // --- NEW HERE crowd pile overlay (command/match + all display config) ---
+  if (cfg.nh_cmd != null)   localStorage.setItem('nh_cmd', cfg.nh_cmd);
+  if (cfg.nh_match != null) localStorage.setItem('nh_match', cfg.nh_match);
+  if (cfg.nh_display_cfg != null) localStorage.setItem('nh_display_cfg', cfg.nh_display_cfg);
+  if (cfg.nh_cmd != null || cfg.nh_match != null) nhLoadSettings();
+  if (cfg.nh_display_cfg != null) { nhLoadDisplayConfig(); nhApplyConfig(); }
 }
 
 async function gistCreate() {
@@ -5936,13 +5950,14 @@ function nhApplyConfig() {
   const ctrPillOn   = document.getElementById('nh-ctr-pill').checked;
   const timerPillOn = document.getElementById('nh-timer-pill').checked;
   const namePillOn  = document.getElementById('nh-name-pill').checked;
+  const dedupeOn    = document.getElementById('nh-dedupe').checked;
   const cfg = {
     signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
     signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
     blobScale, nameScale, nameXOffset, nameYOffset,
     idleScale, idleXOffset, idleYOffset,
     timerLabel, timerScale, timerXOffset, timerYOffset,
-    signPillOn, ctrPillOn, timerPillOn, namePillOn,
+    signPillOn, ctrPillOn, timerPillOn, namePillOn, dedupeOn,
   };
   if (ablyChannel) ablyChannel.publish('new-here-config', cfg).catch(() => {});
   try { localStorage.setItem('nh_display_cfg', JSON.stringify(cfg)); } catch {}
@@ -6037,6 +6052,7 @@ function nhLoadDisplayConfig() {
     if (c.ctrPillOn   != null) { const el = document.getElementById('nh-ctr-pill');   if (el) el.checked = c.ctrPillOn; }
     if (c.timerPillOn != null) { const el = document.getElementById('nh-timer-pill'); if (el) el.checked = c.timerPillOn; }
     if (c.namePillOn  != null) { const el = document.getElementById('nh-name-pill');  if (el) el.checked = c.namePillOn; }
+    if (c.dedupeOn    != null) { const el = document.getElementById('nh-dedupe');     if (el) el.checked = c.dedupeOn; }
   } catch {}
 }
 
