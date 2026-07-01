@@ -1879,6 +1879,13 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <span style="font-size:9px;color:var(--txt-dim);">Overlay status</span>
             <span id="nh-overlay-status" style="font-size:9px;color:#6b7280;">● offline</span>
           </div>
+          <!-- Pile floor position -->
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Pile floor</div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
+            <input type="range" id="nh-floor-y" min="-500" max="120" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-floor-y','nh-floor-y-v')">
+            <span id="nh-floor-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
+          </div>
           <!-- Sign controls -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">JUST JOINED sign</div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
@@ -1916,6 +1923,14 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Count format</label>
             <input class="ctrl-in" id="nh-ctr-format" type="text" value="{n} joined" style="flex:1;min-width:0;" title="Use {n} for the count">
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Idle title</label>
+            <input class="ctrl-in" id="nh-idle-title" type="text" value="Be the first!" style="flex:1;min-width:0;">
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Idle subtext</label>
+            <input class="ctrl-in" id="nh-idle-sub" type="text" value="type NEW HERE" style="flex:1;min-width:0;">
           </div>
           <button class="ctrl-btn c-act" onclick="nhApplyConfig()" style="width:100%;margin-top:1px;">Apply to Overlay</button>
           <!-- Test controls -->
@@ -5799,7 +5814,10 @@ function nhApplyConfig() {
   const signLabel   = document.getElementById('nh-sign-label').value.trim()  || 'JUST JOINED';
   const ctrLabel    = document.getElementById('nh-ctr-label').value.trim()   || 'NEW HERE';
   const ctrFormat   = document.getElementById('nh-ctr-format').value.trim()  || '{n} joined';
-  const cfg = { signScale, signYOffset, ctrScale, ctrYOffset, signLabel, ctrLabel, ctrFormat };
+  const idleTitle   = document.getElementById('nh-idle-title').value.trim() || 'Be the first!';
+  const idleSub     = document.getElementById('nh-idle-sub').value.trim()   || 'type NEW HERE';
+  const floorOffset = parseInt(document.getElementById('nh-floor-y').value);
+  const cfg = { signScale, signYOffset, ctrScale, ctrYOffset, signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset };
   if (ablyChannel) ablyChannel.publish('new-here-config', cfg).catch(() => {});
   try { localStorage.setItem('nh_display_cfg', JSON.stringify(cfg)); } catch {}
   const st = document.getElementById('nh-status');
@@ -5830,6 +5848,12 @@ function nhLoadDisplayConfig() {
     if (c.signLabel  != null) { const el = document.getElementById('nh-sign-label');  if (el) el.value = c.signLabel; }
     if (c.ctrLabel   != null) { const el = document.getElementById('nh-ctr-label');   if (el) el.value = c.ctrLabel; }
     if (c.ctrFormat  != null) { const el = document.getElementById('nh-ctr-format');  if (el) el.value = c.ctrFormat; }
+    if (c.idleTitle  != null) { const el = document.getElementById('nh-idle-title');  if (el) el.value = c.idleTitle; }
+    if (c.idleSub    != null) { const el = document.getElementById('nh-idle-sub');    if (el) el.value = c.idleSub; }
+    if (c.floorOffset != null) {
+      const el = document.getElementById('nh-floor-y'); if (el) el.value = c.floorOffset;
+      const lv = document.getElementById('nh-floor-y-v'); if (lv) lv.textContent = (c.floorOffset > 0 ? '+' : '') + c.floorOffset + 'px';
+    }
   } catch {}
 }
 

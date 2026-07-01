@@ -39,6 +39,21 @@ let CTR_Y_OFFSET  = 0;
 let SIGN_LABEL    = 'JUST JOINED';
 let CTR_LABEL     = 'NEW HERE';
 let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
+let IDLE_TITLE    = 'Be the first!';
+let IDLE_SUB      = 'type NEW HERE';
+let FLOOR_OFFSET  = 0;   // shifts the pile floor up/down from its base position
+
+function saveDisplayCfg() {
+  try {
+    localStorage.setItem('nh_display_cfg', JSON.stringify({
+      signScale: SIGN_SCALE, signYOffset: SIGN_Y_OFFSET,
+      ctrScale: CTR_SCALE, ctrYOffset: CTR_Y_OFFSET,
+      signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT,
+      idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
+      floorOffset: FLOOR_OFFSET,
+    }));
+  } catch {}
+}
 
 (function loadDisplayCfg() {
   try {
@@ -50,6 +65,9 @@ let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
     if (c.signLabel    != null) SIGN_LABEL    = c.signLabel;
     if (c.ctrLabel     != null) CTR_LABEL     = c.ctrLabel;
     if (c.ctrFormat    != null) CTR_FORMAT    = c.ctrFormat;
+    if (c.idleTitle    != null) IDLE_TITLE    = c.idleTitle;
+    if (c.idleSub      != null) IDLE_SUB      = c.idleSub;
+    if (c.floorOffset  != null) FLOOR_OFFSET  = c.floorOffset;
   } catch {}
 })();
 
@@ -64,7 +82,9 @@ const CONFIG = {
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════════
 const W = 1080, H = 1920;
-const FLOOR_Y = 1788;
+const BASE_FLOOR_Y = 1788;
+let FLOOR_Y = BASE_FLOOR_Y + FLOOR_OFFSET;  // adjustable at runtime via setFloorOffset()
+const SIGN_GAP = 170;        // vertical distance from pile peak to the JUST JOINED pill
 const S = 0.46;             // figure scale (body ≈ 90 px tall at this scale)
 const PACK_R = 55 * S;      // packing radius ≈ 25.3 px
 const BIN_W = 2 * PACK_R * 0.9;   // ≈ 45.5 px per column
@@ -156,6 +176,20 @@ function getDepositionPos() {
 function updatePilePeak() {
   const resting = figures.filter(f => f.phase !== 'entering');
   pilePeakY = resting.length > 0 ? Math.min(...resting.map(f => f.y)) : FLOOR_Y;
+}
+
+// Shifts the floor (and every already-placed figure) so the adjustment
+// applies instantly to the current pile, not just future spawns.
+function setFloorOffset(offset) {
+  const newFloorY = BASE_FLOOR_Y + offset;
+  const delta = newFloorY - FLOOR_Y;
+  FLOOR_Y = newFloorY;
+  FLOOR_OFFSET = offset;
+  if (delta !== 0) {
+    for (const f of figures) { f.y += delta; f.startY += delta; }
+    pilePeakY += delta;
+    signPeakY += delta;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -446,126 +480,87 @@ function drawFloor(ctx) {
   ctx.fill();
 }
 
-function drawCounter(ctx, n) {
-  const countText = CTR_FORMAT.replace('{n}', n);
+// Compact single-row pill — sized to match gift-bar.html's notification pills
+// (dot + label + value, ~44-48px tall, auto-width with tight padding).
+function drawPill(ctx, opts) {
+  const {
+    cx, cy, dotColor, bg, stroke, labelColor, label, labelSize,
+    value, valueColor, valueSize, valueFont = 'Fredoka', maxWidth = 560,
+  } = opts;
 
-  // Measure both lines and size pill to fit the wider one
-  ctx.font = '700 44px Fredoka, sans-serif';
-  const countW = ctx.measureText(countText).width;
-  ctx.font = '700 28px "Space Grotesk", sans-serif';
-  ctx.letterSpacing = '4px';
-  const labelW = ctx.measureText(CTR_LABEL).width + CTR_LABEL.length * 4; // approx for letterSpacing
+  const dotR = 5, padL = 16, padR = 18, gapDotLabel = 8, gapLabelValue = 10, pillH = 46;
+
+  ctx.font = `700 ${labelSize}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '2px';
+  const labelW = ctx.measureText(label).width + label.length * 2;
   ctx.letterSpacing = '0px';
-  const pillW  = Math.max(300, Math.max(countW, labelW) + 100);
-  const pillX  = 540 - pillW / 2;
+
+  let vSize = valueSize;
+  ctx.font = `700 ${vSize}px ${valueFont}, sans-serif`;
+  let valueW = ctx.measureText(value).width;
+  const availW = maxWidth - (padL + padR + dotR * 2 + gapDotLabel + labelW + gapLabelValue);
+  while (valueW > availW && vSize > 13) {
+    vSize -= 1;
+    ctx.font = `700 ${vSize}px ${valueFont}, sans-serif`;
+    valueW = ctx.measureText(value).width;
+  }
+
+  const contentW = dotR * 2 + gapDotLabel + labelW + gapLabelValue + valueW;
+  const pillW = Math.min(maxWidth, contentW + padL + padR);
+  const left = cx - pillW / 2;
 
   ctx.save();
-  ctx.globalAlpha = 0.97;
-  ctx.fillStyle   = '#141019';
-  ctx.strokeStyle = '#F1F5F9';
-  ctx.lineWidth   = 3;
-  roundRect(ctx, pillX, 120, pillW, 122, 30);
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  roundRect(ctx, left, cy - pillH / 2, pillW, pillH, pillH / 2);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
 
-  // Live dot
-  ctx.fillStyle = '#34D399';
+  ctx.fillStyle = dotColor;
   ctx.beginPath();
-  ctx.arc(pillX + 38, 160, 9, 0, Math.PI * 2);
+  ctx.arc(left + padL + dotR, cy, dotR, 0, Math.PI * 2);
   ctx.fill();
 
-  // Label line
-  ctx.fillStyle     = '#CBD5E1';
-  ctx.font          = '700 28px "Space Grotesk", sans-serif';
-  ctx.letterSpacing = '4px';
-  ctx.textAlign     = 'center';
+  const labelX = left + padL + dotR * 2 + gapDotLabel;
+  ctx.fillStyle     = labelColor;
+  ctx.font          = `700 ${labelSize}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '2px';
+  ctx.textAlign     = 'left';
   ctx.textBaseline  = 'middle';
-  ctx.fillText(CTR_LABEL, 540 + 14, 162);
+  ctx.fillText(label, labelX, cy + 1);
   ctx.letterSpacing = '0px';
 
-  // Count line — auto-shrink font if it would overflow the pill
-  let fs = 44;
-  ctx.font = `700 ${fs}px Fredoka, sans-serif`;
-  while (ctx.measureText(countText).width > pillW - 40 && fs > 20) {
-    fs -= 2;
-    ctx.font = `700 ${fs}px Fredoka, sans-serif`;
-  }
-  ctx.fillStyle    = '#fff';
-  ctx.textAlign    = 'center';
+  ctx.fillStyle    = valueColor;
+  ctx.font         = `700 ${vSize}px ${valueFont}, sans-serif`;
+  ctx.textAlign    = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(countText, 540, 222);
+  ctx.fillText(value, labelX + labelW + gapLabelValue, cy);
+}
+
+function drawCounter(ctx, n) {
+  drawPill(ctx, {
+    cx: 540, cy: 150,
+    dotColor: '#34D399', bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
+    labelColor: '#CBD5E1', label: CTR_LABEL, labelSize: 15,
+    value: CTR_FORMAT.replace('{n}', n), valueColor: '#fff', valueSize: 21,
+    maxWidth: 480,
+  });
 }
 
 // peakY = feet-Y of the topmost figure in the pile
 function drawJoinSign(ctx, name, source, peakY) {
-  const pal    = source ? PALETTES[source] : null;
-  const bg     = pal ? pal.plate  : '#141019';
-  const stroke = pal ? pal.accent : '#F1F5F9';
-  const label  = pal ? pal.accent2 : '#CBD5E1';
-  const by     = peakY - 108;
-  const x      = 540;
-  const MAX_W  = 760; // max sign width inside safe zone
-
-  // Auto-fit username: shrink font until it fits within MAX_W - padding
-  let nameFontSize = 42;
-  ctx.font = `700 ${nameFontSize}px Fredoka, sans-serif`;
-  while (ctx.measureText(name).width > MAX_W - 80 && nameFontSize > 18) {
-    nameFontSize -= 2;
-    ctx.font = `700 ${nameFontSize}px Fredoka, sans-serif`;
-  }
-  const nw = ctx.measureText(name).width;
-
-  // Auto-fit label line
-  let labelFontSize = 22;
-  ctx.font = `700 ${labelFontSize}px "Space Grotesk", sans-serif`;
-  ctx.letterSpacing = '3px';
-  while (ctx.measureText(SIGN_LABEL).width + SIGN_LABEL.length * 3 > MAX_W - 100 && labelFontSize > 12) {
-    labelFontSize -= 1;
-    ctx.font = `700 ${labelFontSize}px "Space Grotesk", sans-serif`;
-  }
-  ctx.letterSpacing = '0px';
-
-  const w = Math.min(MAX_W, Math.max(260, nw + 80));
-
-  // Downward pointer triangle
-  ctx.fillStyle = stroke;
-  ctx.beginPath();
-  ctx.moveTo(x - 18, peakY - 64);
-  ctx.lineTo(x + 18, peakY - 64);
-  ctx.lineTo(x,      peakY - 24);
-  ctx.closePath();
-  ctx.fill();
-
-  // Sign background rect
-  ctx.fillStyle   = bg;
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth   = 4;
-  roundRect(ctx, x - w / 2, by - 58, w, 100, 24);
-  ctx.fill();
-  ctx.stroke();
-
-  // Live dot
-  ctx.fillStyle = '#34D399';
-  ctx.beginPath();
-  ctx.arc(x - w / 2 + 36, by - 22, 8, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Label
-  ctx.fillStyle     = label;
-  ctx.font          = `700 ${labelFontSize}px "Space Grotesk", sans-serif`;
-  ctx.letterSpacing = '3px';
-  ctx.textAlign     = 'center';
-  ctx.textBaseline  = 'middle';
-  ctx.fillText(SIGN_LABEL, x + 14, by - 14);
-  ctx.letterSpacing = '0px';
-
-  // Username
-  ctx.fillStyle    = '#fff';
-  ctx.font         = `700 ${nameFontSize}px Fredoka, sans-serif`;
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(name, x, by + 30);
+  const pal = source ? PALETTES[source] : null;
+  drawPill(ctx, {
+    cx: 540, cy: peakY - SIGN_GAP,
+    dotColor: '#34D399',
+    bg:    pal ? pal.plate  : 'rgba(20,16,25,0.94)',
+    stroke: pal ? pal.accent : '#F1F5F9',
+    labelColor: pal ? pal.accent2 : '#CBD5E1', label: SIGN_LABEL, labelSize: 15,
+    value: name, valueColor: '#fff', valueSize: 21,
+    maxWidth: 560,
+  });
 }
 
 function drawIdleState(ctx, now) {
@@ -588,11 +583,27 @@ function drawIdleState(ctx, now) {
   drawMascot(ctx, '#2563EB', TK, '', false, false, 0);
   ctx.restore();
 
-  // Speech bubble
+  // Speech bubble — auto-size to fit both editable lines
+  const MAX_BUBBLE_W = 860;
+  let titleFS = 30;
+  ctx.font = `600 ${titleFS}px Fredoka, sans-serif`;
+  while (ctx.measureText(IDLE_TITLE).width > MAX_BUBBLE_W - 60 && titleFS > 16) { titleFS -= 2; ctx.font = `600 ${titleFS}px Fredoka, sans-serif`; }
+  const titleW = ctx.measureText(IDLE_TITLE).width;
+
+  let subFS = 24;
+  ctx.font = `700 ${subFS}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '1px';
+  while (ctx.measureText(IDLE_SUB).width + IDLE_SUB.length * 1 > MAX_BUBBLE_W - 60 && subFS > 12) { subFS -= 1; ctx.font = `700 ${subFS}px "Space Grotesk", sans-serif`; }
+  const subW = ctx.measureText(IDLE_SUB).width;
+  ctx.letterSpacing = '0px';
+
+  const bubbleW = Math.min(MAX_BUBBLE_W, Math.max(300, Math.max(titleW, subW) + 60));
+  const bubbleX = 540 - bubbleW / 2;
+
   ctx.fillStyle   = '#1a0808';
   ctx.strokeStyle = '#F87171';
   ctx.lineWidth   = 3;
-  roundRect(ctx, 330, 1300, 420, 120, 34);
+  roundRect(ctx, bubbleX, 1300, bubbleW, 120, 34);
   ctx.fill();
   ctx.stroke();
 
@@ -606,17 +617,17 @@ function drawIdleState(ctx, now) {
   ctx.fill();
 
   ctx.fillStyle    = '#fff';
-  ctx.font         = '600 30px Fredoka, sans-serif';
+  ctx.font         = `600 ${titleFS}px Fredoka, sans-serif`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Be the first!', 540, 1352);
+  ctx.fillText(IDLE_TITLE, 540, 1352);
 
   ctx.fillStyle     = '#FCA5A5';
-  ctx.font          = '700 24px "Space Grotesk", sans-serif';
+  ctx.font          = `700 ${subFS}px "Space Grotesk", sans-serif`;
   ctx.letterSpacing = '1px';
   ctx.textAlign     = 'center';
   ctx.textBaseline  = 'middle';
-  ctx.fillText('type NEW HERE', 540, 1394);
+  ctx.fillText(IDLE_SUB, 540, 1394);
   ctx.letterSpacing = '0px';
 }
 
@@ -652,15 +663,18 @@ function currentPos(fig) {
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 let lastTime = 0;
+let lastTick = 0;
 
-function frame(now) {
-  const dt = Math.min(now - lastTime, 100); // cap delta to avoid spiral after tab focus
-  lastTime = now;
+// State advancement (queue drain, entry/splat progress, sign tween). Called
+// from both the rAF loop (smooth 60fps) and a setInterval fallback, so the
+// pile still advances even if a browser tab throttles requestAnimationFrame
+// (e.g. testing in an unfocused/backgrounded tab — OBS sources are unaffected).
+function tick(now) {
+  const dt = Math.min(now - lastTick, 100);
+  lastTick = now;
 
-  // Tick queue
   processQueue(now);
 
-  // Tick animations
   for (const fig of figures) {
     if (fig.phase === 'entering') {
       fig.enterProgress += dt / ENTER_DUR;
@@ -681,9 +695,13 @@ function frame(now) {
     }
   }
 
-  // Tween sign Y: exponential ease toward pilePeakY
   const tweenK = Math.min(1, dt * 0.0035);
   signPeakY += (pilePeakY - signPeakY) * tweenK;
+}
+
+function frame(now) {
+  lastTime = now;
+  tick(now);
 
   // ── Draw ──────────────────────────────────────────────────
   ctx.clearRect(0, 0, W, H);
@@ -735,7 +753,7 @@ function frame(now) {
     // JUST JOINED sign (clamped to safe zone top)
     if (newestName) {
       const clampedPeak = Math.max(600, signPeakY);
-      const sCX = 540, sCY = clampedPeak - 108;
+      const sCX = 540, sCY = clampedPeak - SIGN_GAP;
       ctx.save();
       ctx.translate(sCX, sCY + SIGN_Y_OFFSET);
       ctx.scale(SIGN_SCALE, SIGN_SCALE);
@@ -747,7 +765,7 @@ function frame(now) {
 
   // Counter (always visible)
   {
-    const cCX = 540, cCY = 181;
+    const cCX = 540, cCY = 150;
     ctx.save();
     ctx.translate(cCX, cCY + CTR_Y_OFFSET);
     ctx.scale(CTR_SCALE, CTR_SCALE);
@@ -831,7 +849,10 @@ function connectAbly() {
     if (d.signLabel    != null) SIGN_LABEL    = d.signLabel || SIGN_LABEL;
     if (d.ctrLabel     != null) CTR_LABEL     = d.ctrLabel  || CTR_LABEL;
     if (d.ctrFormat    != null) CTR_FORMAT    = d.ctrFormat  || CTR_FORMAT;
-    try { localStorage.setItem('nh_display_cfg', JSON.stringify({ signScale: SIGN_SCALE, signYOffset: SIGN_Y_OFFSET, ctrScale: CTR_SCALE, ctrYOffset: CTR_Y_OFFSET, signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT })); } catch {}
+    if (d.idleTitle    != null) IDLE_TITLE    = d.idleTitle  || IDLE_TITLE;
+    if (d.idleSub      != null) IDLE_SUB      = d.idleSub    || IDLE_SUB;
+    if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
+    saveDisplayCfg();
   });
 
   // Respond to ping from stream-dock so it can show connection status
@@ -841,13 +862,25 @@ function connectAbly() {
 
   const sendAlive = () => ch.publish('new-here-alive', {}).catch(() => {});
 
+  // Registered once, outside the 'connected' handler, so reconnects don't stack intervals
   client.connection.on('connected', () => {
     console.log('[Ably] connected →', ABLY_CH);
     sendAlive();
-    // Repeat every 25s so stream-dock stays green even after it reloads
-    setInterval(sendAlive, 25000);
   });
-  client.connection.on('failed', () => console.error('[Ably] connection failed'));
+  client.connection.on('disconnected', () => console.warn('[Ably] disconnected'));
+  client.connection.on('suspended',    () => console.warn('[Ably] suspended'));
+  client.connection.on('failed',       (err) => console.error('[Ably] connection failed', err));
+  setInterval(() => { if (client.connection.state === 'connected') sendAlive(); }, 25000);
+
+  // Debug hooks — inspect from devtools/preview via window.__nh
+  window.__nh = {
+    client, ch,
+    get count() { return count; },
+    get figures() { return figures; },
+    get queue() { return queue; },
+    get seenUsers() { return Array.from(seenUsers); },
+    get entering() { return figures.filter(f => f.phase === 'entering').length; },
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -910,6 +943,11 @@ document.fonts.ready.then(() => {
   loadState();
   connectAbly();
   requestAnimationFrame(frame);
+  // Safety net: browsers throttle/pause requestAnimationFrame in backgrounded
+  // or unfocused tabs, which would otherwise let joins pile up in the queue
+  // without ever spawning. OBS browser sources always render, but this keeps
+  // things working if the overlay is ever tested in a plain background tab.
+  setInterval(() => tick(performance.now()), 250);
 });
 </script>
 </body>
