@@ -2332,6 +2332,47 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         </div>
       </div>
 
+      <!-- ── CROWD GLASS ── -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('cg')">
+          <span class="ctrl-hd-title">🔨 Crowd Glass</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-cg">
+          <div class="ctrl-row" style="gap:5px;align-items:center;justify-content:space-between;">
+            <span style="font-size:9px;color:var(--txt-dim);">Overlay status</span>
+            <span id="cg-overlay-status" style="font-size:9px;color:#6b7280;">● offline</span>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Mode</span>
+            <div class="ctrl-row">
+              <button class="ctrl-btn c-act" id="cg-auto-btn" style="flex:1;" onclick="cgSetAuto(true)" title="Real joins/gifts/viewer bursts crack the glass">⚡ Auto</button>
+              <button class="ctrl-btn" id="cg-manual-btn" style="flex:1;" onclick="cgSetAuto(false)" title="Only the buttons below affect the glass">✋ Manual</button>
+            </div>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Manual actions</span>
+            <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
+              <button class="ctrl-btn" style="flex:1;" onclick="cgCmd('break_small')">💥 Break</button>
+              <button class="ctrl-btn" style="flex:1;" onclick="cgCmd('break_big')">💥💥 Break Burst</button>
+            </div>
+            <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
+              <button class="ctrl-btn c-on" style="flex:1;" onclick="cgCmd('repair_small')">✨ Repair</button>
+              <button class="ctrl-btn c-on" style="flex:1;" onclick="cgCmd('repair_big')">✨✨ Big Repair</button>
+            </div>
+            <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
+              <button class="ctrl-btn" style="flex:1;background:rgba(96,165,250,0.18);border-color:rgba(96,165,250,0.5);color:#60a5fa;" onclick="cgCmd('activate_bulletproof')">🛡 Bulletproof</button>
+              <button class="ctrl-btn c-off" style="flex:1;" onclick="cgCmd('force_shatter')">💢 Shatter</button>
+            </div>
+            <button class="ctrl-btn c-off" style="width:100%;" onclick="cgCmd('reset_glass')">↺ Reset Glass</button>
+          </div>
+
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:6px;">Position &amp; crack size moved to 🎯 Layout panel</div>
+        </div>
+      </div>
+
       <!-- ── TOP GIFTERS ── -->
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('tgo')">
@@ -2689,7 +2730,18 @@ function featureMessage(data) {
 /* ═══════════════════════════════════════════
    MESSAGE HANDLING
 ═══════════════════════════════════════════ */
+/* Crowd Glass overlay — last viewer count broadcast per platform, so we only
+   publish on an actual change instead of flooding Ably on every SSN tick. */
+let _cgLastVC = { tt: null, yt: null };
+
 function updateViewerCount(key, count) {
+  if (ablyChannel && _cgLastVC[key] !== count) {
+    _cgLastVC[key] = count;
+    ablyChannel.publish('crowd-glass-viewer-count', {
+      platform: key === 'tt' ? 'tiktok' : 'youtube', count
+    }).catch(() => {});
+  }
+
   const bar  = document.getElementById('vbar-' + key);
   const el   = document.getElementById('vc-' + key);
   const topN = document.getElementById('tvcn-' + key);
@@ -3422,6 +3474,50 @@ ablyChannel.subscribe('new-here-alive', _nhMarkLive);
 ably.connection.once('connected', () => {
   ablyChannel.publish('new-here-ping', {}).catch(() => {});
 });
+
+/* ── Crowd Glass overlay — status ping, auto/manual mode, manual actions, layout ── */
+let _cgAliveTimer = null;
+function _cgMarkLive() {
+  const el = document.getElementById('cg-overlay-status');
+  if (el) el.innerHTML = '<span style="color:#34D399">● LIVE</span>';
+  clearTimeout(_cgAliveTimer);
+  _cgAliveTimer = setTimeout(() => {
+    const el = document.getElementById('cg-overlay-status');
+    if (el) el.innerHTML = '<span style="color:#6b7280">● offline</span>';
+  }, 35000);
+}
+let _cgLayout = { 'cg-cta':{x:0,y:0}, 'cg-integrity':{x:0,y:0}, 'cg-viewerbadge':{x:0,y:0}, 'cg-livebadge':{x:0,y:0} };
+try { Object.assign(_cgLayout, JSON.parse(localStorage.getItem('cgLayout') || '{}')); } catch(e) {}
+let _cgCrackScale = parseInt(localStorage.getItem('cgCrackScale'), 10) || 100;
+let _cgAuto = localStorage.getItem('cgAuto') !== '0';
+
+function cgPublishLayout() {
+  localStorage.setItem('cgLayout', JSON.stringify(_cgLayout));
+  localStorage.setItem('cgCrackScale', _cgCrackScale);
+  if (ablyChannel) ablyChannel.publish('crowd-glass-layout', {
+    positions: _cgLayout, crackScale: _cgCrackScale / 100
+  }).catch(() => {});
+  scheduleGistSave();
+}
+function cgAnnounceState() {
+  if (!ablyChannel) return;
+  ablyChannel.publish('crowd-glass-cmd', { command: 'set_auto', value: _cgAuto }).catch(() => {});
+  cgPublishLayout();
+}
+ablyChannel.subscribe('crowd-glass-alive', () => { _cgMarkLive(); cgAnnounceState(); });
+
+function cgSetAuto(v) {
+  _cgAuto = v;
+  localStorage.setItem('cgAuto', v ? '1' : '0');
+  const autoBtn = document.getElementById('cg-auto-btn'), manBtn = document.getElementById('cg-manual-btn');
+  if (autoBtn) autoBtn.classList.toggle('c-act', v);
+  if (manBtn) manBtn.classList.toggle('c-act', !v);
+  if (ablyChannel) ablyChannel.publish('crowd-glass-cmd', { command: 'set_auto', value: v }).catch(() => {});
+}
+function cgCmd(command) {
+  if (ablyChannel) ablyChannel.publish('crowd-glass-cmd', { command }).catch(() => {});
+  doFlash('purple');
+}
 
 /* ══ Ably usage counter ══
    Wraps every publish() call to track session msgs + project monthly usage.
@@ -4234,6 +4330,16 @@ const LAYOUT_ELEMENTS = [
     y:{min:-200,max:600} },
   { id:'geyser', label:'Geyser (EQ wave)', group:'Geyser',
     y:{min:505,max:1800} },
+  { id:'cg-cta', label:'CTA text (NEXT VIEWER…)', group:'Crowd Glass',
+    x:{min:-400,max:400}, y:{min:-800,max:800} },
+  { id:'cg-integrity', label:'Integrity + hitters', group:'Crowd Glass',
+    x:{min:-400,max:400}, y:{min:-800,max:800} },
+  { id:'cg-viewerbadge', label:'Viewer count badge', group:'Crowd Glass',
+    x:{min:-300,max:300}, y:{min:-200,max:800} },
+  { id:'cg-livebadge', label:'LIVE badge', group:'Crowd Glass',
+    x:{min:-300,max:300}, y:{min:-200,max:800} },
+  { id:'cg-cracks', label:'Crack size', group:'Crowd Glass',
+    scale:{min:50,max:200} },
 ];
 
 function layoutGet(elDef, field) {
@@ -4249,6 +4355,9 @@ function layoutGet(elDef, field) {
     case 'gift-bar': return field === 'y' ? _giftBarY : null;
     case 'mission-strip': return field === 'y' ? _missionStripY : null;
     case 'geyser': return field === 'y' ? _geyserY : null;
+    case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
+      return field === 'x' ? _cgLayout[elDef.id].x : field === 'y' ? _cgLayout[elDef.id].y : null;
+    case 'cg-cracks': return field === 'scale' ? _cgCrackScale : null;
   }
   return null;
 }
@@ -4286,6 +4395,14 @@ function layoutSet(elDef, field, val) {
     case 'geyser':
       geyserMove(val - _geyserY);
       break;
+    case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
+      _cgLayout[elDef.id][field] = val;
+      cgPublishLayout();
+      return; // cgPublishLayout already calls scheduleGistSave()
+    case 'cg-cracks':
+      _cgCrackScale = val;
+      cgPublishLayout();
+      return;
   }
   scheduleGistSave();
 }
@@ -5195,6 +5312,9 @@ function gistGetConfig() {
     nh_cmd:               localStorage.getItem('nh_cmd'),
     nh_match:             localStorage.getItem('nh_match'),
     nh_display_cfg:       localStorage.getItem('nh_display_cfg'),
+    cgLayout:             localStorage.getItem('cgLayout'),
+    cgCrackScale:         localStorage.getItem('cgCrackScale'),
+    cgAuto:               localStorage.getItem('cgAuto'),
   };
 }
 
@@ -5310,6 +5430,21 @@ function applyGistConfig(cfg) {
   if (cfg.nh_display_cfg != null) localStorage.setItem('nh_display_cfg', cfg.nh_display_cfg);
   if (cfg.nh_cmd != null || cfg.nh_match != null) nhLoadSettings();
   if (cfg.nh_display_cfg != null) { nhLoadDisplayConfig(); nhApplyConfig(); }
+
+  // --- Crowd Glass layout / crack scale / auto mode ---
+  if (cfg.cgLayout != null) {
+    localStorage.setItem('cgLayout', cfg.cgLayout);
+    try { Object.assign(_cgLayout, JSON.parse(cfg.cgLayout)); } catch(e) {}
+  }
+  if (cfg.cgCrackScale != null) {
+    localStorage.setItem('cgCrackScale', cfg.cgCrackScale);
+    _cgCrackScale = parseInt(cfg.cgCrackScale, 10) || 100;
+  }
+  if (cfg.cgAuto != null) {
+    localStorage.setItem('cgAuto', cfg.cgAuto);
+    cgSetAuto(cfg.cgAuto !== '0');
+  }
+  if (cfg.cgLayout != null || cfg.cgCrackScale != null) cgPublishLayout();
 }
 
 async function gistCreate() {
@@ -6453,3 +6588,4 @@ function nhForcePop() {
 </script>
 </body>
 </html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
