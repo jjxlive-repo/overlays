@@ -36,7 +36,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   transition: background 0.9s ease, box-shadow 0.8s ease;
 }
 #line-top { top: 0; }
-#line-bot { bottom: 0; }
+#line-bot { top: 54px; } /* was bottom: 0 — #bar-lines is a fixed 55px container, top:54px is equivalent */
 #bar-lines.active #line-top,
 #bar-lines.active #line-bot { animation: lineActivate 0.35s ease forwards; }
 @keyframes lineActivate { from{opacity:0.10} to{opacity:1.00} }
@@ -47,7 +47,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   background-size: 40% 100%;
 }
 #line-sweep-top { top: 0; }
-#line-sweep-bot { bottom: 0; }
+#line-sweep-bot { top: 54px; } /* was bottom: 0 — fixed 55px container */
 #bar-lines.active #line-sweep-top,
 #bar-lines.active #line-sweep-bot { animation: lineSweep 1.1s ease-in-out var(--sweep-count, 2) forwards; }
 @keyframes lineSweep {
@@ -401,9 +401,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   transition: background 0.9s ease;
 }
 #bar-border::before { top: 0; }
-#bar-border::after  { bottom: 0; }
+#bar-border::after  { top: 54px; } /* was bottom: 0 — #gift-bar is a fixed 55px container */
 #bar-progress {
-  position: absolute; bottom: 0; left: 0;
+  position: absolute; top: 53px; left: 0; /* was bottom: 0 — height 2px in a fixed 55px container */
   height: 2px; width: 0%; border-radius: 0 1px 1px 0; transition: background 0.9s ease;
 }
 #bar-hero {
@@ -543,15 +543,6 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #gift-bar.alert-active #bar-hero-name  { animation:heroGlowPulse 1.4s ease-in-out infinite; }
 #gift-bar.alert-active #bar-hero-amount{ animation:heroGlowPulse 1.4s ease-in-out infinite 0.18s; }
-
-/* ─── STATUS DOT ─── */
-#status-dot {
-  position: absolute; top: 456px; left: 8px;
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #444; z-index: 30; transition: background 0.3s;
-}
-#status-dot.connected  { background:#3b82f6; box-shadow:0 0 5px rgba(59,130,246,0.7); }
-#status-dot.connecting { background:#facc15; }
 
 /* ══════════════════════════════════════════════════════════
    SPLAT OVERLAY
@@ -1037,7 +1028,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ep-root.ep-card-mode .ep-dim { opacity: 0; }
 .ep-root.ep-card-mode .ep-card {
   top: auto;
-  bottom: 1478px; /* card bottom sits 8px above bar top (450px) */
+  bottom: 1478px; /* card bottom sits 8px above bar top (450px). Kept as bottom: (not top:) on
+     purpose — height is content-driven (auto), so the card must grow upward from a fixed
+     anchor point. Parent is a fixed 1080x1920px box (not vh/vw), far from the real canvas
+     edge, so this doesn't hit TikTok Studio's bottom-clipping bug — just flagging the
+     deliberate exception to the "no bottom:" rule. */
   left: 40px;
   width: fit-content;
   min-width: 180px;
@@ -1730,8 +1725,6 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   </div>
   <div id="tgp-rows"></div>
 </div>
-
-<div id="status-dot"></div>
 
 <!-- ══ LIVE TEXT PILL — slides up above bar ══ -->
 <div id="live-text-pill">
@@ -3802,12 +3795,24 @@ ablyChannel.subscribe('top-gifters',msg=>{
     }
   }, DECAY_TICK_MS);
 
-  /* ── Publish hype % to dock every 500ms (unconditional) ── */
-  // Unconditional publish ensures dock stays in sync even if TikTok Studio
-  // throttles timers — the dock always gets a fresh value every 500ms.
+  /* ── Publish hype % to dock — only when it changes, not on a flat timer ── */
+  // Was: unconditional publish every 500ms (7,200 Ably msgs/hr even when idle).
+  // Now: still checks every 500ms locally (cheap, no network), but only
+  // publishes when the value actually moved. A 10s heartbeat still fires
+  // even if unchanged, so the dock stays in sync if it reconnects mid-stream
+  // or if TikTok Studio throttles background timers.
+  let _lastPublishedPct = -1;
+  let _lastPctPublishTs = 0;
   setInterval(() => {
     const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
-    try { ablyChannel.publish('milk-pct', { pct }); } catch(e) {}
+    const now = Date.now();
+    const changed = pct !== _lastPublishedPct;
+    const heartbeatDue = now - _lastPctPublishTs >= 10000;
+    if (changed || heartbeatDue) {
+      _lastPublishedPct = pct;
+      _lastPctPublishTs = now;
+      try { ablyChannel.publish('milk-pct', { pct }); } catch(e) {}
+    }
   }, 500);
 
   /* ── Below-bar waveform helper ── */
@@ -4176,14 +4181,4 @@ ablyChannel.subscribe('top-gifters',msg=>{
 <div id="entry-banner">
   <div id="entry-banner-inner">
     <span id="entry-banner-text">👋 Chat just hit 0% — jump in!</span>
-  </div>
-</div>
-
-
-<div id="stinger-wrap">
-  <canvas id="stinger-canvas"></canvas>
-  <iframe id="stinger-iframe" src="" allowtransparency="true" scrolling="no" frameborder="0" allow="autoplay; fullscreen"></iframe>
-</div>
-
-</body>
-</html>
+  </

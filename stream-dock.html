@@ -1425,6 +1425,38 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 .stg-ico:hover { background:rgba(255,255,255,.08); }
 #stg-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.72);
   z-index:9999; align-items:center; justify-content:center; }
+
+/* ── LAYOUT PANEL (unified position/scale control) ── */
+.layout-hint { font-size:9px; color:var(--txt-dim); margin:0 0 8px; line-height:1.4; }
+.layout-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+  padding:8px 10px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+  border-radius:8px; margin-bottom:8px; }
+.layout-grp { display:flex; align-items:center; gap:3px; }
+.layout-grp-lbl { font-size:9px; color:var(--txt-dim); text-transform:uppercase; letter-spacing:.05em;
+  width:38px; flex-shrink:0; }
+.layout-arrow { background:rgba(168,85,247,.15); border:1px solid rgba(168,85,247,.4);
+  color:#e9d5ff; border-radius:5px; padding:4px 7px; font-size:10px; font-weight:700; cursor:pointer; }
+.layout-arrow:hover { background:rgba(168,85,247,.35); color:#fff; }
+.layout-arrow:active { background:#7c3aed; transform:scale(.95); }
+.layout-sel-btn { background:none; border:1px solid rgba(255,255,255,.15); color:var(--txt-dim);
+  border-radius:5px; padding:3px 7px; font-size:9px; cursor:pointer; }
+.layout-sel-btn:hover { background:rgba(255,255,255,.08); color:var(--txt); }
+.layout-table-wrap { max-height:340px; overflow-y:auto; border:1px solid rgba(255,255,255,.08); border-radius:8px; }
+.layout-table { width:100%; border-collapse:collapse; font-size:10px; }
+.layout-table th { position:sticky; top:0; background:#241238; color:var(--txt-dim);
+  text-transform:uppercase; letter-spacing:.04em; font-size:8px; padding:6px 5px; text-align:left;
+  border-bottom:1px solid rgba(255,255,255,.1); }
+.layout-table td { padding:5px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
+.layout-table tr:last-child td { border-bottom:none; }
+.layout-table tr.group-start td { border-top:1px solid rgba(168,85,247,.25); }
+.layout-el-name { color:var(--txt); font-weight:600; white-space:nowrap; }
+.layout-el-sub { color:var(--txt-dim); font-size:8px; display:block; }
+.layout-num { width:52px; background:rgba(255,255,255,.06); border:1px solid var(--border-hi);
+  border-radius:4px; color:var(--txt); font-size:10px; padding:3px 4px; text-align:center; }
+.layout-num:disabled { opacity:.25; background:none; border-color:transparent; }
+.layout-num:focus { border-color:var(--purple); outline:none; }
+.layout-unit { font-size:8px; color:var(--txt-dim); margin-left:2px; }
+.layout-cb { cursor:pointer; accent-color:#a855f7; }
 .stg-box { background:#1a0d2e; border:1px solid rgba(168,85,247,.4);
   border-radius:10px; padding:18px 20px; width:320px; max-width:90vw; }
 .stg-box h3 { margin:0 0 10px; font-size:13px; color:#e879f9; }
@@ -1695,15 +1727,8 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <input class="ctrl-in" id="mission-strip-text-input" type="text"
               placeholder="🥛 MILK METER — comment or gift to fill it"
               style="margin-bottom:4px;">
-            <div class="ctrl-row" style="align-items:center;gap:4px;margin-bottom:4px;">
-              <span style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">↕ Y</span>
-              <button class="ctrl-btn" onclick="nudgeMissionStrip(-5)" title="Up 5px">▲▲</button>
-              <button class="ctrl-btn" onclick="nudgeMissionStrip(-1)" title="Up 1px">▲</button>
-              <span id="mission-strip-y-val" style="font-size:10px;min-width:28px;text-align:center;color:var(--txt);">0</span>
-              <button class="ctrl-btn" onclick="nudgeMissionStrip(1)"  title="Down 1px">▼</button>
-              <button class="ctrl-btn" onclick="nudgeMissionStrip(5)"  title="Down 5px">▼▼</button>
-              <button class="ctrl-btn c-off" onclick="nudgeMissionStrip(0,true)" title="Reset to top">↺</button>
-            </div>
+            <span id="mission-strip-y-val" style="display:none;">0</span>
+            <div style="font-size:9px;color:var(--txt-dim);margin-bottom:4px;">Position moved to 🎯 Layout panel</div>
             <button onclick="pushMissionStrip()" style="width:100%;padding:6px;font-size:12px;font-weight:700;background:rgba(168,85,247,0.22);border:1px solid rgba(168,85,247,0.6);border-radius:6px;color:#c084fc;cursor:pointer;">↑ Send to Overlay</button>
           </div>
 
@@ -1885,98 +1910,42 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           </div>
           <!-- Pile floor position -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Pile floor</div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
-            <input type="range" id="nh-floor-y" min="-1788" max="132" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-floor-y','nh-floor-y-v')">
-            <span id="nh-floor-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
+          <input type="hidden" id="nh-floor-y" value="0">
           <!-- Sign controls -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">JUST JOINED sign</div>
           <label class="ctrl-row" style="gap:6px;align-items:center;cursor:pointer;">
             <input type="checkbox" id="nh-sign-pill" checked style="cursor:pointer;" onchange="nhApplyConfig()">
             <span style="font-size:9px;color:var(--txt-dim);">Show pill background (uncheck = text only)</span>
           </label>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Scale</label>
-            <input type="range" id="nh-sign-scale" min="50" max="200" step="5" value="100" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-sign-scale-v').textContent=this.value+'%'">
-            <span id="nh-sign-scale-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">100%</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">X offset</label>
-            <input type="range" id="nh-sign-x" min="-540" max="540" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-sign-x','nh-sign-x-v')">
-            <span id="nh-sign-x-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
-            <input type="range" id="nh-sign-y" min="-1618" max="302" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-sign-y','nh-sign-y-v')">
-            <span id="nh-sign-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
+          <input type="hidden" id="nh-sign-scale" value="100">
+          <input type="hidden" id="nh-sign-x" value="0">
+          <input type="hidden" id="nh-sign-y" value="0">
           <!-- Counter controls -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Counter pill</div>
           <label class="ctrl-row" style="gap:6px;align-items:center;cursor:pointer;">
             <input type="checkbox" id="nh-ctr-pill" checked style="cursor:pointer;" onchange="nhApplyConfig()">
             <span style="font-size:9px;color:var(--txt-dim);">Show pill background (uncheck = text only)</span>
           </label>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Scale</label>
-            <input type="range" id="nh-ctr-scale" min="50" max="200" step="5" value="100" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-ctr-scale-v').textContent=this.value+'%'">
-            <span id="nh-ctr-scale-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">100%</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">X offset</label>
-            <input type="range" id="nh-ctr-x" min="-540" max="540" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-ctr-x','nh-ctr-x-v')">
-            <span id="nh-ctr-x-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
-            <input type="range" id="nh-ctr-y" min="-150" max="1770" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-ctr-y','nh-ctr-y-v')">
-            <span id="nh-ctr-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
+          <input type="hidden" id="nh-ctr-scale" value="100">
+          <input type="hidden" id="nh-ctr-x" value="0">
+          <input type="hidden" id="nh-ctr-y" value="0">
           <!-- Blob scale -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Mascot blobs</div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Scale</label>
-            <input type="range" id="nh-blob-scale" min="50" max="180" step="5" value="100" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-blob-scale-v').textContent=this.value+'%'">
-            <span id="nh-blob-scale-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">100%</span>
-          </div>
+          <input type="hidden" id="nh-blob-scale" value="100">
           <!-- Name pill controls (per-mascot tag) -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Name tags (on mascots)</div>
           <label class="ctrl-row" style="gap:6px;align-items:center;cursor:pointer;">
             <input type="checkbox" id="nh-name-pill" checked style="cursor:pointer;" onchange="nhApplyConfig()">
             <span style="font-size:9px;color:var(--txt-dim);">Show pill background (uncheck = text only)</span>
           </label>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Scale</label>
-            <input type="range" id="nh-name-scale" min="50" max="200" step="5" value="100" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-name-scale-v').textContent=this.value+'%'">
-            <span id="nh-name-scale-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">100%</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">X offset</label>
-            <input type="range" id="nh-name-x" min="-540" max="540" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-name-x','nh-name-x-v')">
-            <span id="nh-name-x-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
-            <input type="range" id="nh-name-y" min="-960" max="960" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-name-y','nh-name-y-v')">
-            <span id="nh-name-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
+          <input type="hidden" id="nh-name-scale" value="100">
+          <input type="hidden" id="nh-name-x" value="0">
+          <input type="hidden" id="nh-name-y" value="0">
           <!-- Idle state controls -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Idle state (0 joined)</div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Scale</label>
-            <input type="range" id="nh-idle-scale" min="50" max="180" step="5" value="100" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-idle-scale-v').textContent=this.value+'%'">
-            <span id="nh-idle-scale-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">100%</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">X offset</label>
-            <input type="range" id="nh-idle-x" min="-540" max="540" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-idle-x','nh-idle-x-v')">
-            <span id="nh-idle-x-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
-            <input type="range" id="nh-idle-y" min="-1500" max="420" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-idle-y','nh-idle-y-v')">
-            <span id="nh-idle-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
+          <input type="hidden" id="nh-idle-scale" value="100">
+          <input type="hidden" id="nh-idle-x" value="0">
+          <input type="hidden" id="nh-idle-y" value="0">
           <!-- Text editing -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Text</div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
@@ -2009,21 +1978,9 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <input type="checkbox" id="nh-timer-pill" checked style="cursor:pointer;" onchange="nhApplyConfig()">
             <span style="font-size:9px;color:var(--txt-dim);">Show pill background (uncheck = text only)</span>
           </label>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Scale</label>
-            <input type="range" id="nh-timer-scale" min="50" max="200" step="5" value="100" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-timer-scale-v').textContent=this.value+'%'">
-            <span id="nh-timer-scale-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">100%</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">X offset</label>
-            <input type="range" id="nh-timer-x" min="-540" max="540" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-timer-x','nh-timer-x-v')">
-            <span id="nh-timer-x-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:44px;">Y offset</label>
-            <input type="range" id="nh-timer-y" min="-210" max="1710" step="10" value="0" style="flex:1;cursor:pointer;" oninput="nhFmtY('nh-timer-y','nh-timer-y-v')">
-            <span id="nh-timer-y-v" style="font-size:9px;color:var(--txt-dim);width:34px;text-align:right;">0px</span>
-          </div>
+          <input type="hidden" id="nh-timer-scale" value="100">
+          <input type="hidden" id="nh-timer-x" value="0">
+          <input type="hidden" id="nh-timer-y" value="0">
           <button class="ctrl-btn c-act" onclick="nhApplyConfig()" style="width:100%;margin-top:1px;">Apply to Overlay</button>
           <!-- Timer commands (fire immediately, independent of Apply to Overlay) -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:5px;letter-spacing:.04em;text-transform:uppercase;">Countdown control</div>
@@ -2039,6 +1996,67 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="ctrl-btn" onclick="nhTimerPauseResume()" style="flex:1;" id="nh-timer-pauseresume">⏸ Pause</button>
             <button class="ctrl-btn" style="flex:1;border-color:rgba(244,63,94,0.35);color:#fb7185;background:rgba(244,63,94,0.1);" onclick="nhTimerReset()">■ Reset</button>
           </div>
+
+          <!-- Pressure / Inflation mechanic -->
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:5px;letter-spacing:.04em;text-transform:uppercase;">Pressure / inflation</div>
+          <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">
+            Pile visibly inflates &amp; pulses with every join. Decays if chat goes quiet. Pops early (independent of the countdown above) once it hits threshold. Position/scale moved to 🎯 Layout panel.
+          </div>
+          <label class="ctrl-row" style="gap:6px;align-items:center;cursor:pointer;">
+            <input type="checkbox" id="nh-pressure-enabled" checked style="cursor:pointer;" onchange="nhApplyConfig()">
+            <span style="font-size:9px;color:var(--txt-dim);">Enable pressure mechanic</span>
+          </label>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:78px;">Per join</label>
+            <input type="range" id="nh-pressure-gain" min="2" max="15" step="1" value="6" style="flex:1;cursor:pointer;" oninput="nhFmtPressureGain();nhFmtPressureThreshold()">
+            <span id="nh-pressure-gain-v" style="font-size:9px;color:var(--txt-dim);width:30px;text-align:right;">6</span>
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:78px;">Pop threshold</label>
+            <input type="range" id="nh-pressure-threshold" min="30" max="300" step="10" value="100" style="flex:1;cursor:pointer;" oninput="nhFmtPressureThreshold()">
+            <span id="nh-pressure-threshold-v" style="font-size:9px;color:var(--txt-dim);width:64px;text-align:right;">100 (~17)</span>
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:78px;">Decay rate</label>
+            <input type="range" id="nh-pressure-decay" min="0" max="3" step="0.1" value="0.4" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-pressure-decay-v').textContent=this.value+'/s'">
+            <span id="nh-pressure-decay-v" style="font-size:9px;color:var(--txt-dim);width:40px;text-align:right;">0.4/s</span>
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:78px;">Decay grace</label>
+            <input type="range" id="nh-pressure-grace" min="1" max="15" step="1" value="4" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-pressure-grace-v').textContent=this.value+'s'">
+            <span id="nh-pressure-grace-v" style="font-size:9px;color:var(--txt-dim);width:30px;text-align:right;">4s</span>
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:78px;">Warn zone</label>
+            <input type="range" id="nh-pressure-warn" min="30" max="90" step="5" value="60" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-pressure-warn-v').textContent=this.value+'%'">
+            <span id="nh-pressure-warn-v" style="font-size:9px;color:var(--txt-dim);width:30px;text-align:right;">60%</span>
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:78px;">Danger zone</label>
+            <input type="range" id="nh-pressure-danger" min="50" max="95" step="5" value="85" style="flex:1;cursor:pointer;" oninput="document.getElementById('nh-pressure-danger-v').textContent=this.value+'%'">
+            <span id="nh-pressure-danger-v" style="font-size:9px;color:var(--txt-dim);width:30px;text-align:right;">85%</span>
+          </div>
+          <label class="ctrl-row" style="gap:6px;align-items:center;cursor:pointer;">
+            <input type="checkbox" id="nh-pressure-pill" checked style="cursor:pointer;" onchange="nhApplyConfig()">
+            <span style="font-size:9px;color:var(--txt-dim);">Show meter pill background (uncheck = text only)</span>
+          </label>
+          <input type="hidden" id="nh-pressure-scale" value="100">
+          <input type="hidden" id="nh-pressure-x" value="0">
+          <input type="hidden" id="nh-pressure-y" value="0">
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Meter label</label>
+            <input class="ctrl-in" id="nh-pressure-label" type="text" value="PRESSURE" style="flex:1;min-width:0;">
+          </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;width:68px;">Pop text</label>
+            <input class="ctrl-in" id="nh-pop-label" type="text" value="PRESSURE POPPED! 🎉" style="flex:1;min-width:0;">
+          </div>
+          <div class="ctrl-row" style="gap:5px;flex-wrap:wrap;">
+            <button class="ctrl-btn" onclick="nhPressureAdd(20)" style="flex:1;">+20 pressure</button>
+            <button class="ctrl-btn" onclick="nhPressureSet(0)" style="flex:1;">Deflate to 0</button>
+            <button class="ctrl-btn" style="flex:1;border-color:rgba(244,63,94,0.35);color:#fb7185;background:rgba(244,63,94,0.1);" onclick="nhForcePop()">💥 Force Pop</button>
+          </div>
+
           <!-- Test controls -->
           <div style="font-size:9px;color:var(--txt-dim);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;">Test</div>
           <div class="ctrl-row" style="gap:5px;">
@@ -2100,20 +2118,47 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         </div>
       </div>
 
-      <!-- ══ GEYSER POSITION ══ -->
+      <!-- ══ LAYOUT — consolidated position/scale ══ -->
       <div class="ctrl-card">
-        <div class="ctrl-hd" onclick="toggleCtrl('geyserpos')">
-          <span class="ctrl-hd-title">🌊 Geyser Position</span>
+        <div class="ctrl-hd" onclick="toggleCtrl('layout')">
+          <span class="ctrl-hd-title">🎯 Layout — position &amp; scale</span>
           <span class="ctrl-hd-ch">▼</span>
         </div>
-        <div class="ctrl-bd" id="ctrl-geyserpos" style="padding:8px;">
-          <div style="font-size:9px;color:var(--txt-dim);margin-bottom:8px;">Moves the bottom EQ wave on the overlay in real time.</div>
-          <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:8px;">
-            <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(-50)">▲</button>
-            <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(-10)">△</button>
-            <span id="geyser-pos-lbl" style="font-family:var(--mono);font-size:13px;color:#e879f9;min-width:60px;text-align:center;">y=1100</span>
-            <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(10)">▽</button>
-            <button class="ctrl-btn c-off" style="font-size:18px;padding:6px 18px;" onclick="geyserMove(50)">▼</button>
+        <div class="ctrl-bd" id="ctrl-layout" style="padding:8px;">
+          <span id="geyser-pos-lbl" style="display:none;">y=1100</span>
+          <p class="layout-hint">Check rows, then use the arrows to move/scale them together — step size is fixed so elements line up. Edit a number for exact placement. Every adjustment auto-saves to Gist.</p>
+          <div class="layout-toolbar">
+            <div class="layout-grp">
+              <button class="layout-sel-btn" onclick="layoutSelectAll()">Select all</button>
+              <button class="layout-sel-btn" onclick="layoutSelectNone()">None</button>
+            </div>
+            <div class="layout-grp">
+              <span class="layout-grp-lbl">X</span>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('x',-25)" title="Major left">◀◀</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('x',-5)"  title="Minor left">◀</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('x',5)"   title="Minor right">▶</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('x',25)"  title="Major right">▶▶</button>
+            </div>
+            <div class="layout-grp">
+              <span class="layout-grp-lbl">Y</span>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('y',-25)" title="Major up">▲▲</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('y',-5)"  title="Minor up">▲</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('y',5)"   title="Minor down">▼</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('y',25)"  title="Major down">▼▼</button>
+            </div>
+            <div class="layout-grp">
+              <span class="layout-grp-lbl">Scale</span>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('scale',-10)" title="Major smaller">−−</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('scale',-5)"  title="Minor smaller">−</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('scale',5)"   title="Minor bigger">+</button>
+              <button class="layout-arrow" onclick="layoutNudgeSelected('scale',10)"  title="Major bigger">++</button>
+            </div>
+          </div>
+          <div class="layout-table-wrap">
+            <table class="layout-table">
+              <thead><tr><th></th><th>Element</th><th>X</th><th>Y</th><th>Scale</th></tr></thead>
+              <tbody id="layout-tbody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -2280,15 +2325,8 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           </div>
           <div class="ctrl-status" id="gb-status"></div>
           <div class="ctrl-sep" style="margin-top:6px;">
-            <div class="ctrl-row" style="align-items:center;gap:4px;">
-              <span class="ctrl-lbl" style="white-space:nowrap;">↕ Bar Y</span>
-              <button class="ctrl-btn" onclick="nudgeGiftBar(-5)" title="Up 5px">▲▲</button>
-              <button class="ctrl-btn" onclick="nudgeGiftBar(-1)" title="Up 1px">▲</button>
-              <span id="gift-bar-y-val" style="font-size:10px;min-width:28px;text-align:center;color:var(--txt);">450</span>
-              <button class="ctrl-btn" onclick="nudgeGiftBar(1)"  title="Down 1px">▼</button>
-              <button class="ctrl-btn" onclick="nudgeGiftBar(5)"  title="Down 5px">▼▼</button>
-              <button class="ctrl-btn c-off" onclick="resetGiftBarY()" title="Reset to 450">↺</button>
-            </div>
+            <span id="gift-bar-y-val" style="display:none;">450</span>
+            <div style="font-size:9px;color:var(--txt-dim);">Position moved to 🎯 Layout panel</div>
           </div>
           <!-- Milk meter moved to top of chat -->
         </div>
@@ -2429,25 +2467,9 @@ body.gc-shake { animation: gcShake 0.5s ease; }
       <button class="sp-btn sp-save"  id="btn-save"  onclick="splatCmd('save')"  style="flex:1;">💜 Save</button>
       <button class="sp-btn sp-idle"                 onclick="splatCmd('idle')"  style="flex:1;">✖ Clear</button>
     </div>
-    <!-- Row 3: Overlay position -->
-    <div class="splat-bar-row">
-      <span class="sp-pos-label">Pos:</span>
-      <button class="sp-pos-btn" data-pos="top"    onclick="setSplatPos('top')">Top</button>
-      <button class="sp-pos-btn" data-pos="upper"  onclick="setSplatPos('upper')">Upper</button>
-      <button class="sp-pos-btn active" data-pos="center" onclick="setSplatPos('center')">Center</button>
-      <button class="sp-pos-btn" data-pos="lower"  onclick="setSplatPos('lower')">Lower</button>
-      <button class="sp-pos-btn" data-pos="bottom" onclick="setSplatPos('bottom')">Bottom</button>
-    </div>
-    <!-- Row 4: Notification pill position -->
-    <div class="splat-bar-row" style="gap:5px;align-items:center;">
-      <span class="sp-pos-label">Notif:</span>
-      <button class="sp-pos-btn" onclick="nudgeNotif(-10,0)" title="Move left" style="padding:3px 10px;font-size:14px;">←</button>
-      <button class="sp-pos-btn" onclick="nudgeNotif(0,-8)"  title="Move up"   style="padding:3px 10px;font-size:14px;">↑</button>
-      <button class="sp-pos-btn" onclick="nudgeNotif(0,8)"   title="Move down" style="padding:3px 10px;font-size:14px;">↓</button>
-      <button class="sp-pos-btn" onclick="nudgeNotif(10,0)"  title="Move right" style="padding:3px 10px;font-size:14px;">→</button>
-      <button class="sp-pos-btn" onclick="resetNotifPos()" title="Reset to center" style="padding:3px 8px;font-size:11px;opacity:0.6;">⊙</button>
-      <span id="notif-pos-display" style="font-size:9px;color:var(--txt-dim);font-family:monospace;min-width:60px;">50%, -38px</span>
-    </div>
+    <!-- Row 3/4: Position controls moved to 🎯 Layout panel -->
+    <span id="notif-pos-display" style="display:none;">50%, -38px</span>
+    <div class="splat-bar-row" style="opacity:.6;font-size:9px;">Position &amp; notif placement moved to 🎯 Layout panel</div>
   </div>
 
   <!-- EVENT PROMO SYSTEM (controls in overlay-control.html — hidden here) -->
@@ -4145,23 +4167,198 @@ function setSplatPos(pos) {
   document.querySelectorAll('[data-pos]').forEach(b => {
     b.classList.toggle('active', b.dataset.pos === pos);
   });
+  localStorage.setItem('splatPos', pos);
 }
 
 /* ── Notification pill position controls ── */
-let _dockNotifPos = { x: 50, y: -38 };
+let _dockNotifPos = JSON.parse(localStorage.getItem('notifPos') || '{"x":50,"y":-38}');
 function nudgeNotif(dx, dy) {
   _dockNotifPos.x = Math.max(5, Math.min(95, _dockNotifPos.x + dx));
   _dockNotifPos.y = Math.min(-6, _dockNotifPos.y + dy);
   const disp = document.getElementById('notif-pos-display');
   if (disp) disp.textContent = `${_dockNotifPos.x}%, ${_dockNotifPos.y}px`;
+  localStorage.setItem('notifPos', JSON.stringify(_dockNotifPos));
   ablyChannel.publish('notif-pos', { dx, dy }).catch(() => {});
 }
 function resetNotifPos() {
   _dockNotifPos = { x: 50, y: -38 };
   const disp = document.getElementById('notif-pos-display');
   if (disp) disp.textContent = '50%, -38px';
+  localStorage.setItem('notifPos', JSON.stringify(_dockNotifPos));
   ablyChannel.publish('notif-pos', { reset: true }).catch(() => {});
 }
+
+/* ═══════════════════════════════════════════
+   LAYOUT PANEL — unified position/scale control
+   All elements share the same step sizes:
+     position: minor 5px (or 5% for the notif pill's X), major 25
+     scale:    minor 5%, major 10%
+═══════════════════════════════════════════ */
+const LAYOUT_SPLAT_POS_LEVELS = ['bottom','lower','center','upper','top'];
+let _splatPosLevel = Math.max(0, LAYOUT_SPLAT_POS_LEVELS.indexOf(localStorage.getItem('splatPos') || 'center'));
+let _layoutSelected = new Set();
+
+function _layoutNhGet(id) {
+  const el = document.getElementById(id);
+  return el ? parseInt(el.value, 10) : 0;
+}
+function _layoutNhSet(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+}
+
+const LAYOUT_ELEMENTS = [
+  { id:'nh-sign',  label:'Sign (JUST JOINED)', group:'New Here',
+    scale:{min:50,max:200}, x:{min:-540,max:540}, y:{min:-1618,max:302} },
+  { id:'nh-ctr',   label:'Counter (NEW HERE)', group:'New Here',
+    scale:{min:50,max:200}, x:{min:-540,max:540}, y:{min:-150,max:1770} },
+  { id:'nh-blob',  label:'Mascot blobs', group:'New Here',
+    scale:{min:50,max:180} },
+  { id:'nh-name',  label:'Name tags', group:'New Here',
+    scale:{min:50,max:200}, x:{min:-540,max:540}, y:{min:-960,max:960} },
+  { id:'nh-idle',  label:'Idle state', group:'New Here',
+    scale:{min:50,max:180}, x:{min:-540,max:540}, y:{min:-1500,max:420} },
+  { id:'nh-timer', label:'Countdown timer', group:'New Here',
+    scale:{min:50,max:200}, x:{min:-540,max:540}, y:{min:-210,max:1710} },
+  { id:'nh-pressure', label:'Pressure meter', group:'New Here',
+    scale:{min:50,max:200}, x:{min:-540,max:540}, y:{min:-210,max:1710} },
+  { id:'nh-floor', label:'Pile floor', group:'New Here',
+    y:{min:-1788,max:132} },
+  { id:'splat-notif', label:'Notif pill', group:'Splat', xUnit:'%',
+    x:{min:5,max:95}, y:{min:-300,max:0} },
+  { id:'splat-pos', label:'Overlay position', group:'Splat', yUnit:'level',
+    y:{min:0,max:4} },
+  { id:'gift-bar', label:'Gift Bar', group:'Gift Bar',
+    y:{min:0,max:1860} },
+  { id:'mission-strip', label:'Mission Strip', group:'Mission Strip',
+    y:{min:-200,max:600} },
+  { id:'geyser', label:'Geyser (EQ wave)', group:'Geyser',
+    y:{min:505,max:1800} },
+];
+
+function layoutGet(elDef, field) {
+  switch (elDef.id) {
+    case 'nh-sign':  case 'nh-ctr': case 'nh-blob': case 'nh-name': case 'nh-idle': case 'nh-timer': case 'nh-pressure': {
+      const map = { scale:`${elDef.id}-scale`, x:`${elDef.id}-x`, y:`${elDef.id}-y` };
+      if (field === 'scale') return _layoutNhGet(map.scale);
+      return _layoutNhGet(map[field]);
+    }
+    case 'nh-floor': return field === 'y' ? _layoutNhGet('nh-floor-y') : null;
+    case 'splat-notif': return field === 'x' ? _dockNotifPos.x : (field === 'y' ? _dockNotifPos.y : null);
+    case 'splat-pos': return field === 'y' ? _splatPosLevel : null;
+    case 'gift-bar': return field === 'y' ? _giftBarY : null;
+    case 'mission-strip': return field === 'y' ? _missionStripY : null;
+    case 'geyser': return field === 'y' ? _geyserY : null;
+  }
+  return null;
+}
+
+function layoutSet(elDef, field, val) {
+  const range = elDef[field];
+  if (range) val = Math.max(range.min, Math.min(range.max, val));
+  switch (elDef.id) {
+    case 'nh-sign': case 'nh-ctr': case 'nh-blob': case 'nh-name': case 'nh-idle': case 'nh-timer': case 'nh-pressure': {
+      const key = field === 'scale' ? `${elDef.id}-scale` : `${elDef.id}-${field}`;
+      _layoutNhSet(key, val);
+      nhApplyConfig();
+      break;
+    }
+    case 'nh-floor':
+      _layoutNhSet('nh-floor-y', val);
+      nhApplyConfig();
+      break;
+    case 'splat-notif': {
+      const dx = field === 'x' ? val - _dockNotifPos.x : 0;
+      const dy = field === 'y' ? val - _dockNotifPos.y : 0;
+      if (dx || dy) nudgeNotif(dx, dy);
+      break;
+    }
+    case 'splat-pos':
+      _splatPosLevel = Math.max(0, Math.min(4, val));
+      setSplatPos(LAYOUT_SPLAT_POS_LEVELS[_splatPosLevel]);
+      break;
+    case 'gift-bar':
+      nudgeGiftBar(val - _giftBarY);
+      break;
+    case 'mission-strip':
+      nudgeMissionStrip(val - _missionStripY);
+      break;
+    case 'geyser':
+      geyserMove(val - _geyserY);
+      break;
+  }
+  scheduleGistSave();
+}
+
+function layoutRenderTable() {
+  const tbody = document.getElementById('layout-tbody');
+  if (!tbody) return;
+  let lastGroup = null;
+  tbody.innerHTML = LAYOUT_ELEMENTS.map(elDef => {
+    const groupStart = elDef.group !== lastGroup;
+    lastGroup = elDef.group;
+    const checked = _layoutSelected.has(elDef.id) ? 'checked' : '';
+    const cell = (field, unit) => {
+      if (!elDef[field]) return `<input class="layout-num" type="number" disabled value="—">`;
+      let v = layoutGet(elDef, field);
+      if (field === 'scale') v = Math.round(v);
+      if (field === 'y' && unit === 'level') v = LAYOUT_SPLAT_POS_LEVELS[v] || v;
+      return `<input class="layout-num" type="${unit === 'level' ? 'text' : 'number'}" value="${v}"
+        onchange="layoutManualSet('${elDef.id}','${field}',this.value)">
+        <span class="layout-unit">${unit || (field === 'scale' ? '%' : 'px')}</span>`;
+    };
+    return `<tr class="${groupStart ? 'group-start' : ''}">
+      <td><input type="checkbox" class="layout-cb" ${checked} onchange="layoutToggleSelect('${elDef.id}',this.checked)"></td>
+      <td><span class="layout-el-name">${elDef.label}</span><span class="layout-el-sub">${elDef.group}</span></td>
+      <td>${cell('x', elDef.xUnit)}</td>
+      <td>${cell('y', elDef.yUnit)}</td>
+      <td>${cell('scale')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function layoutManualSet(elId, field, rawVal) {
+  const elDef = LAYOUT_ELEMENTS.find(e => e.id === elId);
+  if (!elDef) return;
+  if (field === 'y' && elDef.yUnit === 'level') {
+    const idx = LAYOUT_SPLAT_POS_LEVELS.indexOf(rawVal.trim().toLowerCase());
+    if (idx >= 0) layoutSet(elDef, 'y', idx);
+  } else {
+    const num = parseInt(rawVal, 10);
+    if (!isNaN(num)) layoutSet(elDef, field, num);
+  }
+  layoutRenderTable();
+}
+
+function layoutToggleSelect(elId, on) {
+  if (on) _layoutSelected.add(elId); else _layoutSelected.delete(elId);
+}
+function layoutSelectAll() {
+  LAYOUT_ELEMENTS.forEach(e => _layoutSelected.add(e.id));
+  layoutRenderTable();
+}
+function layoutSelectNone() {
+  _layoutSelected.clear();
+  layoutRenderTable();
+}
+
+function layoutNudgeSelected(field, delta) {
+  LAYOUT_ELEMENTS.forEach(elDef => {
+    if (!_layoutSelected.has(elDef.id)) return;
+    if (!elDef[field]) return;
+    if (field === 'y' && elDef.yUnit === 'level') {
+      // arrows move one preset level regardless of minor/major
+      const step = delta > 0 ? 1 : -1;
+      layoutSet(elDef, 'y', layoutGet(elDef, 'y') + step);
+      return;
+    }
+    let cur = layoutGet(elDef, field);
+    if (field === 'scale') cur = cur; // already a %
+    layoutSet(elDef, field, cur + delta);
+  });
+  layoutRenderTable();
+}
+
 
 /* ═══════════════════════════════════════════
    BAIT VISIBLE TOGGLE
@@ -4567,6 +4764,13 @@ document.addEventListener('DOMContentLoaded', () => {
   _mscRenderGifts();
   _mscRenderCmds();
   _mscRenderRanges();
+
+  // Restore hidden display spans for geyser/notif/splat-pos state (persisted via localStorage)
+  const geyserLbl = document.getElementById('geyser-pos-lbl');
+  if (geyserLbl) geyserLbl.textContent = 'y=' + _geyserY;
+  const notifDisp = document.getElementById('notif-pos-display');
+  if (notifDisp) notifDisp.textContent = `${_dockNotifPos.x}%, ${_dockNotifPos.y}px`;
+  layoutRenderTable();
 
   // Restore mission strip inputs
   const msInput = document.getElementById('mission-strip-text-input');
@@ -4984,6 +5188,9 @@ function gistGetConfig() {
     missionStripText:     localStorage.getItem('missionStripText'),
     missionStripY:        localStorage.getItem('missionStripY'),
     giftBarY:             localStorage.getItem('giftBarY'),
+    geyserY:              localStorage.getItem('geyserY'),
+    notifPos:             localStorage.getItem('notifPos'),
+    splatPos:             localStorage.getItem('splatPos'),
     [EVENT_PROMO_STORAGE_KEY]: localStorage.getItem(EVENT_PROMO_STORAGE_KEY),
     nh_cmd:               localStorage.getItem('nh_cmd'),
     nh_match:             localStorage.getItem('nh_match'),
@@ -5059,6 +5266,34 @@ function applyGistConfig(cfg) {
     const el = document.getElementById('gift-bar-y-val');
     if (el) el.textContent = _giftBarY;
   }
+
+  // --- geyser Y ---
+  if (cfg.geyserY != null) {
+    localStorage.setItem('geyserY', cfg.geyserY);
+    _geyserY = parseInt(cfg.geyserY, 10) || 1100;
+    const lbl = document.getElementById('geyser-pos-lbl');
+    if (lbl) lbl.textContent = 'y=' + _geyserY;
+  }
+
+  // --- notif pill position ---
+  if (cfg.notifPos != null) {
+    localStorage.setItem('notifPos', cfg.notifPos);
+    try { _dockNotifPos = JSON.parse(cfg.notifPos); } catch(e) {}
+    const disp = document.getElementById('notif-pos-display');
+    if (disp) disp.textContent = `${_dockNotifPos.x}%, ${_dockNotifPos.y}px`;
+  }
+
+  // --- splat overlay preset position ---
+  if (cfg.splatPos != null) {
+    localStorage.setItem('splatPos', cfg.splatPos);
+    const idx = LAYOUT_SPLAT_POS_LEVELS.indexOf(cfg.splatPos);
+    if (idx >= 0) _splatPosLevel = idx;
+    document.querySelectorAll('[data-pos]').forEach(b => {
+      b.classList.toggle('active', b.dataset.pos === cfg.splatPos);
+    });
+  }
+
+  layoutRenderTable();
 
   // --- event promo config ---
   if (cfg[EVENT_PROMO_STORAGE_KEY] != null) {
@@ -5467,9 +5702,10 @@ function testFireGiftAnim(variant) {
 }
 
 /* ── Geyser position control ── */
-let _geyserY = 1100;
+let _geyserY = parseInt(localStorage.getItem('geyserY') || '1100', 10);
 function geyserMove(delta) {
   _geyserY = Math.max(505, Math.min(1800, _geyserY + delta));
+  localStorage.setItem('geyserY', _geyserY);
   const lbl = document.getElementById('geyser-pos-lbl');
   if (lbl) lbl.textContent = 'y=' + _geyserY;
   if (ablyChannel) ablyChannel.publish('geyser-pos', { top: _geyserY }).catch(() => {});
@@ -5951,6 +6187,19 @@ function nhApplyConfig() {
   const timerPillOn = document.getElementById('nh-timer-pill').checked;
   const namePillOn  = document.getElementById('nh-name-pill').checked;
   const dedupeOn    = document.getElementById('nh-dedupe').checked;
+  const pressureEnabled      = document.getElementById('nh-pressure-enabled').checked;
+  const pressureGainPerJoin  = parseFloat(document.getElementById('nh-pressure-gain').value);
+  const pressurePopThreshold = parseFloat(document.getElementById('nh-pressure-threshold').value);
+  const pressureDecayPerSec  = parseFloat(document.getElementById('nh-pressure-decay').value);
+  const pressureDecayGraceMs = parseFloat(document.getElementById('nh-pressure-grace').value) * 1000;
+  const pressureWarnPct      = parseFloat(document.getElementById('nh-pressure-warn').value) / 100;
+  const pressureDangerPct    = parseFloat(document.getElementById('nh-pressure-danger').value) / 100;
+  const pressurePillOn       = document.getElementById('nh-pressure-pill').checked;
+  const pressureScale        = parseInt(document.getElementById('nh-pressure-scale').value) / 100;
+  const pressureXOffset      = parseInt(document.getElementById('nh-pressure-x').value);
+  const pressureYOffset      = parseInt(document.getElementById('nh-pressure-y').value);
+  const pressureLabel        = document.getElementById('nh-pressure-label').value.trim() || 'PRESSURE';
+  const popLabel              = document.getElementById('nh-pop-label').value.trim() || 'PRESSURE POPPED! 🎉';
   const cfg = {
     signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
     signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
@@ -5958,6 +6207,10 @@ function nhApplyConfig() {
     idleScale, idleXOffset, idleYOffset,
     timerLabel, timerScale, timerXOffset, timerYOffset,
     signPillOn, ctrPillOn, timerPillOn, namePillOn, dedupeOn,
+    pressureEnabled, pressureGainPerJoin, pressurePopThreshold,
+    pressureDecayPerSec, pressureDecayGraceMs, pressureWarnPct, pressureDangerPct,
+    pressurePillOn, pressureScale, pressureXOffset, pressureYOffset,
+    pressureLabel, popLabel,
   };
   if (ablyChannel) ablyChannel.publish('new-here-config', cfg).catch(() => {});
   try { localStorage.setItem('nh_display_cfg', JSON.stringify(cfg)); } catch {}
@@ -6053,7 +6306,56 @@ function nhLoadDisplayConfig() {
     if (c.timerPillOn != null) { const el = document.getElementById('nh-timer-pill'); if (el) el.checked = c.timerPillOn; }
     if (c.namePillOn  != null) { const el = document.getElementById('nh-name-pill');  if (el) el.checked = c.namePillOn; }
     if (c.dedupeOn    != null) { const el = document.getElementById('nh-dedupe');     if (el) el.checked = c.dedupeOn; }
+    if (c.pressureEnabled != null) { const el = document.getElementById('nh-pressure-enabled'); if (el) el.checked = c.pressureEnabled; }
+    if (c.pressureGainPerJoin != null) {
+      const el = document.getElementById('nh-pressure-gain'); if (el) el.value = c.pressureGainPerJoin;
+      const lv = document.getElementById('nh-pressure-gain-v'); if (lv) lv.textContent = c.pressureGainPerJoin;
+    }
+    if (c.pressurePopThreshold != null) {
+      const el = document.getElementById('nh-pressure-threshold'); if (el) el.value = c.pressurePopThreshold;
+      nhFmtPressureThreshold();
+    }
+    if (c.pressureDecayPerSec != null) {
+      const el = document.getElementById('nh-pressure-decay'); if (el) el.value = c.pressureDecayPerSec;
+      const lv = document.getElementById('nh-pressure-decay-v'); if (lv) lv.textContent = c.pressureDecayPerSec + '/s';
+    }
+    if (c.pressureDecayGraceMs != null) {
+      const secs = Math.round(c.pressureDecayGraceMs / 1000);
+      const el = document.getElementById('nh-pressure-grace'); if (el) el.value = secs;
+      const lv = document.getElementById('nh-pressure-grace-v'); if (lv) lv.textContent = secs + 's';
+    }
+    if (c.pressureWarnPct != null) {
+      const pct = Math.round(c.pressureWarnPct * 100);
+      const el = document.getElementById('nh-pressure-warn'); if (el) el.value = pct;
+      const lv = document.getElementById('nh-pressure-warn-v'); if (lv) lv.textContent = pct + '%';
+    }
+    if (c.pressureDangerPct != null) {
+      const pct = Math.round(c.pressureDangerPct * 100);
+      const el = document.getElementById('nh-pressure-danger'); if (el) el.value = pct;
+      const lv = document.getElementById('nh-pressure-danger-v'); if (lv) lv.textContent = pct + '%';
+    }
+    if (c.pressurePillOn != null) { const el = document.getElementById('nh-pressure-pill'); if (el) el.checked = c.pressurePillOn; }
+    if (c.pressureScale != null) {
+      const pct = Math.round(c.pressureScale * 100);
+      const el = document.getElementById('nh-pressure-scale'); if (el) el.value = pct;
+    }
+    if (c.pressureXOffset != null) { const el = document.getElementById('nh-pressure-x'); if (el) el.value = c.pressureXOffset; }
+    if (c.pressureYOffset != null) { const el = document.getElementById('nh-pressure-y'); if (el) el.value = c.pressureYOffset; }
+    if (c.pressureLabel != null) { const el = document.getElementById('nh-pressure-label'); if (el) el.value = c.pressureLabel; }
+    if (c.popLabel      != null) { const el = document.getElementById('nh-pop-label');       if (el) el.value = c.popLabel; }
+    layoutRenderTable();
   } catch {}
+}
+
+function nhFmtPressureGain() {
+  document.getElementById('nh-pressure-gain-v').textContent = document.getElementById('nh-pressure-gain').value;
+}
+
+function nhFmtPressureThreshold() {
+  const t = parseFloat(document.getElementById('nh-pressure-threshold').value);
+  const g = parseFloat(document.getElementById('nh-pressure-gain')?.value || 6);
+  const joins = g > 0 ? Math.round(t / g) : 0;
+  document.getElementById('nh-pressure-threshold-v').textContent = `${t} (~${joins})`;
 }
 
 function nhTimerStart() {
@@ -6130,7 +6432,24 @@ function nhReset() {
   if (st) { st.textContent = 'Pile reset'; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }
 
+function nhPressureAdd(amount) {
+  if (ablyChannel) ablyChannel.publish('new-here-pressure-cmd', { action: 'add', amount }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ +${amount} pressure`; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
+function nhPressureSet(amount) {
+  if (ablyChannel) ablyChannel.publish('new-here-pressure-cmd', { action: 'set', amount }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ pressure set to ${amount}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
+function nhForcePop() {
+  if (ablyChannel) ablyChannel.publish('new-here-pressure-cmd', { action: 'forcePop' }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = '💥 forced pop'; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
 </script>
 </body>
 </html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          

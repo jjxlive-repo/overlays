@@ -16,6 +16,13 @@
     width: 1080px;
     height: 1920px;
   }
+  /* Ably connection dot — grey disconnected, blue connected (JJ is red-green colorblind) */
+  #conn-dot {
+    position: fixed; top: 12px; right: 12px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #555; z-index: 9999;
+    transition: background .3s, box-shadow .3s;
+  }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,6 +30,7 @@
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 </head>
 <body>
+<div id="conn-dot"></div>
 <canvas id="c" width="1080" height="1920"></canvas>
 <script>
 // ═══════════════════════════════════════════════════════════════════
@@ -66,6 +74,25 @@ let TIMER_PILL_ENABLED = true;
 let NAME_PILL_ENABLED  = true;
 let DEDUPE_ENABLED     = true; // false = same viewer can join/splat repeatedly
 
+// ── PRESSURE / INFLATION mechanic ────────────────────────────────────
+// Every join adds "pressure." Pressure decays on its own after a grace
+// period of inactivity (urgency: the pile visibly deflates if chat goes
+// quiet). Hitting the pop threshold triggers an early explodeAndReset(),
+// independent of the countdown timer above — whichever fires first wins.
+let PRESSURE_ENABLED        = true;
+let PRESSURE_GAIN_PER_JOIN  = 6;     // pressure units added per NEW HERE join
+let PRESSURE_POP_THRESHOLD  = 100;   // pressure units needed to trigger a pop
+let PRESSURE_DECAY_PER_SEC  = 0.4;   // units lost per second once decay starts (slow by default)
+let PRESSURE_DECAY_GRACE_MS = 4000;  // ms of inactivity before decay kicks in
+let PRESSURE_WARN_PCT       = 0.6;   // fraction of threshold where warn zone starts
+let PRESSURE_DANGER_PCT     = 0.85;  // fraction of threshold where danger zone starts
+let PRESSURE_LABEL          = 'PRESSURE';
+let POP_LABEL                = 'PRESSURE POPPED! \u{1F389}';
+let PRESSURE_SCALE          = 1.0;
+let PRESSURE_X_OFFSET       = 0;
+let PRESSURE_Y_OFFSET       = 0;
+let PRESSURE_PILL_ENABLED   = true;
+
 function saveDisplayCfg() {
   try {
     localStorage.setItem('nh_display_cfg', JSON.stringify({
@@ -84,6 +111,12 @@ function saveDisplayCfg() {
       signPillOn: SIGN_PILL_ENABLED, ctrPillOn: CTR_PILL_ENABLED,
       timerPillOn: TIMER_PILL_ENABLED, namePillOn: NAME_PILL_ENABLED,
       dedupeOn: DEDUPE_ENABLED,
+      pressureEnabled: PRESSURE_ENABLED, pressureGainPerJoin: PRESSURE_GAIN_PER_JOIN,
+      pressurePopThreshold: PRESSURE_POP_THRESHOLD, pressureDecayPerSec: PRESSURE_DECAY_PER_SEC,
+      pressureDecayGraceMs: PRESSURE_DECAY_GRACE_MS, pressureWarnPct: PRESSURE_WARN_PCT,
+      pressureDangerPct: PRESSURE_DANGER_PCT, pressureLabel: PRESSURE_LABEL, popLabel: POP_LABEL,
+      pressureScale: PRESSURE_SCALE, pressureXOffset: PRESSURE_X_OFFSET, pressureYOffset: PRESSURE_Y_OFFSET,
+      pressurePillOn: PRESSURE_PILL_ENABLED,
     }));
   } catch {}
 }
@@ -124,6 +157,19 @@ function saveDisplayCfg() {
     if (c.timerPillOn  != null) TIMER_PILL_ENABLED = c.timerPillOn;
     if (c.namePillOn   != null) NAME_PILL_ENABLED  = c.namePillOn;
     if (c.dedupeOn     != null) DEDUPE_ENABLED     = c.dedupeOn;
+    if (c.pressureEnabled      != null) PRESSURE_ENABLED        = c.pressureEnabled;
+    if (c.pressureGainPerJoin  != null) PRESSURE_GAIN_PER_JOIN   = c.pressureGainPerJoin;
+    if (c.pressurePopThreshold != null) PRESSURE_POP_THRESHOLD   = c.pressurePopThreshold;
+    if (c.pressureDecayPerSec  != null) PRESSURE_DECAY_PER_SEC   = c.pressureDecayPerSec;
+    if (c.pressureDecayGraceMs != null) PRESSURE_DECAY_GRACE_MS  = c.pressureDecayGraceMs;
+    if (c.pressureWarnPct      != null) PRESSURE_WARN_PCT        = c.pressureWarnPct;
+    if (c.pressureDangerPct    != null) PRESSURE_DANGER_PCT      = c.pressureDangerPct;
+    if (c.pressureLabel        != null) PRESSURE_LABEL           = c.pressureLabel;
+    if (c.popLabel             != null) POP_LABEL                = c.popLabel;
+    if (c.pressureScale        != null) PRESSURE_SCALE           = c.pressureScale;
+    if (c.pressureXOffset      != null) PRESSURE_X_OFFSET        = c.pressureXOffset;
+    if (c.pressureYOffset      != null) PRESSURE_Y_OFFSET        = c.pressureYOffset;
+    if (c.pressurePillOn       != null) PRESSURE_PILL_ENABLED    = c.pressurePillOn;
   } catch {}
 })();
 
@@ -151,6 +197,8 @@ const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 16 columns
 const ENTER_DUR   = 1100;  // ms for a figure to travel to its resting position
 const SPLAT_DUR   = 420;   // ms for the squash+burst animation on landing
 const EXPLODE_DUR = 950;   // ms for the pile-clear burst animation
+const SIGN_HOLD_MS = 6000; // ms the JUST JOINED sign stays fully visible
+const SIGN_FADE_MS = 900;  // ms it takes to fade out after the hold period
 const QUEUE_GAP  = 1000 / CONFIG.maxPerSec;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -200,6 +248,7 @@ let queue    = [];
 let count    = 0;
 let newestName   = '';
 let newestSource = null;
+let newestJoinAt = 0;         // timestamp the sign should hold/fade relative to
 let pilePeakY    = FLOOR_Y;   // min feet-Y of settled figures
 let signPeakY    = FLOOR_Y;   // tweened version of pilePeakY for smooth sign rise
 let lastSpawn    = 0;
@@ -207,6 +256,11 @@ let seenUsers    = new Set();
 let figIdSeq     = 0;
 let resetPending = false;  // true while the explode-and-clear animation is playing
 let resetAt      = 0;      // timestamp when the explosion finishes and hardReset() fires
+
+// Pressure/inflation runtime state
+let PRESSURE             = 0;         // current pressure units (0..PRESSURE_POP_THRESHOLD)
+let lastPressureEventAt  = 0;         // performance.now() of last join, gates decay grace
+let popFlashAt           = -Infinity; // performance.now() of last pop, drives the flash text
 
 // ═══════════════════════════════════════════════════════════════════
 // HEIGHTMAP DEPOSITION
@@ -294,6 +348,12 @@ function spawnFigure(username, source) {
   count++;
   newestName   = username;
   newestSource = source;
+  newestJoinAt = performance.now();
+
+  if (PRESSURE_ENABLED) {
+    PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
+    lastPressureEventAt = newestJoinAt;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -673,6 +733,111 @@ function drawCounter(ctx, n) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PRESSURE / INFLATION — helpers + drawing
+// ═══════════════════════════════════════════════════════════════════
+function pressurePct() {
+  if (!PRESSURE_ENABLED || PRESSURE_POP_THRESHOLD <= 0) return 0;
+  return Math.max(0, Math.min(1, PRESSURE / PRESSURE_POP_THRESHOLD));
+}
+
+function pressureZone(pct) {
+  if (pct >= PRESSURE_DANGER_PCT) return 'danger';
+  if (pct >= PRESSURE_WARN_PCT)   return 'warn';
+  return 'safe';
+}
+
+const PRESSURE_ZONE_COLOR = {
+  safe:   { dot: '#34D399', rgb: '168,85,247' },  // purple
+  warn:   { dot: '#FB923C', rgb: '244,114,182' }, // hot pink
+  danger: { dot: '#F43F5E', rgb: '244,63,94'   },  // red
+};
+
+// Breathing scale multiplier applied on top of BLOB_SCALE — the whole pile
+// "inflates," pulsing faster and wider as pressure climbs toward pop.
+function pileBreath(now, pct) {
+  const freq = 1.1 + pct * 2.6;    // cycles/sec: ~1.1 idle → ~3.7 near pop
+  const amp  = 0.015 + pct * 0.09; // scale wobble: ±1.5% idle → ±10.5% near pop
+  return 1 + Math.sin((now / 1000) * freq * Math.PI * 2) * amp;
+}
+
+// Glow ring under the pile that widens and intensifies with pressure —
+// reads as the mound bulging/inflating rather than just stacking taller.
+// Radius capped well inside the 1080-wide canvas so it never clips edges.
+function drawPressureGlow(ctx, now, pct) {
+  if (pct <= 0) return;
+  const zone  = pressureZone(pct);
+  const zc    = PRESSURE_ZONE_COLOR[zone];
+  const pulseFreq = zone === 'danger' ? 5.5 : zone === 'warn' ? 3 : 1.2;
+  const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * pulseFreq * Math.PI * 2);
+  const rx = Math.min(480, 300 + pct * 180);
+  const ry = Math.min(90,  55  + pct * 35);
+
+  ctx.save();
+  ctx.globalAlpha = 0.25 + pct * 0.35 * pulse;
+  const g = ctx.createRadialGradient(540, FLOOR_Y - 40, 0, 540, FLOOR_Y - 40, rx);
+  g.addColorStop(0, `rgba(${zc.rgb},0.55)`);
+  g.addColorStop(1, `rgba(${zc.rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(540, FLOOR_Y - 40, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Full-screen red vignette flash, only in the danger zone — a frantic,
+// impossible-to-miss cue that the pop is imminent.
+function drawDangerVignette(ctx, now, pct) {
+  if (pressureZone(pct) !== 'danger') return;
+  const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * 6 * Math.PI * 2);
+  ctx.save();
+  const g = ctx.createRadialGradient(540, 960, 600, 540, 960, 1150);
+  g.addColorStop(0, 'rgba(244,63,94,0)');
+  g.addColorStop(1, `rgba(244,63,94,${0.12 + pulse * 0.18})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function drawPressureMeter(ctx, pct) {
+  if (!PRESSURE_ENABLED) return;
+  const zone = pressureZone(pct);
+  drawPill(ctx, {
+    cx: 540, cy: 270,
+    dotColor: PRESSURE_ZONE_COLOR[zone].dot,
+    bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
+    labelColor: '#CBD5E1', label: PRESSURE_LABEL, labelSize: 14,
+    value: `${Math.round(pct * 100)}%`, valueColor: '#fff', valueSize: 20,
+    showBg: PRESSURE_PILL_ENABLED,
+    maxWidth: 420,
+  });
+}
+
+// Punchy call-out text shown briefly right when the pile pops from pressure
+// (as opposed to the countdown timer hitting 0:00, which has no call-out).
+const POP_FLASH_MS = 2200;
+function drawPopFlash(ctx, now) {
+  const el = now - popFlashAt;
+  if (el < 0 || el > POP_FLASH_MS) return;
+  const t     = el / POP_FLASH_MS;
+  const scale = 1 + Math.sin(Math.min(1, t * 3) * Math.PI) * 0.25;
+  const alpha = t < 0.8 ? 1 : Math.max(0, 1 - (t - 0.8) / 0.2);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(540, 860);
+  ctx.scale(scale, scale);
+  ctx.font = '700 54px Fredoka, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth   = 8;
+  ctx.strokeStyle = '#1a0505';
+  ctx.strokeText(POP_LABEL, 0, 0);
+  ctx.fillStyle = '#F43F5E';
+  ctx.fillText(POP_LABEL, 0, 0);
+  ctx.restore();
+}
+
 // peakY = feet-Y of the topmost figure in the pile
 function drawJoinSign(ctx, name, source, peakY) {
   const pal = source ? PALETTES[source] : null;
@@ -810,6 +975,24 @@ function tick(now) {
     }
   }
 
+  // Pressure decay + pop — independent of the countdown timer above.
+  // Whichever condition (timer hits 0, or pressure hits threshold) fires
+  // first wins; explodeAndReset() is a no-op re-entry-safe call once
+  // resetPending is already true.
+  if (PRESSURE_ENABLED && !resetPending) {
+    const idleMs = now - lastPressureEventAt;
+    if (idleMs > PRESSURE_DECAY_GRACE_MS && PRESSURE > 0) {
+      PRESSURE = Math.max(0, PRESSURE - PRESSURE_DECAY_PER_SEC * (dt / 1000));
+    }
+    if (PRESSURE >= PRESSURE_POP_THRESHOLD) {
+      console.log('[NEW HERE] pressure hit pop threshold — triggering pile pop');
+      popFlashAt = now;
+      PRESSURE = 0;
+      lastPressureEventAt = now;
+      explodeAndReset();
+    }
+  }
+
   if (resetPending) {
     const dtSec = dt / 1000;
     for (const fig of figures) {
@@ -856,7 +1039,11 @@ function frame(now) {
   // ── Draw ──────────────────────────────────────────────────
   ctx.clearRect(0, 0, W, H);
 
+  const pPct   = pressurePct();
+  const pBreath = pileBreath(now, pPct);
+
   drawFloor(ctx);
+  drawPressureGlow(ctx, now, pPct);
 
   if (count === 0) {
     const iCX = 540, iCY = 1500;
@@ -884,7 +1071,9 @@ function frame(now) {
 
     for (const fig of sorted) {
       const pos = currentPos(fig);
-      const blobS = S * BLOB_SCALE;
+      // Exploding/entering figures skip the breathing multiplier so the pop
+      // burst and mid-air travel read as clean physics, not a wobble.
+      const blobS = S * BLOB_SCALE * (fig.phase === 'settled' ? pBreath : 1);
       const exploding = fig.phase === 'exploding';
 
       ctx.save();
@@ -923,11 +1112,16 @@ function frame(now) {
       }
     }
 
-    // JUST JOINED sign (clamped to safe zone top)
-    if (newestName) {
+    // JUST JOINED sign — holds fully visible, then fades out and disappears
+    // so it doesn't sit on screen forever showing a stale name.
+    const signElapsed = now - newestJoinAt;
+    const signAlpha = signElapsed <= SIGN_HOLD_MS ? 1
+      : 1 - (signElapsed - SIGN_HOLD_MS) / SIGN_FADE_MS;
+    if (newestName && signAlpha > 0) {
       const clampedPeak = Math.max(600, signPeakY);
       const sCX = 540, sCY = clampedPeak - SIGN_GAP;
       ctx.save();
+      ctx.globalAlpha = Math.min(1, signAlpha);
       ctx.translate(sCX + SIGN_X_OFFSET, sCY + SIGN_Y_OFFSET);
       ctx.scale(SIGN_SCALE, SIGN_SCALE);
       ctx.translate(-sCX, -sCY);
@@ -958,6 +1152,22 @@ function frame(now) {
     ctx.restore();
   }
 
+  // Pressure meter (always visible when enabled)
+  if (PRESSURE_ENABLED) {
+    const pCX = 540, pCY = 270;
+    ctx.save();
+    ctx.translate(pCX + PRESSURE_X_OFFSET, pCY + PRESSURE_Y_OFFSET);
+    ctx.scale(PRESSURE_SCALE, PRESSURE_SCALE);
+    ctx.translate(-pCX, -pCY);
+    drawPressureMeter(ctx, pPct);
+    ctx.restore();
+  }
+
+  // Danger-zone screen flash + pop call-out — drawn last so they sit on top
+  // of everything else in the scene.
+  drawDangerVignette(ctx, now, pPct);
+  drawPopFlash(ctx, now);
+
   requestAnimationFrame(frame);
 }
 
@@ -979,6 +1189,7 @@ function saveState() {
         source: f.source, username: f.username, rot: f.rot,
       })),
       seenUsers: Array.from(seenUsers),
+      pressure: PRESSURE,
     }));
   } catch {}
 }
@@ -1007,6 +1218,11 @@ function loadState() {
     }));
     updatePilePeak();
     signPeakY = pilePeakY; // snap sign to current peak without tweening
+    PRESSURE  = s.pressure || 0;
+    // Reset the decay clock to "now" rather than trying to reconcile
+    // performance.now() (page-relative) against a saved timestamp — avoids
+    // a burst of decay firing the instant the overlay reloads.
+    lastPressureEventAt = performance.now();
   } catch {}
 }
 
@@ -1057,6 +1273,19 @@ function connectAbly() {
     if (d.timerPillOn  != null) TIMER_PILL_ENABLED = d.timerPillOn;
     if (d.namePillOn   != null) NAME_PILL_ENABLED  = d.namePillOn;
     if (d.dedupeOn     != null) DEDUPE_ENABLED     = d.dedupeOn;
+    if (d.pressureEnabled      != null) PRESSURE_ENABLED        = d.pressureEnabled;
+    if (d.pressureGainPerJoin  != null) PRESSURE_GAIN_PER_JOIN   = d.pressureGainPerJoin;
+    if (d.pressurePopThreshold != null) PRESSURE_POP_THRESHOLD   = d.pressurePopThreshold;
+    if (d.pressureDecayPerSec  != null) PRESSURE_DECAY_PER_SEC   = d.pressureDecayPerSec;
+    if (d.pressureDecayGraceMs != null) PRESSURE_DECAY_GRACE_MS  = d.pressureDecayGraceMs;
+    if (d.pressureWarnPct      != null) PRESSURE_WARN_PCT        = d.pressureWarnPct;
+    if (d.pressureDangerPct    != null) PRESSURE_DANGER_PCT      = d.pressureDangerPct;
+    if (d.pressureLabel        != null) PRESSURE_LABEL           = d.pressureLabel || PRESSURE_LABEL;
+    if (d.popLabel             != null) POP_LABEL                = d.popLabel || POP_LABEL;
+    if (d.pressureScale        != null) PRESSURE_SCALE           = d.pressureScale;
+    if (d.pressureXOffset      != null) PRESSURE_X_OFFSET        = d.pressureXOffset;
+    if (d.pressureYOffset      != null) PRESSURE_Y_OFFSET        = d.pressureYOffset;
+    if (d.pressurePillOn       != null) PRESSURE_PILL_ENABLED    = d.pressurePillOn;
     saveDisplayCfg();
   });
 
@@ -1089,6 +1318,24 @@ function connectAbly() {
     saveDisplayCfg();
   });
 
+  // Pressure test/override commands from stream-dock — one-shot actions,
+  // kept separate from the config snapshot the same way timer commands are.
+  ch.subscribe('new-here-pressure-cmd', msg => {
+    const { action, amount } = msg.data || {};
+    if (action === 'add') {
+      PRESSURE = Math.max(0, Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + (amount || 0)));
+      lastPressureEventAt = performance.now();
+    } else if (action === 'set') {
+      PRESSURE = Math.max(0, Math.min(PRESSURE_POP_THRESHOLD, amount || 0));
+      lastPressureEventAt = performance.now();
+    } else if (action === 'forcePop') {
+      popFlashAt = performance.now();
+      PRESSURE = 0;
+      lastPressureEventAt = performance.now();
+      explodeAndReset();
+    }
+  });
+
   // Respond to ping from stream-dock so it can show connection status
   ch.subscribe('new-here-ping', () => {
     ch.publish('new-here-alive', {}).catch(() => {});
@@ -1097,6 +1344,21 @@ function connectAbly() {
   const sendAlive = () => ch.publish('new-here-alive', {}).catch(() => {});
 
   // Registered once, outside the 'connected' handler, so reconnects don't stack intervals
+  const connDotEl = document.getElementById('conn-dot');
+  client.connection.on(stateChange => {
+    const s = stateChange.current;
+    if (!connDotEl) return;
+    if (s === 'connected') {
+      connDotEl.style.background = '#3b82f6';
+      connDotEl.style.boxShadow = '0 0 6px #3b82f6';
+    } else if (s === 'connecting') {
+      connDotEl.style.background = '#facc15';
+      connDotEl.style.boxShadow = 'none';
+    } else {
+      connDotEl.style.background = '#555';
+      connDotEl.style.boxShadow = 'none';
+    }
+  });
   client.connection.on('connected', () => {
     console.log('[Ably] connected →', ABLY_CH);
     sendAlive();
@@ -1114,6 +1376,9 @@ function connectAbly() {
     get queue() { return queue; },
     get seenUsers() { return Array.from(seenUsers); },
     get entering() { return figures.filter(f => f.phase === 'entering').length; },
+    get pressure() { return PRESSURE; },
+    get pressurePct() { return pressurePct(); },
+    get pressureZone() { return pressureZone(pressurePct()); },
   };
 }
 
@@ -1168,6 +1433,8 @@ function hardReset() {
   signPeakY     = FLOOR_Y;
   seenUsers     = new Set();
   resetPending  = false;
+  PRESSURE            = 0;
+  lastPressureEventAt = performance.now();
   if (CONFIG.persist) localStorage.removeItem(STORAGE_KEY);
 }
 
@@ -1201,20 +1468,28 @@ window.resetOverlay = function () {
   explodeAndReset();
 };
 
+/**
+ * setPressure(amount)
+ * Force pressure to a specific value (0..PRESSURE_POP_THRESHOLD) for testing
+ * decay/warn/danger zones without spamming joins.
+ */
+window.setPressure = function (amount) {
+  PRESSURE = Math.max(0, Math.min(PRESSURE_POP_THRESHOLD, amount));
+  lastPressureEventAt = performance.now();
+};
+
+/**
+ * forcePop()
+ * Immediately triggers a pressure-driven pop (flash text + explosion),
+ * bypassing the threshold check. Useful for testing the pop visuals.
+ */
+window.forcePop = function () {
+  popFlashAt = performance.now();
+  PRESSURE = 0;
+  lastPressureEventAt = performance.now();
+  explodeAndReset();
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // BOOT
-// ═══════════════════════════════════════════════════════════════════
-document.fonts.ready.then(() => {
-  console.log('[NEW HERE] overlay build: explode-reset + countdown timer — if you don\'t see this after a hard refresh, OBS/browser is serving a cached copy.');
-  loadState();
-  connectAbly();
-  requestAnimationFrame(frame);
-  // Safety net: browsers throttle/pause requestAnimationFrame in backgrounded
-  // or unfocused tabs, which would otherwise let joins pile up in the queue
-  // without ever spawning. OBS browser sources always render, but this keeps
-  // things working if the overlay is ever tested in a plain background tab.
-  setInterval(() => tick(performance.now()), 250);
-});
-</script>
-</body>
-</html>
+// ════
