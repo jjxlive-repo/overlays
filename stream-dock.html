@@ -3653,6 +3653,12 @@ let _ttbConfig = {
     { id: 'potato', label: 'POTATO HEAD', action: 'potato_head' },
     { id: 'space',  label: 'SPACE WALK',  action: 'space_walk' },
   ],
+  layout: {
+    'ttb-topline':      { x: 0, y: 0 },
+    'ttb-jointext':      { x: 0, y: 0 },
+    'ttb-instructions':  { x: 0, y: 0 },
+    'ttb-eventline':     { x: 0, y: 0 },
+  },
 };
 try { Object.assign(_ttbConfig, JSON.parse(localStorage.getItem('ttbConfig') || '{}')); } catch(e) {}
 function ttbEsc(s) {
@@ -4612,6 +4618,14 @@ const LAYOUT_ELEMENTS = [
     x:{min:-300,max:300}, y:{min:-200,max:800} },
   { id:'cg-cracks', label:'Crack size', group:'Crowd Glass',
     scale:{min:50,max:200} },
+  { id:'ttb-topline', label:'Round timer + leader', group:'Team Timing Bar',
+    x:{min:-400,max:400}, y:{min:-400,max:400} },
+  { id:'ttb-jointext', label:'Join Now text', group:'Team Timing Bar',
+    x:{min:-400,max:400}, y:{min:-400,max:400} },
+  { id:'ttb-instructions', label:'Instructions text', group:'Team Timing Bar',
+    x:{min:-400,max:400}, y:{min:-400,max:400} },
+  { id:'ttb-eventline', label:'Event line (latest join/boost/switch)', group:'Team Timing Bar',
+    x:{min:-400,max:400}, y:{min:-400,max:400} },
 ];
 
 function layoutGet(elDef, field) {
@@ -4630,6 +4644,8 @@ function layoutGet(elDef, field) {
     case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
       return field === 'x' ? _cgLayout[elDef.id].x : field === 'y' ? _cgLayout[elDef.id].y : null;
     case 'cg-cracks': return field === 'scale' ? _cgCrackScale : null;
+    case 'ttb-topline': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
+      return field === 'x' ? _ttbConfig.layout[elDef.id].x : field === 'y' ? _ttbConfig.layout[elDef.id].y : null;
   }
   return null;
 }
@@ -4675,6 +4691,10 @@ function layoutSet(elDef, field, val) {
       _cgCrackScale = val;
       cgPublishLayout();
       return;
+    case 'ttb-topline': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
+      _ttbConfig.layout[elDef.id][field] = val;
+      ttbPublishConfig();
+      return; // ttbPublishConfig already calls scheduleGistSave()
   }
   scheduleGistSave();
 }
