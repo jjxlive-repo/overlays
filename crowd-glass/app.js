@@ -37,6 +37,7 @@
     ablyStatus: "disabled",
     autoMode: CFG.autoMode,
     crackScale: CFG.crackScale,
+    shatterCrackThreshold: CFG.shatterCrackThreshold,
 
     debug: false,
 
@@ -449,11 +450,15 @@
   // ---------------------------------------------------------------------
   // Integrity / damage
   // ---------------------------------------------------------------------
+  function activeCrackCount() {
+    return state.cracks.filter((c) => !c.isStar && !c.sealing).length;
+  }
+
   function applyDamage(amount) {
     if (state.shatterActive) return;
     state.integrity = clamp(state.integrity - amount, 0, state.maxIntegrity);
     updateIntegrityUI();
-    if (state.integrity <= CFG.shatterAtIntegrity) {
+    if (state.integrity <= CFG.shatterAtIntegrity || activeCrackCount() >= state.shatterCrackThreshold) {
       triggerShatter();
     }
   }
@@ -873,8 +878,24 @@
     return undefined;
   }
 
+  // stream-dock can publish the same real gift twice — once from Social Stream Ninja's
+  // chat-message parsing ("gift-alert", always active) and once from the optional Tikfinity
+  // WebSocket ("milk-event" type "tiktok_gift", only when Tikfinity is connected). Dedup by
+  // a short-lived signature so a single real gift never repairs the glass twice.
+  const _recentGiftSignatures = new Map();
+  function isDuplicateGift(signature) {
+    const now = performance.now();
+    for (const [key, ts] of _recentGiftSignatures) {
+      if (now - ts > 4000) _recentGiftSignatures.delete(key);
+    }
+    if (_recentGiftSignatures.has(signature)) return true;
+    _recentGiftSignatures.set(signature, now);
+    return false;
+  }
+
   function handleMilkEvent(payload) {
     if (!payload || !payload.type || !state.autoMode) return;
+    if (state.debug) console.log("[CrowdGlass] milk-event", payload);
     switch (payload.type) {
       case "join":
         handleViewerJoin({
@@ -883,27 +904,43 @@
           username: payload.username || null
         });
         break;
-      case "tiktok_gift":
-        handleGift({
-          type: "gift",
-          platform: "tiktok",
-          username: payload.username || payload.gifterKey || null,
-          giftName: payload.giftName,
-          coins: payload.coins || 0
-        });
+      case "tiktok_gift": {
+        const username = payload.username || payload.gifterKey || null;
+        const coins = payload.coins || 0;
+        if (isDuplicateGift(`tiktok:${username || "anon"}:${coins}`)) break;
+        handleGift({ type: "gift", platform: "tiktok", username, giftName: payload.giftName, coins });
         break;
-      case "yt_superchat":
-        handleGift({
-          type: "gift",
-          platform: "youtube",
-          username: payload.gifterKey || null,
-          giftName: payload.isJewels ? "Jewels" : "Superchat",
-          coins: Math.round((payload.dollars || 0) * 100) // matches stream-dock's own $0.01/coin fallback
-        });
+      }
+      case "yt_superchat": {
+        const username = payload.gifterKey || null;
+        const coins = Math.round((payload.dollars || 0) * 100); // matches stream-dock's own $0.01/coin fallback
+        if (isDuplicateGift(`youtube:${username || "anon"}:${coins}`)) break;
+        handleGift({ type: "gift", platform: "youtube", username, giftName: payload.isJewels ? "Jewels" : "Superchat", coins });
         break;
+      }
       default:
         break; // like/comment/heart_me/yt_sub etc. are out of scope for the crack mechanic
     }
+  }
+
+  // Real gifts (TikTok coins, YouTube superchats/jewels/donations) as parsed by
+  // stream-dock's Social Stream Ninja chat listener — this is the always-on gift path,
+  // unlike "milk-event" tiktok_gift which needs the optional Tikfinity connection.
+  function coinsFromGiftAlert(type, amount) {
+    if (type === "tiktok_coins") return amount;
+    if (type === "youtube_jewels") return amount * 0.5; // $0.005/jewel -> $0.01/coin equivalence
+    return amount * 100; // youtube_superchat / direct_donation: dollars -> coins equivalent
+  }
+
+  function handleGiftAlert(payload) {
+    if (!payload || !state.autoMode) return;
+    if (state.debug) console.log("[CrowdGlass] gift-alert", payload);
+    const coins = Math.round(coinsFromGiftAlert(payload.type, payload.amount || 0));
+    if (coins <= 0) return;
+    const platform = payload.platform === "tiktok" ? "tiktok" : payload.platform === "youtube" ? "youtube" : undefined;
+    const username = payload.name && payload.name !== "Anonymous" ? payload.name : null;
+    if (isDuplicateGift(`${platform || "other"}:${username || "anon"}:${coins}`)) return;
+    handleGift({ type: "gift", platform, username, giftName: payload.giftTitle || payload.giftLabel || undefined, coins });
   }
 
   function handleAblyViewerCount(payload) {
@@ -948,6 +985,9 @@
     if (payload.crackScale != null) {
       state.crackScale = clamp(payload.crackScale, 0.3, 3);
     }
+    if (payload.shatterThreshold != null) {
+      state.shatterCrackThreshold = clamp(Math.round(payload.shatterThreshold), 3, CFG.maxCracksOnScreen);
+    }
   }
 
   function announceAlive() {
@@ -964,6 +1004,7 @@
       state.ablyStatus = "connecting";
 
       channel.subscribe("milk-event", (msg) => handleMilkEvent(msg.data));
+      channel.subscribe("gift-alert", (msg) => handleGiftAlert(msg.data));
       channel.subscribe("crowd-glass-viewer-count", (msg) => handleAblyViewerCount(msg.data));
       channel.subscribe("crowd-glass-cmd", (msg) => handleAblyCommand(msg.data));
       channel.subscribe("crowd-glass-layout", (msg) => applyLayoutMessage(msg.data));
@@ -982,7 +1023,7 @@
   function updateDebugPanel() {
     if (!state.debug) return;
     dbgIntegrity.textContent = Math.round(state.integrity);
-    dbgCracks.textContent = state.cracks.length;
+    dbgCracks.textContent = `${activeCrackCount()} / ${state.shatterCrackThreshold}`;
     dbgBulletproof.textContent = state.bulletproof ? "on" : "off";
     dbgLastEvent.textContent = state.lastEventLabel;
     dbgWsStatus.textContent = state.wsStatus;
@@ -1085,6 +1126,6 @@
   // expose for debugging in the browser console
   window.CrowdGlass = {
     state, resetGlass, triggerShatter, activateBulletproof, handleIncomingEvent, render,
-    handleMilkEvent, handleAblyViewerCount, applyLayoutMessage, handleAblyCommand
+    handleMilkEvent, handleGiftAlert, handleAblyViewerCount, applyLayoutMessage, handleAblyCommand
   };
 })();

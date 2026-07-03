@@ -34,6 +34,9 @@ window.CROWD_GLASS_CONFIG = {
   burstMaxCracks: 5,
 
   shatterAtIntegrity: 0,
+  // Second, independent shatter trigger: once this many un-repaired cracks are on
+  // screen, shatter regardless of integrity %. Adjustable live from the dock.
+  shatterCrackThreshold: 30,
   autoResetAfterShatterMs: 3000,
 
   bulletproofDurationMs: 20000,
