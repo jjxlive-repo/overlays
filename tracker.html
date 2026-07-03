@@ -2016,6 +2016,83 @@ document.getElementById('modal-add-confirm').addEventListener('click', () => {
   addGiftKey = null;
 });
 
+/* ───────────────────────────── MODAL: EDIT ENTRIES ──── */
+let editEntriesKey = null;
+
+function openEditEntries(key) {
+  const gifter = DB.gifters[key];
+  if (!gifter) return;
+  editEntriesKey = key;
+  document.getElementById('edit-display-name').value = gifter.displayName;
+  renderEditEntriesList();
+  document.getElementById('modal-edit-entries').classList.remove('hidden');
+}
+
+function renderEditEntriesList() {
+  const gifter = DB.gifters[editEntriesKey];
+  const list   = document.getElementById('edit-entries-list');
+  const countEl = document.getElementById('edit-entry-count');
+  if (!gifter || !list) return;
+  countEl.textContent = '(' + gifter.gifts.length + ')';
+  const sorted = [...gifter.gifts].sort((a, b) => b.timestamp - a.timestamp);
+  list.innerHTML = sorted.map(g => `
+    <div class="edit-entry-row" data-id="${esc(g.id)}" style="display:flex;gap:6px;align-items:center;background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;">
+      <input type="number" class="ee-amount" value="${g.amount}" step="0.01" style="width:90px">
+      <select class="ee-type">
+        <option value="tiktok_coins"      ${g.type === 'tiktok_coins'      ? 'selected' : ''}>TikTok Coins</option>
+        <option value="youtube_jewels"    ${g.type === 'youtube_jewels'    ? 'selected' : ''}>YouTube Jewels</option>
+        <option value="youtube_superchat" ${g.type === 'youtube_superchat' ? 'selected' : ''}>YouTube SuperChat</option>
+        <option value="twitch_bits"       ${g.type === 'twitch_bits'       ? 'selected' : ''}>Twitch Bits</option>
+        <option value="direct_donation"   ${g.type === 'direct_donation'   ? 'selected' : ''}>Direct Donation</option>
+      </select>
+      <input type="text" class="ee-note" value="${esc(g.note || '')}" placeholder="Note" style="flex:1;min-width:0">
+      <span class="dim" style="font-size:10px;white-space:nowrap">${new Date(g.timestamp).toLocaleString()}</span>
+      <button type="button" class="btn-ghost btn-sm ee-delete" title="Delete this entry" style="color:var(--red)">✕</button>
+    </div>`).join('');
+}
+
+document.getElementById('edit-entries-list').addEventListener('click', e => {
+  const btn = e.target.closest('.ee-delete');
+  if (!btn) return;
+  btn.closest('.edit-entry-row').remove();
+  const countEl = document.getElementById('edit-entry-count');
+  countEl.textContent = '(' + document.querySelectorAll('#edit-entries-list .edit-entry-row').length + ')';
+});
+
+document.getElementById('edit-entries-cancel').addEventListener('click', () => {
+  document.getElementById('modal-edit-entries').classList.add('hidden');
+  editEntriesKey = null;
+});
+
+document.getElementById('edit-entries-save').addEventListener('click', () => {
+  if (!editEntriesKey) return;
+  const gifter = DB.gifters[editEntriesKey];
+  if (!gifter) return;
+
+  const newName = document.getElementById('edit-display-name').value.trim();
+  if (newName) gifter.displayName = newName;
+
+  const rows = [...document.querySelectorAll('#edit-entries-list .edit-entry-row')];
+  const survivingIds = new Set(rows.map(r => r.dataset.id));
+  gifter.gifts = gifter.gifts.filter(g => survivingIds.has(g.id));
+
+  rows.forEach(row => {
+    const g = gifter.gifts.find(x => x.id === row.dataset.id);
+    if (!g) return;
+    const type = row.querySelector('.ee-type').value;
+    g.amount   = parseFloat(row.querySelector('.ee-amount').value) || 0;
+    g.type     = type;
+    g.platform = typeToPlatform(type);
+    g.note     = row.querySelector('.ee-note').value.trim();
+  });
+
+  saveData(DB);
+  renderTable();
+  flashRow(editEntriesKey);
+  document.getElementById('modal-edit-entries').classList.add('hidden');
+  editEntriesKey = null;
+});
+
 /* ───────────────────────────── MODAL: UNDO ──── */
 let undoKey = null;
 
