@@ -970,26 +970,26 @@ function uuidv4() {
 }
 
 function gifterTotals(gifter, mode, iosPercent) {
-  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
-  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const midnightToday = todayStartCST();
+  const monthStart = monthStartCST();
   let today = 0, month = 0, allTime = 0;
   for (const g of gifter.gifts) {
     const v = computeValue(g.amount, g.type, mode, iosPercent);
     allTime += v;
-    if (g.timestamp >= monthStart.getTime()) month += v;
-    if (g.timestamp >= midnightToday.getTime()) today += v;
+    if (g.timestamp >= monthStart) month += v;
+    if (g.timestamp >= midnightToday) today += v;
   }
   return { today, month, allTime };
 }
 
 function gifterRawTotals(gifter) {
-  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
-  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const midnightToday = todayStartCST();
+  const monthStart = monthStartCST();
   let today = 0, month = 0, allTime = 0;
   for (const g of gifter.gifts) {
     allTime += g.amount;
-    if (g.timestamp >= monthStart.getTime()) month += g.amount;
-    if (g.timestamp >= midnightToday.getTime()) today += g.amount;
+    if (g.timestamp >= monthStart) month += g.amount;
+    if (g.timestamp >= midnightToday) today += g.amount;
   }
   return { today, month, allTime };
 }
@@ -2070,7 +2070,8 @@ function openRename(key) {
 
 document.getElementById('rename-input').addEventListener('input', e => {
   const newName = e.target.value.trim();
-  const newKey  = normKey(newName);
+  const gifter  = DB.gifters[renameKey];
+  const newKey  = gifter ? gifterKey(newName, gifter.platform, gifter.userId) : normKey(newName);
   const warn    = document.getElementById('rename-merge-warn');
   warn.style.display = (DB.gifters[newKey] && newKey !== renameKey) ? 'block' : 'none';
 });
@@ -2084,7 +2085,8 @@ document.getElementById('rename-confirm').addEventListener('click', () => {
   if (!renameKey) return;
   const newName = document.getElementById('rename-input').value.trim();
   if (!newName) return;
-  const newKey  = normKey(newName);
+  const gifter  = DB.gifters[renameKey];
+  const newKey  = gifterKey(newName, gifter.platform, gifter.userId);
 
   if (newKey === renameKey) {
     // Just update display name
@@ -2184,9 +2186,8 @@ document.getElementById('reset-do').addEventListener('click', () => {
     }
   }
 
-  const now = Date.now();
-  const midnightToday = new Date(); midnightToday.setHours(0,0,0,0);
-  const monthStart    = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const midnightToday = todayStartCST();
+  const monthStart    = monthStartCST();
 
   if (resetMode === 'all') {
     const savedSettings = { ...DB.settings };
@@ -2197,9 +2198,9 @@ document.getElementById('reset-do').addEventListener('click', () => {
     for (const key of Object.keys(DB.gifters)) {
       const gifter = DB.gifters[key];
       if (resetMode === 'today') {
-        gifter.gifts = gifter.gifts.filter(g => g.timestamp < midnightToday.getTime());
+        gifter.gifts = gifter.gifts.filter(g => g.timestamp < midnightToday);
       } else if (resetMode === 'month') {
-        gifter.gifts = gifter.gifts.filter(g => g.timestamp < monthStart.getTime());
+        gifter.gifts = gifter.gifts.filter(g => g.timestamp < monthStart);
       }
     }
   }
@@ -2322,6 +2323,43 @@ async function pushToGist() {
   gistBusy = false;
 }
 
+// Unions gift entries (by id) per-gifter instead of wholesale-replacing local
+// data with whichever side has the newer lastUpdated — so pulling from Gist
+// can no longer silently drop gifts recorded locally (e.g. on a second
+// machine) that just haven't been pushed yet.
+function mergeStores(local, remote) {
+  const merged = { ...local, gifters: {} };
+  const keys = new Set([...Object.keys(local.gifters || {}), ...Object.keys(remote.gifters || {})]);
+  for (const key of keys) {
+    const a = local.gifters[key];
+    const b = remote.gifters[key];
+    if (a && b) {
+      const byId = new Map();
+      for (const g of b.gifts) byId.set(g.id || JSON.stringify(g), g);
+      for (const g of a.gifts) byId.set(g.id || JSON.stringify(g), g);
+      merged.gifters[key] = { ...b, ...a, gifts: Array.from(byId.values()) };
+    } else {
+      merged.gifters[key] = a || b;
+    }
+  }
+  merged.settings = local.settings || remote.settings;
+  merged.lastUpdated = Math.max(local.lastUpdated || 0, remote.lastUpdated || 0);
+  return merged;
+}
+
+// Applies data pulled from Gist through the same side effects as a local
+// saveData() (persist, refresh "last updated" label, re-publish the live
+// leaderboard) — minus scheduleGistSync(), since we just pulled and don't
+// need to immediately push the same data back.
+function applyPulledData(data) {
+  DB = data;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  renderLastUpdated(DB.lastUpdated);
+  setTimeout(publishGiftrLeaderboard, 80);
+  applySettings();
+  renderTable();
+}
+
 async function pullFromGist() {
   if (!gistPAT || !gistId) { setGistStatus('❌ Enter PAT and Gist ID first', 'err'); return; }
   setGistStatus('Loading from Gist…', 'busy');
@@ -2335,18 +2373,8 @@ async function pullFromGist() {
     if (!file) throw new Error('gift-tracker-data.json not found in Gist');
     const imported = JSON.parse(file.content);
     if (!imported.gifters) throw new Error('Invalid data format');
-    if (!DB.lastUpdated || (imported.lastUpdated && imported.lastUpdated > DB.lastUpdated)) {
-      if (!confirm(`⬇ Gist data is newer (${new Date(imported.lastUpdated).toLocaleString()}).\n\nOverwrite local data?`)) {
-        setGistStatus('Pull cancelled', 'idle'); return;
-      }
-      DB = imported;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-      applySettings();
-      renderTable();
-      setGistStatus(`✅ Loaded from Gist (${Object.keys(DB.gifters).length} gifters)`, 'ok');
-    } else {
-      setGistStatus('✅ Local data is already up to date', 'ok');
-    }
+    applyPulledData(mergeStores(DB, imported));
+    setGistStatus(`✅ Merged from Gist (${Object.keys(DB.gifters).length} gifters)`, 'ok');
   } catch(e) {
     setGistStatus(`❌ Pull failed: ${e.message}`, 'err');
   }
@@ -2397,12 +2425,9 @@ if (gistPAT && gistId) {
       const file = json.files['gift-tracker-data.json'];
       if (!file) throw new Error('no file');
       const remote = JSON.parse(file.content);
-      if (remote.gifters && remote.lastUpdated && (!DB.lastUpdated || remote.lastUpdated > DB.lastUpdated)) {
-        DB = remote;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-        applySettings();
-        renderTable();
-        setGistStatus(`✅ Auto-loaded from Gist (${new Date(DB.lastUpdated).toLocaleString()})`, 'ok');
+      if (remote.gifters) {
+        applyPulledData(mergeStores(DB, remote));
+        setGistStatus(`✅ Synced with Gist (${new Date(DB.lastUpdated).toLocaleString()})`, 'ok');
       } else {
         setGistStatus(`✅ In sync (${new Date().toLocaleTimeString()})`, 'ok');
       }

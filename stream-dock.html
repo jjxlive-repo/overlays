@@ -2369,7 +2369,103 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="ctrl-btn c-off" style="width:100%;" onclick="cgCmd('reset_glass')">↺ Reset Glass</button>
           </div>
 
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <div class="ctrl-row" style="align-items:center;gap:6px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">💢 Shatter after</span>
+              <input type="range" id="cg-shatter-slider" min="5" max="40" value="30"
+                style="flex:1;accent-color:#ef4444;height:4px;cursor:pointer;"
+                oninput="cgSetShatterThreshold(this.value)">
+              <span class="ctrl-status" id="cg-shatter-val" style="font-size:10px;min-width:56px;text-align:right;font-weight:600;">30 cracks</span>
+            </div>
+          </div>
+
           <div style="font-size:9px;color:var(--txt-dim);margin-top:6px;">Position &amp; crack size moved to 🎯 Layout panel</div>
+        </div>
+      </div>
+
+      <!-- ── TEAM TIMING BAR ── -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('ttb')">
+          <span class="ctrl-hd-title">🎯 Team Timing Bar</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-ttb">
+          <div class="ctrl-row" style="gap:4px;">
+            <button class="ctrl-btn c-on" id="ttb-enable-btn" style="flex:1;" onclick="ttbDockSetEnabled(true)">▶ Enable</button>
+            <button class="ctrl-btn c-off" id="ttb-disable-btn" style="flex:1;" onclick="ttbDockSetEnabled(false)">■ Disable</button>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Round control</span>
+            <div class="ctrl-row" style="gap:4px;">
+              <button class="ctrl-btn c-on" style="flex:1;" onclick="ttbCmd('start')">▶ Start</button>
+              <button class="ctrl-btn" style="flex:1;" onclick="ttbCmd('stop')">⏸ Pause</button>
+              <button class="ctrl-btn" style="flex:1;" onclick="ttbCmd('resume')">⏵ Resume</button>
+            </div>
+            <div class="ctrl-row" style="gap:4px;margin-top:4px;">
+              <button class="ctrl-btn c-off" style="flex:1;" onclick="ttbCmd('reset')">↺ Reset Round</button>
+              <button class="ctrl-btn c-off" style="flex:1;" onclick="ttbTest('round_end')">🏁 End Round Now</button>
+            </div>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Force winner (testing)</span>
+            <div class="ctrl-row" style="gap:4px;">
+              <select class="ctrl-in" id="ttb-force-seg" style="flex:1;"></select>
+              <button class="ctrl-btn" onclick="ttbForceWinner()">🏆 Fire</button>
+            </div>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <div class="ctrl-row" style="align-items:center;gap:6px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">🖱 Cursor speed</span>
+              <input type="range" id="ttb-cursor-slider" min="1500" max="12000" step="250" value="5000"
+                style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;"
+                oninput="ttbSetCursorMs(this.value)">
+              <span class="ctrl-status" id="ttb-cursor-val" style="font-size:10px;min-width:52px;text-align:right;font-weight:600;">5.0s</span>
+            </div>
+            <div class="ctrl-row" style="align-items:center;gap:6px;margin-top:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">⏱ Round length</span>
+              <input type="range" id="ttb-round-slider" min="20" max="300" step="5" value="90"
+                style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;"
+                oninput="ttbSetRoundSec(this.value)">
+              <span class="ctrl-status" id="ttb-round-val" style="font-size:10px;min-width:52px;text-align:right;font-weight:600;">90s</span>
+            </div>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Segments (label · Stream Deck action)</span>
+            <div id="ttb-seg-editor"></div>
+            <button class="ctrl-btn" style="width:100%;margin-top:4px;" onclick="ttbApplySegments()">Apply Segment Labels</button>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">YouTube comment → join/tap command</span>
+            <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;margin-bottom:4px;">
+              YouTube has no native join/like signal, so a matching chat comment stands in: a viewer's first match = join, later matches = boost/switch taps. Leave blank to turn this off (YouTube then only contributes via membership + the small anonymous crowd-boost).
+            </div>
+            <div class="ctrl-row" style="gap:5px;align-items:center;">
+              <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;white-space:nowrap;">Command</label>
+              <input class="ctrl-in" id="ttb-cmd" type="text" placeholder="e.g. in" style="flex:1;" oninput="ttbSaveCmd()">
+            </div>
+            <div class="ctrl-row" style="gap:5px;align-items:center;margin-top:4px;">
+              <label style="font-size:9px;color:var(--txt-dim);flex-shrink:0;white-space:nowrap;">Match</label>
+              <select class="ctrl-in" id="ttb-match" style="flex:1;cursor:pointer;" onchange="ttbSaveCmd()">
+                <option value="exact">Exactly matches</option>
+                <option value="starts">Starts with</option>
+                <option value="contains">Contains</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Test</span>
+            <div class="ctrl-row" style="gap:4px;">
+              <button class="ctrl-btn" style="flex:1;" onclick="ttbTest('join')">＋ Test Join</button>
+              <button class="ctrl-btn" style="flex:1;" onclick="ttbTest('like_self')">👍 Test Boost</button>
+              <button class="ctrl-btn" style="flex:1;" onclick="ttbTest('like_other')">↔ Test Switch</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2481,6 +2577,8 @@ body.gc-shake { animation: gcShake 0.5s ease; }
       <span id="ably-monthly-est" style="font-size:9px;color:var(--txt-dim);">est. —/mo</span>
       <span style="font-size:9px;color:var(--txt-dim);">·</span>
       <span id="ably-free-pct" style="font-size:9px;color:var(--green);">0% of free tier</span>
+      <span style="font-size:9px;color:var(--txt-dim);">·</span>
+      <span id="ably-hour-pct" style="font-size:9px;color:var(--green);" title="Actual messages sent in the last 60 minutes — catches raid/gift-bomb bursts the monthly average smooths over">0/hr</span>
     </div>
     <!-- Viewer count debug — shows last VC event received from SSN -->
     <div class="splat-bar-row" style="justify-content:center;padding:1px 0;">
@@ -3028,6 +3126,13 @@ function handleMsg(data) {
       const nhSource = isTT ? 'tiktok' : 'youtube';
       if (ablyChannel) ablyChannel.publish('new-here', { username: data.chatname, source: nhSource }).catch(() => {});
     }
+    // Team Timing Bar — YouTube has no native join/like signal, so a chat
+    // comment matching the configured command stands in for both (see
+    // ttbMatches()/ttb-cmd panel). Only fires for YouTube; TikTok already
+    // has real join/like events.
+    if (isYT && data.chatname && ttbMatches(msgLower)) {
+      if (ablyChannel) ablyChannel.publish('team-timing-yt-comment', { username: data.chatname }).catch(() => {});
+    }
     // Command boost: if message matches the configured command, trigger a boost
     // Cooldown = the boost's own duration so it can't re-fire until it expires
     if (_mmCommandStr && msgLower === _mmCommandStr) {
@@ -3489,13 +3594,27 @@ function _cgMarkLive() {
 let _cgLayout = { 'cg-cta':{x:0,y:0}, 'cg-integrity':{x:0,y:0}, 'cg-viewerbadge':{x:0,y:0}, 'cg-livebadge':{x:0,y:0} };
 try { Object.assign(_cgLayout, JSON.parse(localStorage.getItem('cgLayout') || '{}')); } catch(e) {}
 let _cgCrackScale = parseInt(localStorage.getItem('cgCrackScale'), 10) || 100;
+let _cgShatterThreshold = parseInt(localStorage.getItem('cgShatterThreshold'), 10) || 30;
 let _cgAuto = localStorage.getItem('cgAuto') !== '0';
+(function() {
+  const slider = document.getElementById('cg-shatter-slider');
+  const lbl = document.getElementById('cg-shatter-val');
+  if (slider) slider.value = _cgShatterThreshold;
+  if (lbl) lbl.textContent = _cgShatterThreshold + ' cracks';
+})();
+function cgSetShatterThreshold(v) {
+  _cgShatterThreshold = parseInt(v, 10);
+  const lbl = document.getElementById('cg-shatter-val');
+  if (lbl) lbl.textContent = _cgShatterThreshold + ' cracks';
+  cgPublishLayout();
+}
 
 function cgPublishLayout() {
   localStorage.setItem('cgLayout', JSON.stringify(_cgLayout));
   localStorage.setItem('cgCrackScale', _cgCrackScale);
+  localStorage.setItem('cgShatterThreshold', _cgShatterThreshold);
   if (ablyChannel) ablyChannel.publish('crowd-glass-layout', {
-    positions: _cgLayout, crackScale: _cgCrackScale / 100
+    positions: _cgLayout, crackScale: _cgCrackScale / 100, shatterThreshold: _cgShatterThreshold
   }).catch(() => {});
   scheduleGistSave();
 }
@@ -3519,19 +3638,156 @@ function cgCmd(command) {
   doFlash('purple');
 }
 
+/* ── Team Timing Bar — dock control panel ──
+   Mirrors the overlay's TEAM_TIMING_CONFIG shape (see gift-bar.html). The
+   dock is the source of truth: on load it restores from localStorage/Gist
+   and re-publishes so the overlay always picks up whatever was last set
+   here, even after an overlay refresh. */
+let _ttbConfig = {
+  enabled: false,
+  roundDurationMs: 90000,
+  cursorCycleMs: 5000,
+  segments: [
+    { id: 'pickle', label: 'PICKLE',      action: 'pickle' },
+    { id: 'glizzy', label: 'GLIZZY',      action: 'glizzy' },
+    { id: 'potato', label: 'POTATO HEAD', action: 'potato_head' },
+    { id: 'space',  label: 'SPACE WALK',  action: 'space_walk' },
+  ],
+};
+try { Object.assign(_ttbConfig, JSON.parse(localStorage.getItem('ttbConfig') || '{}')); } catch(e) {}
+function ttbEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function ttbPublishConfig() {
+  localStorage.setItem('ttbConfig', JSON.stringify(_ttbConfig));
+  if (ablyChannel) ablyChannel.publish('team-timing-config', _ttbConfig).catch(() => {});
+  scheduleGistSave();
+}
+function ttbDockSetEnabled(v) {
+  _ttbConfig.enabled = !!v;
+  document.getElementById('ttb-enable-btn')?.classList.toggle('c-act', !!v);
+  document.getElementById('ttb-disable-btn')?.classList.toggle('c-act', !v);
+  ttbPublishConfig();
+  doFlash(v ? 'green' : 'red');
+}
+function ttbCmd(action) {
+  if (ablyChannel) ablyChannel.publish('team-timing-cmd', { action }).catch(() => {});
+  doFlash('purple');
+}
+function ttbTest(action) {
+  if (ablyChannel) ablyChannel.publish('team-timing-test', { action }).catch(() => {});
+  doFlash('purple');
+}
+function ttbForceWinner() {
+  const segId = document.getElementById('ttb-force-seg')?.value;
+  if (!segId) return;
+  if (ablyChannel) ablyChannel.publish('team-timing-cmd', { action: 'force_winner', segId }).catch(() => {});
+  doFlash('purple');
+}
+// Sliders fire oninput on every pixel of drag — publishing to Ably on each
+// one would burn messages for nothing but intermediate values nobody sees.
+// Debounce so only the value the user actually lands on gets published.
+let _ttbSliderDebounce = null;
+function _ttbDebouncedPublish() {
+  clearTimeout(_ttbSliderDebounce);
+  _ttbSliderDebounce = setTimeout(ttbPublishConfig, 350);
+}
+function ttbSetCursorMs(v) {
+  _ttbConfig.cursorCycleMs = parseInt(v, 10);
+  const lbl = document.getElementById('ttb-cursor-val');
+  if (lbl) lbl.textContent = (_ttbConfig.cursorCycleMs / 1000).toFixed(1) + 's';
+  _ttbDebouncedPublish();
+}
+function ttbSetRoundSec(v) {
+  _ttbConfig.roundDurationMs = parseInt(v, 10) * 1000;
+  const lbl = document.getElementById('ttb-round-val');
+  if (lbl) lbl.textContent = v + 's';
+  _ttbDebouncedPublish();
+}
+function ttbRenderSegEditor() {
+  const wrap = document.getElementById('ttb-seg-editor');
+  const select = document.getElementById('ttb-force-seg');
+  if (!wrap || !select) return;
+  wrap.innerHTML = _ttbConfig.segments.map((seg, i) => `
+    <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
+      <input class="ctrl-in" id="ttb-seg-label-${i}" type="text" placeholder="Label" value="${ttbEsc(seg.label)}" style="flex:1;">
+      <input class="ctrl-in" id="ttb-seg-action-${i}" type="text" placeholder="action_key" value="${ttbEsc(seg.action)}" style="flex:1;">
+    </div>`).join('');
+  select.innerHTML = _ttbConfig.segments.map(seg =>
+    `<option value="${ttbEsc(seg.id)}">${ttbEsc(seg.label)}</option>`).join('');
+}
+function ttbApplySegments() {
+  _ttbConfig.segments = _ttbConfig.segments.map((seg, i) => {
+    const label = document.getElementById('ttb-seg-label-' + i)?.value.trim() || seg.label;
+    const action = document.getElementById('ttb-seg-action-' + i)?.value.trim() || seg.action;
+    return { id: seg.id, label, action };
+  });
+  ttbRenderSegEditor();
+  ttbPublishConfig();
+  doFlash('green');
+}
+
+/* ── YouTube comment → join/tap command (mirrors the NEW HERE nh-cmd/nh-match
+   pattern). Matching is done here on the dock, same as nhMatches() — only a
+   dedicated event crosses the wire, never the raw command text, so the
+   overlay doesn't need to know the phrase, just "this counts". ── */
+function ttbMatches(msgLower) {
+  const cmd  = (document.getElementById('ttb-cmd')?.value || '').toLowerCase().trim();
+  const mode = document.getElementById('ttb-match')?.value || 'exact';
+  if (!cmd) return false; // blank = feature off
+  if (mode === 'starts')   return msgLower.startsWith(cmd);
+  if (mode === 'contains') return msgLower.includes(cmd);
+  return msgLower === cmd; // 'exact'
+}
+function ttbSaveCmd() {
+  localStorage.setItem('ttbCmd',   document.getElementById('ttb-cmd')?.value   ?? '');
+  localStorage.setItem('ttbMatch', document.getElementById('ttb-match')?.value ?? 'exact');
+  scheduleGistSave();
+}
+function ttbLoadCmd() {
+  const cmd   = localStorage.getItem('ttbCmd');
+  const match = localStorage.getItem('ttbMatch');
+  if (cmd   != null) { const el = document.getElementById('ttb-cmd');   if (el) el.value = cmd; }
+  if (match != null) { const el = document.getElementById('ttb-match'); if (el) el.value = match; }
+}
+
+(function ttbInitPanel() {
+  document.getElementById('ttb-enable-btn')?.classList.toggle('c-act', _ttbConfig.enabled);
+  document.getElementById('ttb-disable-btn')?.classList.toggle('c-act', !_ttbConfig.enabled);
+  const cursorSlider = document.getElementById('ttb-cursor-slider');
+  const cursorLbl    = document.getElementById('ttb-cursor-val');
+  if (cursorSlider) cursorSlider.value = _ttbConfig.cursorCycleMs;
+  if (cursorLbl) cursorLbl.textContent = (_ttbConfig.cursorCycleMs / 1000).toFixed(1) + 's';
+  const roundSlider = document.getElementById('ttb-round-slider');
+  const roundLbl     = document.getElementById('ttb-round-val');
+  if (roundSlider) roundSlider.value = _ttbConfig.roundDurationMs / 1000;
+  if (roundLbl) roundLbl.textContent = (_ttbConfig.roundDurationMs / 1000) + 's';
+  ttbRenderSegEditor();
+  ttbLoadCmd();
+  // Deferred: ttbPublishConfig() calls scheduleGistSave(), which closes over
+  // `let _gistSaveTimer` declared much later in this script. Calling it
+  // synchronously here (during initial script parse) would hit the TDZ —
+  // setTimeout(0) lets the rest of the script finish initializing first.
+  setTimeout(ttbPublishConfig, 0);
+})();
+
 /* ══ Ably usage counter ══
    Wraps every publish() call to track session msgs + project monthly usage.
    Free tier = 6M msgs/month (4 hrs/day × 30 days baseline).               */
 let _ablyMsgCount  = 0;
 let _ablySessionStart = Date.now();
+let _ablyRecentTimestamps = []; // rolling log of publish times, pruned to the trailing hour
 const _ablyPublishOrig = ablyChannel.publish.bind(ablyChannel);
 ablyChannel.publish = function(...args) {
   _ablyMsgCount++;
+  _ablyRecentTimestamps.push(Date.now());
   _updateAblyCounter();
   return _ablyPublishOrig(...args);
 };
 function _updateAblyCounter() {
-  const elapsedSec = Math.max(1, (Date.now() - _ablySessionStart) / 1000);
+  const now = Date.now();
+  const elapsedSec = Math.max(1, (now - _ablySessionStart) / 1000);
   const rate       = _ablyMsgCount / elapsedSec;           // msgs/sec this session
   const projMonth  = Math.round(rate * 3600 * 4 * 30);     // 4 hrs/day × 30 days
   const freePct    = ((projMonth / 6_000_000) * 100).toFixed(1);
@@ -3540,14 +3796,30 @@ function _updateAblyCounter() {
     : projMonth >= 1000
       ? Math.round(projMonth / 1000) + 'K'
       : projMonth;
+
+  // Actual trailing-60-minute count — not a projection, so it reacts
+  // immediately to a real burst (raid, gift bomb) instead of getting
+  // smoothed out by the 4hrs/day monthly average above. Ably's free plan
+  // caps this at 250,000/hr, separate from the 6M/month and 500/sec limits.
+  const oneHourAgo = now - 3600000;
+  while (_ablyRecentTimestamps.length && _ablyRecentTimestamps[0] < oneHourAgo) _ablyRecentTimestamps.shift();
+  const hourCount = _ablyRecentTimestamps.length;
+  const hourPct   = ((hourCount / 250_000) * 100).toFixed(1);
+  const hourLabel = hourCount >= 1000 ? (hourCount / 1000).toFixed(1) + 'K' : hourCount;
+
   const el1 = document.getElementById('ably-session-count');
   const el2 = document.getElementById('ably-monthly-est');
   const el3 = document.getElementById('ably-free-pct');
+  const el4 = document.getElementById('ably-hour-pct');
   if (el1) el1.textContent = _ablyMsgCount.toLocaleString() + ' msgs';
   if (el2) el2.textContent = 'est. ' + projLabel + '/mo';
   if (el3) {
     el3.textContent = freePct + '% of free tier';
     el3.style.color = parseFloat(freePct) > 80 ? 'var(--danger)' : parseFloat(freePct) > 50 ? '#f59e0b' : 'var(--green)';
+  }
+  if (el4) {
+    el4.textContent = hourLabel + '/hr (' + hourPct + '%)';
+    el4.style.color = parseFloat(hourPct) > 80 ? 'var(--danger)' : parseFloat(hourPct) > 50 ? '#f59e0b' : 'var(--green)';
   }
 }
 
@@ -4588,25 +4860,6 @@ function sendCP() {
   doFlash('green');
 }
 
-function setHypeCTA() {
-  const text = (document.getElementById('hype-cta-input').value || '').trim();
-  if (!text) return;
-  ablyChannel.publish('hype-cta', { text }).catch(() => {});
-  doFlash('green');
-}
-
-function clearHypeCTA() {
-  document.getElementById('hype-cta-input').value = '';
-  ablyChannel.publish('hype-cta', { text: '' }).catch(() => {});
-  doFlash('red');
-}
-
-function onHypeIntensity(val) {
-  const pct = parseInt(val, 10);
-  document.getElementById('hype-intensity-val').textContent = pct + '%';
-  if (ablyChannel) ablyChannel.publish('hype-intensity', { mult: pct / 100 }).catch(() => {});
-}
-
 /* ── Milk Meter dock mirror — DISABLED ── */
 function _updateDockBB(pct) { /* disabled */ }
 
@@ -5314,13 +5567,22 @@ function gistGetConfig() {
     nh_display_cfg:       localStorage.getItem('nh_display_cfg'),
     cgLayout:             localStorage.getItem('cgLayout'),
     cgCrackScale:         localStorage.getItem('cgCrackScale'),
+    cgShatterThreshold:   localStorage.getItem('cgShatterThreshold'),
     cgAuto:               localStorage.getItem('cgAuto'),
+    ttbConfig:            localStorage.getItem('ttbConfig'),
+    ttbCmd:               localStorage.getItem('ttbCmd'),
+    ttbMatch:             localStorage.getItem('ttbMatch'),
   };
 }
 
-/* Restore config snapshot — updates localStorage, JS vars, and DOM */
+/* Restore config snapshot — updates localStorage, JS vars, and DOM.
+   Every field below is individually null-checked, so an older Gist (missing
+   _v, or _v from before a field existed) still applies whatever it has —
+   only a *newer* _v than this build knows about gets flagged, since that's
+   the one case we can't reason about. */
 function applyGistConfig(cfg) {
-  if (!cfg || cfg._v !== 2) { _gistStatus('⚠ Incompatible config version'); return; }
+  if (!cfg) { _gistStatus('⚠ No config to load'); return; }
+  if (cfg._v > 2) { _gistStatus('⚠ Config saved by a newer version — loading what we can'); }
 
   // --- milkScoringConfig ---
   if (cfg.milkScoringConfig != null) {
@@ -5440,11 +5702,42 @@ function applyGistConfig(cfg) {
     localStorage.setItem('cgCrackScale', cfg.cgCrackScale);
     _cgCrackScale = parseInt(cfg.cgCrackScale, 10) || 100;
   }
+  if (cfg.cgShatterThreshold != null) {
+    localStorage.setItem('cgShatterThreshold', cfg.cgShatterThreshold);
+    _cgShatterThreshold = parseInt(cfg.cgShatterThreshold, 10) || 30;
+    const slider = document.getElementById('cg-shatter-slider');
+    const lbl = document.getElementById('cg-shatter-val');
+    if (slider) slider.value = _cgShatterThreshold;
+    if (lbl) lbl.textContent = _cgShatterThreshold + ' cracks';
+  }
   if (cfg.cgAuto != null) {
     localStorage.setItem('cgAuto', cfg.cgAuto);
     cgSetAuto(cfg.cgAuto !== '0');
   }
-  if (cfg.cgLayout != null || cfg.cgCrackScale != null) cgPublishLayout();
+  if (cfg.cgLayout != null || cfg.cgCrackScale != null || cfg.cgShatterThreshold != null) cgPublishLayout();
+
+  // --- Team Timing Bar ---
+  if (cfg.ttbConfig != null) {
+    localStorage.setItem('ttbConfig', cfg.ttbConfig);
+    try { Object.assign(_ttbConfig, JSON.parse(cfg.ttbConfig)); } catch(e) {}
+    document.getElementById('ttb-enable-btn')?.classList.toggle('c-act', _ttbConfig.enabled);
+    document.getElementById('ttb-disable-btn')?.classList.toggle('c-act', !_ttbConfig.enabled);
+    const cursorSlider = document.getElementById('ttb-cursor-slider');
+    if (cursorSlider) cursorSlider.value = _ttbConfig.cursorCycleMs;
+    const cursorLbl = document.getElementById('ttb-cursor-val');
+    if (cursorLbl) cursorLbl.textContent = (_ttbConfig.cursorCycleMs / 1000).toFixed(1) + 's';
+    const roundSlider = document.getElementById('ttb-round-slider');
+    if (roundSlider) roundSlider.value = _ttbConfig.roundDurationMs / 1000;
+    const roundLbl = document.getElementById('ttb-round-val');
+    if (roundLbl) roundLbl.textContent = (_ttbConfig.roundDurationMs / 1000) + 's';
+    ttbRenderSegEditor();
+    // No alive-ping handshake for the gift bar (unlike Crowd Glass), so push
+    // straight away rather than waiting for the overlay to ask for it.
+    ttbPublishConfig();
+  }
+  if (cfg.ttbCmd != null)   localStorage.setItem('ttbCmd', cfg.ttbCmd);
+  if (cfg.ttbMatch != null) localStorage.setItem('ttbMatch', cfg.ttbMatch);
+  if (cfg.ttbCmd != null || cfg.ttbMatch != null) ttbLoadCmd();
 }
 
 async function gistCreate() {
@@ -6052,10 +6345,6 @@ function mmCmdClear() {
   if (status) status.textContent = 'Command cleared';
   doFlash('red');
 }
-function setHypeCTA()    {}
-function clearHypeCTA()  {}
-function onHypeIntensity(val) { onMilkIntensity(val); }
-
 /* ── milk-pct subscriber — DISABLED (dock meter removed) ── */
 // ablyChannel.subscribe('milk-pct', ...) — no-op
 

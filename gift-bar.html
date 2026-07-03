@@ -1610,6 +1610,134 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   border: none; background: transparent; display: none;
 }
+
+/* ══════════════════════════════════════════════════════════
+   TEAM TIMING BAR — optional gift-bar mode (cursor-timed team vote).
+   Shares #gift-bar's screen slot; classic gift bar is force-hidden via
+   #gift-bar.ttb-hidden while this mode is enabled. See ttbSetEnabled().
+══════════════════════════════════════════════════════════ */
+#gift-bar.ttb-hidden { display: none !important; }
+#team-timing-bar {
+  position: absolute; top: 450px; left: 0;
+  width: 1080px; height: 220px;
+  display: none; z-index: 10;
+  font-family: 'DM Sans', sans-serif; color: #FAF5FF;
+  pointer-events: none;
+}
+#team-timing-bar.visible { display: block; }
+
+#ttb-topline {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0 40px; height: 30px;
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+}
+#ttb-round-timer { color: #C084FC; }
+#ttb-leader-line { color: #FAF5FF; }
+#ttb-leader-line .ttb-leader-name { color: #E879F9; font-weight: 700; }
+
+#ttb-track { position: relative; margin: 6px 40px 0; height: 92px; }
+#ttb-segments { display: flex; gap: 8px; height: 100%; }
+.ttb-seg {
+  position: relative; flex: 1; height: 100%; min-width: 0;
+  border-radius: 10px; overflow: hidden;
+  background: rgba(20,4,40,0.72);
+  border: 1.5px solid rgba(192,132,252,0.28);
+  display: flex; flex-direction: column; justify-content: flex-end;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.ttb-seg.ttb-seg-active {
+  border-color: rgba(232,121,249,0.85);
+  box-shadow: 0 0 18px rgba(168,85,247,0.5), inset 0 0 20px rgba(168,85,247,0.2);
+}
+.ttb-seg.ttb-seg-leader {
+  border-color: #FACC15;
+  box-shadow: 0 0 22px rgba(250,204,21,0.55), inset 0 0 20px rgba(250,204,21,0.18);
+}
+.ttb-seg-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0%;
+  background: linear-gradient(to top, rgba(139,92,246,0.55), rgba(232,121,249,0.35));
+  transition: height 0.35s cubic-bezier(.34,1.56,.64,1);
+}
+.ttb-seg.ttb-seg-boost-flash .ttb-seg-fill { animation: ttbBoostPulse 0.5s ease-out; }
+@keyframes ttbBoostPulse {
+  0% { filter: brightness(1); } 40% { filter: brightness(1.9); } 100% { filter: brightness(1); }
+}
+.ttb-seg-label {
+  position: relative; z-index: 2; text-align: center;
+  font-family: 'Anton', sans-serif; font-size: 19px; letter-spacing: 0.5px;
+  color: #FAF5FF; text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+  padding-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ttb-seg-score {
+  position: relative; z-index: 2; text-align: center;
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #FDE68A;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+}
+.ttb-seg-crown {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  font-size: 20px; opacity: 0; transition: opacity 0.3s ease;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+}
+.ttb-seg.ttb-seg-leader .ttb-seg-crown { opacity: 1; }
+.ttb-seg-members {
+  position: relative; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 2px; padding: 4px 4px 6px; min-height: 16px;
+}
+.ttb-member-chip {
+  font-size: 10px; padding: 1px 5px; border-radius: 8px;
+  background: rgba(255,255,255,0.14); color: #FAF5FF;
+  white-space: nowrap; animation: ttbChipIn 0.3s ease-out;
+}
+@keyframes ttbChipIn { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+#ttb-cursor {
+  position: absolute; top: -6px; width: 4px; height: 104px;
+  background: linear-gradient(to bottom, #fff, #E879F9);
+  box-shadow: 0 0 10px 2px rgba(232,121,249,0.9), 0 0 20px 6px rgba(168,85,247,0.5);
+  border-radius: 3px; left: 0;
+}
+#ttb-cursor::after {
+  content: '▲'; position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  font-size: 16px; color: #E879F9; text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+}
+
+#ttb-jointext {
+  text-align: center; margin-top: 10px;
+  font-family: 'Anton', sans-serif; font-size: 25px; letter-spacing: 0.5px;
+  color: #FAF5FF; text-shadow: 0 2px 8px rgba(0,0,0,0.95), 0 0 24px rgba(232,121,249,0.6);
+}
+#ttb-jointext .ttb-active-name { color: #FDE68A; }
+
+#ttb-instructions {
+  text-align: center; margin-top: 2px;
+  font-family: 'DM Sans', sans-serif; font-size: 14px; letter-spacing: 0.5px;
+  color: rgba(250,245,255,0.75); text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+}
+
+#ttb-eventline {
+  text-align: center; margin-top: 8px; height: 20px;
+  font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600;
+  color: #E879F9; text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+  opacity: 0; transition: opacity 0.25s ease;
+}
+#ttb-eventline.show { opacity: 1; }
+
+#ttb-result {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  background: rgba(5,0,14,0.88); border-radius: 14px;
+  opacity: 0; pointer-events: none; transition: opacity 0.35s ease;
+}
+#ttb-result.show { opacity: 1; }
+#ttb-result-winner {
+  font-family: 'Anton', sans-serif; font-size: 42px; color: #FACC15;
+  text-shadow: 0 3px 10px rgba(0,0,0,0.95), 0 0 30px rgba(250,204,21,0.7);
+}
+#ttb-result-sub {
+  font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 3px;
+  color: #FAF5FF;
+}
 </style>
 </head>
 <body>
@@ -1688,6 +1816,27 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <canvas id="hm-edge-canvas"></canvas>
   <!-- ══ HYPE METER — segmented notch row at bar bottom ══ -->
   <div id="hype-meter"></div>
+</div>
+
+<!-- ══ TEAM TIMING BAR — optional mode, shares #gift-bar's screen slot ══
+     Segment boxes inside #ttb-segments are generated by JS from
+     TEAM_TIMING_CONFIG.segments so labels/actions stay edit-in-place. -->
+<div id="team-timing-bar">
+  <div id="ttb-topline">
+    <span id="ttb-round-timer">ROUND 1:30</span>
+    <span id="ttb-leader-line">LEADING: <span class="ttb-leader-name" id="ttb-leader-name">—</span></span>
+  </div>
+  <div id="ttb-track">
+    <div id="ttb-segments"></div>
+    <div id="ttb-cursor"></div>
+  </div>
+  <div id="ttb-jointext">JOIN NOW = <span class="ttb-active-name" id="ttb-active-name">—</span></div>
+  <div id="ttb-instructions">JOIN = PICK TEAM&nbsp;&nbsp;•&nbsp;&nbsp;TAP YOUR TEAM = BOOST&nbsp;&nbsp;•&nbsp;&nbsp;TAP ANOTHER = SWITCH</div>
+  <div id="ttb-eventline"></div>
+  <div id="ttb-result">
+    <div id="ttb-result-winner"></div>
+    <div id="ttb-result-sub"></div>
+  </div>
 </div>
 
 <div id="hm-first-gifter-flash"></div>
@@ -3982,14 +4131,20 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const _who = d.gifterKey || d.username || null;
     switch(type){
       case 'comment': case 'comment_match':
-        addPts(PTS[type] ?? 0.5, plat, type, null, _who); break;
+        addPts(PTS[type] ?? 0.5, plat, type, null, _who);
+        // NOTE: YouTube join/tap no longer rides every comment — it's gated
+        // behind a dock-configured command (see the 'team-timing-yt-comment'
+        // subscription below), so it doesn't fire here.
+        break;
       case 'join':
         addPts(PTS.join ?? 1, plat, 'join', null, _who);
         _fireEntryBanner(_currentPct);
+        if (typeof ttbOnJoin === 'function') ttbOnJoin(_who, plat);
         break;
       case 'like': {
         // Score every individual like — silently (no pill)
         addPts(PTS.like ?? 0.1, plat || 'tt', 'like', null, null, /*noNotif=*/true);
+        if (typeof ttbOnLike === 'function') ttbOnLike(_who, plat);
         // Per-user pill throttle: show pill every LIKE_PILL_EVERY likes per user
         const _likeKey = _who || '__anon__';
         _likePillCounts[_likeKey] = (_likePillCounts[_likeKey] || 0) + 1;
@@ -4005,7 +4160,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
       case 'like_batch':
         addPts(PTS.like_batch, plat, 'like_batch'); break;
       case 'yt_sub':
-        addPts(PTS.yt_sub, 'yt', 'yt_sub', '📹 YT sub', _who); fireFirstFlash(); break;
+        addPts(PTS.yt_sub, 'yt', 'yt_sub', '📹 YT sub', _who); fireFirstFlash();
+        if (typeof ttbOnYouTubeMembership === 'function') ttbOnYouTubeMembership(_who);
+        break;
       case 'heart_me':
         addPts(milkGiftPts(d.gifterKey, 1, 0), 'tt', 'heart_me', '💝 Heart Me', _who); break;
       case 'heart_me_first':
@@ -4082,6 +4239,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
     // #gift-bar itself
     const gb = document.getElementById('gift-bar');
     if(gb) gb.style.top = top + 'px';
+    // #team-timing-bar — shares #gift-bar's slot, moves with it
+    const ttb = document.getElementById('team-timing-bar');
+    if(ttb) ttb.style.top = top + 'px';
     // #bar-lines — absolute sibling at same top
     const bl = document.getElementById('bar-lines');
     if(bl) bl.style.top = top + 'px';
@@ -4169,6 +4329,656 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
 })();
 
+
+/* ══════════════════════════════════════════════════════════
+   TEAM TIMING BAR
+   Optional gift-bar mode: a moving cursor sweeps across labeled team
+   segments. Joins land on whichever segment the cursor is over; taps then
+   boost (same team) or build switch pressure (other team). Highest-weight
+   segment at round end fires a Stream Deck / local action.
+
+   Fed by the SAME live event pipe the milk meter already uses — see the
+   ttbOnJoin()/ttbOnLike() calls inside the 'milk-event' subscriber above
+   (case 'join' / case 'like'). Real join/like events from stream-dock.html
+   already carry a username when Tikfinity is connected, and arrive
+   anonymous (aggregate) otherwise — ttbOnJoin/ttbOnLike branch on that
+   automatically, per the "user-level vs aggregate" fallback design.
+
+   Controlled remotely from Stream Dock via three Ably events:
+     team-timing-config  — merge config fields (enable, segments, timings…)
+     team-timing-cmd     — { action: start|stop|resume|reset|force_winner, segId? }
+     team-timing-test    — { action: join|like_self|like_other|round_end, username? }
+   Segment labels/actions live entirely in TEAM_TIMING_CONFIG.segments —
+   no code changes needed to reskin or retune the game.
+══════════════════════════════════════════════════════════ */
+const TEAM_TIMING_MODE = 'team_timing_bar';
+
+let TEAM_TIMING_CONFIG = {
+  enabled: false,
+
+  roundDurationMs: 90000,
+  roundEndPauseMs: 5000,
+  autoStartNextRound: true,
+
+  cursorCycleMs: 5000,
+
+  joinWeight: 1.0,
+  allowRepeatJoinSameRound: false,
+
+  sameTeamTapThreshold: 5,
+  sameTeamBoostWeight: 0.25,
+  maxBoostWeightPerUserPerWindow: 1.0,
+  boostWindowMs: 30000,
+
+  offTeamSwitchThreshold: 8,
+  switchWindowMs: 20000,
+  switchCooldownMs: 30000,
+  switchMovesBaseWeight: true,
+  switchResetsBoostWeight: true,
+
+  aggregateLikesPerBoost: 25,
+  aggregateBoostWeight: 0.10,
+  maxAggregateBoostPercentOfJoinScore: 0.25,
+
+  tieBreaker: 'first_to_score',
+
+  segments: [
+    { id: 'pickle', label: 'PICKLE',      action: 'pickle' },
+    { id: 'glizzy', label: 'GLIZZY',      action: 'glizzy' },
+    { id: 'potato', label: 'POTATO HEAD', action: 'potato_head' },
+    { id: 'space',  label: 'SPACE WALK',  action: 'space_walk' },
+  ],
+
+  resultOutput: {
+    mode: 'ably',   // 'ably' | 'websocket' | 'http' — 'ably' always fires too, see ttbEmitResult()
+    websocketUrl: 'ws://127.0.0.1:7788',
+    httpBaseUrl: 'http://127.0.0.1:7788/trigger',
+  },
+};
+
+const TTB = {
+  running: false,        // rAF tick loop active
+  roundActive: false,    // a round is currently being scored (not paused/ended)
+  cursorFrozen: false,
+  roundStartedAt: 0,
+  roundEndsAt: 0,
+  pausedAt: 0,
+  cursorStartAt: 0,
+  trackWidthPx: 1000,
+  segState: new Map(),   // segId -> { id, label, action, joinWeight, boostWeight, aggregateBoostWeight, members:[], lastWeightChangeAt }
+  users: new Map(),      // "platform:username" -> user record (reset every round)
+  leaderId: null,
+  aggAccum: 0,           // anonymous-like counter feeding aggregate crowd boost
+  eventLineTimer: null,
+  resultTimer: null,
+  rafId: null,
+};
+
+function ttbUserKey(username, platform) {
+  return (platform || 'other') + ':' + String(username).toLowerCase().trim();
+}
+function ttbEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function ttbTotalWeight(seg) {
+  return seg.joinWeight + seg.boostWeight + seg.aggregateBoostWeight;
+}
+function ttbFmtClock(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+/* ── cursor position ── */
+function ttbCursorProgress(now) {
+  const half = Math.max(1, TEAM_TIMING_CONFIG.cursorCycleMs / 2);
+  const t = (now - TTB.cursorStartAt) % (half * 2);
+  return t < half ? (t / half) : (1 - (t - half) / half);
+}
+function ttbActiveSegIndex(now) {
+  const segs = TEAM_TIMING_CONFIG.segments;
+  const idx = Math.floor(ttbCursorProgress(now) * segs.length);
+  return Math.min(segs.length - 1, Math.max(0, idx));
+}
+function ttbActiveSegId(now) {
+  const segs = TEAM_TIMING_CONFIG.segments;
+  return segs[ttbActiveSegIndex(now)]?.id;
+}
+
+/* ── rendering ── */
+function ttbRenderSegments() {
+  const wrap = document.getElementById('ttb-segments');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  for (const seg of TEAM_TIMING_CONFIG.segments) {
+    const el = document.createElement('div');
+    el.className = 'ttb-seg';
+    el.dataset.segId = seg.id;
+    el.innerHTML = `
+      <div class="ttb-seg-crown">👑</div>
+      <div class="ttb-seg-fill"></div>
+      <div class="ttb-seg-label"></div>
+      <div class="ttb-seg-score">0.0</div>
+      <div class="ttb-seg-members"></div>`;
+    el.querySelector('.ttb-seg-label').textContent = seg.label;
+    wrap.appendChild(el);
+  }
+  const track = document.getElementById('ttb-track');
+  if (track) TTB.trackWidthPx = track.clientWidth || 1000;
+}
+function ttbSegEl(segId) {
+  return document.querySelector(`.ttb-seg[data-seg-id="${CSS.escape(segId)}"]`);
+}
+function ttbRenderScores() {
+  let maxScore = 0;
+  for (const seg of TTB.segState.values()) maxScore = Math.max(maxScore, ttbTotalWeight(seg));
+  for (const seg of TTB.segState.values()) {
+    const el = ttbSegEl(seg.id);
+    if (!el) continue;
+    const score = ttbTotalWeight(seg);
+    const fillEl = el.querySelector('.ttb-seg-fill');
+    if (fillEl) fillEl.style.height = (maxScore > 0 ? (score / maxScore) * 100 : 0) + '%';
+    const scoreEl = el.querySelector('.ttb-seg-score');
+    if (scoreEl) scoreEl.textContent = score.toFixed(1);
+    const membersEl = el.querySelector('.ttb-seg-members');
+    if (membersEl) {
+      membersEl.innerHTML = seg.members.slice(0, 6)
+        .map(u => `<span class="ttb-member-chip">${ttbEsc(u)}</span>`).join('');
+    }
+  }
+}
+function ttbUpdateLeader() {
+  let leader = null, best = -Infinity;
+  for (const seg of TTB.segState.values()) {
+    const score = ttbTotalWeight(seg);
+    if (score > best) { best = score; leader = seg; }
+  }
+  const changed = leader && leader.id !== TTB.leaderId;
+  TTB.leaderId = leader ? leader.id : null;
+  document.querySelectorAll('.ttb-seg.ttb-seg-leader').forEach(el => el.classList.remove('ttb-seg-leader'));
+  if (leader && best > 0) {
+    ttbSegEl(leader.id)?.classList.add('ttb-seg-leader');
+  }
+  const nameEl = document.getElementById('ttb-leader-name');
+  if (nameEl) nameEl.textContent = (leader && best > 0) ? leader.label : '—';
+  if (changed && best > 0) ttbShowEvent(`NEW LEADER: ${leader.label}`);
+}
+function ttbSetActiveSegment(now) {
+  const activeId = ttbActiveSegId(now);
+  document.querySelectorAll('.ttb-seg.ttb-seg-active').forEach(el => {
+    if (el.dataset.segId !== activeId) el.classList.remove('ttb-seg-active');
+  });
+  const el = ttbSegEl(activeId);
+  if (el) el.classList.add('ttb-seg-active');
+  const nameEl = document.getElementById('ttb-active-name');
+  const seg = TTB.segState.get(activeId);
+  if (nameEl && seg) nameEl.textContent = seg.label;
+  return activeId;
+}
+function ttbFlashBoost(segId) {
+  const el = ttbSegEl(segId);
+  if (!el) return;
+  el.classList.remove('ttb-seg-boost-flash');
+  void el.offsetWidth;
+  el.classList.add('ttb-seg-boost-flash');
+}
+function ttbShowEvent(text) {
+  const el = document.getElementById('ttb-eventline');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(TTB.eventLineTimer);
+  TTB.eventLineTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+/* ── round lifecycle ── */
+function ttbRebuildSegState() {
+  TTB.segState = new Map(TEAM_TIMING_CONFIG.segments.map(seg => [seg.id, {
+    id: seg.id, label: seg.label, action: seg.action,
+    joinWeight: 0, boostWeight: 0, aggregateBoostWeight: 0,
+    members: [], lastWeightChangeAt: 0,
+  }]));
+}
+function ttbStartRound() {
+  clearTimeout(TTB.resultTimer);
+  ttbRebuildSegState();
+  TTB.users.clear();
+  TTB.aggAccum = 0;
+  TTB.leaderId = null;
+  const now = performance.now();
+  TTB.roundStartedAt = now;
+  TTB.roundEndsAt = now + TEAM_TIMING_CONFIG.roundDurationMs;
+  TTB.cursorStartAt = now;
+  TTB.roundActive = true;
+  TTB.cursorFrozen = false;
+  document.getElementById('ttb-result')?.classList.remove('show');
+  ttbRenderScores();
+  ttbUpdateLeader();
+  ttbShowEvent('NEW ROUND — JOIN WHEN THE CURSOR HITS YOUR PICK');
+  ttbStart();
+}
+function ttbPickWinner(forcedSegId) {
+  if (forcedSegId && TTB.segState.has(forcedSegId)) return TTB.segState.get(forcedSegId);
+  let best = [], bestScore = -Infinity;
+  for (const seg of TTB.segState.values()) {
+    const score = ttbTotalWeight(seg);
+    if (score > bestScore) { bestScore = score; best = [seg]; }
+    else if (score === bestScore) { best.push(seg); }
+  }
+  if (!best.length) return null;
+  if (best.length === 1) return best[0];
+  // tieBreaker: 'first_to_score' — among tied segments, the one whose score
+  // stopped changing earliest is treated as having reached the tied value first.
+  best.sort((a, b) => a.lastWeightChangeAt - b.lastWeightChangeAt);
+  return best[0];
+}
+function ttbEndRound(forcedSegId) {
+  TTB.roundActive = false;
+  TTB.cursorFrozen = true;
+  const winner = ttbPickWinner(forcedSegId);
+  if (!winner) { ttbShowEvent('Round ended — no contributions'); ttbScheduleNextRound(); return; }
+
+  const contributors = new Set();
+  for (const user of TTB.users.values()) if (user.teamId) contributors.add(user.key);
+  const topMembers = winner.members.slice(0, 3);
+
+  const winEl = document.getElementById('ttb-result-winner');
+  const subEl = document.getElementById('ttb-result-sub');
+  if (winEl) winEl.textContent = `${winner.label} WINS`;
+  if (subEl) subEl.textContent = 'FIRING SCENE...';
+  document.getElementById('ttb-result')?.classList.add('show');
+
+  ttbEmitResult(winner, contributors.size, topMembers);
+  ttbScheduleNextRound();
+}
+function ttbScheduleNextRound() {
+  clearTimeout(TTB.resultTimer);
+  TTB.resultTimer = setTimeout(() => {
+    document.getElementById('ttb-result')?.classList.remove('show');
+    if (TEAM_TIMING_CONFIG.enabled && TEAM_TIMING_CONFIG.autoStartNextRound) {
+      ttbStartRound();
+    } else {
+      ttbStop();
+    }
+  }, TEAM_TIMING_CONFIG.roundEndPauseMs);
+}
+function ttbPauseRound() {
+  if (!TTB.roundActive) return;
+  TTB.roundActive = false;
+  TTB.cursorFrozen = true;
+  TTB.pausedAt = performance.now();
+  ttbShowEvent('Round paused');
+}
+function ttbResumeRound() {
+  if (TTB.roundActive || !TTB.pausedAt) return;
+  const pausedMs = performance.now() - TTB.pausedAt;
+  TTB.roundEndsAt += pausedMs;
+  TTB.cursorStartAt += pausedMs;
+  TTB.pausedAt = 0;
+  TTB.roundActive = true;
+  TTB.cursorFrozen = false;
+  ttbShowEvent('Round resumed');
+}
+
+/* ── result emission (Stream Deck / local bridge) ── */
+function ttbEmitResult(winnerSeg, totalContributors, topMembers) {
+  const payload = {
+    type: 'timing_vote_result',
+    winner: winnerSeg.id,
+    label: winnerSeg.label,
+    action: winnerSeg.action,
+    score: Math.round(ttbTotalWeight(winnerSeg) * 100) / 100,
+    joinWeight: Math.round(winnerSeg.joinWeight * 100) / 100,
+    boostWeight: Math.round(winnerSeg.boostWeight * 100) / 100,
+    aggregateBoostWeight: Math.round(winnerSeg.aggregateBoostWeight * 100) / 100,
+    totalContributors,
+    topMembers,
+  };
+  // Always publish via Ably — lets Stream Dock (or anything else on the
+  // channel) log/mirror the result even when a local bridge isn't running.
+  try { ablyChannel.publish('timing_vote_result', payload).catch(() => {}); } catch (e) {}
+
+  const out = TEAM_TIMING_CONFIG.resultOutput || {};
+  if (out.mode === 'websocket' && out.websocketUrl) {
+    try {
+      const ws = new WebSocket(out.websocketUrl);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'streamdeck_action', action: winnerSeg.action, source: TEAM_TIMING_MODE }));
+        setTimeout(() => ws.close(), 500);
+      };
+      ws.onerror = () => console.warn('[TTB] websocket result trigger failed — is the local bridge running?');
+    } catch (e) { console.warn('[TTB] websocket result trigger failed', e); }
+  } else if (out.mode === 'http' && out.httpBaseUrl) {
+    fetch(out.httpBaseUrl.replace(/\/$/, '') + '/' + encodeURIComponent(winnerSeg.action), { method: 'POST' })
+      .catch(e => console.warn('[TTB] http result trigger failed — is the local bridge running?', e));
+  }
+  console.log('[TTB] round result:', payload);
+}
+
+/* ── join ── */
+function ttbOnJoin(username, platform) {
+  if (!TEAM_TIMING_CONFIG.enabled || !TTB.roundActive) return;
+  const now = performance.now();
+  const segId = ttbSetActiveSegment(now);
+  const seg = TTB.segState.get(segId);
+  if (!seg) return;
+
+  if (!username) {
+    // Anonymous join (no per-user id available) — still counts toward the
+    // segment, just can't be tracked/deduped/switched individually.
+    seg.joinWeight += TEAM_TIMING_CONFIG.joinWeight;
+    seg.lastWeightChangeAt = now;
+    ttbShowEvent(`New viewer joined ${seg.label}`);
+    ttbRenderScores();
+    ttbUpdateLeader();
+    return;
+  }
+
+  const key = ttbUserKey(username, platform);
+  const existing = TTB.users.get(key);
+  if (existing && existing.teamId) {
+    if (!TEAM_TIMING_CONFIG.allowRepeatJoinSameRound) return; // prevent duplicate-join weight abuse
+    // Repeat join allowed — moves them to whatever segment is active now,
+    // same accounting as a switch (old segment loses their base weight).
+    const oldSeg = TTB.segState.get(existing.teamId);
+    if (oldSeg && oldSeg.id !== segId) {
+      oldSeg.joinWeight = Math.max(0, oldSeg.joinWeight - existing.baseWeight);
+      oldSeg.members = oldSeg.members.filter(u => u.toLowerCase() !== username.toLowerCase());
+    }
+  }
+
+  const user = existing || {
+    key, username, platform, teamId: null, baseWeight: TEAM_TIMING_CONFIG.joinWeight,
+    boostWeightThisWindow: 0, boostWindowStartedAt: 0, sameTeamTapCount: 0,
+    switchTargetId: null, switchCount: 0, switchWindowStartedAt: 0, lastSwitchAt: 0,
+  };
+  user.teamId = segId;
+  TTB.users.set(key, user);
+
+  seg.joinWeight += user.baseWeight;
+  seg.members.unshift(username);
+  seg.lastWeightChangeAt = now;
+  ttbShowEvent(`@${username} joined ${seg.label}`);
+  ttbRenderScores();
+  ttbUpdateLeader();
+}
+
+/* ── same-team boost / off-team switch pressure ── */
+function ttbApplySameTeamTap(user) {
+  const seg = TTB.segState.get(user.teamId);
+  if (!seg) return;
+  user.switchTargetId = null; user.switchCount = 0; // tapping your own team clears switch pressure
+  user.sameTeamTapCount++;
+  if (user.sameTeamTapCount < TEAM_TIMING_CONFIG.sameTeamTapThreshold) return;
+  user.sameTeamTapCount = 0;
+  const now = performance.now();
+  if (now - user.boostWindowStartedAt > TEAM_TIMING_CONFIG.boostWindowMs) {
+    user.boostWindowStartedAt = now;
+    user.boostWeightThisWindow = 0;
+  }
+  if (user.boostWeightThisWindow + TEAM_TIMING_CONFIG.sameTeamBoostWeight > TEAM_TIMING_CONFIG.maxBoostWeightPerUserPerWindow) return;
+  user.boostWeightThisWindow += TEAM_TIMING_CONFIG.sameTeamBoostWeight;
+  seg.boostWeight += TEAM_TIMING_CONFIG.sameTeamBoostWeight;
+  seg.lastWeightChangeAt = now;
+  ttbShowEvent(`@${user.username} boosted ${seg.label}`);
+  ttbFlashBoost(seg.id);
+  ttbRenderScores();
+  ttbUpdateLeader();
+}
+function ttbApplyOffTeamTap(user, targetSegId) {
+  const now = performance.now();
+  if (now - user.lastSwitchAt < TEAM_TIMING_CONFIG.switchCooldownMs) return; // post-switch cooldown
+  const targetSeg = TTB.segState.get(targetSegId);
+  if (!targetSeg) return;
+
+  if (user.switchTargetId !== targetSegId || now - user.switchWindowStartedAt > TEAM_TIMING_CONFIG.switchWindowMs) {
+    user.switchTargetId = targetSegId;
+    user.switchCount = 0;
+    user.switchWindowStartedAt = now;
+  }
+  user.switchCount++;
+  const threshold = TEAM_TIMING_CONFIG.offTeamSwitchThreshold;
+  if (user.switchCount < threshold) {
+    if (user.switchCount === 1) ttbShowEvent(`@${user.username} eyeing ${targetSeg.label}`);
+    else if (user.switchCount === Math.ceil(threshold * 0.6)) ttbShowEvent(`@${user.username} tempted by ${targetSeg.label}`);
+    return;
+  }
+
+  // Threshold hit — perform the switch.
+  const oldSeg = TTB.segState.get(user.teamId);
+  if (oldSeg && TEAM_TIMING_CONFIG.switchMovesBaseWeight) {
+    oldSeg.joinWeight = Math.max(0, oldSeg.joinWeight - user.baseWeight);
+    oldSeg.members = oldSeg.members.filter(u => u.toLowerCase() !== user.username.toLowerCase());
+  }
+  targetSeg.joinWeight += user.baseWeight;
+  targetSeg.members.unshift(user.username);
+  targetSeg.lastWeightChangeAt = now;
+
+  const oldLabel = oldSeg ? oldSeg.label : '?';
+  user.teamId = targetSegId;
+  user.switchTargetId = null;
+  user.switchCount = 0;
+  user.lastSwitchAt = now;
+  if (TEAM_TIMING_CONFIG.switchResetsBoostWeight) {
+    user.boostWeightThisWindow = 0;
+    user.sameTeamTapCount = 0;
+  }
+  ttbShowEvent(`@${user.username} switched! ${oldLabel} → ${targetSeg.label}`);
+  ttbRenderScores();
+  ttbUpdateLeader();
+}
+
+/* ── like / tap ── */
+function ttbOnLike(username, platform) {
+  if (!TEAM_TIMING_CONFIG.enabled || !TTB.roundActive) return;
+  const now = performance.now();
+  const activeId = ttbSetActiveSegment(now);
+
+  if (!username) {
+    // No per-user id available on this event — fall back to a scaled-down
+    // "crowd boost" on whichever segment the cursor is over right now.
+    TTB.aggAccum++;
+    if (TTB.aggAccum < TEAM_TIMING_CONFIG.aggregateLikesPerBoost) return;
+    TTB.aggAccum -= TEAM_TIMING_CONFIG.aggregateLikesPerBoost;
+    const seg = TTB.segState.get(activeId);
+    if (!seg) return;
+    const cap = seg.joinWeight * TEAM_TIMING_CONFIG.maxAggregateBoostPercentOfJoinScore;
+    if (seg.aggregateBoostWeight + TEAM_TIMING_CONFIG.aggregateBoostWeight > cap) return; // crowd likes can't dominate joins
+    seg.aggregateBoostWeight += TEAM_TIMING_CONFIG.aggregateBoostWeight;
+    seg.lastWeightChangeAt = now;
+    ttbShowEvent(`Crowd boosted ${seg.label}`);
+    ttbFlashBoost(seg.id);
+    ttbRenderScores();
+    ttbUpdateLeader();
+    return;
+  }
+
+  const user = TTB.users.get(ttbUserKey(username, platform));
+  if (!user || !user.teamId) return; // taps only matter once you've joined a team
+  if (activeId === user.teamId) ttbApplySameTeamTap(user);
+  else ttbApplyOffTeamTap(user, activeId);
+}
+
+/* ── YouTube proxy signals ──
+   YouTube's Live Chat API (and SSN by extension) has no per-viewer "joined
+   the room" or "double-tap heart" event the way TikTok does — the only
+   reliable per-user signal is chat comments (real username on every
+   message) and channel-membership events. These stand in for TikTok's
+   join/like mechanic as closely as the platform allows:
+     - a YouTube viewer's FIRST comment each round = their join
+     - every comment after that = a tap (same-team boost / off-team switch,
+       reusing the exact same threshold/window logic as TikTok taps)
+     - a new/renewing membership = a guaranteed bonus boost to their current
+       team, since it's a loyalty signal rather than something cursor-timed
+   Comments arrive far more often than TikTok's native join/like bursts, so
+   YouTube boosts may trigger faster in practice — raise sameTeamTapThreshold
+   / offTeamSwitchThreshold if that ends up feeling too easy. */
+function ttbOnYouTubeComment(username, platform) {
+  if (!TEAM_TIMING_CONFIG.enabled || !TTB.roundActive || !username) return;
+  const user = TTB.users.get(ttbUserKey(username, platform));
+  if (!user || !user.teamId) ttbOnJoin(username, platform);
+  else ttbOnLike(username, platform);
+}
+function ttbOnYouTubeMembership(username) {
+  if (!TEAM_TIMING_CONFIG.enabled || !TTB.roundActive || !username) return;
+  let user = TTB.users.get(ttbUserKey(username, 'yt'));
+  if (!user || !user.teamId) { ttbOnJoin(username, 'yt'); user = TTB.users.get(ttbUserKey(username, 'yt')); }
+  if (!user || !user.teamId) return;
+  const seg = TTB.segState.get(user.teamId);
+  if (!seg) return;
+  const now = performance.now();
+  if (now - user.boostWindowStartedAt > TEAM_TIMING_CONFIG.boostWindowMs) {
+    user.boostWindowStartedAt = now;
+    user.boostWeightThisWindow = 0;
+  }
+  if (user.boostWeightThisWindow + TEAM_TIMING_CONFIG.sameTeamBoostWeight > TEAM_TIMING_CONFIG.maxBoostWeightPerUserPerWindow) return;
+  user.boostWeightThisWindow += TEAM_TIMING_CONFIG.sameTeamBoostWeight;
+  seg.boostWeight += TEAM_TIMING_CONFIG.sameTeamBoostWeight;
+  seg.lastWeightChangeAt = now;
+  ttbShowEvent(`🎬 @${username}'s membership boosted ${seg.label}`);
+  ttbFlashBoost(seg.id);
+  ttbRenderScores();
+  ttbUpdateLeader();
+}
+
+/* ── tick loop (cursor + round timer) ── */
+function ttbTick(now) {
+  if (!TTB.cursorFrozen) {
+    const progress = ttbCursorProgress(now);
+    const cursorEl = document.getElementById('ttb-cursor');
+    if (cursorEl) cursorEl.style.left = (progress * Math.max(0, TTB.trackWidthPx - 4)) + 'px';
+    ttbSetActiveSegment(now);
+  }
+  if (TTB.roundActive) {
+    const timerEl = document.getElementById('ttb-round-timer');
+    if (timerEl) timerEl.textContent = 'ROUND ' + ttbFmtClock(TTB.roundEndsAt - now);
+    if (now >= TTB.roundEndsAt) { ttbEndRound(); }
+  }
+  if (TTB.running) TTB.rafId = requestAnimationFrame(ttbTick);
+}
+function ttbStart() {
+  if (TTB.running) return;
+  TTB.running = true;
+  TTB.rafId = requestAnimationFrame(ttbTick);
+}
+function ttbStop() {
+  TTB.running = false;
+  TTB.roundActive = false;
+  if (TTB.rafId) cancelAnimationFrame(TTB.rafId);
+  TTB.rafId = null;
+}
+
+/* ── mode enable/disable — reuses #gift-bar's screen slot ── */
+function ttbSetEnabled(enabled) {
+  TEAM_TIMING_CONFIG.enabled = !!enabled;
+  const ttbEl = document.getElementById('team-timing-bar');
+  const gbEl  = document.getElementById('gift-bar');
+  gbEl?.classList.toggle('ttb-hidden', TEAM_TIMING_CONFIG.enabled);
+  if (TEAM_TIMING_CONFIG.enabled) {
+    ttbEl?.classList.add('visible');
+    ttbRenderSegments();
+    ttbStartRound();
+  } else {
+    ttbEl?.classList.remove('visible');
+    ttbStop();
+    clearTimeout(TTB.resultTimer);
+  }
+}
+
+/* ── remote control (Stream Dock) ── */
+ablyChannel.subscribe('team-timing-config', msg => {
+  const d = msg?.data;
+  if (!d) return;
+  const wasEnabled = TEAM_TIMING_CONFIG.enabled;
+  const scalarKeys = [
+    'roundDurationMs', 'roundEndPauseMs', 'autoStartNextRound', 'cursorCycleMs',
+    'joinWeight', 'allowRepeatJoinSameRound', 'sameTeamTapThreshold', 'sameTeamBoostWeight',
+    'maxBoostWeightPerUserPerWindow', 'boostWindowMs', 'offTeamSwitchThreshold',
+    'switchWindowMs', 'switchCooldownMs', 'switchMovesBaseWeight', 'switchResetsBoostWeight',
+    'aggregateLikesPerBoost', 'aggregateBoostWeight', 'maxAggregateBoostPercentOfJoinScore',
+    'tieBreaker',
+  ];
+  for (const k of scalarKeys) if (d[k] !== undefined) TEAM_TIMING_CONFIG[k] = d[k];
+  if (Array.isArray(d.segments) && d.segments.length) {
+    TEAM_TIMING_CONFIG.segments = d.segments.map(s => ({ id: s.id, label: s.label, action: s.action || s.id }));
+    ttbRenderSegments();
+    if (TTB.roundActive) ttbRebuildSegState(); // labels changed mid-round — scores intentionally reset
+  }
+  if (d.resultOutput && typeof d.resultOutput === 'object') {
+    Object.assign(TEAM_TIMING_CONFIG.resultOutput, d.resultOutput);
+  }
+  if (d.enabled !== undefined && d.enabled !== wasEnabled) ttbSetEnabled(!!d.enabled);
+});
+
+ablyChannel.subscribe('team-timing-cmd', msg => {
+  const d = msg?.data || {};
+  switch (d.action) {
+    case 'start':  if (!TEAM_TIMING_CONFIG.enabled) ttbSetEnabled(true); else ttbStartRound(); break;
+    case 'stop':   ttbPauseRound(); break;
+    case 'resume': ttbResumeRound(); break;
+    case 'reset':  if (TEAM_TIMING_CONFIG.enabled) ttbStartRound(); break;
+    case 'force_winner': if (TEAM_TIMING_CONFIG.enabled) ttbEndRound(d.segId); break;
+    case 'disable': ttbSetEnabled(false); break;
+  }
+});
+
+const TTB_TEST_NAMES = ['pixelpanda','vortexfan','mochi_gg','snackman','luna92','glizzygang','tofubyte','riptide'];
+function ttbTestJoin(name) {
+  if (!TEAM_TIMING_CONFIG.enabled) { console.log('[TTB] enable Team Timing Bar first (T)'); return; }
+  ttbOnJoin(name || TTB_TEST_NAMES[Math.floor(Math.random() * TTB_TEST_NAMES.length)] + Math.floor(Math.random() * 99), 'test');
+}
+function ttbTestLikeSelf() {
+  const user = [...TTB.users.values()].pop();
+  if (!user) { console.log('[TTB] no test users yet — press N to join one first'); return; }
+  for (let i = 0; i < TEAM_TIMING_CONFIG.sameTeamTapThreshold; i++) ttbApplySameTeamTap(user);
+}
+function ttbTestLikeOther() {
+  const user = [...TTB.users.values()].pop();
+  if (!user) { console.log('[TTB] no test users yet — press N to join one first'); return; }
+  const otherSeg = TEAM_TIMING_CONFIG.segments.find(s => s.id !== user.teamId) || TEAM_TIMING_CONFIG.segments[0];
+  for (let i = 0; i < TEAM_TIMING_CONFIG.offTeamSwitchThreshold; i++) ttbApplyOffTeamTap(user, otherSeg.id);
+}
+function ttbTestForceJoinSegment(index) {
+  const seg = TEAM_TIMING_CONFIG.segments[index];
+  if (!seg || !TEAM_TIMING_CONFIG.enabled || !TTB.roundActive) return;
+  const s = TTB.segState.get(seg.id);
+  s.joinWeight += TEAM_TIMING_CONFIG.joinWeight;
+  s.lastWeightChangeAt = performance.now();
+  ttbShowEvent(`+test → ${seg.label}`);
+  ttbRenderScores();
+  ttbUpdateLeader();
+}
+
+ablyChannel.subscribe('team-timing-test', msg => {
+  const d = msg?.data || {};
+  switch (d.action) {
+    case 'join':       ttbTestJoin(d.username); break;
+    case 'like_self':  ttbTestLikeSelf(); break;
+    case 'like_other': ttbTestLikeOther(); break;
+    case 'round_end':  if (TEAM_TIMING_CONFIG.enabled) ttbEndRound(); break;
+  }
+});
+
+// YouTube join/tap proxy — dock only forwards a comment here once it has
+// already matched the configured command (see ttb-cmd/ttb-match on the
+// dock), so every message received here counts.
+ablyChannel.subscribe('team-timing-yt-comment', msg => {
+  const username = msg?.data?.username;
+  if (username && typeof ttbOnYouTubeComment === 'function') ttbOnYouTubeComment(username, 'yt');
+});
+
+// Local dev/test keyboard shortcuts (mirrors crowd-glass's controller test
+// keys) — NOT the primary input; live viewers only ever act through Ably.
+document.addEventListener('keydown', e => {
+  switch (e.key) {
+    case 't': case 'T': ttbSetEnabled(!TEAM_TIMING_CONFIG.enabled); break;
+    case 'n': case 'N': ttbTestJoin(); break;
+    case 'l': case 'L': ttbTestLikeSelf(); break;
+    case 'o': case 'O': ttbTestLikeOther(); break;
+    case 'r': case 'R': if (TEAM_TIMING_CONFIG.enabled) ttbStartRound(); break;
+    case 'e': case 'E': if (TEAM_TIMING_CONFIG.enabled) ttbEndRound(); break;
+    case '1': case '2': case '3': case '4': ttbTestForceJoinSegment(Number(e.key) - 1); break;
+  }
+});
 
 </script>
 
