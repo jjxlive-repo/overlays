@@ -1637,7 +1637,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #ttb-leader-line { color: #FAF5FF; }
 #ttb-leader-line .ttb-leader-name { color: #E879F9; font-weight: 700; }
 
-#ttb-track { position: relative; margin: 6px 40px 0; height: 92px; --ttb-cursor-max: 996px; }
+#ttb-track {
+  position: relative; margin: 6px 40px 0; height: 92px; --ttb-cursor-max: 996px;
+  transform: translate(var(--ttb-ox, 0px), var(--ttb-oy, 0px));
+}
 #ttb-segments { display: flex; gap: 8px; height: 100%; }
 .ttb-seg {
   position: relative; flex: 1; height: 100%; min-width: 0;
@@ -1693,13 +1696,16 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 @keyframes ttbChipIn { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 #ttb-cursor {
-  position: absolute; top: -6px; width: 4px; height: 104px;
-  background: linear-gradient(to bottom, #fff, #E879F9);
-  box-shadow: 0 0 10px 2px rgba(232,121,249,0.9), 0 0 20px 6px rgba(168,85,247,0.5);
-  border-radius: 3px; left: 0;
+  position: absolute; top: -6px; width: 5px; height: 104px;
+  background: #FAF5FF;
+  border-radius: 2px; left: 0;
+  outline: 1px solid rgba(232,121,249,0.85);
   transform: translate3d(0,0,0);
   will-change: transform;
   contain: layout paint;
+  backface-visibility: hidden;
+  --ttb-cursor-ox: 0px;
+  --ttb-cursor-oy: 0px;
   animation-name: ttbCursorSweep;
   animation-duration: 2500ms;
   animation-timing-function: linear;
@@ -1708,12 +1714,25 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   animation-play-state: paused;
 }
 @keyframes ttbCursorSweep {
-  from { transform: translate3d(0,0,0); }
-  to   { transform: translate3d(var(--ttb-cursor-max),0,0); }
+  from { transform: translate3d(var(--ttb-cursor-ox),var(--ttb-cursor-oy),0); }
+  to   { transform: translate3d(calc(var(--ttb-cursor-ox) + var(--ttb-cursor-max)),var(--ttb-cursor-oy),0); }
 }
 #ttb-cursor::after {
   content: '▲'; position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
   font-size: 16px; color: #E879F9; text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+}
+
+#ttb-cursor::after {
+  content: '';
+  top: -15px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 12px solid #E879F9;
+  font-size: 0;
+  color: transparent;
+  text-shadow: none;
 }
 
 #ttb-jointext {
@@ -1843,9 +1862,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     <span id="ttb-round-timer">ROUND 1:30</span>
     <span id="ttb-leader-line">LEADING: <span class="ttb-leader-name" id="ttb-leader-name">—</span></span>
   </div>
-  <div id="ttb-track">
+  <div id="ttb-track" data-layout-id="ttb-track">
     <div id="ttb-segments"></div>
-    <div id="ttb-cursor"></div>
+    <div id="ttb-cursor" data-layout-id="ttb-cursor"></div>
   </div>
   <div id="ttb-jointext" data-layout-id="ttb-jointext">JOIN NOW = <span class="ttb-active-name" id="ttb-active-name">—</span></div>
   <div id="ttb-instructions" data-layout-id="ttb-instructions">JOIN = PICK TEAM&nbsp;&nbsp;•&nbsp;&nbsp;TAP YOUR TEAM = BOOST&nbsp;&nbsp;•&nbsp;&nbsp;TAP ANOTHER = SWITCH</div>
@@ -4983,8 +5002,13 @@ function ttbApplyLayout(layout) {
     const pos = layout[id];
     const el = document.querySelector(`[data-layout-id="${id}"]`);
     if (el && pos) {
-      el.style.setProperty('--ttb-ox', (pos.x || 0) + 'px');
-      el.style.setProperty('--ttb-oy', (pos.y || 0) + 'px');
+      if (id === 'ttb-cursor') {
+        el.style.setProperty('--ttb-cursor-ox', (pos.x || 0) + 'px');
+        el.style.setProperty('--ttb-cursor-oy', (pos.y || 0) + 'px');
+      } else {
+        el.style.setProperty('--ttb-ox', (pos.x || 0) + 'px');
+        el.style.setProperty('--ttb-oy', (pos.y || 0) + 'px');
+      }
     }
   }
 }

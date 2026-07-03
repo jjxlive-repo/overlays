@@ -3787,6 +3787,8 @@ let _ttbConfig = {
   segments: TTB_DEFAULT_SEGMENTS.map(s => ({ ...s })),
   layout: {
     'ttb-topline':      { x: 0, y: 0 },
+    'ttb-track':        { x: 0, y: 0 },
+    'ttb-cursor':       { x: 0, y: 0 },
     'ttb-jointext':      { x: 0, y: 0 },
     'ttb-instructions':  { x: 0, y: 0 },
     'ttb-eventline':     { x: 0, y: 0 },
@@ -3821,6 +3823,23 @@ function ttbNormalizeSegments() {
   _ttbPreferVisibleSegmentsOnce = false;
   _ttbConfig.segmentCount = ttbClampSegmentCount(_ttbConfig.segmentCount || savedVisible.length || merged.length);
   _ttbConfig.segments = merged.slice(0, _ttbConfig.segmentCount);
+  ttbEnsureLayout();
+}
+function ttbEnsureLayout() {
+  const defaults = {
+    'ttb-topline':      { x: 0, y: 0 },
+    'ttb-track':        { x: 0, y: 0 },
+    'ttb-cursor':       { x: 0, y: 0 },
+    'ttb-jointext':     { x: 0, y: 0 },
+    'ttb-instructions': { x: 0, y: 0 },
+    'ttb-eventline':    { x: 0, y: 0 },
+  };
+  if (!_ttbConfig.layout || typeof _ttbConfig.layout !== 'object') _ttbConfig.layout = {};
+  for (const [id, pos] of Object.entries(defaults)) {
+    if (!_ttbConfig.layout[id]) _ttbConfig.layout[id] = { ...pos };
+    _ttbConfig.layout[id].x = parseInt(_ttbConfig.layout[id].x, 10) || 0;
+    _ttbConfig.layout[id].y = parseInt(_ttbConfig.layout[id].y, 10) || 0;
+  }
 }
 ttbNormalizeSegments();
 
@@ -4796,6 +4815,10 @@ const LAYOUT_ELEMENTS = [
     scale:{min:50,max:200} },
   { id:'ttb-topline', label:'Round timer + leader', group:'Team Timing Bar',
     x:{min:-400,max:400}, y:{min:-400,max:400} },
+  { id:'ttb-track', label:'Track / options bar', group:'Team Timing Bar',
+    x:{min:-400,max:400}, y:{min:-400,max:400} },
+  { id:'ttb-cursor', label:'Cursor', group:'Team Timing Bar',
+    x:{min:-200,max:200}, y:{min:-120,max:120} },
   { id:'ttb-jointext', label:'Join Now text', group:'Team Timing Bar',
     x:{min:-400,max:400}, y:{min:-400,max:400} },
   { id:'ttb-instructions', label:'Instructions text', group:'Team Timing Bar',
@@ -4820,7 +4843,8 @@ function layoutGet(elDef, field) {
     case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
       return field === 'x' ? _cgLayout[elDef.id].x : field === 'y' ? _cgLayout[elDef.id].y : null;
     case 'cg-cracks': return field === 'scale' ? _cgCrackScale : null;
-    case 'ttb-topline': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
+    case 'ttb-topline': case 'ttb-track': case 'ttb-cursor': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
+      ttbEnsureLayout();
       return field === 'x' ? _ttbConfig.layout[elDef.id].x : field === 'y' ? _ttbConfig.layout[elDef.id].y : null;
   }
   return null;
@@ -4867,7 +4891,8 @@ function layoutSet(elDef, field, val) {
       _cgCrackScale = val;
       cgPublishLayout();
       return;
-    case 'ttb-topline': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
+    case 'ttb-topline': case 'ttb-track': case 'ttb-cursor': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
+      ttbEnsureLayout();
       _ttbConfig.layout[elDef.id][field] = val;
       ttbPublishConfig();
       return; // ttbPublishConfig already calls scheduleGistSave()
