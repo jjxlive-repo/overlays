@@ -2556,6 +2556,14 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 
           <div class="ctrl-sep" style="margin-top:6px;">
             <span class="ctrl-lbl" style="margin-bottom:4px;">Segments (label · Stream Deck action)</span>
+            <div class="ctrl-row" style="gap:6px;align-items:center;margin-bottom:6px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">Options</span>
+              <select class="ctrl-in" id="ttb-seg-count" style="flex:1;cursor:pointer;" onchange="ttbSetSegmentCount(this.value)">
+                <option value="4">4 teams</option>
+                <option value="3">3 teams</option>
+                <option value="2">2 teams</option>
+              </select>
+            </div>
             <div id="ttb-seg-editor"></div>
             <button class="ctrl-btn" style="width:100%;margin-top:4px;" onclick="ttbApplySegments()">Apply Segment Labels</button>
           </div>
@@ -3764,16 +3772,19 @@ function cgCmd(command) {
    dock is the source of truth: on load it restores from localStorage/Gist
    and re-publishes so the overlay always picks up whatever was last set
    here, even after an overlay refresh. */
+const TTB_DEFAULT_SEGMENTS = [
+  { id: 'pickle', label: 'PICKLE',      action: 'pickle' },
+  { id: 'glizzy', label: 'GLIZZY',      action: 'glizzy' },
+  { id: 'potato', label: 'POTATO HEAD', action: 'potato_head' },
+  { id: 'space',  label: 'SPACE WALK',  action: 'space_walk' },
+];
 let _ttbConfig = {
   enabled: false,
   roundDurationMs: 90000,
   cursorCycleMs: 5000,
-  segments: [
-    { id: 'pickle', label: 'PICKLE',      action: 'pickle' },
-    { id: 'glizzy', label: 'GLIZZY',      action: 'glizzy' },
-    { id: 'potato', label: 'POTATO HEAD', action: 'potato_head' },
-    { id: 'space',  label: 'SPACE WALK',  action: 'space_walk' },
-  ],
+  segmentCount: 4,
+  allSegments: TTB_DEFAULT_SEGMENTS.map(s => ({ ...s })),
+  segments: TTB_DEFAULT_SEGMENTS.map(s => ({ ...s })),
   layout: {
     'ttb-topline':      { x: 0, y: 0 },
     'ttb-jointext':      { x: 0, y: 0 },
@@ -3781,12 +3792,40 @@ let _ttbConfig = {
     'ttb-eventline':     { x: 0, y: 0 },
   },
 };
-try { Object.assign(_ttbConfig, JSON.parse(localStorage.getItem('ttbConfig') || '{}')); } catch(e) {}
+let _ttbPreferVisibleSegmentsOnce = false;
+try {
+  const savedTtbConfig = JSON.parse(localStorage.getItem('ttbConfig') || '{}');
+  _ttbPreferVisibleSegmentsOnce = Array.isArray(savedTtbConfig.segments) && !Array.isArray(savedTtbConfig.allSegments);
+  Object.assign(_ttbConfig, savedTtbConfig);
+} catch(e) {}
 function ttbEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function ttbClampSegmentCount(v) {
+  return Math.min(4, Math.max(2, parseInt(v, 10) || 4));
+}
+function ttbNormalizeSegments() {
+  const savedAll = Array.isArray(_ttbConfig.allSegments) ? _ttbConfig.allSegments : [];
+  const savedVisible = Array.isArray(_ttbConfig.segments) ? _ttbConfig.segments : [];
+  const merged = TTB_DEFAULT_SEGMENTS.map((fallback, i) => {
+    const saved = _ttbPreferVisibleSegmentsOnce
+      ? (savedVisible[i] || savedAll[i] || {})
+      : (savedAll[i] || savedVisible[i] || {});
+    return {
+      id: fallback.id,
+      label: String(saved.label || fallback.label),
+      action: String(saved.action || fallback.action),
+    };
+  });
+  _ttbConfig.allSegments = merged;
+  _ttbPreferVisibleSegmentsOnce = false;
+  _ttbConfig.segmentCount = ttbClampSegmentCount(_ttbConfig.segmentCount || savedVisible.length || merged.length);
+  _ttbConfig.segments = merged.slice(0, _ttbConfig.segmentCount);
+}
+ttbNormalizeSegments();
 
 function ttbPublishConfig() {
+  ttbNormalizeSegments();
   localStorage.setItem('ttbConfig', JSON.stringify(_ttbConfig));
   if (ablyChannel) ablyChannel.publish('team-timing-config', _ttbConfig).catch(() => {});
   scheduleGistSave();
@@ -3832,10 +3871,21 @@ function ttbSetRoundSec(v) {
   if (lbl) lbl.textContent = v + 's';
   _ttbDebouncedPublish();
 }
+function ttbSetSegmentCount(v) {
+  ttbApplySegments(false);
+  _ttbConfig.segmentCount = ttbClampSegmentCount(v);
+  ttbNormalizeSegments();
+  ttbRenderSegEditor();
+  ttbPublishConfig();
+  doFlash('green');
+}
 function ttbRenderSegEditor() {
+  ttbNormalizeSegments();
   const wrap = document.getElementById('ttb-seg-editor');
   const select = document.getElementById('ttb-force-seg');
   if (!wrap || !select) return;
+  const countEl = document.getElementById('ttb-seg-count');
+  if (countEl) countEl.value = String(_ttbConfig.segmentCount);
   wrap.innerHTML = _ttbConfig.segments.map((seg, i) => `
     <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
       <input class="ctrl-in" id="ttb-seg-label-${i}" type="text" placeholder="Label" value="${ttbEsc(seg.label)}" style="flex:1;">
@@ -3844,15 +3894,20 @@ function ttbRenderSegEditor() {
   select.innerHTML = _ttbConfig.segments.map(seg =>
     `<option value="${ttbEsc(seg.id)}">${ttbEsc(seg.label)}</option>`).join('');
 }
-function ttbApplySegments() {
-  _ttbConfig.segments = _ttbConfig.segments.map((seg, i) => {
+function ttbApplySegments(publish = true) {
+  ttbNormalizeSegments();
+  _ttbConfig.allSegments = _ttbConfig.allSegments.map((seg, i) => {
+    if (i >= _ttbConfig.segmentCount) return seg;
     const label = document.getElementById('ttb-seg-label-' + i)?.value.trim() || seg.label;
     const action = document.getElementById('ttb-seg-action-' + i)?.value.trim() || seg.action;
     return { id: seg.id, label, action };
   });
+  _ttbConfig.segments = _ttbConfig.allSegments.slice(0, _ttbConfig.segmentCount);
   ttbRenderSegEditor();
-  ttbPublishConfig();
-  doFlash('green');
+  if (publish) {
+    ttbPublishConfig();
+    doFlash('green');
+  }
 }
 
 /* ── YouTube comment → join/tap command (mirrors the NEW HERE nh-cmd/nh-match
@@ -5860,7 +5915,12 @@ function applyGistConfig(cfg) {
   // --- Team Timing Bar ---
   if (cfg.ttbConfig != null) {
     localStorage.setItem('ttbConfig', cfg.ttbConfig);
-    try { Object.assign(_ttbConfig, JSON.parse(cfg.ttbConfig)); } catch(e) {}
+    try {
+      const savedTtbConfig = JSON.parse(cfg.ttbConfig);
+      _ttbPreferVisibleSegmentsOnce = Array.isArray(savedTtbConfig.segments) && !Array.isArray(savedTtbConfig.allSegments);
+      Object.assign(_ttbConfig, savedTtbConfig);
+      ttbNormalizeSegments();
+    } catch(e) {}
     document.getElementById('ttb-enable-btn')?.classList.toggle('c-act', _ttbConfig.enabled);
     document.getElementById('ttb-disable-btn')?.classList.toggle('c-act', !_ttbConfig.enabled);
     const cursorSlider = document.getElementById('ttb-cursor-slider');

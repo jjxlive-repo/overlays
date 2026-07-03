@@ -4464,6 +4464,18 @@ function ttbActiveSegId(now) {
 }
 
 /* ── rendering ── */
+function ttbSanitizeSegments(segments) {
+  if (!Array.isArray(segments)) return null;
+  const cleaned = segments
+    .filter(s => s && s.id && s.label)
+    .slice(0, 4)
+    .map(s => ({
+      id: String(s.id),
+      label: String(s.label),
+      action: String(s.action || s.id),
+    }));
+  return cleaned.length >= 2 ? cleaned : null;
+}
 function ttbRenderSegments() {
   const wrap = document.getElementById('ttb-segments');
   if (!wrap) return;
@@ -4950,8 +4962,9 @@ ablyChannel.subscribe('team-timing-config', msg => {
     'tieBreaker',
   ];
   for (const k of scalarKeys) if (d[k] !== undefined) TEAM_TIMING_CONFIG[k] = d[k];
-  if (Array.isArray(d.segments) && d.segments.length) {
-    TEAM_TIMING_CONFIG.segments = d.segments.map(s => ({ id: s.id, label: s.label, action: s.action || s.id }));
+  const incomingSegments = ttbSanitizeSegments(d.segments);
+  if (incomingSegments) {
+    TEAM_TIMING_CONFIG.segments = incomingSegments;
     ttbRenderSegments();
     if (TTB.roundActive) ttbRebuildSegState(); // labels changed mid-round — scores intentionally reset
   }
