@@ -1637,7 +1637,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #ttb-leader-line { color: #FAF5FF; }
 #ttb-leader-line .ttb-leader-name { color: #E879F9; font-weight: 700; }
 
-#ttb-track { position: relative; margin: 6px 40px 0; height: 92px; }
+#ttb-track { position: relative; margin: 6px 40px 0; height: 92px; --ttb-cursor-max: 996px; }
 #ttb-segments { display: flex; gap: 8px; height: 100%; }
 .ttb-seg {
   position: relative; flex: 1; height: 100%; min-width: 0;
@@ -1700,6 +1700,16 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   transform: translate3d(0,0,0);
   will-change: transform;
   contain: layout paint;
+  animation-name: ttbCursorSweep;
+  animation-duration: 2500ms;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  animation-play-state: paused;
+}
+@keyframes ttbCursorSweep {
+  from { transform: translate3d(0,0,0); }
+  to   { transform: translate3d(var(--ttb-cursor-max),0,0); }
 }
 #ttb-cursor::after {
   content: '▲'; position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
@@ -4404,7 +4414,7 @@ let TEAM_TIMING_CONFIG = {
 };
 
 const TTB = {
-  running: false,        // rAF tick loop active
+  running: false,        // lightweight tick loop active
   roundActive: false,    // a round is currently being scored (not paused/ended)
   cursorFrozen: false,
   roundStartedAt: 0,
@@ -4472,8 +4482,27 @@ function ttbRenderSegments() {
     wrap.appendChild(el);
   }
   const track = document.getElementById('ttb-track');
-  if (track) TTB.trackWidthPx = track.clientWidth || 1000;
+  if (track) {
+    TTB.trackWidthPx = track.clientWidth || 1000;
+    track.style.setProperty('--ttb-cursor-max', Math.max(0, TTB.trackWidthPx - 4) + 'px');
+  }
   TTB.activeSegId = null;
+}
+function ttbSyncCursorAnimation(reset) {
+  const track = document.getElementById('ttb-track');
+  const cursorEl = document.getElementById('ttb-cursor');
+  if (!track || !cursorEl) return;
+  TTB.trackWidthPx = track.clientWidth || TTB.trackWidthPx || 1000;
+  track.style.setProperty('--ttb-cursor-max', Math.max(0, TTB.trackWidthPx - 4) + 'px');
+  const halfCycleMs = Math.max(1, TEAM_TIMING_CONFIG.cursorCycleMs / 2);
+  if (reset) {
+    cursorEl.style.animation = 'none';
+    cursorEl.style.transform = 'translate3d(0,0,0)';
+    void cursorEl.offsetWidth;
+    cursorEl.style.animation = '';
+  }
+  cursorEl.style.animationDuration = halfCycleMs + 'ms';
+  cursorEl.style.animationPlayState = (!TTB.cursorFrozen && TTB.roundActive) ? 'running' : 'paused';
 }
 function ttbSegEl(segId) {
   return document.querySelector(`.ttb-seg[data-seg-id="${CSS.escape(segId)}"]`);
@@ -4567,6 +4596,7 @@ function ttbStartRound() {
   document.getElementById('ttb-result')?.classList.remove('show');
   ttbRenderScores();
   ttbUpdateLeader();
+  ttbSyncCursorAnimation(true);
   ttbShowEvent('NEW ROUND — JOIN WHEN THE CURSOR HITS YOUR PICK');
   ttbStart();
 }
@@ -4588,6 +4618,7 @@ function ttbPickWinner(forcedSegId) {
 function ttbEndRound(forcedSegId) {
   TTB.roundActive = false;
   TTB.cursorFrozen = true;
+  ttbSyncCursorAnimation(false);
   const winner = ttbPickWinner(forcedSegId);
   if (!winner) { ttbShowEvent('Round ended — no contributions'); ttbScheduleNextRound(); return; }
 
@@ -4620,6 +4651,7 @@ function ttbPauseRound() {
   TTB.roundActive = false;
   TTB.cursorFrozen = true;
   TTB.pausedAt = performance.now();
+  ttbSyncCursorAnimation(false);
   ttbShowEvent('Round paused');
 }
 function ttbResumeRound() {
@@ -4630,6 +4662,7 @@ function ttbResumeRound() {
   TTB.pausedAt = 0;
   TTB.roundActive = true;
   TTB.cursorFrozen = false;
+  ttbSyncCursorAnimation(false);
   ttbShowEvent('Round resumed');
 }
 
@@ -4855,11 +4888,9 @@ function ttbOnYouTubeMembership(username) {
 }
 
 /* ── tick loop (cursor + round timer) ── */
-function ttbTick(now) {
+function ttbTick() {
+  const now = performance.now();
   if (!TTB.cursorFrozen) {
-    const progress = ttbCursorProgress(now);
-    const cursorEl = document.getElementById('ttb-cursor');
-    if (cursorEl) cursorEl.style.transform = `translate3d(${progress * Math.max(0, TTB.trackWidthPx - 4)}px,0,0)`;
     ttbSetActiveSegment(now);
   }
   if (TTB.roundActive) {
@@ -4871,17 +4902,20 @@ function ttbTick(now) {
     }
     if (now >= TTB.roundEndsAt) { ttbEndRound(); }
   }
-  if (TTB.running) TTB.rafId = requestAnimationFrame(ttbTick);
+  if (TTB.running) TTB.rafId = setTimeout(ttbTick, 100);
 }
 function ttbStart() {
   if (TTB.running) return;
   TTB.running = true;
-  TTB.rafId = requestAnimationFrame(ttbTick);
+  ttbSyncCursorAnimation(false);
+  TTB.rafId = setTimeout(ttbTick, 0);
 }
 function ttbStop() {
   TTB.running = false;
   TTB.roundActive = false;
-  if (TTB.rafId) cancelAnimationFrame(TTB.rafId);
+  TTB.cursorFrozen = true;
+  ttbSyncCursorAnimation(false);
+  if (TTB.rafId) clearTimeout(TTB.rafId);
   TTB.rafId = null;
 }
 
@@ -4926,6 +4960,7 @@ ablyChannel.subscribe('team-timing-config', msg => {
   }
   if (d.layout && typeof d.layout === 'object') ttbApplyLayout(d.layout);
   if (d.enabled !== undefined && d.enabled !== wasEnabled) ttbSetEnabled(!!d.enabled);
+  else if (TEAM_TIMING_CONFIG.enabled) ttbSyncCursorAnimation(false);
 });
 
 // Position nudges from the dock's 🎯 Layout panel — each entry in `layout`
