@@ -6,61 +6,56 @@ window.CROWD_GLASS_CONFIG = {
   websocketUrl: "ws://127.0.0.1:7788",
   websocketReconnectMs: 2000,
 
-  // Optional live intake from stream-dock.html, which already relays TikTok/YouTube
-  // events from Social Stream Ninja + Tikfinity over Ably. Same key/channel stream-dock
-  // uses ("splat-overlay"), so this overlay just joins the existing pub/sub feed.
   ablyEnabled: true,
   ablyKey: "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0",
   ablyChannel: "splat-overlay",
 
-  // When false, live join/gift/viewer-count events from Ably are ignored — only
-  // manual commands (from stream-dock's Crowd Glass panel or keyboard) affect the glass.
   autoMode: true,
-
-  // Global crack-size multiplier, adjustable live from stream-dock's Layout panel.
   crackScale: 1,
+  damageMultiplier: 1,
 
   soundEnabled: true,
   soundVolume: 0.35,
 
-  singleJoinDamageMin: 0.25,
-  singleJoinDamageMax: 0.75,
+  singleJoinDamageMin: 0.15,
+  singleJoinDamageMax: 0.35,
 
-  maxCracksOnScreen: 40,
-  maxImpactLabels: 6,
-  maxRecentHitters: 3,
+  maxCracksOnScreen: 120,
+  maxImpactLabels: 7,
+  maxRecentHitters: 4,
+  maxRecentRepairers: 2,
 
-  burstDamageCap: 18,
-  burstMaxCracks: 5,
+  surge: {
+    maxQueuedHits: 500,
+    slowIntervalMs: 72,
+    mediumIntervalMs: 44,
+    fastIntervalMs: 28,
+    ultraIntervalMs: 18,
+    maxHitsPerFrame: 4,
+    hubMin: 2,
+    hubMax: 4,
+    hubLifetimeMs: 16000,
+    tagEveryHits: 25
+  },
 
   shatterAtIntegrity: 0,
-  // Second, independent shatter trigger: once this many un-repaired cracks are on
-  // screen, shatter regardless of integrity %. Adjustable live from the dock.
-  shatterCrackThreshold: 30,
   autoResetAfterShatterMs: 3000,
 
   bulletproofDurationMs: 20000,
   bulletproofDamageMultiplier: 0.1,
 
-  // Placement bounds, keep clear of platform UI at the very bottom.
   placement: {
     minX: 80,
     maxX: 1000,
     minY: 140,
     maxY: 1650,
     avoidBelowY: 1750,
-    // A center "face/camera" box that is de-prioritized unless glass is critical.
     centerBox: { x1: 340, y1: 700, x2: 740, y2: 1150 },
     criticalIntegrityThreshold: 20
   },
 
-  // Runtime position offsets (px, in 1080x1920 stage space) layered on top of the CSS
-  // defaults via transform: translate(). Updated live from stream-dock's Layout panel.
   layoutOffsets: {
-    "cg-cta": { x: 0, y: 0 },
-    "cg-integrity": { x: 0, y: 0 },
-    "cg-viewerbadge": { x: 0, y: 0 },
-    "cg-livebadge": { x: 0, y: 0 }
+    "cg-card": { x: 0, y: 0, scale: 1 }
   },
 
   copy: {
