@@ -1592,25 +1592,6 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   display: none;
 }
 
-/* ── STINGER OVERLAY ── */
-#stinger-wrap {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%) scale(0.85);
-  width: 1080px; height: 1920px; opacity: 0;
-  pointer-events: none; z-index: 900;
-  transition: transform 350ms cubic-bezier(.34,1.56,.64,1), opacity 280ms ease-out;
-}
-#stinger-wrap.stg-in { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-#stinger-wrap.stg-out {
-  transform: translate(-50%, -50%) scale(0.92); opacity: 0;
-  transition: transform 420ms ease-in, opacity 360ms ease-in;
-}
-#stinger-canvas { width: 100%; height: 100%; object-fit: contain; }
-#stinger-iframe {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  border: none; background: transparent; display: none;
-}
-
 /* ══════════════════════════════════════════════════════════
    TEAM TIMING BAR — optional gift-bar mode (cursor-timed team vote).
    Shares #gift-bar's screen slot; classic gift bar is force-hidden via
@@ -4973,6 +4954,7 @@ ablyChannel.subscribe('team-timing-config', msg => {
   const d = msg?.data;
   if (!d) return;
   const wasEnabled = TEAM_TIMING_CONFIG.enabled;
+  const prevCursorCycleMs = TEAM_TIMING_CONFIG.cursorCycleMs;
   const scalarKeys = [
     'roundDurationMs', 'roundEndPauseMs', 'autoStartNextRound', 'cursorCycleMs',
     'joinWeight', 'allowRepeatJoinSameRound', 'sameTeamTapThreshold', 'sameTeamBoostWeight',
@@ -4992,8 +4974,17 @@ ablyChannel.subscribe('team-timing-config', msg => {
     Object.assign(TEAM_TIMING_CONFIG.resultOutput, d.resultOutput);
   }
   if (d.layout && typeof d.layout === 'object') ttbApplyLayout(d.layout);
-  if (d.enabled !== undefined && d.enabled !== wasEnabled) ttbSetEnabled(!!d.enabled);
-  else if (TEAM_TIMING_CONFIG.enabled) ttbSyncCursorAnimation(false);
+  if (d.enabled !== undefined && d.enabled !== wasEnabled) {
+    ttbSetEnabled(!!d.enabled);
+  } else if (TEAM_TIMING_CONFIG.enabled && TEAM_TIMING_CONFIG.cursorCycleMs !== prevCursorCycleMs) {
+    // Only re-sync the CSS animation when the cursor speed itself changed —
+    // resetting animationDuration on every unrelated config republish (a
+    // layout nudge, a segment label edit, etc.) forces the browser to
+    // recompute the animation's current progress against the same duration,
+    // which visibly jumps/stutters the cursor even though nothing about its
+    // speed actually changed.
+    ttbSyncCursorAnimation(false);
+  }
 });
 
 // Position nudges from the dock's 🎯 Layout panel — each entry in `layout`
@@ -5090,6 +5081,13 @@ document.addEventListener('keydown', e => {
 
 </script>
 
+<!-- ══ STINGER OVERLAY — HTML/video stinger playback, fired via Ably 'stinger' event ══
+     Lives after the <script> block; the subscriber above looks it up lazily
+     at fire time, same as #mission-strip below. -->
+<div id="stinger-wrap">
+  <canvas id="stinger-canvas"></canvas>
+  <iframe id="stinger-iframe" title="stinger"></iframe>
+</div>
 
 <div id="mission-strip">
   <span id="mission-strip-text">🫟 MILK METER — comment, join, or gift to fill it!</span>
