@@ -20,7 +20,7 @@ window.CROWD_GLASS_CONFIG = {
   singleJoinDamageMin: 0.15,
   singleJoinDamageMax: 0.35,
 
-  maxCracksOnScreen: 120,
+  maxCracksOnScreen: 180,
   maxImpactLabels: 7,
   maxRecentHitters: 4,
   maxRecentRepairers: 2,
@@ -28,18 +28,19 @@ window.CROWD_GLASS_CONFIG = {
   surge: {
     maxQueuedHits: 500,
     slowIntervalMs: 72,
-    mediumIntervalMs: 44,
-    fastIntervalMs: 28,
-    ultraIntervalMs: 18,
-    maxHitsPerFrame: 4,
+    mediumIntervalMs: 42,
+    fastIntervalMs: 24,
+    ultraIntervalMs: 15,
+    maxHitsPerFrame: 5,
     hubMin: 2,
-    hubMax: 4,
-    hubLifetimeMs: 16000,
-    tagEveryHits: 25
+    hubMax: 6,
+    hubLifetimeMs: 22000,
+    tagEveryHits: 25,
+    newHubEveryHits: 6
   },
 
   shatterAtIntegrity: 0,
-  autoResetAfterShatterMs: 3000,
+  autoResetAfterShatterMs: 3400,
 
   bulletproofDurationMs: 20000,
   bulletproofDamageMultiplier: 0.1,
