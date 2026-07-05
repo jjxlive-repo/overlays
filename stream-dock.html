@@ -1672,6 +1672,21 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 .layout-table td { padding:5px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
 .layout-table tr:last-child td { border-bottom:none; }
 .layout-table tr.group-start td { border-top:1px solid rgba(168,85,247,.25); }
+.layout-group-row td {
+  position: sticky; top: 25px; z-index: 2;
+  background: linear-gradient(90deg, rgba(50,30,73,.98), rgba(32,31,47,.98));
+  border-top: 1px solid rgba(245,158,11,.55);
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  padding: 6px 8px;
+}
+.layout-group-btn {
+  width: 100%; display:flex; align-items:center; justify-content:space-between; gap:8px;
+  background: transparent; border: 0; color: #f8fafc; cursor: pointer;
+  font: 800 10px/1 'DM Sans', sans-serif; letter-spacing:.08em; text-transform:uppercase;
+}
+.layout-group-count { color:#fbbf24; font-size:9px; letter-spacing:.04em; }
+.layout-group-chevron { color:#c084fc; font-size:12px; min-width:14px; text-align:right; }
+.layout-row-closed { display:none; }
 .layout-el-name { color:var(--txt); font-weight:600; white-space:nowrap; }
 .layout-el-sub { color:var(--txt-dim); font-size:8px; display:block; }
 .layout-num { width:52px; background:rgba(255,255,255,.06); border:1px solid var(--border-hi);
@@ -4098,9 +4113,13 @@ function cgSetShatterThreshold(v) {
 function cgPublishLayout() {
   localStorage.setItem('cgLayout', JSON.stringify(_cgLayout));
   localStorage.setItem('cgCrackScale', _cgCrackScale);
+  localStorage.setItem('cgStageScale', _cgStageScale);
   localStorage.setItem('cgShatterThreshold', _cgShatterThreshold);
   if (ablyChannel) ablyChannel.publish('crowd-glass-layout', {
-    positions: _cgLayout, crackScale: _cgCrackScale / 100, shatterThreshold: _cgShatterThreshold
+    positions: _cgLayout,
+    stageScale: _cgStageScale / 100,
+    crackScale: _cgCrackScale / 100,
+    shatterThreshold: _cgShatterThreshold
   }).catch(() => {});
   scheduleGistSave();
 }
@@ -5128,6 +5147,8 @@ function resetNotifPos() {
 const LAYOUT_SPLAT_POS_LEVELS = ['bottom','lower','center','upper','top'];
 let _splatPosLevel = Math.max(0, LAYOUT_SPLAT_POS_LEVELS.indexOf(localStorage.getItem('splatPos') || 'center'));
 let _layoutSelected = new Set();
+let _layoutOpenGroups = new Set(JSON.parse(localStorage.getItem('layoutOpenGroups') || '["Crowd Glass"]'));
+let _cgStageScale = parseInt(localStorage.getItem('cgStageScale') || '75', 10);
 
 function _layoutNhGet(id) {
   const el = document.getElementById(id);
@@ -5167,6 +5188,8 @@ const LAYOUT_ELEMENTS = [
     y:{min:-200,max:600} },
   { id:'geyser', label:'Geyser (EQ wave)', group:'Geyser',
     y:{min:505,max:1720} },
+  { id:'cg-stage', label:'Whole overlay', group:'Crowd Glass',
+    scale:{min:35,max:130} },
   { id:'cg-cta', label:'CTA text (NEXT VIEWER…)', group:'Crowd Glass',
     x:{min:-400,max:400}, y:{min:-800,max:800} },
   { id:'cg-integrity', label:'Integrity + hitters', group:'Crowd Glass',
@@ -5207,6 +5230,7 @@ function layoutGet(elDef, field) {
     case 'league-shelf': return field === 'y' ? _leagueShelfY : (field === 'scale' ? _leagueShelfScale : null);
     case 'mission-strip': return field === 'y' ? _missionStripY : null;
     case 'geyser': return field === 'y' ? _geyserY : null;
+    case 'cg-stage': return field === 'scale' ? _cgStageScale : null;
     case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
       return field === 'x' ? _cgLayout[elDef.id].x : field === 'y' ? _cgLayout[elDef.id].y : null;
     case 'cg-cracks': return field === 'scale' ? _cgCrackScale : null;
@@ -5255,6 +5279,12 @@ function layoutSet(elDef, field, val) {
     case 'geyser':
       geyserMove(val - _geyserY);
       break;
+    case 'cg-stage':
+      if (field === 'scale') {
+        _cgStageScale = val;
+        cgPublishLayout();
+      }
+      return;
     case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
       _cgLayout[elDef.id][field] = val;
       cgPublishLayout();
@@ -5275,10 +5305,21 @@ function layoutSet(elDef, field, val) {
 function layoutRenderTable() {
   const tbody = document.getElementById('layout-tbody');
   if (!tbody) return;
-  let lastGroup = null;
-  tbody.innerHTML = LAYOUT_ELEMENTS.map(elDef => {
-    const groupStart = elDef.group !== lastGroup;
-    lastGroup = elDef.group;
+  const groups = [...new Set(LAYOUT_ELEMENTS.map(e => e.group))];
+  tbody.innerHTML = groups.map(group => {
+    const rows = LAYOUT_ELEMENTS.filter(e => e.group === group);
+    const isOpen = _layoutOpenGroups.has(group);
+    const selectedCount = rows.filter(e => _layoutSelected.has(e.id)).length;
+    const header = `<tr class="layout-group-row">
+      <td colspan="5">
+        <button class="layout-group-btn" type="button" onclick="layoutToggleGroup('${layoutEsc(group)}')">
+          <span>${group}</span>
+          <span class="layout-group-count">${selectedCount}/${rows.length} selected</span>
+          <span class="layout-group-chevron">${isOpen ? 'OPEN' : 'CLOSED'}</span>
+        </button>
+      </td>
+    </tr>`;
+    return header + rows.map(elDef => {
     const checked = _layoutSelected.has(elDef.id) ? 'checked' : '';
     const cell = (field, unit) => {
       if (!elDef[field]) return `<input class="layout-num" type="number" disabled value="—">`;
@@ -5289,14 +5330,26 @@ function layoutRenderTable() {
         onchange="layoutManualSet('${elDef.id}','${field}',this.value)">
         <span class="layout-unit">${unit || (field === 'scale' ? '%' : 'px')}</span>`;
     };
-    return `<tr class="${groupStart ? 'group-start' : ''}">
+    return `<tr class="${isOpen ? '' : 'layout-row-closed'}">
       <td><input type="checkbox" class="layout-cb" ${checked} onchange="layoutToggleSelect('${elDef.id}',this.checked)"></td>
       <td><span class="layout-el-name">${elDef.label}</span><span class="layout-el-sub">${elDef.group}</span></td>
       <td>${cell('x', elDef.xUnit)}</td>
       <td>${cell('y', elDef.yUnit)}</td>
       <td>${cell('scale')}</td>
     </tr>`;
+    }).join('');
   }).join('');
+}
+
+function layoutEsc(str) {
+  return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function layoutToggleGroup(group) {
+  if (_layoutOpenGroups.has(group)) _layoutOpenGroups.delete(group);
+  else _layoutOpenGroups.add(group);
+  localStorage.setItem('layoutOpenGroups', JSON.stringify([..._layoutOpenGroups]));
+  layoutRenderTable();
 }
 
 function layoutManualSet(elId, field, rawVal) {
