@@ -2594,6 +2594,8 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         <div class="ctrl-bd" id="ctrl-layout" style="padding:8px;">
           <span id="geyser-pos-lbl" style="display:none;">y=1100</span>
           <p class="layout-hint">Check rows, then use the arrows to move/scale them together — step size is fixed so elements line up. Edit a number for exact placement. Adjustments save locally. Click Save & Sync Now when you want to push to Gist.</p>
+          <button class="ctrl-btn c-on" style="width:100%;margin:0 0 8px;padding:8px;font-weight:800;letter-spacing:.08em;" onclick="layoutSendToOverlay()">Send to Overlay</button>
+          <div id="layout-send-status" style="min-height:14px;margin:-4px 0 7px;font-size:9px;color:#86efac;text-align:center;"></div>
           <div class="layout-toolbar">
             <div class="layout-grp">
               <button class="layout-sel-btn" onclick="layoutSelectAll()">Select all</button>
@@ -5350,6 +5352,29 @@ function layoutToggleGroup(group) {
   else _layoutOpenGroups.add(group);
   localStorage.setItem('layoutOpenGroups', JSON.stringify([..._layoutOpenGroups]));
   layoutRenderTable();
+}
+
+function layoutSendToOverlay() {
+  try {
+    publishSplatCardLayout();
+    publishMissionStrip();
+    publishOverlayToggles();
+    if (typeof nhApplyConfig === 'function') nhApplyConfig();
+    if (typeof cgAnnounceState === 'function') cgAnnounceState();
+    if (typeof ttbPublishConfig === 'function') ttbPublishConfig();
+    if (typeof layoutRenderTable === 'function') layoutRenderTable();
+    const st = document.getElementById('layout-send-status');
+    if (st) {
+      st.textContent = 'Sent current layout to overlays';
+      setTimeout(() => { st.textContent = ''; }, 2500);
+    }
+    doFlash('green');
+  } catch (err) {
+    const st = document.getElementById('layout-send-status');
+    if (st) st.textContent = 'Could not send layout - check connection';
+    console.warn('[layout] send failed', err);
+    doFlash('red');
+  }
 }
 
 function layoutManualSet(elId, field, rawVal) {
