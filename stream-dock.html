@@ -1970,7 +1970,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           </div>
           <label style="font-size:9px;color:var(--txt-dim);display:block;" title="This edits the pinned top mission strip text. It is independent from the Milk Bar and Splat Cards bar.">
             Mission strip text
-            <input class="ctrl-in" id="ls-mission-strip-text-input" type="text" placeholder="LEAGUE OF SPLATTIES - !show - !duel 1 - !reroll" style="width:100%;margin-top:2px;" oninput="syncMissionStripDraft(this.value)">
+            <input class="ctrl-in" id="ls-mission-strip-text-input" type="text" placeholder="LEAGUE OF SPLATTIES - !pull - !show - !duel 1 - !reroll" style="width:100%;margin-top:2px;" oninput="syncMissionStripDraft(this.value)">
           </label>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <button class="ctrl-btn c-on" style="flex:1;" onclick="pushMissionStripFrom('ls-mission-strip-text-input')" title="Sends this mission strip text to the overlay and keeps it visible.">Send Mission Strip</button>
@@ -2019,9 +2019,10 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           </div>
           <div class="ctrl-sep">
             <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;" title="Change the viewer chat commands. Main is the public command; aliases are alternate commands that do the same thing.">COMMANDS / ALIASES</div>
-            <div style="font-size:9px;color:var(--txt-dim);line-height:1.35;">Main command is the primary public command. Aliases can be comma or space separated.</div>
+            <div style="font-size:9px;color:var(--txt-dim);line-height:1.35;">Main command is the primary public command. Aliases can be comma or space separated. Pull only works if the viewer has no card; Show only works if they already have one.</div>
             <div style="display:grid;grid-template-columns:.75fr 1fr 1.35fr;gap:4px;align-items:center;">
               <span class="ctrl-lbl">Action</span><span class="ctrl-lbl">Main</span><span class="ctrl-lbl">Aliases</span>
+              <span style="font-size:9px;color:var(--txt-dim);">Pull first card</span><input class="ctrl-in" id="ls-cmd-pull-main" value="!pull"><input class="ctrl-in" id="ls-cmd-pull-aliases" value="!draw">
               <span style="font-size:9px;color:var(--txt-dim);">Show card</span><input class="ctrl-in" id="ls-cmd-show-main" value="!show"><input class="ctrl-in" id="ls-cmd-show-aliases" value="!card, !ls, !cardgame">
               <span style="font-size:9px;color:var(--txt-dim);">Rank</span><input class="ctrl-in" id="ls-cmd-rank-main" value="!rank"><input class="ctrl-in" id="ls-cmd-rank-aliases" value="!me">
               <span style="font-size:9px;color:var(--txt-dim);">History</span><input class="ctrl-in" id="ls-cmd-history-main" value="!history"><input class="ctrl-in" id="ls-cmd-history-aliases" value="!stats">
@@ -2148,7 +2149,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           <div class="ctrl-row" style="gap:4px;">
             <button class="ctrl-btn c-act" data-lsphase="active" style="flex:1;" onclick="lsSetPhase('active')" title="Normal play: viewers can show cards and duel.">Active</button>
             <button class="ctrl-btn" data-lsphase="rebirth" style="flex:1;" onclick="lsSetPhase('rebirth')" title="Short reroll window: reroll changes type and drops rank.">Rebirth</button>
-            <button class="ctrl-btn" data-lsphase="results" style="flex:1;" onclick="lsSetPhase('results')" title="League check: awards fragments/promotions/demotions.">Results</button>
+            <button class="ctrl-btn" data-lsphase="results" style="flex:1;" onclick="lsSetPhase('results')" title="End of round reset: awards fragments, updates rankings, and opens the rebirth window.">End Reset</button>
           </div>
           <div id="ls-status" style="font-size:9px;color:var(--txt-dim);min-height:13px;text-align:center;">Round state saved locally</div>
           <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;" title="Visual-only tests for the overlay renderer: popups, duel scene, leaders shelf, badges, pips, fragments, and promotions.">SPLAT CARD TESTS</div>
@@ -2237,7 +2238,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <span class="ctrl-lbl" style="margin-bottom:4px;">Mission Strip</span>
             <span style="font-size:9px;color:var(--txt-dim);margin-bottom:2px;display:block;">Pinned top bar — explains game to new viewers</span>
             <input class="ctrl-in" id="mission-strip-text-input" type="text"
-              placeholder="LEAGUE OF SPLATTIES - !show - !duel 1 - !reroll"
+              placeholder="LEAGUE OF SPLATTIES - !pull - !show - !duel 1 - !reroll"
               style="margin-bottom:4px;">
             <span id="mission-strip-y-val" style="display:none;">0</span>
             <div style="font-size:9px;color:var(--txt-dim);margin-bottom:4px;">Position moved to 🎯 Layout panel</div>
@@ -5878,7 +5879,7 @@ const LS_MECH_DEFAULTS = {
   cowardCap: 70,
   lastStandPerRank: 6,
   lastStandCap: 50,
-  rebirthWindowSec: 60,
+  rebirthWindowSec: 120,
   fragTop: 2,
   fragUpper: 1,
   fragBottom: -1,
@@ -5893,6 +5894,7 @@ function lsLoadMechanics() {
 }
 let _lsMechanics = lsLoadMechanics();
 const LS_COMMAND_DEFAULTS = {
+  pull: { main: '!pull', aliases: ['!draw'] },
   show: { main: '!show', aliases: ['!card', '!ls', '!cardgame'] },
   rank: { main: '!rank', aliases: ['!me'] },
   history: { main: '!history', aliases: ['!stats'] },
@@ -5943,7 +5945,7 @@ function lsCleanDisplayText(text) {
     .replace(/–|–/g, '-')
     .replace(/\s+-\s+/g, ' - ');
 }
-let _missionStripText = lsCleanDisplayText(localStorage.getItem('missionStripText') || 'LEAGUE OF SPLATTIES - !show - !duel 1 - !reroll');
+let _missionStripText = lsCleanDisplayText(localStorage.getItem('missionStripText') || 'LEAGUE OF SPLATTIES - !pull - !show - !duel 1 - !reroll');
 
 /* ── INIT ── */
 document.addEventListener('DOMContentLoaded', () => {
@@ -6056,7 +6058,7 @@ function pushMissionStrip() {
 function setMissionStripPreset(mode) {
   const text = mode === 'milk'
     ? 'MILK METER - comments, likes, gifts, and joins fill the bar'
-    : `${_lsGameTitle || 'LEAGUE OF SPLATTIES'} - ${lsCommand('show')} - ${lsCommand('duel', '1')} - ${lsCommand('reroll')}`;
+    : `${_lsGameTitle || 'LEAGUE OF SPLATTIES'} - ${lsCommand('pull')} - ${lsCommand('show')} - ${lsCommand('duel', '1')} - ${lsCommand('reroll')}`;
   _missionStripText = lsCleanDisplayText(text);
   syncMissionStripInputs(_missionStripText);
   pushMissionStrip();
@@ -6425,7 +6427,7 @@ function lsResetGame() {
   _lsPhase = 'active';
   lsSyncInputs();
   publishLeagueSprintState('EVENT - game reset');
-  if (ablyChannel) ablyChannel.publish('league-sprint', { action: 'idle', text: '!show - !duel 1 - !reroll' }).catch(() => {});
+  if (ablyChannel) ablyChannel.publish('league-sprint', { action: 'idle', text: '!pull - !show - !duel 1 - !reroll' }).catch(() => {});
   scheduleGistSave();
 }
 
@@ -6628,7 +6630,7 @@ function dockBuildChatTestCard() {
       <button class="tf-btn" onclick="testFireMilk('comment_match','Cmd Match','test_user')">Cmd Match</button>
     </div>
     <div class="ctrl-row" style="margin-top:7px;gap:5px;">
-      <input class="ctrl-in" id="dock-chat-command-test" type="text" value="${lsCommand('show')}" placeholder="!show, !duel 1, !reroll" onkeydown="if(event.key==='Enter')dockTestChatCommand()">
+      <input class="ctrl-in" id="dock-chat-command-test" type="text" value="${lsCommand('pull')}" placeholder="!pull, !show, !duel 1, !reroll" onkeydown="if(event.key==='Enter')dockTestChatCommand()">
       <button class="ctrl-btn c-act" onclick="dockTestChatCommand()">Send</button>
     </div>`);
 }
@@ -6875,7 +6877,7 @@ function dockToggleGifterHighlight() {
   }
   _dockGifterHighlightVisible = !_dockGifterHighlightVisible;
   if (_dockGifterHighlightVisible) gbRefresh();
-  else { gbUnfeature(); gbClearBar(); }
+  else gbUnfeature();
   doFlash(_dockGifterHighlightVisible ? 'green' : 'red');
 }
 
@@ -6886,7 +6888,7 @@ function dockToggleGiftBar() {
   }
   _dockGiftBarVisible = !_dockGiftBarVisible;
   if (_dockGiftBarVisible) gbTestBar();
-  else gbClearBar();
+  else gbClearGifterSlide();
   doFlash(_dockGiftBarVisible ? 'green' : 'red');
 }
 
@@ -6989,7 +6991,7 @@ function buildSplatCardSubsections() {
     const contents = items.slice(sec.index, nextIndex);
     const wrap = document.createElement('div');
     wrap.className = 'ls-subsection';
-    const stored = localStorage.getItem('lsSubsectionOpen:' + sec.key);
+    const stored = sec.key === 'commands' ? '1' : localStorage.getItem('lsSubsectionOpen:' + sec.key);
     const isOpen = stored == null ? !!sec.open : stored === '1';
     wrap.classList.toggle('closed', !isOpen);
     const hd = document.createElement('button');
@@ -7119,11 +7121,7 @@ function gbUnfeature() {
   _saveTrackerSettings({ giftrCustom: null });
   const st = document.getElementById('gb-status');
   if (st) st.textContent = '';
-  ablyChannel.publish('giftr', {
-    daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
-    enabledSlots: [],
-    visible: false
-  }).catch(() => {});
+  gbClearGifterSlide();
   ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
 }
 
@@ -7145,14 +7143,16 @@ function gbTestBar() {
   if (st) st.textContent = '🧪 Test data sent';
 }
 
-function gbClearBar() {
+function gbClearGifterSlide() {
   ablyChannel.publish('giftr', {
     daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
     enabledSlots: [],
+    visible: false
   }).catch(() => {});
   const st = document.getElementById('gb-status');
   if (st) st.textContent = '';
 }
+function gbClearBar() { gbClearGifterSlide(); }
 
 /* ════════════════════════════════════════
    SETTINGS + GIST
@@ -8176,7 +8176,7 @@ const LeagueSprintState = (() => {
     for (const ch of String(seedText || Date.now())) n = ((n << 5) - n + ch.charCodeAt(0)) | 0;
     return keys[Math.abs(n) % keys.length];
   }
-  function ensurePlayer(userPayload) {
+  function ensurePlayer(userPayload, opts = {}) {
     const user = cleanUser(userPayload);
     if (state.players[user.id]) {
       const existing = losNormalizeCard(state.players[user.id]);
@@ -8228,8 +8228,11 @@ const LeagueSprintState = (() => {
     addRecent(`${card.username} joined with ${card.currentRank} ${type}`);
     updateKing();
     save();
-    publishLeagueSprintVisual({ action:'popup', eventType:'CARD_DRAWN', label:'CARD DRAW', card, message:`${card.username} pulled a ${card.currentRank} ${type} card!` });
-    publishLeagueSprintVisual({ action:'shelf', mode:'recent', cards:[card], meta:'recent moves' });
+    lsDecorateRankings();
+    if (!opts.silent) {
+      publishLeagueSprintVisual({ action:'popup', eventType:'CARD_DRAWN', label:'CARD DRAW', card, message:`${card.username} pulled a ${card.currentRank} ${type} card!` });
+      publishLeagueSprintVisual({ action:'shelf', mode:'recent', cards:[card], meta:'recent moves' });
+    }
     return card;
   }
   function addRecent(text) {
@@ -8266,6 +8269,25 @@ const LeagueSprintState = (() => {
 function publishLeagueSprintVisual(payload) {
   if (!ablyChannel) return;
   ablyChannel.publish('league-sprint', Object.assign({ gameTitle: _lsGameTitle || 'League of Splatties' }, payload)).catch(() => {});
+}
+
+function lsDecorateRankings(cards) {
+  const ranked = (cards || LeagueSprintState.sortedPlayers()).map((card, idx) => {
+    card.rankNumber = idx + 1;
+    card.isLeagueLeader = false;
+    return card;
+  });
+  const seen = new Set();
+  ranked.forEach(card => {
+    const league = LeagueSprintRankUtils.getLeagueFromRank(card.currentRank);
+    if (!seen.has(league)) {
+      card.isLeagueLeader = true;
+      seen.add(league);
+    }
+    card.league = league;
+    card.isKing = LeagueSprintState.state.kingUserId === card.ownerId;
+  });
+  return ranked;
 }
 
 function lsEngineUpdateDockStatus() {
@@ -8414,9 +8436,18 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
   publishLeagueSprintVisual({ action:'bar-message', eventType:'COMMAND_RECEIVED', message:`COMMAND - @${String(username || 'viewer').replace(/^@/,'')} used ${raw}` });
   const cleanedUser = LeagueSprintState.cleanUser(user);
   const playerExisted = !!LeagueSprintState.state.players[cleanedUser.id];
+  if (action === 'show' && !playerExisted) {
+    publishLeagueSprintVisual({ action:'bar-message', eventType:'NO_TARGET', severity:'warn', message:`NO CARD - use ${lsCommand('pull')} first` });
+    return true;
+  }
+  if (action === 'pull' && playerExisted) {
+    publishLeagueSprintVisual({ action:'bar-message', eventType:'COOLDOWN', severity:'warn', message:`CARD EXISTS - use ${lsCommand('show')} to view it` });
+    return true;
+  }
   let card = LeagueSprintState.ensurePlayer(user);
+  if (action === 'pull') return true;
   if (action === 'players') {
-    const cards = LeagueSprintState.sortedPlayers().filter(p => p.ownerId !== card.ownerId).slice(0, 5);
+    const cards = lsDecorateRankings(LeagueSprintState.sortedPlayers()).filter(p => p.ownerId !== card.ownerId).slice(0, 5);
     publishLeagueSprintVisual({ action:'shelf', mode:'leaders', cards, meta:'duel targets' });
     publishLeagueSprintVisual({ action:'bar-message', eventType:'SHOW_CARD', message:`TARGETS - ${cards.map(c => `${c.username} ${c.currentRank}`).join(' | ') || 'no targets yet'}` });
     return true;
@@ -8434,10 +8465,10 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
     return true;
   }
   if (action === 'show') {
-    if (!playerExisted) return true;
     const s = card.currentLeagueStats || losDefaultStats(card.currentRank);
     card.title = s.equippedTitle || card.title || '';
     card.badges = s.badges || [];
+    lsDecorateRankings();
     publishLeagueSprintVisual({ action:'popup', eventType:'SHOW_CARD', label:'SHOW CARD', card, message:`Showing ${card.username}'s Card` });
     publishLeagueSprintVisual({ action:'shelf', mode:'recent', cards:[card], meta:`${s.playersDefeated || 0} KOs - ${s.bossesDefeated || 0} Bosses - ${Number(card.power || 0).toLocaleString()} DP` });
     publishLeagueSprintVisual({ action:'bar-message', eventType:'SHOW_CARD', message:`${card.username} - ${card.currentRank} - ${Number(card.power || 0).toLocaleString()} DP${card.title ? ' - ' + card.title : ''}${card.rebirthCount ? ' - REBIRTH x' + card.rebirthCount : ''}` });
@@ -8527,6 +8558,7 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
     }
     publishLeagueSprintVisual({ action:'bar-message', eventType:'DUEL_TARGET_SELECTED', message:picked.label });
     const outcome = LeagueSprintDuelEngine.duel(card, picked.target);
+    lsDecorateRankings();
     publishLeagueSprintVisual({ action:'duel-timeline', eventType:'DUEL_STARTED', attacker:card, defender:picked.target, beats:outcome.beats, result:outcome.result, message:`${card.username} attacks ${picked.target.username}` });
     if (outcome.newKing) publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW CHAMPION', card:outcome.newKing, message:`A new champion emerges - ${outcome.newKing.username}` });
     return true;
@@ -8540,14 +8572,14 @@ function lsEngineStartRebirth() {
   Object.values(LeagueSprintState.state.players).forEach(p => p.rebirthedThisRound = false);
   LeagueSprintState.state.rebirthEndsAt = Date.now() + (mech.rebirthWindowSec * 1000);
   LeagueSprintState.save();
-  publishLeagueSprintVisual({ action:'shelf', mode:'rebirth', cards:LeagueSprintState.sortedPlayers().slice(0,5), meta:`!reroll = new type, -1 rank - ${mech.rebirthWindowSec}s` });
+  publishLeagueSprintVisual({ action:'shelf', mode:'rebirth', cards:lsDecorateRankings(LeagueSprintState.sortedPlayers()).slice(0,5), meta:`!reroll = new type, -1 rank - ${mech.rebirthWindowSec}s` });
 }
 
 function lsEngineApplyResults() {
   const mech = getLeagueSprintMechanics();
   const players = LeagueSprintState.sortedPlayers();
   const n = players.length;
-  if (!n) return { cards: [], summary: 'LEAGUE CHECK - no players yet' };
+  if (!n) return { cards: [], rankings: [], summary: 'END OF ROUND RESET - no players yet', changed: [] };
   const topCut = Math.max(1, Math.ceil(n * 0.12));
   const upperCut = Math.max(topCut, Math.ceil(n * 0.35));
   const bottomStart = Math.floor(n * 0.8);
@@ -8589,14 +8621,31 @@ function lsEngineApplyResults() {
   if (king) publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW CHAMPION', card:king, message:`A new champion emerges - ${king.username}` });
   LeagueSprintState.addRecent(`Results applied to ${n} players`);
   LeagueSprintState.save();
-  return { cards: LeagueSprintState.sortedPlayers().slice(0, 5), summary:`LEAGUE CHECK - fragments awarded to ${n} players`, changed };
+  const rankings = lsDecorateRankings(LeagueSprintState.sortedPlayers());
+  return { cards: rankings.slice(0, 5), rankings, summary:`END OF ROUND RESET - awarding fragments to ${n} players`, changed };
 }
 
 function lsEngineStartResults() {
-  LeagueSprintState.setPhase('results');
   const results = lsEngineApplyResults();
-  publishLeagueSprintVisual({ action:'result', eventType:'RESULTS_STARTED', cards:results.cards, message:results.summary });
-  publishLeagueSprintVisual({ action:'shelf', mode:'leaders', cards:results.cards, meta:'results + fragments' });
+  const mech = getLeagueSprintMechanics();
+  LeagueSprintState.state.phase = 'rebirth';
+  _lsPhase = 'rebirth';
+  localStorage.setItem('lsPhase', _lsPhase);
+  LeagueSprintState.state.rebirthEndsAt = Date.now() + Math.max(10, Number(mech.rebirthWindowSec || 120)) * 1000;
+  Object.values(LeagueSprintState.state.players).forEach(p => p.rebirthedThisRound = false);
+  LeagueSprintState.save();
+  publishLeagueSprintState(`EVENT - end of round reset`);
+  publishLeagueSprintVisual({
+    action:'result',
+    phase:'rebirth',
+    eventType:'RESULTS_STARTED',
+    cards:results.cards,
+    rankings:results.rankings,
+    changed:results.changed,
+    rebirthEndsAt: LeagueSprintState.state.rebirthEndsAt,
+    message:`${results.summary} - rebirth window ${Math.round(mech.rebirthWindowSec || 120)}s`
+  });
+  publishLeagueSprintVisual({ action:'shelf', mode:'leaders', cards:results.cards, meta:'rankings - use !duel rank# next round' });
 }
 function lsEngineReset() {
   localStorage.removeItem('leagueSprintState.v1');
@@ -9028,7 +9077,7 @@ function lsSeedDuelTestOpponents() {
     { userId:'test-target-a', username:'target_a', rank:'A2', power:1840, character:'jasper' }
   ];
   specs.forEach(spec => {
-    const card = LeagueSprintState.ensurePlayer({ platform:'test', userId:spec.userId, username:spec.username });
+    const card = LeagueSprintState.ensurePlayer({ platform:'test', userId:spec.userId, username:spec.username }, { silent:true });
     card.currentRank = spec.rank;
     card.league = LeagueSprintRankUtils.getLeagueFromRank(spec.rank);
     card.fragmentMax = LeagueSprintRankUtils.getFragmentMax(spec.rank);
@@ -9042,7 +9091,7 @@ function lsSeedDuelTestOpponents() {
 }
 function lsEngineTest(name) {
   const testUser = { platform:'test', userId:'test-' + name, username:'tester_' + name, displayName:'tester_' + name, messageText:lsCommand('show'), timestamp:Date.now() };
-  if (name === 'draw') LeagueSprintState.ensurePlayer({ platform:'test', userId:'test-draw-' + Date.now(), username:'draw_' + Math.floor(Math.random() * 999), displayName:'draw tester' });
+  if (name === 'draw') handleLeagueSprintChatCommand({ platform:'test', userId:'test-draw-' + Date.now(), username:'draw_' + Math.floor(Math.random() * 999), displayName:'draw tester', messageText:lsCommand('pull'), timestamp:Date.now() });
   else if (name === 'show') handleLeagueSprintChatCommand(testUser);
   else if (name === 'duel1') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-dueler-' + Date.now(), username:'dueler', messageText:lsCommand('duel', '1') })); }
   else if (name === 'duelup') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-up-' + Date.now(), username:'upstart', messageText:lsCommand('duel', 'up') })); }
