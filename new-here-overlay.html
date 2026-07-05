@@ -73,6 +73,8 @@ let CTR_PILL_ENABLED   = true;
 let TIMER_PILL_ENABLED = true;
 let NAME_PILL_ENABLED  = true;
 let DEDUPE_ENABLED     = true; // false = same viewer can join/splat repeatedly
+let OVERLAY_ENABLED    = false;
+document.body.style.display = 'none';
 
 // ── PRESSURE / INFLATION mechanic ────────────────────────────────────
 // Every join adds "pressure." Pressure decays on its own after a grace
@@ -1234,6 +1236,7 @@ function connectAbly() {
   const ch     = client.channels.get(ABLY_CH);
 
   ch.subscribe('new-here', msg => {
+    if (!OVERLAY_ENABLED) return;
     const { username, source } = msg.data || {};
     if (username && source) enqueue(username, source);
   });
@@ -1245,6 +1248,11 @@ function connectAbly() {
 
   ch.subscribe('new-here-config', msg => {
     const d = msg.data || {};
+    if (d.enabled != null || d.visible != null) {
+      OVERLAY_ENABLED = d.enabled != null ? !!d.enabled : !!d.visible;
+      document.body.style.display = OVERLAY_ENABLED ? 'block' : 'none';
+      if (!OVERLAY_ENABLED) resetOverlay();
+    }
     if (d.signScale    != null) SIGN_SCALE    = d.signScale;
     if (d.signXOffset  != null) SIGN_X_OFFSET = d.signXOffset;
     if (d.signYOffset  != null) SIGN_Y_OFFSET = d.signYOffset;
