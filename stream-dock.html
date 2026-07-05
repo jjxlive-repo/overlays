@@ -6025,9 +6025,11 @@ function publishSplatCardLayout() {
 }
 
 function publishOverlayToggles() {
+  localStorage.setItem('streamBarEnabled', String(_streamBarEnabled));
   localStorage.setItem('geyserEnabled', String(_geyserEnabled));
   localStorage.setItem('milkUiDisabled', String(_milkUiDisabled));
   if (ablyChannel) {
+    ablyChannel.publish('stream-bar-config', { enabled: _streamBarEnabled }).catch(() => {});
     ablyChannel.publish('geyser-config', { enabled: _geyserEnabled, top: _geyserY }).catch(() => {});
     ablyChannel.publish('milk-ui-config', { disabled: _milkUiDisabled }).catch(() => {});
   }
@@ -6604,6 +6606,7 @@ function dockAddBaitRescueButtons() {
 function dockBuildQuickToggles() {
   return dockMakeCard('dock-toggles', 'Overlay Toggles', `
     <div class="dock-quick-grid">
+      ${dockToggleHtml('Stream Bar', "dockQuickToggle('stream-bar')", 'stream-bar')}
       ${dockToggleHtml('Live Text', "dockQuickToggle('live-text')", 'live-text')}
       ${dockToggleHtml('Mission Strip', "dockQuickToggle('mission-strip')", 'mission-strip')}
       ${dockToggleHtml('Geyser', "dockQuickToggle('geyser')", 'geyser')}
@@ -6626,6 +6629,7 @@ function dockToggleHtml(label, action, key) {
 
 function dockQuickToggle(name) {
   switch (name) {
+    case 'stream-bar': dockToggleStreamBar(); break;
     case 'live-text': qcLTVisible(!announceVisible); break;
     case 'mission-strip': toggleMissionStripVisible(); break;
     case 'geyser': lsToggleGeyser(); break;
@@ -6658,6 +6662,7 @@ function dockSetToggleState(key, isOn) {
 }
 
 function dockSyncQuickToggles() {
+  dockSetToggleState('stream-bar', !!_streamBarEnabled);
   dockSetToggleState('live-text', !!announceVisible);
   dockSetToggleState('mission-strip', !!_missionStripVisible);
   dockSetToggleState('geyser', !!_geyserEnabled);
@@ -6673,6 +6678,7 @@ function dockSyncQuickToggles() {
   dockSetToggleState('team-timing', !!_ttbConfig?.enabled);
 }
 
+let _streamBarEnabled = localStorage.getItem('streamBarEnabled') !== 'false';
 let _dockSplatVisible = true;
 let _dockGiftAnimVisible = true;
 let _dockCrowdGlassVisible = localStorage.getItem('dockCrowdGlassVisible') === '1';
@@ -6681,7 +6687,41 @@ let _dockGifterHighlightVisible = false;
 let _dockGiftBarVisible = false;
 let _dockTopGiftersVisible = false;
 
+function dockToggleStreamBar() {
+  _streamBarEnabled = !_streamBarEnabled;
+  if (!_streamBarEnabled) {
+    if (announceVisible) qcLTVisible(false);
+    if (!_milkUiDisabled) {
+      _milkUiDisabled = true;
+      if (ablyChannel) ablyChannel.publish('milk-cta-config', { visible:false, forceVisible:false }).catch(() => {});
+    }
+    if (_dockSplatVisible) {
+      _dockSplatVisible = false;
+      if (ablyChannel) ablyChannel.publish('splat-card-layout', { hidden:true }).catch(() => {});
+      publishLeagueSprintVisual({ action:'idle', text:'' });
+    }
+    if (_dockGiftBarVisible) {
+      _dockGiftBarVisible = false;
+      gbClearBar();
+    }
+    if (_dockGifterHighlightVisible) {
+      _dockGifterHighlightVisible = false;
+      gbUnfeature();
+    }
+    if (_ttbConfig?.enabled) ttbDockSetEnabled(false);
+    if (_geyserEnabled) _geyserEnabled = false;
+  }
+  publishOverlayToggles();
+  dockSyncQuickToggles();
+  scheduleGistSave();
+  doFlash(_streamBarEnabled ? 'green' : 'red');
+}
+
 function dockToggleMilkBar() {
+  if (!_streamBarEnabled) {
+    _streamBarEnabled = true;
+    publishOverlayToggles();
+  }
   const nextOn = _milkUiDisabled;
   _milkUiDisabled = !nextOn;
   publishOverlayToggles();
@@ -6691,6 +6731,10 @@ function dockToggleMilkBar() {
 }
 
 function dockToggleSplatCards() {
+  if (!_streamBarEnabled) {
+    _streamBarEnabled = true;
+    publishOverlayToggles();
+  }
   _dockSplatVisible = !_dockSplatVisible;
   publishLeagueSprintVisual({ action:_dockSplatVisible ? 'phase' : 'idle', phase:_lsPhase, text:_dockSplatVisible ? undefined : '' });
   if (ablyChannel) ablyChannel.publish('splat-card-layout', { hidden: !_dockSplatVisible }).catch(() => {});
@@ -6726,6 +6770,10 @@ function dockToggleCrowdGlass() {
 }
 
 function dockToggleGifterHighlight() {
+  if (!_streamBarEnabled) {
+    _streamBarEnabled = true;
+    publishOverlayToggles();
+  }
   _dockGifterHighlightVisible = !_dockGifterHighlightVisible;
   if (_dockGifterHighlightVisible) gbRefresh();
   else gbUnfeature();
@@ -6733,6 +6781,10 @@ function dockToggleGifterHighlight() {
 }
 
 function dockToggleGiftBar() {
+  if (!_streamBarEnabled) {
+    _streamBarEnabled = true;
+    publishOverlayToggles();
+  }
   _dockGiftBarVisible = !_dockGiftBarVisible;
   if (_dockGiftBarVisible) gbTestBar();
   else gbClearBar();

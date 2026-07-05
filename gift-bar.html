@@ -133,6 +133,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .milk-disabled #gb-milk-fill,
 .milk-disabled #gb-bar-text,
 .milk-disabled #mission-strip-pct { display: none !important; }
+.stream-bar-disabled #gift-bar,
+.stream-bar-disabled #bar-lines,
+.stream-bar-disabled #gift-eq-canvas,
+.stream-bar-disabled #team-timing-bar { display: none !important; }
 .geyser-disabled #gift-eq-canvas { display: none !important; }
 .geyser-disabled #gift-card { display: none !important; }
 .splat-cards-disabled #leagueCardPopupZone,
@@ -3487,6 +3491,11 @@ ablyChannel.subscribe('milk-ui-config', msg => {
   if (d.disabled !== undefined) document.body.classList.toggle('milk-disabled', !!d.disabled);
 });
 
+ablyChannel.subscribe('stream-bar-config', msg => {
+  const d = msg?.data || {};
+  if (d.enabled !== undefined) document.body.classList.toggle('stream-bar-disabled', !d.enabled);
+});
+
 ablyChannel.subscribe('geyser-pos', msg => {
   const top = msg?.data?.top;
   if(top == null) return;
@@ -3752,9 +3761,8 @@ ablyChannel.subscribe('giftr',msg=>{
   const _geqCtx = _geqEl.getContext('2d');
   const _gblCtx = _gblEl.getContext('2d');
 
-  /* ── Geyser EQ constants ── */
-  const GEQ_W = 8, GEQ_G = 5.5, GEQ_S = GEQ_W + GEQ_G;
-  const GEQ_N = Math.floor(1080 / GEQ_S);   // ~79 bars
+  /* ── Geyser wavelength constants ── */
+  const GEQ_STEP = 14;
   const GEQ_H = 200;
   let _geqFireT = -100;
   let _geqReact = 0;
@@ -3773,27 +3781,40 @@ ablyChannel.subscribe('giftr',msg=>{
     _geqReact = Math.max(0, _geqReact * 0.966);
     const tFire = Math.max(0, t - _geqFireT);
 
-    for(let i = 0; i < GEQ_N; i++){
-      const x  = i * GEQ_S;
-      const xf = i / (GEQ_N - 1);
-      const idle = 0.22 + 0.14 * Math.sin(t * 1.6 + xf * 7.5)
-                        + 0.09 * Math.sin(t * 2.9 + xf * 13 + 1.1);
+    function gy(x, phase, mult){
+      const xf = x / 1080;
       const distFromEdge = 1 - Math.abs(xf - 0.5) * 2;
-      const peakT  = distFromEdge * 0.38;
+      const peakT  = distFromEdge * 0.48;
       const dPeak  = tFire - peakT;
-      const ripple = _geqReact * Math.max(0,
-        dPeak >= 0 ? Math.exp(-dPeak * 6) : Math.exp(dPeak * 22)
-      );
-      const h = Math.max(3, (idle * 0.55 + ripple) * GEQ_H * 0.90);
-      const a = Math.min(0.95, 0.58 + ripple * 0.37 + idle * 0.15);
-
-      _geqCtx.fillStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${a})`;
-      _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, h);
-      if(a > 0.22){
-        _geqCtx.fillStyle = `rgba(255,255,255,${a * 0.30})`;
-        _geqCtx.fillRect(x, GEQ_H - h, GEQ_W, Math.min(3, h * 0.09));
-      }
+      const ripple = _geqReact * Math.max(0, dPeak >= 0 ? Math.exp(-dPeak * 2.7) : Math.exp(dPeak * 9));
+      const slow = 0.34 * Math.sin(t * 0.50 - xf * 5.2 + phase)
+                 + 0.18 * Math.sin(t * 0.30 + xf * 8.5 + phase * 0.7)
+                 + 0.10 * Math.sin(t * 0.18 - xf * 2.3 + 1.4);
+      const amp = (0.24 + slow + ripple * 0.95) * GEQ_H * 0.42 * mult;
+      return GEQ_H * 0.52 - amp;
     }
+
+    function drawGeyserLine(offset, alpha, width, mult){
+      _geqCtx.save();
+      _geqCtx.lineCap = 'round';
+      _geqCtx.lineJoin = 'round';
+      _geqCtx.strokeStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${alpha})`;
+      _geqCtx.shadowColor = `rgba(${_geqPR},${_geqPG},${_geqPB},${alpha})`;
+      _geqCtx.shadowBlur = 12 + _geqReact * 16;
+      _geqCtx.lineWidth = width;
+      _geqCtx.beginPath();
+      for(let x = 0; x <= 1080; x += GEQ_STEP){
+        const y = gy(x, offset, mult);
+        if(x === 0) _geqCtx.moveTo(x, y);
+        else _geqCtx.lineTo(x, y);
+      }
+      _geqCtx.stroke();
+      _geqCtx.restore();
+    }
+
+    const baseA = 0.22 + _geqReact * 0.35;
+    drawGeyserLine(0.0, Math.min(0.72, baseA), 3.2 + _geqReact * 2.5, 1.00);
+    drawGeyserLine(1.8, Math.min(0.34, baseA * 0.58), 1.6 + _geqReact, 0.72);
     requestAnimationFrame(_geqDraw);
   })();
 
@@ -4903,9 +4924,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
     hmCtx.fill();
   }
 
-  /* ── Combined rAF loop: full-width in-bar EQ (eCtx) + below-bar waveform (hmCtx) ── */
-  const EQ_BW   = 4;
-  const EQ_STEP = 7;
+  /* ── Combined rAF loop: full-width in-bar smooth wave lines (eCtx) ── */
+  const EQ_STEP = 10;
   const EQ_CENTER = Math.floor(EH / 2);   // 27 — bars grow up/down from here
   const ALL_COLS  = Math.floor(EW / EQ_STEP); // 154
   const _eqSeeds  = Array.from({length: ALL_COLS}, () => Math.random() * 100);
@@ -4930,68 +4950,57 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const fillXe    = Math.round(fillFrac * gifterX);   // capped at slide left edge
     const surgeAmp  = (_surgeActive || boost) ? 1.85 : 1.0;
 
-    /* ── Full-width EQ bars on eCtx ── */
+    /* ── Smooth full-height stream bar wave lines on eCtx ── */
     eCtx.clearRect(0, 0, EW, EH);
 
-    for(let i = 0; i < ALL_COLS; i++){
-      const x     = i * EQ_STEP;
-      const xGlob = (x + EQ_BW / 2) / EW;
-      const inFill = x < fillXe;
-      const idleSin = 0.30 + 0.26*Math.sin(t*2.2+xGlob*9)
-                           + 0.12*Math.sin(t*3.7+xGlob*15);
-
-      let ttH, ttA, ytH, ytA;
-      let spike = 0, spIsRed = false;
-
-      if(inFill){
-        const ttReact = Math.min(1, _v3ttE * surgeAmp);
-        const ytReact = Math.min(1, _v3ytE * surgeAmp);
-        ttH = Math.max(2, idleSin * EQ_CENTER * 0.30 + ttReact * EQ_CENTER * 0.82);
-        ytH = Math.max(2, idleSin * EQ_CENTER * 0.30 + ytReact * EQ_CENTER * 0.82);
-        ttA = _surgeActive ? 0.88 + Math.random()*0.12
-            : boost        ? 0.72 + ttReact * 0.22
-            :                0.38 + ttReact * 0.57 + idleSin * 0.05;
-        ytA = _surgeActive ? 0.82 + Math.random()*0.12
-            : boost        ? 0.68 + ytReact * 0.22
-            :                0.32 + ytReact * 0.57 + idleSin * 0.05;
-      } else if (x < gifterX) {
-        const sd   = _eqSeeds[i];
-        // Traveling waves — spatially coherent so adjacent bars move together
-        const flow = 0.50 + 0.30 * Math.sin(t * 1.3 - xGlob * 6.5)
-                         + 0.14 * Math.sin(t * 2.0 + xGlob * 11.0 + sd * 0.35)
-                         + 0.07 * Math.sin(t * 0.6 + xGlob * 3.5  + sd * 0.15);
-        spike   = Math.max(0, Math.min(1, flow));
-        spIsRed = sd < 0.5;
-        ttH = Math.max(2, spike * EQ_CENTER * 0.82);
-        ytH = ttH;
-        ttA = Math.min(0.48, 0.10 + spike * 0.32);
-        ytA = ttA;
+    const maxX = Math.max(1, Math.floor(gifterX));
+    const sampleStep = 12;
+    function waveY(x, dir, react) {
+      const xf = x / maxX;
+      const longA = Math.sin(t * 0.42 - xf * 4.4);
+      const longB = Math.sin(t * 0.26 + xf * 7.2 + 1.8);
+      const longC = Math.sin(t * 0.18 - xf * 2.1 + 0.7);
+      const fillBoost = x < fillXe ? 0.38 + react * 0.62 : 0;
+      const rest = 0.22 + 0.08 * longA + 0.05 * longB + 0.03 * longC;
+      const amp = Math.min(1, Math.max(0.08, rest + fillBoost));
+      return EQ_CENTER + dir * amp * (EQ_CENTER - 2);
+    }
+    function drawWave(dir, rgba, react, lineWidth, glow) {
+      eCtx.save();
+      eCtx.lineCap = 'round';
+      eCtx.lineJoin = 'round';
+      eCtx.strokeStyle = rgba;
+      eCtx.lineWidth = lineWidth;
+      eCtx.shadowBlur = glow;
+      eCtx.shadowColor = rgba;
+      eCtx.beginPath();
+      for (let x = 0; x <= maxX; x += sampleStep) {
+        const y = waveY(x, dir, react);
+        if (x === 0) eCtx.moveTo(x, y);
+        else eCtx.lineTo(x, y);
       }
+      eCtx.stroke();
+      eCtx.restore();
+    }
 
-      // TT — grows UP from center
-      if(ttH > 0.5){
-        let ttCol;
-        if(_surgeActive)      ttCol = `rgba(255,255,255,${ttA})`;
-        else if(inFill)       ttCol = `rgba(105,201,208,${ttA})`;
-        else if(spike > 0.75) ttCol = spIsRed ? `rgba(255,50,50,${ttA*0.35})` : `rgba(80,80,255,${ttA*0.35})`;
-        else                  ttCol = `rgba(105,201,208,${ttA})`;
-        eCtx.fillStyle = ttCol;
-        eCtx.fillRect(x, EQ_CENTER - ttH, EQ_BW, ttH);
-      }
-      // YT — grows DOWN from center
-      if(ytH > 0.5){
-        let ytCol;
-        if(_surgeActive)      ytCol = `rgba(255,200,200,${ytA})`;
-        else if(inFill)       ytCol = `rgba(255,68,68,${ytA})`;
-        else if(spike > 0.75) ytCol = spIsRed ? `rgba(255,50,50,${ytA*0.35})` : `rgba(80,80,255,${ytA*0.35})`;
-        else                  ytCol = `rgba(105,201,208,${ytA})`;
-        eCtx.fillStyle = ytCol;
-        eCtx.fillRect(x, EQ_CENTER, EQ_BW, ytH);
-      }
+    const ttReact = Math.min(1, _v3ttE * surgeAmp);
+    const ytReact = Math.min(1, _v3ytE * surgeAmp);
+    const baseBlueA = _surgeActive ? 0.78 : boost ? 0.52 : 0.22 + ttReact * 0.38;
+    const baseRedA  = _surgeActive ? 0.72 : boost ? 0.48 : 0.16 + ytReact * 0.36;
+    drawWave(-1, _surgeActive ? `rgba(255,255,255,${baseBlueA})` : `rgba(105,201,208,${baseBlueA})`, ttReact, 2.4 + ttReact * 2.2, 7 + ttReact * 12);
+    drawWave( 1, _surgeActive ? `rgba(255,210,230,${baseRedA})` : `rgba(255,68,68,${baseRedA})`, ytReact, 2.2 + ytReact * 2.1, 6 + ytReact * 11);
+
+    if (fillXe > 6) {
+      const fillGrad = eCtx.createLinearGradient(0, 0, fillXe, 0);
+      fillGrad.addColorStop(0, 'rgba(59,7,100,0.08)');
+      fillGrad.addColorStop(0.7, 'rgba(168,85,247,0.12)');
+      fillGrad.addColorStop(1, 'rgba(232,121,249,0.16)');
+      eCtx.fillStyle = fillGrad;
+      eCtx.fillRect(0, 0, fillXe, EH);
     }
 
     // Center hairline — stops at gifterX, never crosses into gift slide
-    eCtx.fillStyle = 'rgba(255,255,255,0.16)';
+    eCtx.fillStyle = 'rgba(255,255,255,0.10)';
     eCtx.fillRect(0, EQ_CENTER - 0.5, gifterX, 1);
 
     // Fill edge accent glow
