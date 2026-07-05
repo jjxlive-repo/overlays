@@ -1748,7 +1748,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           <div id="gist-status" style="font-size:9px;color:#86efac;min-height:14px;display:flex;align-items:center;gap:5px;"></div>
 
           <div style="font-size:8px;color:#4b5563;line-height:1.5;border-top:1px solid rgba(255,255,255,.05);padding-top:6px;">
-            Data auto-syncs to a private Gist 2 seconds after every Save. Survives browser clears, works across machines.<br>
+            Auto-sync is OFF to avoid GitHub rate limits. Changes save locally; click Save & Sync Now when you want to push to Gist.<br>
             Get a token at <span style="color:#6b7280;">github.com â†’ Settings â†’ Developer settings â†’ Personal access tokens â†’ Tokens (classic)</span> â€” tick the <em>gist</em> scope only.
           </div>
         </div>
@@ -2298,7 +2298,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         </div>
         <div class="ctrl-bd" id="ctrl-layout" style="padding:8px;">
           <span id="geyser-pos-lbl" style="display:none;">y=1100</span>
-          <p class="layout-hint">Check rows, then use the arrows to move/scale them together â€” step size is fixed so elements line up. Edit a number for exact placement. Every adjustment auto-saves to Gist.</p>
+          <p class="layout-hint">Check rows, then use the arrows to move/scale them together â€” step size is fixed so elements line up. Edit a number for exact placement. Adjustments save locally. Click Save & Sync Now when you want to push to Gist.</p>
           <div class="layout-toolbar">
             <div class="layout-grp">
               <button class="layout-sel-btn" onclick="layoutSelectAll()">Select all</button>
@@ -5984,9 +5984,24 @@ function adjustSize(delta) {
 }
 
 let _gistSaveTimer = null;
+let _gistDirty = localStorage.getItem('jjx-gist-dirty') === '1';
+let _gistApplyingRemote = false;
+let _gistSaveInFlight = false;
+let _gistLastLocalStatusAt = 0;
+
 function scheduleGistSave() {
+  // Local-only dirty marker. Do NOT auto-PATCH GitHub on every slider/layout change.
+  // This prevents the dock from hammering the Gist API and hitting rate limits.
+  if (_gistApplyingRemote) return;
   clearTimeout(_gistSaveTimer);
-  _gistSaveTimer = setTimeout(doGistSave, 3000);
+  _gistSaveTimer = null;
+  _gistDirty = true;
+  localStorage.setItem('jjx-gist-dirty', '1');
+  const now = Date.now();
+  if (now - _gistLastLocalStatusAt > 2500) {
+    _gistStatus('Local changes saved - click Save & Sync Now to push to Gist', null);
+    _gistLastLocalStatusAt = now;
+  }
 }
 
 /* Check rate limit and show reset time if exhausted */
@@ -6300,6 +6315,8 @@ _gistStatus('Creatingâ€¦', null);
       const idEl = document.getElementById('gist-id');
       if (idEl) idEl.value = data.id;
       localStorage.setItem('jjx-gist-id', data.id);
+      _gistDirty = false;
+      localStorage.removeItem('jjx-gist-dirty');
       _gistStatus('âœ“ In sync (' + new Date().toLocaleTimeString() + ')', true);
     } else {
       _gistStatus('âœ— ' + (data.message || 'Create failed'), false);
@@ -6311,10 +6328,14 @@ async function doGistSave() {
   const token = document.getElementById('gist-token')?.value.trim();
   let   id    = document.getElementById('gist-id')?.value.trim();
   if (!token) { _gistStatus('âš  Enter GitHub token', false); return; }
+  if (_gistSaveInFlight) { _gistStatus('Sync already running - wait a moment', null); return; }
+  clearTimeout(_gistSaveTimer);
+  _gistSaveTimer = null;
   localStorage.setItem('jjx-gist-token', token);
-  // Auto-create if no ID yet
+  // Auto-create if no ID yet, but only when the user explicitly clicks Save & Sync Now.
   if (!id) { await gistCreate(); return; }
-  _gistStatus('Syncingâ€¦', null);
+  _gistSaveInFlight = true;
+  _gistStatus('Syncing to Gist...', null);
   try {
     const content = JSON.stringify(gistGetConfig(), null, 2);
     const res = await fetch(`https://api.github.com/gists/${id}`, {
@@ -6323,6 +6344,8 @@ async function doGistSave() {
       body: JSON.stringify({ files: { 'jjx-overlay-settings.json': { content } } })
     });
     if (res.ok) {
+      _gistDirty = false;
+      localStorage.removeItem('jjx-gist-dirty');
       _gistStatus('âœ“ In sync (' + new Date().toLocaleTimeString() + ')', true);
     } else {
       const resetTs = res.headers.get('X-RateLimit-Reset');
@@ -6332,13 +6355,17 @@ async function doGistSave() {
         const data = await res.json().catch(() => ({}));
         if (data.message?.includes('rate limit')) {
           const rl = await _gistCheckRateLimit(token);
-          _gistStatus(rl ? _gistRateLimitMsg(rl.reset) : 'âœ— Rate limit hit â€” try again in ~1 hour', false);
+          _gistStatus(rl ? _gistRateLimitMsg(rl.reset) : 'âœ— Rate limit hit - wait before saving again', false);
         } else {
           _gistStatus('âœ— ' + (data.message || 'Save failed'), false);
         }
       }
     }
-  } catch(e) { _gistStatus('âœ— Network error â€” check token & internet', false); }
+  } catch(e) {
+    _gistStatus('âœ— Network error - check token & internet', false);
+  } finally {
+    _gistSaveInFlight = false;
+  }
 }
 
 async function doGistLoad() {
@@ -6357,7 +6384,14 @@ async function doGistLoad() {
     const fileContent = data.files?.['jjx-overlay-settings.json']?.content;
     if (!fileContent) { _gistStatus('âœ— No settings file in Gist', false); return; }
     const cfg = JSON.parse(fileContent);
-    applyGistConfig(cfg);
+    _gistApplyingRemote = true;
+    try {
+      applyGistConfig(cfg);
+    } finally {
+      _gistApplyingRemote = false;
+    }
+    _gistDirty = false;
+    localStorage.removeItem('jjx-gist-dirty');
     _gistStatus('âœ“ In sync (' + new Date().toLocaleTimeString() + ')', true);
   } catch(e) { _gistStatus('âœ— ' + e.message, false); }
 }
