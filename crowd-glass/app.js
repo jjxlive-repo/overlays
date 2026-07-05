@@ -37,6 +37,7 @@
     ablyStatus: "disabled",
     enabled: false,
     autoMode: CFG.autoMode,
+    stageScale: 0.75,
     crackScale: CFG.crackScale,
     shatterCrackThreshold: CFG.shatterCrackThreshold,
 
@@ -69,6 +70,7 @@
   const dbgWsStatus = document.getElementById("dbg-ws-status");
   const dbgAblyStatus = document.getElementById("dbg-ably-status");
   stage.style.display = "none";
+  stage.style.transform = `scale(${state.stageScale})`;
 
   // ---------------------------------------------------------------------
   // Utility helpers
@@ -1004,6 +1006,10 @@
           el.style.setProperty("--cg-oy", `${pos.y || 0}px`);
         }
       });
+    }
+    if (payload.stageScale != null) {
+      state.stageScale = clamp(payload.stageScale, 0.35, 1.3);
+      stage.style.transform = `scale(${state.stageScale})`;
     }
     if (payload.crackScale != null) {
       state.crackScale = clamp(payload.crackScale, 0.3, 3);
