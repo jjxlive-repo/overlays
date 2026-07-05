@@ -1976,6 +1976,14 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="ctrl-btn c-on" style="flex:1;" onclick="pushMissionStripFrom('ls-mission-strip-text-input')" title="Sends this mission strip text to the overlay and keeps it visible.">Send Mission Strip</button>
             <button class="ctrl-btn" style="flex:1;" onclick="toggleMissionStripVisible(true)" title="Shows the mission strip using the last saved text.">Show Mission Strip</button>
           </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;" title="Adjust readability for the bottom Splat Cards shelf.">
+            <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Shelf name</label>
+            <input class="ctrl-in" id="ls-shelf-name-size" type="number" min="9" max="24" value="13" style="width:54px;text-align:right;" onchange="lsApplyShelfFonts()">
+            <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Rank</label>
+            <input class="ctrl-in" id="ls-shelf-rank-size" type="number" min="12" max="28" value="19" style="width:54px;text-align:right;" onchange="lsApplyShelfFonts()">
+            <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Label</label>
+            <input class="ctrl-in" id="ls-shelf-title-size" type="number" min="10" max="24" value="14" style="width:54px;text-align:right;" onchange="lsApplyShelfFonts()">
+          </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Round</label>
             <input class="ctrl-in" id="ls-round-num" type="number" min="1" max="99" value="1" style="width:54px;text-align:right;" onchange="lsApplyRoundSettings()" title="Current round number shown in the Splat Cards status bar.">
@@ -2165,10 +2173,10 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="tf-btn" onclick="lsEngineTest('fight')">Fight Anim</button>
             <button class="tf-btn" onclick="lsEngineTest('rebirth-ok')">Rebirth OK</button>
             <button class="tf-btn" onclick="lsEngineTest('rebirth-denied')">Rebirth Deny</button>
-            <button class="tf-btn" onclick="lsEngineTest('king')">New King</button>
+            <button class="tf-btn" onclick="lsEngineTest('king')">New Champion</button>
             <button class="tf-btn" onclick="lsEngineStartRebirth()">Rebirth Window</button>
             <button class="tf-btn" onclick="lsEngineStartResults()">Results</button>
-            <button class="tf-btn c-off" onclick="lsEngineReset()">Reset LS</button>
+            <button class="tf-btn c-off" onclick="lsEngineReset()" title="Clears the saved Splat Cards game state: players, round, phase, cards, duels, fragments, bosses, and champion. It does not wipe overlay layout/Gist settings.">Reset Splat Cards</button>
             <button class="tf-btn" onclick="lsEngineExportState()">Export JSON</button>
             <button class="tf-btn" onclick="lsEngineImportState()">Import JSON</button>
             <button class="tf-btn" onclick="lsEngineTest('error')">Error Msg</button>
@@ -5226,8 +5234,8 @@ const LAYOUT_ELEMENTS = [
     x:{min:5,max:95}, y:{min:-300,max:0} },
   { id:'splat-pos', label:'Overlay position', group:'Splat', yUnit:'level',
     y:{min:0,max:4} },
-  { id:'gift-bar', label:'Splat Card bar', group:'Splat Cards',
-    y:{min:0,max:1824}, scale:{min:55,max:180} },
+  { id:'gift-bar', label:'Whole stream bar', group:'Stream Bar',
+    y:{min:0,max:1824} },
   { id:'league-shelf', label:'Bottom card shelf', group:'Splat Cards',
     y:{min:0,max:1766}, scale:{min:55,max:180} },
   { id:'mission-strip', label:'Mission Strip', group:'Mission Strip',
@@ -5847,6 +5855,9 @@ let _giftBarY = parseInt(localStorage.getItem('giftBarY') || '450', 10);
 let _splatCardScale = parseInt(localStorage.getItem('splatCardScale') || '100', 10);
 let _leagueShelfY = Math.max(0, Math.min(1920 - 154, parseInt(localStorage.getItem('leagueShelfY') || String(1920 - 154), 10)));
 let _leagueShelfScale = parseInt(localStorage.getItem('leagueShelfScale') || '100', 10);
+let _lsShelfNameSize = parseInt(localStorage.getItem('lsShelfNameSize') || '13', 10);
+let _lsShelfRankSize = parseInt(localStorage.getItem('lsShelfRankSize') || '19', 10);
+let _lsShelfTitleSize = parseInt(localStorage.getItem('lsShelfTitleSize') || '14', 10);
 let _geyserY = parseInt(localStorage.getItem('geyserY') || '1720', 10);
 let _geyserEnabled = localStorage.getItem('geyserEnabled') !== 'false';
 let _milkUiDisabled = localStorage.getItem('milkUiDisabled') !== 'false';
@@ -5953,6 +5964,7 @@ document.addEventListener('DOMContentLoaded', () => {
   syncMissionStripInputs();
   const lsTitle = document.getElementById('ls-game-title');
   if (lsTitle) lsTitle.value = _lsGameTitle;
+  lsSyncShelfFontInputs();
   const msYVal = document.getElementById('mission-strip-y-val');
   if (msYVal) msYVal.textContent = _missionStripY;
 
@@ -5966,6 +5978,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const likeBatchEl = document.getElementById('msc-like-batch');
   if (likeBatchEl) likeBatchEl.value = parseInt(localStorage.getItem('likeBatchSize') || '20', 10);
   organizeDockControls();
+  if (localStorage.getItem('lsSubsectionDefaultsV2') !== '1') {
+    localStorage.removeItem('lsSubsectionOpen:commands');
+    localStorage.setItem('lsSubsectionDefaultsV2', '1');
+  }
   buildSplatCardSubsections();
   if (typeof losRefreshDockLists === 'function') losRefreshDockLists();
 
@@ -6070,15 +6086,46 @@ function publishSplatCardLayout() {
   localStorage.setItem('splatCardScale', _splatCardScale);
   localStorage.setItem('leagueShelfY', _leagueShelfY);
   localStorage.setItem('leagueShelfScale', _leagueShelfScale);
+  localStorage.setItem('lsShelfNameSize', _lsShelfNameSize);
+  localStorage.setItem('lsShelfRankSize', _lsShelfRankSize);
+  localStorage.setItem('lsShelfTitleSize', _lsShelfTitleSize);
   if (ablyChannel) {
     ablyChannel.publish('gift-bar-pos', { top: _giftBarY }).catch(() => {});
     ablyChannel.publish('splat-card-layout', {
       top: _giftBarY,
       scale: _splatCardScale / 100,
       shelfTop: _leagueShelfY,
-      shelfScale: _leagueShelfScale / 100
+      shelfScale: _leagueShelfScale / 100,
+      shelfNameSize: _lsShelfNameSize,
+      shelfRankSize: _lsShelfRankSize,
+      shelfTitleSize: _lsShelfTitleSize
     }).catch(() => {});
   }
+}
+
+function lsSyncShelfFontInputs() {
+  const pairs = [
+    ['ls-shelf-name-size', _lsShelfNameSize],
+    ['ls-shelf-rank-size', _lsShelfRankSize],
+    ['ls-shelf-title-size', _lsShelfTitleSize]
+  ];
+  pairs.forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+}
+
+function lsApplyShelfFonts() {
+  const n = (id, fallback, min, max) => {
+    const raw = Number(document.getElementById(id)?.value);
+    return Math.max(min, Math.min(max, Number.isFinite(raw) ? raw : fallback));
+  };
+  _lsShelfNameSize = n('ls-shelf-name-size', _lsShelfNameSize, 9, 24);
+  _lsShelfRankSize = n('ls-shelf-rank-size', _lsShelfRankSize, 12, 28);
+  _lsShelfTitleSize = n('ls-shelf-title-size', _lsShelfTitleSize, 10, 24);
+  lsSyncShelfFontInputs();
+  publishSplatCardLayout();
+  scheduleGistSave();
 }
 
 function publishOverlayToggles() {
@@ -6671,7 +6718,7 @@ function dockBuildQuickToggles() {
       ${dockToggleHtml('Crowd Glass', "dockQuickToggle('crowd-glass')", 'crowd-glass')}
       ${dockToggleHtml('New Here Pile', "dockQuickToggle('new-here')", 'new-here')}
       ${dockToggleHtml('Gifter Highlight', "dockQuickToggle('gifter-highlight')", 'gifter-highlight')}
-      ${dockToggleHtml('Gift Bar', "dockQuickToggle('gift-bar')", 'gift-bar')}
+      ${dockToggleHtml('Gifter Slide', "dockQuickToggle('gift-bar')", 'gift-bar')}
       ${dockToggleHtml('Top Gifters', "dockQuickToggle('top-gifters')", 'top-gifters')}
       ${dockToggleHtml('Bait Card', "dockQuickToggle('bait')", 'bait')}
       ${dockToggleHtml('Team Timing', "dockQuickToggle('team-timing')", 'team-timing')}
@@ -6828,7 +6875,7 @@ function dockToggleGifterHighlight() {
   }
   _dockGifterHighlightVisible = !_dockGifterHighlightVisible;
   if (_dockGifterHighlightVisible) gbRefresh();
-  else gbUnfeature();
+  else { gbUnfeature(); gbClearBar(); }
   doFlash(_dockGifterHighlightVisible ? 'green' : 'red');
 }
 
@@ -6923,8 +6970,8 @@ function buildSplatCardSubsections() {
   if (!root || root.dataset.subsectionsBuilt === '1') return;
   const items = Array.from(root.children);
   const sectionStarts = [
-    { key:'mechanics', label:'Mechanics', match:'MECHANICS', open:true },
-    { key:'commands', label:'Commands / Aliases', match:'COMMANDS / ALIASES', open:false },
+    { key:'mechanics', label:'Splat Card Mechanics', match:'MECHANICS', open:true },
+    { key:'commands', label:'Commands / Aliases', match:'COMMANDS / ALIASES', open:true },
     { key:'bosses', label:'Boss Library', match:'BOSS LIBRARY', open:false },
     { key:'players', label:'Player Admin', match:'PLAYER ADMIN', open:false },
     { key:'resets', label:'Admin / Resets', match:'ADMIN / RESETS', open:false },
@@ -7072,6 +7119,11 @@ function gbUnfeature() {
   _saveTrackerSettings({ giftrCustom: null });
   const st = document.getElementById('gb-status');
   if (st) st.textContent = '';
+  ablyChannel.publish('giftr', {
+    daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
+    enabledSlots: [],
+    visible: false
+  }).catch(() => {});
   ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
 }
 
@@ -7192,6 +7244,9 @@ function gistGetConfig() {
     splatCardScale:       localStorage.getItem('splatCardScale'),
     leagueShelfY:         localStorage.getItem('leagueShelfY'),
     leagueShelfScale:     localStorage.getItem('leagueShelfScale'),
+    lsShelfNameSize:      localStorage.getItem('lsShelfNameSize'),
+    lsShelfRankSize:      localStorage.getItem('lsShelfRankSize'),
+    lsShelfTitleSize:     localStorage.getItem('lsShelfTitleSize'),
     geyserY:              localStorage.getItem('geyserY'),
     geyserEnabled:        localStorage.getItem('geyserEnabled'),
     milkUiDisabled:       localStorage.getItem('milkUiDisabled'),
@@ -7307,6 +7362,19 @@ function applyGistConfig(cfg) {
     localStorage.setItem('leagueShelfScale', cfg.leagueShelfScale);
     _leagueShelfScale = parseInt(cfg.leagueShelfScale, 10) || 100;
   }
+  if (cfg.lsShelfNameSize != null) {
+    localStorage.setItem('lsShelfNameSize', cfg.lsShelfNameSize);
+    _lsShelfNameSize = parseInt(cfg.lsShelfNameSize, 10) || 13;
+  }
+  if (cfg.lsShelfRankSize != null) {
+    localStorage.setItem('lsShelfRankSize', cfg.lsShelfRankSize);
+    _lsShelfRankSize = parseInt(cfg.lsShelfRankSize, 10) || 19;
+  }
+  if (cfg.lsShelfTitleSize != null) {
+    localStorage.setItem('lsShelfTitleSize', cfg.lsShelfTitleSize);
+    _lsShelfTitleSize = parseInt(cfg.lsShelfTitleSize, 10) || 14;
+  }
+  lsSyncShelfFontInputs();
 
   // --- geyser Y ---
   if (cfg.geyserY != null) {
@@ -8160,7 +8228,7 @@ const LeagueSprintState = (() => {
     addRecent(`${card.username} joined with ${card.currentRank} ${type}`);
     updateKing();
     save();
-    publishLeagueSprintVisual({ action:'popup', eventType:'CARD_DRAWN', label:'NEW CARD', card, message:`NEW CARD - ${card.username} pulled ${card.currentRank} ${type}` });
+    publishLeagueSprintVisual({ action:'popup', eventType:'CARD_DRAWN', label:'CARD DRAW', card, message:`${card.username} pulled a ${card.currentRank} ${type} card!` });
     publishLeagueSprintVisual({ action:'shelf', mode:'recent', cards:[card], meta:'recent moves' });
     return card;
   }
@@ -8204,8 +8272,8 @@ function lsEngineUpdateDockStatus() {
   const st = document.getElementById('ls-status');
   if (!st) return;
   const s = LeagueSprintState.state;
-  const king = s.kingUserId ? s.players[s.kingUserId] : null;
-  st.textContent = `${_lsGameTitle} R${s.roundNumber} - ${s.phase} - ${Object.keys(s.players).length} players - king ${king?.username || 'none'}`;
+  const champion = s.kingUserId ? s.players[s.kingUserId] : null;
+  st.textContent = `${_lsGameTitle} R${s.roundNumber} - ${s.phase} - ${Object.keys(s.players).length} players - champion ${champion?.username || 'none'}`;
 }
 
 const LeagueSprintDuelEngine = (() => {
@@ -8223,7 +8291,7 @@ const LeagueSprintDuelEngine = (() => {
     const token = String(arg || '1').toUpperCase();
     if (token === '1' || token === 'KING') {
       const king = LeagueSprintState.state.kingUserId && LeagueSprintState.state.kingUserId !== attacker.ownerId ? LeagueSprintState.state.players[LeagueSprintState.state.kingUserId] : null;
-      return { target: king || players[0], label: king ? `TARGET - King ${king.username}` : `TARGET - ${players[0].username}` };
+      return { target: king || players[0], label: king ? `TARGET - Champion ${king.username}` : `TARGET - ${players[0].username}` };
     }
     if (token === 'UP') {
       const aIdx = LeagueSprintRankUtils.getRankIndex(attacker.currentRank);
@@ -8326,7 +8394,7 @@ const LeagueSprintDuelEngine = (() => {
         message: attackerWins ? `RESULT - ${attacker.username} wins +${aDelta} PWR` : `RESULT - ${defender.username} holds - ${attacker.username} ${aDelta} PWR`,
         shelfText: 'recent duels',
         major: !!newKing || (attackerWins && gap >= 3),
-        kicker: newKing ? 'NEW KING' : attackerWins && gap >= 3 ? 'UPSET WIN' : 'DUEL RESULT'
+        kicker: newKing ? 'NEW CHAMPION' : attackerWins && gap >= 3 ? 'UPSET WIN' : 'DUEL RESULT'
       },
       newKing
     };
@@ -8344,6 +8412,8 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
   if (!action) return false;
   const user = { userId:userId || username, username, displayName, platform, avatarUrl };
   publishLeagueSprintVisual({ action:'bar-message', eventType:'COMMAND_RECEIVED', message:`COMMAND - @${String(username || 'viewer').replace(/^@/,'')} used ${raw}` });
+  const cleanedUser = LeagueSprintState.cleanUser(user);
+  const playerExisted = !!LeagueSprintState.state.players[cleanedUser.id];
   let card = LeagueSprintState.ensurePlayer(user);
   if (action === 'players') {
     const cards = LeagueSprintState.sortedPlayers().filter(p => p.ownerId !== card.ownerId).slice(0, 5);
@@ -8364,10 +8434,11 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
     return true;
   }
   if (action === 'show') {
+    if (!playerExisted) return true;
     const s = card.currentLeagueStats || losDefaultStats(card.currentRank);
     card.title = s.equippedTitle || card.title || '';
     card.badges = s.badges || [];
-    publishLeagueSprintVisual({ action:'popup', eventType:'SHOW_CARD', label:'YOUR CARD', card, message:`SHOW CARD - ${card.username}` });
+    publishLeagueSprintVisual({ action:'popup', eventType:'SHOW_CARD', label:'SHOW CARD', card, message:`Showing ${card.username}'s Card` });
     publishLeagueSprintVisual({ action:'shelf', mode:'recent', cards:[card], meta:`${s.playersDefeated || 0} KOs - ${s.bossesDefeated || 0} Bosses - ${Number(card.power || 0).toLocaleString()} DP` });
     publishLeagueSprintVisual({ action:'bar-message', eventType:'SHOW_CARD', message:`${card.username} - ${card.currentRank} - ${Number(card.power || 0).toLocaleString()} DP${card.title ? ' - ' + card.title : ''}${card.rebirthCount ? ' - REBIRTH x' + card.rebirthCount : ''}` });
     return true;
@@ -8429,7 +8500,7 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
     });
     LeagueSprintState.addRecent(`${card.username} rebirthed ${card.currentRank}`);
     LeagueSprintState.save();
-    publishLeagueSprintVisual({ action:'rebirth', eventType:'REBIRTH_SUCCESS', oldCard, newCard:card, message:`REBIRTH - ${card.username} ${oldCard.currentRank}>${card.currentRank} ${card.type}` });
+    publishLeagueSprintVisual({ action:'rebirth', eventType:'REBIRTH_SUCCESS', oldCard, newCard:card, message:`${card.username} rerolled a ${card.type}!` });
     return true;
   }
   if (action === 'duel') {
@@ -8457,7 +8528,7 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
     publishLeagueSprintVisual({ action:'bar-message', eventType:'DUEL_TARGET_SELECTED', message:picked.label });
     const outcome = LeagueSprintDuelEngine.duel(card, picked.target);
     publishLeagueSprintVisual({ action:'duel-timeline', eventType:'DUEL_STARTED', attacker:card, defender:picked.target, beats:outcome.beats, result:outcome.result, message:`${card.username} attacks ${picked.target.username}` });
-    if (outcome.newKing) publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW KING', card:outcome.newKing, message:`NEW KING - ${outcome.newKing.username} takes #1` });
+    if (outcome.newKing) publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW CHAMPION', card:outcome.newKing, message:`A new champion emerges - ${outcome.newKing.username}` });
     return true;
   }
   return false;
@@ -8515,7 +8586,7 @@ function lsEngineApplyResults() {
     changed.push({ card, delta, eventType });
   });
   const king = LeagueSprintState.updateKing();
-  if (king) publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW KING', card:king, message:`NEW KING - ${king.username} takes #1` });
+  if (king) publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW CHAMPION', card:king, message:`A new champion emerges - ${king.username}` });
   LeagueSprintState.addRecent(`Results applied to ${n} players`);
   LeagueSprintState.save();
   return { cards: LeagueSprintState.sortedPlayers().slice(0, 5), summary:`LEAGUE CHECK - fragments awarded to ${n} players`, changed };
@@ -8846,7 +8917,7 @@ function losAdminSetTitle() {
 }
 function losAdminShowCard() {
   const p = losSelectedPlayer(); if (!p) return;
-  publishLeagueSprintVisual({ action:'popup', eventType:'SHOW_CARD', label:'ADMIN SHOW', card:p, message:`SHOW CARD - ${p.username}` });
+  publishLeagueSprintVisual({ action:'popup', eventType:'SHOW_CARD', label:'ADMIN SHOW', card:p, message:`Showing ${p.username}'s Card` });
 }
 function losAdminForceRebirth() {
   const p = losSelectedPlayer(); if (!p) return;
@@ -8949,19 +9020,40 @@ function losToggleAutoBoss() {
   if (btn) btn.textContent = settings.autoBoss.enabled ? 'Auto Boss On' : 'Auto Boss Off';
   scheduleGistSave();
 }
+function lsSeedDuelTestOpponents() {
+  const specs = [
+    { userId:'test-target-d', username:'target_d', rank:'D3', power:620, character:'wekka' },
+    { userId:'test-target-c', username:'target_c', rank:'C2', power:980, character:'layla' },
+    { userId:'test-target-b', username:'target_b', rank:'B3', power:1320, character:'kinz' },
+    { userId:'test-target-a', username:'target_a', rank:'A2', power:1840, character:'jasper' }
+  ];
+  specs.forEach(spec => {
+    const card = LeagueSprintState.ensurePlayer({ platform:'test', userId:spec.userId, username:spec.username });
+    card.currentRank = spec.rank;
+    card.league = LeagueSprintRankUtils.getLeagueFromRank(spec.rank);
+    card.fragmentMax = LeagueSprintRankUtils.getFragmentMax(spec.rank);
+    card.power = spec.power;
+    card.activeDiamondPower = spec.power;
+    card.character = spec.character;
+    card.type = LeagueSprintState.characters[spec.character]?.type || card.type;
+    card.lastTargetedAt = 0;
+  });
+  LeagueSprintState.save();
+}
 function lsEngineTest(name) {
   const testUser = { platform:'test', userId:'test-' + name, username:'tester_' + name, displayName:'tester_' + name, messageText:lsCommand('show'), timestamp:Date.now() };
-  if (name === 'draw' || name === 'show') handleLeagueSprintChatCommand(testUser);
-  else if (name === 'duel1') handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-dueler', username:'dueler', messageText:lsCommand('duel', '1') }));
-  else if (name === 'duelup') handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-up', username:'upstart', messageText:lsCommand('duel', 'up') }));
-  else if (name === 'duelA') handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-a', username:'a_chaser', messageText:lsCommand('duel', 'A') }));
-  else if (name === 'fight') handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-fight', username:'fighter', messageText:lsCommand('duel', '1') }));
+  if (name === 'draw') LeagueSprintState.ensurePlayer({ platform:'test', userId:'test-draw-' + Date.now(), username:'draw_' + Math.floor(Math.random() * 999), displayName:'draw tester' });
+  else if (name === 'show') handleLeagueSprintChatCommand(testUser);
+  else if (name === 'duel1') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-dueler-' + Date.now(), username:'dueler', messageText:lsCommand('duel', '1') })); }
+  else if (name === 'duelup') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-up-' + Date.now(), username:'upstart', messageText:lsCommand('duel', 'up') })); }
+  else if (name === 'duelA') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-a-' + Date.now(), username:'a_chaser', messageText:lsCommand('duel', 'A') })); }
+  else if (name === 'fight') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-fight-' + Date.now(), username:'fighter', messageText:lsCommand('duel', '1') })); }
   else if (name === 'rebirth-ok') { lsEngineStartRebirth(); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-rebirth', username:'reborn', messageText:lsCommand('reroll') })); }
   else if (name === 'rebirth-denied') { LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-denied', username:'denied', messageText:lsCommand('reroll') })); }
   else if (name === 'king') {
     const card = LeagueSprintState.ensurePlayer({ userId:'test-king', username:'new_king', platform:'test' });
     card.currentRank = 'A1'; card.league = 'A'; card.power = 2400; LeagueSprintState.updateKing(); LeagueSprintState.save();
-    publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW KING', card, message:`NEW KING - ${card.username} takes #1` });
+    publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW CHAMPION', card, message:`A new champion emerges - ${card.username}` });
   }
   else if (name === 'error') publishLeagueSprintVisual({ action:'bar-message', eventType:'INVALID_COMMAND', severity:'warn', message:'INVALID TARGET - use !duel 1, up, D, C, B, or A' });
   doFlash('purple');
