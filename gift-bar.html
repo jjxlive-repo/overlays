@@ -9,6 +9,22 @@
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; position: relative; }
+:root {
+  --ls-card-radius: 16px;
+  --ls-card-shadow: 0 8px 22px rgba(0,0,0,.25);
+  --ls-card-bg: rgba(8, 16, 28, 0.88);
+  --ls-card-text: #f5f4ef;
+  --ls-card-muted: rgba(245,244,239,0.75);
+  --ls-league-d: #b48788;
+  --ls-league-c: #e0a76d;
+  --ls-league-b: #9eb6d8;
+  --ls-league-a: #e2bf62;
+  --ls-accent-purple: #8e71d4;
+  --ls-accent-cyan: #80c7de;
+  --ls-bar-height: 56px;
+  --ls-bottom-shelf-height: 118px;
+  --ls-popup-card-width: 240px;
+}
 
 /* ─── PARTICLE CANVAS (gift-bar gifts) ─── */
 #particle-canvas {
@@ -107,6 +123,153 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 
 /* ══ GIFT BAR ══ */
+/* LEAGUE SPRINT CARD RENDERER */
+.league-sprint-mode #gb-segments,
+.league-sprint-mode #gb-milk-fill,
+.league-sprint-mode #gb-bar-text,
+.league-sprint-mode #bar-hero,
+.league-sprint-mode #bar-hero-action,
+.league-sprint-mode #bar-info,
+.league-sprint-mode #live-text-strip,
+.league-sprint-mode #hype-meter { display: none !important; }
+
+#leagueCardPopupZone {
+  position: absolute; top: 88px; left: 42px;
+  width: 292px; min-height: 390px; pointer-events: none; z-index: 42;
+}
+#leagueCardPopupZone .ls-popup-shell {
+  opacity: 0; transform: translate(-14px, 10px) scale(.96);
+  transition: opacity 240ms ease, transform 360ms cubic-bezier(.34,1.56,.64,1);
+}
+#leagueCardPopupZone.visible .ls-popup-shell { opacity: 1; transform: translate(0,0) scale(1); }
+.ls-popup-kicker {
+  display: inline-flex; align-items: center; margin: 0 0 8px 8px;
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  background: rgba(8,16,28,.82); border: 1px solid rgba(245,244,239,.18);
+  color: var(--ls-card-text); font: 700 12px/1 'DM Sans', sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; box-shadow: var(--ls-card-shadow);
+}
+
+#leagueSprintBar {
+  position: absolute; inset: 0; height: var(--ls-bar-height);
+  display: grid; grid-template-columns: 286px 1fr 306px; align-items: center;
+  gap: 12px; padding: 0 18px; pointer-events: none; z-index: 22;
+  color: var(--ls-card-text); font-family: 'DM Sans', sans-serif;
+}
+#leagueSprintStatus,
+#leagueSprintEvent {
+  display: flex; align-items: center; min-width: 0; height: 34px; padding: 0 12px;
+  border-radius: 8px; background: rgba(8,16,28,.72); border: 1px solid rgba(245,244,239,.11);
+  color: rgba(245,244,239,.84); font-size: 12px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#leagueSprintCenter {
+  display: flex; align-items: center; justify-content: center; gap: 14px; min-width: 0;
+}
+.ls-idle-hint {
+  height: 38px; display: flex; align-items: center; justify-content: center; padding: 0 24px;
+  border-radius: 999px; background: rgba(142,113,212,.18); border: 1px solid rgba(128,199,222,.22);
+  color: #FAF5FF; font: 700 14px/1 'DM Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase;
+}
+.ls-vs {
+  color: #FAF5FF; font: 400 24px/1 'Boogaloo', cursive; text-shadow: 0 0 14px rgba(128,199,222,.55);
+}
+
+#leagueBottomShelf {
+  position: absolute; top: 1578px; left: 34px;
+  width: 1012px; height: var(--ls-bottom-shelf-height);
+  display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 14px;
+  padding: 12px 16px; pointer-events: none; z-index: 38;
+  background: linear-gradient(90deg, rgba(8,16,28,.83), rgba(24,18,46,.74), rgba(8,16,28,.72));
+  border: 1px solid rgba(245,244,239,.12); border-radius: 8px; box-shadow: var(--ls-card-shadow);
+}
+.ls-shelf-title {
+  color: var(--ls-card-text); font: 700 13px/1.25 'DM Sans', sans-serif;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.ls-shelf-sub { margin-top: 5px; color: var(--ls-card-muted); font: 700 11px/1 'DM Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+.ls-shelf-list { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+
+.ls-card {
+  --ls-league-color: var(--ls-league-d);
+  position: relative; overflow: hidden; color: var(--ls-card-text);
+  background: linear-gradient(180deg, rgba(8,16,28,.92), rgba(7,11,20,.88));
+  border: 2px solid var(--ls-league-color); border-radius: var(--ls-card-radius);
+  box-shadow: var(--ls-card-shadow), inset 0 0 0 1px rgba(255,255,255,.05);
+  font-family: 'DM Sans', sans-serif;
+}
+.ls-card[data-league="D"] { --ls-league-color: var(--ls-league-d); }
+.ls-card[data-league="C"] { --ls-league-color: var(--ls-league-c); }
+.ls-card[data-league="B"] { --ls-league-color: var(--ls-league-b); }
+.ls-card[data-league="A"] { --ls-league-color: var(--ls-league-a); }
+.ls-card.is-king::after {
+  content: "KING"; position: absolute; top: 44px; right: -28px; transform: rotate(34deg);
+  width: 112px; height: 22px; display: flex; align-items: center; justify-content: center;
+  background: var(--ls-league-a); color: #241904; font-size: 10px; font-weight: 700; letter-spacing: .12em;
+}
+.ls-card-popup { width: var(--ls-popup-card-width); min-height: 342px; padding: 11px; }
+.ls-card-mini { width: 154px; height: 84px; padding: 7px; border-radius: 10px; }
+.ls-card-micro { width: 96px; height: 92px; padding: 6px; border-radius: 10px; }
+.ls-card-featured { width: 132px; }
+.ls-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ls-rank {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 26px;
+  padding: 0 8px; border-radius: 7px; background: var(--ls-league-color); color: #08101c;
+  font: 400 22px/1 'Boogaloo', cursive; box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+}
+.ls-card-mini .ls-rank { min-width: 30px; height: 20px; font-size: 17px; padding: 0 6px; border-radius: 6px; }
+.ls-card-micro .ls-rank { min-width: 24px; height: 18px; font-size: 15px; padding: 0 5px; border-radius: 5px; }
+.ls-pips, .ls-fragments { display: flex; gap: 3px; align-items: center; }
+.ls-pip, .ls-fragment { width: 7px; height: 7px; border-radius: 999px; background: rgba(245,244,239,.24); }
+.ls-pip.is-filled { background: var(--ls-league-color); box-shadow: 0 0 8px rgba(245,244,239,.2); }
+.ls-fragment { width: 10px; height: 10px; border-radius: 2px; transform: rotate(45deg); border: 1px solid rgba(245,244,239,.32); }
+.ls-fragment.is-filled { background: #FAF5FF; border-color: #FAF5FF; box-shadow: 0 0 8px rgba(250,245,255,.55); }
+.ls-type-icon {
+  width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
+  color: #08101c; background: var(--ls-league-color); font-size: 16px; font-weight: 700;
+}
+.ls-type-icon img { width: 70%; height: 70%; object-fit: contain; display: block; }
+.ls-card-mini .ls-type-icon, .ls-card-micro .ls-type-icon { width: 20px; height: 20px; border-radius: 6px; font-size: 13px; }
+.ls-owner {
+  margin-top: 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #FAF5FF; font-size: 16px; font-weight: 700;
+}
+.ls-card-mini .ls-owner { margin-top: 3px; font-size: 12px; }
+.ls-card-micro .ls-owner { margin-top: 3px; font-size: 10px; text-align: center; }
+.ls-art {
+  position: relative; margin: 9px auto 8px; width: 176px; height: 166px; border-radius: 12px;
+  overflow: hidden; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 35%, rgba(245,244,239,.14), rgba(142,113,212,.14) 44%, rgba(8,16,28,.48));
+  border: 1px solid rgba(245,244,239,.12);
+}
+.ls-art img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ls-art.is-missing img { display: none; }
+.ls-art-placeholder {
+  display: none; text-align: center; padding: 10px; color: var(--ls-card-muted);
+  font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.ls-art.is-missing .ls-art-placeholder { display: block; }
+.ls-card-mini .ls-art { position: absolute; right: 7px; top: 28px; width: 48px; height: 42px; margin: 0; border-radius: 8px; }
+.ls-card-mini .ls-art-placeholder { font-size: 8px; }
+.ls-card-micro .ls-art { width: 58px; height: 46px; margin: 2px auto 4px; border-radius: 8px; }
+.ls-card-micro .ls-art-placeholder { font-size: 8px; }
+.ls-character-line { font: 400 24px/1 'Boogaloo', cursive; color: #FAF5FF; text-transform: uppercase; }
+.ls-type-label { color: var(--ls-card-muted); font: 700 10px/1 'DM Sans', sans-serif; letter-spacing: .11em; text-transform: uppercase; }
+.ls-power { margin-top: 6px; color: #FAF5FF; font: 400 30px/1 'Boogaloo', cursive; }
+.ls-card-mini .ls-power { position: absolute; right: 61px; top: 48px; font-size: 18px; margin: 0; }
+.ls-card-footer { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.ls-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 118px; height: 22px; padding: 0 8px;
+  border-radius: 999px; background: rgba(245,244,239,.10); border: 1px solid rgba(245,244,239,.16);
+  color: var(--ls-card-text); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ls-card-mini .ls-chip { height: 16px; max-width: 55px; padding: 0 5px; font-size: 9px; }
+.ls-card-micro .ls-chip { height: 14px; max-width: 24px; padding: 0 4px; font-size: 9px; }
+.battle-badge--basic { border-color: rgba(245,244,239,.24); }
+.battle-badge--enhanced { border-color: rgba(128,199,222,.42); color: #c7f2ff; }
+.battle-badge--premium { border-color: rgba(226,191,98,.56); color: #ffe6a1; }
+.battle-badge--elite { border-color: rgba(232,121,249,.72); color: #ffd1fb; box-shadow: 0 0 10px rgba(232,121,249,.22); }
+
 #gift-bar {
   position: absolute; top: 450px; left: 0;
   width: 1080px; height: 55px; overflow: visible;
@@ -1763,13 +1926,14 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 <canvas id="particle-canvas" width="1080" height="1920"></canvas>
 <div id="screen-pulse"></div>
+<div id="leagueCardPopupZone"></div>
 
 <div id="bar-lines">
   <div id="line-top"></div><div id="line-bot"></div>
   <div id="line-sweep-top"></div><div id="line-sweep-bot"></div>
 </div>
 
-<div id="gift-bar">
+<div id="gift-bar" class="league-sprint-mode">
   <div id="gb-notif-zone">
     <div class="gb-notif-pill" id="gb-notif-ticker"></div>
     <div class="gb-notif-pill" id="gb-notif-user"></div>
@@ -1806,6 +1970,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="notif-zone-yt"></div>
   <div id="gb-milk-fill"></div>
   <div id="gb-bar-text"></div>
+  <div id="leagueSprintBar">
+    <div id="leagueSprintStatus">LEAGUE SPRINT · R3 · 08:42</div>
+    <div id="leagueSprintCenter"><div class="ls-idle-hint">!show · !duel 1 · !reroll</div></div>
+    <div id="leagueSprintEvent">EVENT · viewer mini-game</div>
+  </div>
   <div id="bar-hero">
     <img id="bar-hero-gift-img" src="" alt="">
     <span id="bar-hero-name"></span>
@@ -1839,6 +2008,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 <!-- ══ TEAM TIMING BAR — optional mode, shares #gift-bar's screen slot ══
      Segment boxes inside #ttb-segments are generated by JS from
      TEAM_TIMING_CONFIG.segments so labels/actions stay edit-in-place. -->
+<div id="leagueBottomShelf"></div>
+
 <div id="team-timing-bar" data-layout-id="ttb-root">
   <div id="ttb-topline" data-layout-id="ttb-topline">
     <span id="ttb-round-timer">ROUND 1:30</span>
@@ -2589,6 +2760,204 @@ function handleCommentPrompt(data){
 const ablyClient=new Ably.Realtime({key:CONFIG.ABLY_KEY});
 const ablyChannel=ablyClient.channels.get(CONFIG.ABLY_CHANNEL);
 window._geyserY = 1510; // mirrors dock geyser position; updated live via Ably
+
+/* LEAGUE SPRINT dynamic cards
+   Card art is intentionally loaded from assets/cards/art/*.png. Missing files
+   fall back to a labeled placeholder block until final art is uploaded. */
+const LEAGUE_SPRINT = (() => {
+  const characters = {
+    wekka: { label: 'Wekka', type: 'defender' },
+    layla: { label: 'Layla', type: 'attacker' },
+    kinz: { label: 'Kinz', type: 'balanced' },
+    jasper: { label: 'Jasper', type: 'gambler' },
+    jamie: { label: 'Jamie', type: 'escapist' }
+  };
+  const typeLabels = {
+    defender: { label: 'Defender', fallback: 'SH' },
+    attacker: { label: 'Attacker', fallback: '⚡' },
+    balanced: { label: 'Balanced', fallback: 'YY' },
+    gambler: { label: 'Gambler', fallback: 'D6' },
+    escapist: { label: 'Escapist', fallback: 'WG' }
+  };
+  const popupZone = document.getElementById('leagueCardPopupZone');
+  const sprintStatus = document.getElementById('leagueSprintStatus');
+  const sprintCenter = document.getElementById('leagueSprintCenter');
+  const sprintEvent = document.getElementById('leagueSprintEvent');
+  const bottomShelf = document.getElementById('leagueBottomShelf');
+  let popupTimer = null;
+  let shelfMode = 'leaders';
+
+  function getArtPath(character, league) {
+    return `assets/cards/art/${character}_${String(league).toLowerCase()}.png`;
+  }
+  function getFramePath(league) {
+    return `assets/cards/frames/frame_${String(league).toLowerCase()}.svg`;
+  }
+  function getTypeIconPath(type) {
+    return `assets/cards/icons/type_${type}.svg`;
+  }
+  function getDivisionPips(currentRank) {
+    const m = String(currentRank || 'D5').toUpperCase().match(/^([DCBA])([1-5])$/);
+    if (!m) return { filled: 1, total: 5 };
+    const league = m[1], n = Number(m[2]);
+    if (league === 'A') return { filled: Math.max(1, Math.min(3, 4 - n)), total: 3 };
+    return { filled: Math.max(1, Math.min(5, 6 - n)), total: 5 };
+  }
+  function badgeClass(steps) {
+    if (steps >= 10) return 'battle-badge--elite';
+    if (steps >= 6) return 'battle-badge--premium';
+    if (steps >= 3) return 'battle-badge--enhanced';
+    return 'battle-badge--basic';
+  }
+  function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function pipsHtml(rank) {
+    const p = getDivisionPips(rank);
+    return `<div class="ls-pips">${Array.from({length:p.total}, (_, i) => `<span class="ls-pip${i < p.filled ? ' is-filled' : ''}"></span>`).join('')}</div>`;
+  }
+  function fragmentsHtml(card) {
+    const max = Math.max(1, Number(card.fragmentMax) || (card.league === 'A' ? 3 : 4));
+    const filled = Math.max(0, Math.min(max, Number(card.fragments) || 0));
+    return `<div class="ls-fragments">${Array.from({length:max}, (_, i) => `<span class="ls-fragment${i < filled ? ' is-filled' : ''}"></span>`).join('')}</div>`;
+  }
+  function typeIconHtml(card) {
+    const type = typeLabels[card.type] || typeLabels.balanced;
+    const path = getTypeIconPath(card.type);
+    return `<span class="ls-type-icon"><img src="${esc(path)}" alt="" onerror="this.remove();this.parentNode.textContent='${esc(type.fallback)}';"></span>`;
+  }
+  function artHtml(card) {
+    const char = characters[card.character] || characters.kinz;
+    return `<div class="ls-art" data-art="${esc(getArtPath(card.character, card.league))}">
+      <img src="${esc(getArtPath(card.character, card.league))}" alt="${esc(char.label)}" onerror="this.parentNode.classList.add('is-missing');">
+      <div class="ls-art-placeholder">${esc(char.label)}<br>ART PENDING</div>
+    </div>`;
+  }
+  function battleChipHtml(card, compact) {
+    if (card.originRank === card.currentRank) return '';
+    const text = compact ? '⚔' : `⚔ ${card.originRank}→${card.currentRank}`;
+    return `<span class="ls-chip ${badgeClass(Number(card.battleStepsClimbed) || 1)}">${esc(text)}</span>`;
+  }
+  function rebirthChipHtml(card, compact) {
+    const n = Number(card.rebirthCount) || 0;
+    if (n <= 0) return '';
+    const text = compact ? `↻${n > 1 ? n : ''}` : `↻ x${n}`;
+    return `<span class="ls-chip">${esc(text)}</span>`;
+  }
+  function normalizeCard(card) {
+    const char = characters[card.character] ? card.character : 'kinz';
+    return Object.assign({
+      id: 'sample',
+      ownerId: 'sample',
+      username: '@viewer',
+      character: char,
+      type: characters[char].type,
+      league: 'D',
+      currentRank: 'D5',
+      originRank: 'D5',
+      power: 100,
+      fragments: 0,
+      fragmentMax: card.league === 'A' ? 3 : 4,
+      battleStepsClimbed: 0,
+      rebirthCount: 0
+    }, card, { character: char, type: card.type || characters[char].type });
+  }
+  function renderCard(input, variant = 'popup', opts = {}) {
+    const card = normalizeCard(input || {});
+    const char = characters[card.character];
+    const type = typeLabels[card.type] || typeLabels.balanced;
+    const classes = ['ls-card', `ls-card-${variant}`];
+    if (card.isKing) classes.push('is-king');
+    if (opts.featured) classes.push('ls-card-featured');
+    const compact = variant !== 'popup';
+    if (variant === 'micro') {
+      return `<div class="${classes.join(' ')}" data-league="${esc(card.league)}">
+        ${artHtml(card)}
+        <div class="ls-owner">${esc(card.username)}</div>
+        <div class="ls-card-top"><span class="ls-rank">${esc(card.currentRank)}</span><span>${battleChipHtml(card, true)}${rebirthChipHtml(card, true)}</span></div>
+      </div>`;
+    }
+    return `<div class="${classes.join(' ')}" data-league="${esc(card.league)}" data-frame="${esc(getFramePath(card.league))}">
+      <div class="ls-card-top"><span class="ls-rank">${esc(card.currentRank)}</span>${pipsHtml(card.currentRank)}${typeIconHtml(card)}</div>
+      <div class="ls-owner">${esc(card.username)}</div>
+      ${artHtml(card)}
+      ${variant === 'popup' ? `<div class="ls-character-line">${esc(char.label)}</div><div class="ls-type-label">${esc(type.label)}</div>` : ''}
+      <div class="ls-power">${Number(card.power || 0).toLocaleString()} PWR</div>
+      ${variant === 'popup' ? fragmentsHtml(card) : ''}
+      <div class="ls-card-footer">${battleChipHtml(card, compact)}${rebirthChipHtml(card, compact)}</div>
+    </div>`;
+  }
+  function showPopup(card, label = 'SHOW CARD', lingerMs = 5400) {
+    if (!popupZone) return;
+    clearTimeout(popupTimer);
+    popupZone.classList.remove('visible');
+    popupZone.innerHTML = `<div class="ls-popup-shell"><div class="ls-popup-kicker">${esc(label)}</div>${renderCard(card, 'popup')}</div>`;
+    requestAnimationFrame(() => popupZone.classList.add('visible'));
+    popupTimer = setTimeout(() => popupZone.classList.remove('visible'), lingerMs);
+  }
+  function renderDuel(left, right, eventText) {
+    if (!sprintCenter) return;
+    sprintCenter.innerHTML = `${renderCard(left, 'mini')}<div class="ls-vs">VS</div>${renderCard(right, 'mini')}`;
+    if (sprintEvent) sprintEvent.textContent = eventText || 'EVENT · duel active';
+  }
+  function renderIdleBar(text) {
+    if (sprintCenter) sprintCenter.innerHTML = `<div class="ls-idle-hint">${esc(text || '!show · !duel 1 · !reroll')}</div>`;
+  }
+  function renderShelf(mode, cards, meta) {
+    if (!bottomShelf) return;
+    const safeCards = (cards || sampleCards()).slice(0, 7);
+    const title = mode === 'duel' ? 'LIVE DUEL' : mode === 'featured' ? 'FEATURED' : 'LEAGUE LEADERS';
+    const sub = meta || (mode === 'duel' ? 'active now' : 'username + rank');
+    bottomShelf.innerHTML = `<div><div class="ls-shelf-title">${esc(title)}</div><div class="ls-shelf-sub">${esc(sub)}</div></div>
+      <div class="ls-shelf-list">${safeCards.map(c => renderCard(c, 'micro', { featured: mode === 'featured' })).join('')}</div>`;
+    shelfMode = mode;
+  }
+  function sampleCards() {
+    return [
+      { id:'sample-1', ownerId:'u1', username:'@blizz98', character:'jasper', type:'gambler', league:'C', currentRank:'C2', originRank:'D5', power:820, fragments:2, fragmentMax:4, battleStepsClimbed:7, rebirthCount:1 },
+      { id:'sample-2', ownerId:'u2', username:'@maddie', character:'wekka', type:'defender', league:'B', currentRank:'B1', originRank:'B3', power:1240, fragments:3, fragmentMax:4, battleStepsClimbed:2, rebirthCount:0, isKing:true },
+      { id:'sample-3', ownerId:'u3', username:'@jessica', character:'layla', type:'attacker', league:'C', currentRank:'C2', originRank:'C4', power:820, fragments:2, fragmentMax:4, battleStepsClimbed:2, rebirthCount:0 },
+      { id:'sample-4', ownerId:'u4', username:'@pablo', character:'kinz', type:'balanced', league:'D', currentRank:'D1', originRank:'D5', power:540, fragments:4, fragmentMax:4, battleStepsClimbed:4, rebirthCount:0 },
+      { id:'sample-5', ownerId:'u5', username:'@omar', character:'jamie', type:'escapist', league:'A', currentRank:'A3', originRank:'B1', power:1660, fragments:1, fragmentMax:3, battleStepsClimbed:5, rebirthCount:2 }
+    ];
+  }
+  function renderAnchorMatrix() {
+    const all = ['wekka','layla','kinz','jasper','jamie'].flatMap(character => ['D','C','B','A'].map(league => ({
+      id:`${character}-${league}`, ownerId:'anchors', username:`@${character}`, character, type:characters[character].type,
+      league, currentRank: league === 'A' ? 'A3' : `${league}5`, originRank: league === 'A' ? 'A3' : `${league}5`,
+      power: 1000, fragments: 0, fragmentMax: league === 'A' ? 3 : 4, battleStepsClimbed: 0, rebirthCount: 0
+    })));
+    renderShelf('featured', all, '20 art anchors');
+  }
+  function runTest(name) {
+    const cards = sampleCards();
+    if (name === 'popup') showPopup(cards[0], 'SHOW CARD');
+    else if (name === 'duel') renderDuel(cards[1], cards[2], 'EVENT · Joe attacks King');
+    else if (name === 'anchors') renderAnchorMatrix();
+    else if (name === 'badges') renderShelf('featured', [1,3,6,10].map((s,i)=>Object.assign({}, cards[0], {id:`badge-${s}`, username:`@badge${s}`, battleStepsClimbed:s, currentRank:['D4','C2','B1','A1'][i], league:['D','C','B','A'][i]})), 'badge states');
+    else if (name === 'rebirth') renderShelf('featured', [1,2,3].map(n=>Object.assign({}, cards[4], {id:`rebirth-${n}`, username:`@rebirth${n}`, rebirthCount:n})), 'rebirth states');
+    else if (name === 'pips') renderShelf('featured', ['D5','D1','C5','C1','B5','B1','A3','A1'].map((r,i)=>Object.assign({}, cards[i%cards.length], {id:`pip-${r}`, username:`@${r}`, currentRank:r, league:r[0]})), 'pip rendering');
+    else if (name === 'fragments') renderShelf('featured', [0,1,2,3,4].map(n=>Object.assign({}, cards[0], {id:`frag-${n}`, username:`@frag${n}`, fragments:n})), 'fragment counts');
+    else renderShelf('leaders', cards, 'A/B/C/D leaders');
+  }
+  function handleMessage(d) {
+    if (!d) return;
+    if (d.status && sprintStatus) sprintStatus.textContent = d.status;
+    if (d.event && sprintEvent) sprintEvent.textContent = d.event;
+    if (d.action === 'popup') showPopup(d.card, d.label || 'SHOW CARD', d.lingerMs || 5400);
+    else if (d.action === 'duel') renderDuel(d.left, d.right, d.event);
+    else if (d.action === 'idle') renderIdleBar(d.text);
+    else if (d.action === 'shelf') renderShelf(d.mode || 'leaders', d.cards, d.meta);
+    else if (d.action === 'test') runTest(d.name || 'popup');
+  }
+  renderIdleBar();
+  renderShelf('leaders', sampleCards());
+  // showPopup(sampleCards()[0], 'NEW CARD', 4800); // disabled for live-load; use Stream Dock test buttons.
+  return { getArtPath, getFramePath, getTypeIconPath, getDivisionPips, renderCard, showPopup, renderDuel, renderShelf, runTest, handleMessage, sampleCards };
+})();
+window.LeagueSprintCards = LEAGUE_SPRINT;
+ablyChannel.subscribe('league-sprint', msg => LEAGUE_SPRINT.handleMessage(msg?.data));
+
 ablyChannel.subscribe('geyser-pos', msg => {
   const top = msg?.data?.top;
   if(top == null) return;
@@ -5090,7 +5459,7 @@ document.addEventListener('keydown', e => {
 </div>
 
 <div id="mission-strip">
-  <span id="mission-strip-text">🫟 MILK METER — comment, join, or gift to fill it!</span>
+  <span id="mission-strip-text">LEAGUE SPRINT — !show · !duel 1 · !reroll</span>
   <span id="mission-strip-pct">0%</span>
 </div>
 
