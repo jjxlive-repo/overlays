@@ -1375,6 +1375,46 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 .ctrl-btn.c-act { background: rgba(168,85,247,.3);  border-color: rgba(216,180,254,.85); color: #f5d0fe; }
 .ctrl-status { font-size: 9px; color: var(--txt-dim); min-height: 10px; }
 .ctrl-sep { border-top: 1px solid var(--border); padding-top: 5px; margin-top: 2px; }
+.ls-subsection {
+  border: 1px solid rgba(168,85,247,0.22);
+  border-radius: 8px;
+  background: rgba(8,8,18,0.22);
+  overflow: hidden;
+  margin-top: 5px;
+}
+.ls-subsection-hd {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 0;
+  border-bottom: 1px solid rgba(168,85,247,0.14);
+  background: linear-gradient(90deg, rgba(59,7,100,0.34), rgba(31,20,54,0.22));
+  color: #e9d5ff;
+  font: 800 10px/1.1 var(--font);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+.ls-subsection-hd:hover { background: linear-gradient(90deg, rgba(88,28,135,0.48), rgba(31,20,54,0.28)); }
+.ls-subsection-hd::after {
+  content: "▼";
+  color: var(--txt-dim);
+  font-size: 9px;
+  transition: transform .18s ease;
+}
+.ls-subsection.closed .ls-subsection-hd::after { transform: rotate(-90deg); }
+.ls-subsection-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px 8px;
+}
+.ls-subsection.closed .ls-subsection-body { display: none; }
 .dock-section-label {
   margin: 14px 0 5px;
   padding: 8px 10px 7px;
@@ -1917,30 +1957,38 @@ body.gc-shake { animation: gcShake 0.5s ease; }
           <span class="ctrl-hd-ch">▼</span>
         </div>
         <div class="ctrl-bd" id="ctrl-splatcards" style="padding:7px 9px 9px;gap:7px;">
-          <div style="font-size:9px;color:var(--txt-dim);line-height:1.35;">
-            Controls the taller game card bar, bottom shelf, round state, and overlay-only helpers.
+          <div style="font-size:10px;color:var(--txt-dim);line-height:1.45;" title="Splat Cards controls the viewer card mini-game: command bar, bottom shelf, player cards, rounds, duels, rebirth/results phases, bosses, and admin fixes.">
+            Controls the Splat Cards viewer game: command bar, bottom card shelf, rounds, duels, rebirth/results, bosses, and player admin.
           </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Title</label>
-            <input class="ctrl-in" id="ls-game-title" type="text" value="League of Splatties" style="flex:1;" onchange="lsSetGameTitle()">
+            <input class="ctrl-in" id="ls-game-title" type="text" value="League of Splatties" style="flex:1;" onchange="lsSetGameTitle()" title="Renames the game wherever the overlay shows the Splat Cards title.">
           </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
-            <button class="ctrl-btn" style="flex:1;" onclick="setMissionStripPreset('splat')">Use Splat Mission Strip</button>
-            <button class="ctrl-btn c-off" style="flex:1;" onclick="toggleMissionStripVisible(false)">Hide Mission Strip</button>
+            <button class="ctrl-btn" style="flex:1;" onclick="setMissionStripPreset('splat')" title="Pre-fills the pinned top mission strip with Splat Cards commands.">Use Splat Mission Strip</button>
+            <button class="ctrl-btn c-off" style="flex:1;" onclick="toggleMissionStripVisible(false)" title="Hides only the pinned mission strip, not the Splat Cards bar.">Hide Mission Strip</button>
+          </div>
+          <label style="font-size:9px;color:var(--txt-dim);display:block;" title="This edits the pinned top mission strip text. It is independent from the Milk Bar and Splat Cards bar.">
+            Mission strip text
+            <input class="ctrl-in" id="ls-mission-strip-text-input" type="text" placeholder="LEAGUE OF SPLATTIES - !show - !duel 1 - !reroll" style="width:100%;margin-top:2px;" oninput="syncMissionStripDraft(this.value)">
+          </label>
+          <div class="ctrl-row" style="gap:5px;align-items:center;">
+            <button class="ctrl-btn c-on" style="flex:1;" onclick="pushMissionStripFrom('ls-mission-strip-text-input')" title="Sends this mission strip text to the overlay and keeps it visible.">Send Mission Strip</button>
+            <button class="ctrl-btn" style="flex:1;" onclick="toggleMissionStripVisible(true)" title="Shows the mission strip using the last saved text.">Show Mission Strip</button>
           </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Round</label>
-            <input class="ctrl-in" id="ls-round-num" type="number" min="1" max="99" value="1" style="width:54px;text-align:right;" onchange="lsApplyRoundSettings()">
+            <input class="ctrl-in" id="ls-round-num" type="number" min="1" max="99" value="1" style="width:54px;text-align:right;" onchange="lsApplyRoundSettings()" title="Current round number shown in the Splat Cards status bar.">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Length</label>
-            <input class="ctrl-in" id="ls-round-len" type="number" min="15" max="3600" step="15" value="180" style="width:70px;text-align:right;" onchange="lsApplyRoundSettings()">
+            <input class="ctrl-in" id="ls-round-len" type="number" min="15" max="3600" step="15" value="180" style="width:70px;text-align:right;" onchange="lsApplyRoundSettings()" title="How long each active round lasts, in seconds.">
             <span style="font-size:9px;color:var(--txt-dim);">sec</span>
           </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Duel cooldown</label>
-            <input class="ctrl-in" id="ls-duel-cooldown" type="number" min="0" max="300" step="5" value="20" style="width:70px;text-align:right;" onchange="lsApplyRoundSettings()">
+            <input class="ctrl-in" id="ls-duel-cooldown" type="number" min="0" max="300" step="5" value="20" style="width:70px;text-align:right;" onchange="lsApplyRoundSettings()" title="Prevents one viewer from repeatedly dueling everyone too quickly.">
             <span style="font-size:9px;color:var(--txt-dim);">sec per viewer</span>
           </div>
-          <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;">MECHANICS</div>
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;" title="Tuning values for power gains/losses, promotion fragments, rebirth windows, boss timing, and duel animation speed.">MECHANICS</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
             <label style="font-size:9px;color:var(--txt-dim);">Starter min <input class="ctrl-in" id="ls-mech-starter-min" type="number" min="0" max="9999" step="10" value="80" onchange="lsApplyMechanics()" style="width:100%;text-align:right;margin-top:2px;"></label>
             <label style="font-size:9px;color:var(--txt-dim);">Starter max <input class="ctrl-in" id="ls-mech-starter-max" type="number" min="1" max="9999" step="10" value="120" onchange="lsApplyMechanics()" style="width:100%;text-align:right;margin-top:2px;"></label>
@@ -1962,7 +2010,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="tf-btn" onclick="lsResetMechanics()">Reset Mechanics</button>
           </div>
           <div class="ctrl-sep">
-            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;">COMMANDS / ALIASES</div>
+            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;" title="Change the viewer chat commands. Main is the public command; aliases are alternate commands that do the same thing.">COMMANDS / ALIASES</div>
             <div style="font-size:9px;color:var(--txt-dim);line-height:1.35;">Main command is the primary public command. Aliases can be comma or space separated.</div>
             <div style="display:grid;grid-template-columns:.75fr 1fr 1.35fr;gap:4px;align-items:center;">
               <span class="ctrl-lbl">Action</span><span class="ctrl-lbl">Main</span><span class="ctrl-lbl">Aliases</span>
@@ -1982,7 +2030,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <div id="ls-command-status" style="font-size:9px;color:var(--txt-dim);min-height:13px;text-align:center;"></div>
           </div>
           <div class="ctrl-sep">
-            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;">BOSS LIBRARY</div>
+            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;" title="Create reusable boss events. Bosses let viewers join a temporary cooperative fight for Splat Cards rewards.">BOSS LIBRARY</div>
             <div class="ctrl-row" style="gap:5px;">
               <input class="ctrl-in" id="los-boss-name" type="text" placeholder="Boss name" style="flex:1;">
               <select class="ctrl-in" id="los-boss-type" style="flex:1;" onchange="losBossTypeChanged()">
@@ -2027,7 +2075,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <div id="los-boss-status" style="font-size:9px;color:var(--txt-dim);min-height:13px;text-align:center;"></div>
           </div>
           <div class="ctrl-sep">
-            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;">PLAYER ADMIN</div>
+            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;" title="Find and manually adjust a viewer card: rank, DP, character, badge/title, stamina, rebirth, and resets.">PLAYER ADMIN</div>
             <div class="ctrl-row" style="gap:5px;">
               <input class="ctrl-in" id="los-player-search" type="text" placeholder="Search username" oninput="losPlayerSearch()" style="flex:1;">
               <select class="ctrl-in" id="los-player-select" style="flex:1;" onchange="losPlayerSelectChanged()"></select>
@@ -2066,7 +2114,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             </div>
           </div>
           <div class="ctrl-sep">
-            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;">ADMIN / RESETS</div>
+            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;" title="Round and league maintenance. Use these for manual pacing, new leagues, exports/imports, and controlled resets.">ADMIN / RESETS</div>
             <label class="ctrl-row" style="gap:6px;"><input type="checkbox" id="los-new-keep-progress" checked> <span style="font-size:9px;color:var(--txt-dim);">Keep player card progress for new league</span></label>
             <label class="ctrl-row" style="gap:6px;"><input type="checkbox" id="los-reset-rebirths"> <span style="font-size:9px;color:var(--txt-dim);">Also reset rebirth counts on current reset</span></label>
             <div class="ctrl-row" style="gap:4px;">
@@ -2085,21 +2133,17 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             </div>
           </div>
           <div class="ctrl-row" style="gap:4px;">
-            <button class="ctrl-btn c-on" style="flex:1;" onclick="lsStartRound()">Start/Resume</button>
-            <button class="ctrl-btn" style="flex:1;" onclick="lsNextRound()">Next Round</button>
-            <button class="ctrl-btn c-off" style="flex:1;" onclick="lsResetGame()">Reset Game</button>
+            <button class="ctrl-btn c-on" style="flex:1;" onclick="lsStartRound()" title="Starts or resumes the current active round timer.">Start/Resume</button>
+            <button class="ctrl-btn" style="flex:1;" onclick="lsNextRound()" title="Manually advances to the next round and resets the round timer.">Next Round</button>
+            <button class="ctrl-btn c-off" style="flex:1;" onclick="lsResetGame()" title="Resets the visible Splat Cards game round state back to round 1.">Reset Game</button>
           </div>
           <div class="ctrl-row" style="gap:4px;">
-            <button class="ctrl-btn c-act" data-lsphase="active" style="flex:1;" onclick="lsSetPhase('active')">Active</button>
-            <button class="ctrl-btn" data-lsphase="rebirth" style="flex:1;" onclick="lsSetPhase('rebirth')">Rebirth</button>
-            <button class="ctrl-btn" data-lsphase="results" style="flex:1;" onclick="lsSetPhase('results')">Results</button>
-          </div>
-          <div class="ctrl-row" style="gap:4px;">
-            <button class="ctrl-btn c-act" id="ls-milk-toggle" style="flex:1;" onclick="lsToggleMilkDisabled()">Milk UI Off</button>
-            <button class="ctrl-btn c-act" id="ls-geyser-toggle" style="flex:1;" onclick="lsToggleGeyser()">Geyser On</button>
+            <button class="ctrl-btn c-act" data-lsphase="active" style="flex:1;" onclick="lsSetPhase('active')" title="Normal play: viewers can show cards and duel.">Active</button>
+            <button class="ctrl-btn" data-lsphase="rebirth" style="flex:1;" onclick="lsSetPhase('rebirth')" title="Short reroll window: reroll changes type and drops rank.">Rebirth</button>
+            <button class="ctrl-btn" data-lsphase="results" style="flex:1;" onclick="lsSetPhase('results')" title="League check: awards fragments/promotions/demotions.">Results</button>
           </div>
           <div id="ls-status" style="font-size:9px;color:var(--txt-dim);min-height:13px;text-align:center;">Round state saved locally</div>
-          <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;">SPLAT CARD TESTS</div>
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;" title="Visual-only tests for the overlay renderer: popups, duel scene, leaders shelf, badges, pips, fragments, and promotions.">SPLAT CARD TESTS</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
             <button class="tf-btn" onclick="testLeagueSprint('popup')">Card Popup</button>
             <button class="tf-btn" onclick="testLeagueSprint('duel')">Live Duel</button>
@@ -2111,7 +2155,7 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="tf-btn" onclick="testLeagueSprint('fragments')">Fragments</button>
             <button class="tf-btn tf-btn-gold" onclick="testLeagueSprint('promoted')">Promoted</button>
           </div>
-          <div style="font-size:9px;color:var(--txt-dim);margin-top:4px;letter-spacing:.05em;">LIVE COMMAND ENGINE</div>
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:4px;letter-spacing:.05em;" title="End-to-end command tests that simulate viewer commands and player-impacting events.">LIVE COMMAND ENGINE</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
             <button class="tf-btn" onclick="lsEngineTest('draw')">Card Draw</button>
             <button class="tf-btn" onclick="lsEngineTest('show')">!show</button>
@@ -5185,7 +5229,7 @@ const LAYOUT_ELEMENTS = [
   { id:'gift-bar', label:'Splat Card bar', group:'Splat Cards',
     y:{min:0,max:1824}, scale:{min:55,max:180} },
   { id:'league-shelf', label:'Bottom card shelf', group:'Splat Cards',
-    y:{min:0,max:1802}, scale:{min:55,max:180} },
+    y:{min:0,max:1766}, scale:{min:55,max:180} },
   { id:'mission-strip', label:'Mission Strip', group:'Mission Strip',
     y:{min:-200,max:600} },
   { id:'geyser', label:'Geyser (EQ wave)', group:'Geyser',
@@ -5801,7 +5845,7 @@ function mscPushAll() {
 
 let _giftBarY = parseInt(localStorage.getItem('giftBarY') || '450', 10);
 let _splatCardScale = parseInt(localStorage.getItem('splatCardScale') || '100', 10);
-let _leagueShelfY = parseInt(localStorage.getItem('leagueShelfY') || String(1920 - 118), 10);
+let _leagueShelfY = Math.max(0, Math.min(1920 - 154, parseInt(localStorage.getItem('leagueShelfY') || String(1920 - 154), 10)));
 let _leagueShelfScale = parseInt(localStorage.getItem('leagueShelfScale') || '100', 10);
 let _geyserY = parseInt(localStorage.getItem('geyserY') || '1720', 10);
 let _geyserEnabled = localStorage.getItem('geyserEnabled') !== 'false';
@@ -5906,8 +5950,7 @@ document.addEventListener('DOMContentLoaded', () => {
   layoutRenderTable();
 
   // Restore mission strip inputs
-  const msInput = document.getElementById('mission-strip-text-input');
-  if (msInput) msInput.value = _missionStripText;
+  syncMissionStripInputs();
   const lsTitle = document.getElementById('ls-game-title');
   if (lsTitle) lsTitle.value = _lsGameTitle;
   const msYVal = document.getElementById('mission-strip-y-val');
@@ -5923,6 +5966,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const likeBatchEl = document.getElementById('msc-like-batch');
   if (likeBatchEl) likeBatchEl.value = parseInt(localStorage.getItem('likeBatchSize') || '20', 10);
   organizeDockControls();
+  buildSplatCardSubsections();
   if (typeof losRefreshDockLists === 'function') losRefreshDockLists();
 
   // Restore Gist ID and token from localStorage
@@ -5968,10 +6012,24 @@ function publishMissionStrip(patch = {}) {
   };
   if (ablyChannel) ablyChannel.publish('mission-strip-config', payload).catch(() => {});
 }
+function syncMissionStripInputs(value = _missionStripText) {
+  ['mission-strip-text-input', 'ls-mission-strip-text-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value !== value) el.value = value;
+  });
+}
+function syncMissionStripDraft(value) {
+  syncMissionStripInputs(value);
+}
+function pushMissionStripFrom(inputId) {
+  const input = document.getElementById(inputId);
+  if (input) syncMissionStripInputs(input.value);
+  pushMissionStrip(inputId);
+}
 function pushMissionStrip() {
-  const input = document.getElementById('mission-strip-text-input');
+  const input = document.getElementById('ls-mission-strip-text-input') || document.getElementById('mission-strip-text-input');
   if (input && input.value.trim()) _missionStripText = lsCleanDisplayText(input.value.trim());
-  if (input) input.value = _missionStripText;
+  syncMissionStripInputs(_missionStripText);
   localStorage.setItem('missionStripText', _missionStripText);
   _missionStripVisible = true;
   localStorage.setItem('missionStripVisible', '1');
@@ -5980,12 +6038,11 @@ function pushMissionStrip() {
   doFlash('purple');
 }
 function setMissionStripPreset(mode) {
-  const input = document.getElementById('mission-strip-text-input');
   const text = mode === 'milk'
     ? 'MILK METER - comments, likes, gifts, and joins fill the bar'
     : `${_lsGameTitle || 'LEAGUE OF SPLATTIES'} - ${lsCommand('show')} - ${lsCommand('duel', '1')} - ${lsCommand('reroll')}`;
   _missionStripText = lsCleanDisplayText(text);
-  if (input) input.value = _missionStripText;
+  syncMissionStripInputs(_missionStripText);
   pushMissionStrip();
 }
 function toggleMissionStripVisible(force) {
@@ -6861,6 +6918,55 @@ function toggleCtrl(id) {
   if (hd) hd.classList.toggle('open', open);
 }
 
+function buildSplatCardSubsections() {
+  const root = document.getElementById('ctrl-splatcards');
+  if (!root || root.dataset.subsectionsBuilt === '1') return;
+  const items = Array.from(root.children);
+  const sectionStarts = [
+    { key:'mechanics', label:'Mechanics', match:'MECHANICS', open:true },
+    { key:'commands', label:'Commands / Aliases', match:'COMMANDS / ALIASES', open:false },
+    { key:'bosses', label:'Boss Library', match:'BOSS LIBRARY', open:false },
+    { key:'players', label:'Player Admin', match:'PLAYER ADMIN', open:false },
+    { key:'resets', label:'Admin / Resets', match:'ADMIN / RESETS', open:false },
+    { key:'visual-tests', label:'Splat Card Tests', match:'SPLAT CARD TESTS', open:false },
+    { key:'command-engine', label:'Live Command Engine', match:'LIVE COMMAND ENGINE', open:false }
+  ];
+  function textOf(el) { return (el?.textContent || '').trim().toUpperCase(); }
+  const starts = sectionStarts.map(sec => {
+    const el = items.find(child => textOf(child).includes(sec.match));
+    return el ? { ...sec, el, index: items.indexOf(el) } : null;
+  }).filter(Boolean).sort((a,b) => a.index - b.index);
+  starts.forEach((sec, i) => {
+    if (!sec.el.parentNode || sec.el.closest('.ls-subsection')) return;
+    const nextIndex = starts[i + 1]?.index ?? items.length;
+    const contents = items.slice(sec.index, nextIndex);
+    const wrap = document.createElement('div');
+    wrap.className = 'ls-subsection';
+    const stored = localStorage.getItem('lsSubsectionOpen:' + sec.key);
+    const isOpen = stored == null ? !!sec.open : stored === '1';
+    wrap.classList.toggle('closed', !isOpen);
+    const hd = document.createElement('button');
+    hd.type = 'button';
+    hd.className = 'ls-subsection-hd';
+    hd.textContent = sec.label;
+    hd.title = sec.el.getAttribute('title') || sec.label;
+    hd.addEventListener('click', () => {
+      const nowClosed = wrap.classList.toggle('closed');
+      localStorage.setItem('lsSubsectionOpen:' + sec.key, nowClosed ? '0' : '1');
+    });
+    const body = document.createElement('div');
+    body.className = 'ls-subsection-body';
+    root.insertBefore(wrap, contents[0]);
+    wrap.appendChild(hd);
+    wrap.appendChild(body);
+    contents.forEach((child, idx) => {
+      if (idx === 0 && textOf(child).includes(sec.match)) child.style.display = 'none';
+      body.appendChild(child);
+    });
+  });
+  root.dataset.subsectionsBuilt = '1';
+}
+
 /* ════════════════════════════════════════
    COMMENT PROMPT PRESETS (full)
 ════════════════════════════════════════ */
@@ -7173,8 +7279,7 @@ function applyGistConfig(cfg) {
   if (cfg.missionStripText != null) {
     localStorage.setItem('missionStripText', cfg.missionStripText);
     _missionStripText = cfg.missionStripText;
-    const el = document.getElementById('mission-strip-text-input');
-    if (el) el.value = _missionStripText;
+    syncMissionStripInputs(_missionStripText);
   }
   if (cfg.missionStripY != null) {
     localStorage.setItem('missionStripY', cfg.missionStripY);
@@ -7196,7 +7301,7 @@ function applyGistConfig(cfg) {
   }
   if (cfg.leagueShelfY != null) {
     localStorage.setItem('leagueShelfY', cfg.leagueShelfY);
-    _leagueShelfY = parseInt(cfg.leagueShelfY, 10) || (1920 - 118);
+    _leagueShelfY = Math.max(0, Math.min(1920 - 154, parseInt(cfg.leagueShelfY, 10) || (1920 - 154)));
   }
   if (cfg.leagueShelfScale != null) {
     localStorage.setItem('leagueShelfScale', cfg.leagueShelfScale);
