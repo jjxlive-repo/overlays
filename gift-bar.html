@@ -136,6 +136,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .milk-disabled #mission-strip-pct { display: none !important; }
 .geyser-disabled #gift-eq-canvas { display: none !important; }
 .geyser-disabled #gift-card { display: none !important; }
+.splat-cards-disabled #leagueCardPopupZone,
+.splat-cards-disabled #leagueSprintBar,
+.splat-cards-disabled #leagueBottomShelf { display: none !important; }
+.gift-animations-disabled #gift-anim-root,
+.gift-animations-disabled #gift-card { display: none !important; }
 
 #leagueCardPopupZone {
   position: absolute; top: 88px; left: 42px;
@@ -348,6 +353,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   border-radius: 999px; background: rgba(245,244,239,.10); border: 1px solid rgba(245,244,239,.16);
   color: var(--ls-card-text); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.ls-title-line { margin-top: 5px; color: #ffd166; font: 800 11px/1 'DM Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+.ls-flex-line { margin-top: 5px; color: var(--ls-card-muted); font: 800 10px/1.2 'DM Sans', sans-serif; letter-spacing: .05em; text-align: center; text-transform: uppercase; }
+.ls-badge-line { margin-top: 5px; display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+.ls-badge-mini { max-width: 74px; padding: 2px 5px; border-radius: 999px; background: rgba(168,85,247,.18); border: 1px solid rgba(168,85,247,.42); color: #e9d5ff; font: 800 8px/1 'DM Sans', sans-serif; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ls-card-mini .ls-chip { height: 16px; max-width: 55px; padding: 0 5px; font-size: 9px; }
 .ls-card-micro .ls-chip { height: 14px; max-width: 24px; padding: 0 4px; font-size: 9px; }
 .battle-badge--basic { border-color: rgba(245,244,239,.24); }
@@ -2056,7 +2065,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="gb-milk-fill"></div>
   <div id="gb-bar-text"></div>
   <div id="leagueSprintBar">
-    <div id="leagueSprintStatus">GAME TITLE - R3 - 08:42</div>
+    <div id="leagueSprintStatus">LEAGUE OF SPLATTIES - R3 - 08:42</div>
     <div id="leagueSprintCenter"><div class="ls-idle-hint">!show - !duel 1 - !reroll</div></div>
     <div id="leagueSprintEvent">EVENT - viewer mini-game</div>
   </div>
@@ -2847,7 +2856,7 @@ const ablyChannel=ablyClient.channels.get(CONFIG.ABLY_CHANNEL);
 window._geyserY = 1720; // mirrors dock geyser position; updated live via Ably
 
 /* LEAGUE SPRINT dynamic cards
-   Card art is intentionally loaded from assets/cards/art-rank/*.png by exact rank. */
+   Card art is intentionally loaded from overlays/assets/cards/art-rank/*.png by exact rank. */
 const LEAGUE_SPRINT = (() => {
   const characters = {
     wekka: { label: 'Wekka', type: 'defender' },
@@ -2870,7 +2879,7 @@ const LEAGUE_SPRINT = (() => {
   const bottomShelf = document.getElementById('leagueBottomShelf');
   let popupTimer = null;
   let shelfMode = 'leaders';
-  let gameTitle = 'Game Title';
+  let gameTitle = 'League of Splatties';
   const popupQueue = [];
   const barEventQueue = [];
   const shelfEventQueue = [];
@@ -2905,7 +2914,7 @@ const LEAGUE_SPRINT = (() => {
   };
 
   function getRankArtPath(character, rank) {
-    return `assets/cards/art-rank/${character}_${String(rank || 'D5').toLowerCase()}.png`;
+    return `overlays/assets/cards/art-rank/${character}_${String(rank || 'D5').toLowerCase()}.png`;
   }
   function getFramePath(league) {
     return `assets/cards/frames/frame_${String(league).toLowerCase()}.svg`;
@@ -2956,7 +2965,7 @@ const LEAGUE_SPRINT = (() => {
   }
   function setGameTitle(title) {
     const clean = String(title || '').trim();
-    gameTitle = clean || 'Game Title';
+    gameTitle = clean || 'League of Splatties';
     setMissionStripText(phaseCopy[leaguePhase]);
   }
   function setPhase(phase) {
@@ -3131,6 +3140,24 @@ const LEAGUE_SPRINT = (() => {
     const text = compact ? `R${n}` : `REBIRTH x${n}`;
     return `<span class="ls-chip">${esc(text)}</span>`;
   }
+  function titleHtml(card) {
+    return card.title ? `<div class="ls-title-line">${esc(card.title)}</div>` : '';
+  }
+  function flexStatsHtml(card) {
+    const s = card.currentLeagueStats || {};
+    const kos = Number(s.playersDefeated || 0);
+    const bosses = Number(s.bossesDefeated || 0);
+    const mvp = Number(s.bossMvpCount || 0);
+    const bits = [`${kos} KOs`, `${bosses} Bosses`];
+    if (mvp) bits.push(`${mvp} MVP`);
+    if (card.rebirthCount) bits.push(`Rebirth x${Number(card.rebirthCount)}`);
+    return `<div class="ls-flex-line">${esc(bits.join(' · '))}</div>`;
+  }
+  function badgesHtml(card) {
+    const badges = Array.isArray(card.badges) ? card.badges : Array.isArray(card.currentLeagueStats?.badges) ? card.currentLeagueStats.badges : [];
+    if (!badges.length) return '';
+    return `<div class="ls-badge-line">${badges.slice(0, 3).map(b => `<span class="ls-badge-mini">${esc(b)}</span>`).join('')}</div>`;
+  }
   function normalizeCard(card) {
     const char = characters[card.character] ? card.character : 'kinz';
     return Object.assign({
@@ -3146,7 +3173,10 @@ const LEAGUE_SPRINT = (() => {
       fragments: 0,
       fragmentMax: card.league === 'A' ? 3 : 4,
       battleStepsClimbed: 0,
-      rebirthCount: 0
+      rebirthCount: 0,
+      title: '',
+      badges: [],
+      currentLeagueStats: {}
     }, card, { character: char, type: card.type || characters[char].type });
   }
   function renderCard(input, variant = 'popup', opts = {}) {
@@ -3170,6 +3200,7 @@ const LEAGUE_SPRINT = (() => {
       ${artHtml(card)}
       ${variant === 'popup' ? `<div class="ls-character-line">${esc(char.label)}</div><div class="ls-type-label">${esc(type.label)}</div>` : ''}
       <div class="ls-power">${Number(card.power || 0).toLocaleString()} PWR</div>
+      ${variant === 'popup' ? titleHtml(card) + flexStatsHtml(card) + badgesHtml(card) : ''}
       ${variant === 'popup' ? fragmentsHtml(card) : ''}
       <div class="ls-card-footer">${battleChipHtml(card, compact)}${rebirthChipHtml(card, compact)}</div>
     </div>`;
@@ -3395,6 +3426,7 @@ ablyChannel.subscribe('milk-event', msg => LEAGUE_SPRINT.handleChatMessage(msg?.
 
 function applySplatCardLayout(d) {
   if (!d) return;
+  if (d.hidden !== undefined) document.body.classList.toggle('splat-cards-disabled', !!d.hidden);
   const bar = document.getElementById('gift-bar');
   const lines = document.getElementById('bar-lines');
   const shelf = document.getElementById('leagueBottomShelf');
@@ -3430,8 +3462,8 @@ function applyLeagueSprintState(d) {
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
   LEAGUE_SPRINT.handleMessage({
-    status: `${String(d.gameTitle || d.title || 'Game Title').toUpperCase()} - R${round} - ${mm}:${ss}`,
-    gameTitle: d.gameTitle || d.title || 'Game Title',
+    status: `${String(d.gameTitle || d.title || 'League of Splatties').toUpperCase()} - R${round} - ${mm}:${ss}`,
+    gameTitle: d.gameTitle || d.title || 'League of Splatties',
     event: d.event || 'EVENT - viewer mini-game',
     phase: d.phase || (remaining <= 0 ? 'results' : 'active')
   });
@@ -3468,6 +3500,11 @@ ablyChannel.subscribe('gift-tier-config', msg => {
   if(Array.isArray(d.coins))   _giftTierCfg.coins   = d.coins;
   if(Array.isArray(d.dollars)) _giftTierCfg.dollars = d.dollars;
   if(d.blastTier != null)      _giftTierCfg.blastTier = Number(d.blastTier);
+});
+
+ablyChannel.subscribe('gift-animation-config', msg => {
+  const d = msg?.data || {};
+  if (d.enabled !== undefined) document.body.classList.toggle('gift-animations-disabled', !d.enabled);
 });
 const connDotEl=document.getElementById('conn-dot');
 
@@ -5956,7 +5993,7 @@ document.addEventListener('keydown', e => {
 </div>
 
 <div id="mission-strip">
-  <span id="mission-strip-text">GAME TITLE - !show - !duel 1 - !reroll</span>
+  <span id="mission-strip-text">LEAGUE OF SPLATTIES - !show - !duel 1 - !reroll</span>
   <span id="mission-strip-pct">0%</span>
 </div>
 
