@@ -126,13 +126,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 /* ══ GIFT BAR ══ */
 /* LEAGUE SPRINT CARD RENDERER */
 .league-sprint-mode #gb-segments,
-.league-sprint-mode #gb-milk-fill,
-.league-sprint-mode #gb-bar-text,
 .league-sprint-mode #bar-hero,
 .league-sprint-mode #bar-hero-action,
 .league-sprint-mode #bar-info,
-.league-sprint-mode #live-text-strip,
 .league-sprint-mode #hype-meter { display: none !important; }
+.milk-disabled #gb-segments,
+.milk-disabled #gb-milk-fill,
+.milk-disabled #gb-bar-text,
 .milk-disabled #mission-strip-pct { display: none !important; }
 .geyser-disabled #gift-eq-canvas { display: none !important; }
 .geyser-disabled #gift-card { display: none !important; }
@@ -161,8 +161,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 #leagueSprintBar {
   position: absolute; inset: 0; height: var(--ls-bar-height);
-  display: grid; grid-template-columns: 286px 1fr 306px; align-items: center;
-  gap: 12px; padding: 0 18px; pointer-events: none; z-index: 22;
+  display: grid; grid-template-columns: minmax(210px, 286px) minmax(360px, 1fr) minmax(250px, 306px); align-items: center;
+  gap: 10px; padding: 0 16px; pointer-events: none; z-index: 22;
   color: var(--ls-card-text); font-family: 'DM Sans', sans-serif;
   background:
     linear-gradient(90deg, rgba(8,16,28,.82), rgba(24,18,46,.74), rgba(8,16,28,.84)),
@@ -173,9 +173,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #leagueSprintStatus,
 #leagueSprintEvent {
-  display: flex; align-items: center; min-width: 0; height: 34px; padding: 0 12px;
+  display: flex; align-items: center; min-width: 0; height: 32px; padding: 0 11px;
   border-radius: 8px; background: rgba(8,16,28,.72); border: 1px solid rgba(245,244,239,.11);
-  color: rgba(245,244,239,.84); font-size: 12px; font-weight: 700; letter-spacing: .07em;
+  color: rgba(245,244,239,.88); font-size: 11px; font-weight: 800; letter-spacing: .055em;
   text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #leagueSprintEvent.ls-event-ok {
@@ -205,9 +205,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   display: flex; align-items: center; justify-content: center; gap: 14px; min-width: 0;
 }
 .ls-idle-hint {
-  height: 38px; display: flex; align-items: center; justify-content: center; padding: 0 24px;
+  height: 38px; display: flex; align-items: center; justify-content: center; padding: 0 22px;
   border-radius: 999px; background: rgba(142,113,212,.18); border: 1px solid rgba(128,199,222,.22);
-  color: #FAF5FF; font: 700 14px/1 'DM Sans', sans-serif; letter-spacing: .08em; text-transform: uppercase;
+  color: #FAF5FF; font: 800 13px/1 'DM Sans', sans-serif; letter-spacing: .065em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
 .ls-vs {
   color: #FAF5FF; font: 400 24px/1 'Boogaloo', cursive; text-shadow: 0 0 14px rgba(128,199,222,.55);
@@ -495,7 +496,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 /* ── Milk fill — sweeps L→R inside bar based on milk % ── */
 #gb-milk-fill {
-  position: absolute; top: 0; left: 0; bottom: 0; width: 0%;
+  position: absolute; left: 18px; bottom: 8px; width: 0%; height: 12px;
+  max-width: calc(100% - 36px); border-radius: 999px;
   /* Opaque enough to fully cover gifter slides underneath */
   background: linear-gradient(90deg,
     rgba(59,7,100,0.96)  0%,
@@ -504,7 +506,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   /* Glowing leading-edge line on the right */
   box-shadow: inset -2px 0 0 rgba(232,121,249,0.85), inset -8px 0 16px rgba(168,85,247,0.35);
   transition: width 0.5s ease, background 0.4s ease, box-shadow 0.4s ease;
-  pointer-events: none; z-index: 1;
+  pointer-events: none; z-index: 23;
 }
 #gb-milk-fill.urgent {
   background: linear-gradient(90deg,
@@ -4640,9 +4642,6 @@ ablyChannel.subscribe('top-gifters',msg=>{
       // Opacity scales with fill — 0.65 at empty, builds to 1.0 at full
       barText.style.opacity = show ? Math.min(1, pct * 0.0035 + 0.65) : '';
     }
-    // Mission strip always mirrors the live % when meter is active
-    _updateMissionStrip(pct, show);
-
     // Segment progress strip — each segment lights at 10%, 20% … 100%
     const nowFilled = Math.floor(pct / 10); // 0–10
     _segEls.forEach((el, i) => {
@@ -5186,6 +5185,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const txt   = document.getElementById('mission-strip-text');
     if(strip && typeof d.top === 'number') strip.style.top = d.top + 'px';
     if(txt   && typeof d.text === 'string' && d.text.trim()) txt.textContent = d.text;
+    if(strip && d.visible !== undefined) strip.classList.toggle('visible', !!d.visible);
+    if(strip && d.commandStrip !== undefined) strip.classList.toggle('ls-command-strip', !!d.commandStrip);
   });
 
   ablyChannel.subscribe('milk-cta', msg => {
