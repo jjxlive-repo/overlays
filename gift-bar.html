@@ -131,6 +131,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .milk-disabled #gb-segments,
 .milk-disabled #gb-milk-fill,
 .milk-disabled #gb-bar-text,
+.milk-disabled #v3-boost-pill,
+.milk-disabled #hm-edge-canvas,
+.milk-disabled #notif-zone-tt,
+.milk-disabled #notif-zone-yt,
 .milk-disabled #mission-strip-pct { display: none !important; }
 .stream-bar-disabled #gift-bar,
 .stream-bar-disabled #bar-lines,
@@ -3576,7 +3580,12 @@ ablyChannel.subscribe('geyser-config', msg => {
 
 ablyChannel.subscribe('milk-ui-config', msg => {
   const d = msg?.data || {};
-  if (d.disabled !== undefined) document.body.classList.toggle('milk-disabled', !!d.disabled);
+  if (d.disabled !== undefined) {
+    const disabled = !!d.disabled;
+    document.body.classList.toggle('milk-disabled', disabled);
+    window._milkSystemEnabled = !disabled;
+    window._milkSetEnabled?.(!disabled);
+  }
 });
 
 ablyChannel.subscribe('stream-bar-config', msg => {
@@ -4214,6 +4223,8 @@ ablyChannel.subscribe('top-gifters',msg=>{
   let _intensityMult = 1.0;
   let _milkCTA       = '';
   let _milkFired     = false;
+  let _milkSystemEnabled = !document.body.classList.contains('milk-disabled');
+  window._milkSystemEnabled = _milkSystemEnabled;
 
   /* ── per-input boost multipliers (1 = no boost) — for manual boosts ── */
   let _boostMult = { comments: 1, likes: 1, gifts: 1 };
@@ -4556,6 +4567,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   /* ── pick surge duration + CTA based on current energy ── */
   /* ── _triggerBoost: core boost fire (manual or auto) ── */
   function _triggerBoost(type, mult, durMs, cta, icon){
+    if (!_milkSystemEnabled) return;
     if(alertActive){
       // Defer visual until alert clears; apply multiplier immediately
       _pendingBoostData = { type, mult, durMs, cta, icon };
@@ -4612,6 +4624,50 @@ ablyChannel.subscribe('top-gifters',msg=>{
     // Next drawHype frame restores CTA text/visibility naturally
     if(reschedule) _scheduleAutoBoost();
   }
+
+  function _clearMilkVisuals() {
+    const milkFill = document.getElementById('gb-milk-fill');
+    const barText  = document.getElementById('gb-bar-text');
+    const bPill    = document.getElementById('v3-boost-pill');
+    if (milkFill) {
+      milkFill.style.width = '0%';
+      milkFill.classList.remove('urgent');
+    }
+    if (barText) {
+      barText.classList.remove('visible', 'urgent', 'surge', 'boost');
+      barText.style.opacity = '';
+      barText.innerHTML = '';
+    }
+    if (bPill) bPill.classList.remove('visible');
+    _segEls.forEach(el => el.classList.remove('filled', 'flash'));
+    _v3EdgeBursts.length = 0;
+    _v3ttE = 0;
+    _v3ytE = 0;
+    if (edgeCv && eCtx) eCtx.clearRect(0, 0, edgeCv.width, edgeCv.height);
+    document.querySelectorAll('.nt-pill').forEach(el => el.remove());
+    document.getElementById('gift-bar')?.classList.remove('hm-surge-active', 'gb-boost-active', 'gb-surge-active');
+  }
+
+  function _setMilkSystemEnabled(enabled) {
+    _milkSystemEnabled = !!enabled;
+    window._milkSystemEnabled = _milkSystemEnabled;
+    if (!_milkSystemEnabled) {
+      _endBoost(false);
+      _hideSurgeFlash?.();
+      _surgeActive = false;
+      _surgeType = null;
+      clearTimeout(_surgeTimer);
+      clearInterval(_surgeCountdown);
+      rawScore = 0;
+      _currentPct = 0;
+      _segFilled = 0;
+      _clearMilkVisuals();
+    } else {
+      _mmGoalVisible = true;
+      _mmForceVisible = true;
+    }
+  }
+  window._milkSetEnabled = _setMilkSystemEnabled;
 
   /* ── first gifter flash ── */
   function fireFirstFlash(){
@@ -4815,6 +4871,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   /* ── add points ── */
   /* ── addPts: type maps to boost category + injects platform energy ── */
   function addPts(base, plat, inputType, tickerLabel, username, noNotif){
+    if (!_milkSystemEnabled) return;
     if(plat && plat !== 'other') setPlatMode(plat);
     const cat  = (inputType === 'like' || inputType === 'like_batch') ? 'likes'
                : (inputType === 'heart_me' || inputType === 'heart_me_first' || inputType === 'yt_sub' || inputType === 'tiktok_gift') ? 'gifts'
@@ -4883,18 +4940,21 @@ ablyChannel.subscribe('top-gifters',msg=>{
   ═══════════════════════════════════════════════════════════════ */
 
   function _scheduleAutoBoost(){
+    if(!_milkSystemEnabled) return;
     if(_smartMode === 'manual') return;
     if(_surgeScheduled) return;          // already one in the pipe
     _surgeScheduled = true;
     const gap = SURGE_MIN_MS + Math.random() * (SURGE_MAX_MS - SURGE_MIN_MS);
     setTimeout(() => {
       _surgeScheduled = false;
+      if(!_milkSystemEnabled) return;
       if(!_surgeActive && rawScore > 0) _fireAutoBoost();
       else _scheduleAutoBoost();         // missed window (no score yet), try again
     }, gap);
   }
 
   function _fireAutoBoost(){
+    if(!_milkSystemEnabled) return;
     if(_surgeActive) return;
     _surgeActive = true;
     _surgeType   = SURGE_TYPES[Math.floor(Math.random() * SURGE_TYPES.length)];
@@ -4914,6 +4974,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* ── Surge flash: shows type label + live countdown in boost pill (v3) ── */
   function _showSurgeFlash(st){
+    if(!_milkSystemEnabled) return;
     const gb     = document.getElementById('gift-bar');
     const bPill  = document.getElementById('v3-boost-pill');
     const bpText = document.getElementById('v3bp-text');
@@ -5040,6 +5101,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const t     = Date.now() / 1000;
     const boost = boostActive;
     const amp   = hypeAmp();
+
+    if (!_milkSystemEnabled) {
+      eCtx.clearRect(0, 0, EW, EH);
+      requestAnimationFrame(drawHype);
+      return;
+    }
 
     /* ── Decay v3 scalar platform energies ── */
     _v3ttE = Math.max(0, _v3ttE - 0.008);

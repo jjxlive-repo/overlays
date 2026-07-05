@@ -2175,8 +2175,8 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 
             <!-- Show / Hide meter -->
             <div class="ctrl-row" style="gap:4px;">
-              <button class="ctrl-btn c-on"  style="flex:1;" onclick="mmGoalVisible(true)" title="Force show meter even at 0%">👁 Show Meter</button>
-              <button class="ctrl-btn c-off" style="flex:1;" onclick="mmGoalVisible(false)" title="Hide meter">✕ Hide Meter</button>
+              <button class="ctrl-btn c-on"  style="flex:1;" onclick="mmGoalVisible(true)" title="Turn on all Milk Bar layers and scoring">Milk Bar On</button>
+              <button class="ctrl-btn c-off" style="flex:1;" onclick="mmGoalVisible(false)" title="Turn off all Milk Bar layers and scoring">Milk Bar Off</button>
             </div>
           </div>
 
@@ -6031,7 +6031,7 @@ function publishOverlayToggles() {
   if (ablyChannel) {
     ablyChannel.publish('stream-bar-config', { enabled: _streamBarEnabled }).catch(() => {});
     ablyChannel.publish('geyser-config', { enabled: _geyserEnabled, top: _geyserY }).catch(() => {});
-    ablyChannel.publish('milk-ui-config', { disabled: _milkUiDisabled }).catch(() => {});
+    ablyChannel.publish('milk-ui-config', { disabled: _milkUiDisabled, enabled: !_milkUiDisabled }).catch(() => {});
   }
   lsUpdateToggleButtons();
 }
@@ -6326,9 +6326,7 @@ function lsResetGame() {
 }
 
 function lsToggleMilkDisabled() {
-  _milkUiDisabled = !_milkUiDisabled;
-  publishOverlayToggles();
-  scheduleGistSave();
+  mmGoalVisible(_milkUiDisabled);
 }
 
 function lsToggleGeyser() {
@@ -6720,11 +6718,8 @@ function dockToggleStreamBar() {
 function dockToggleMilkBar() {
   if (!_streamBarEnabled) {
     _streamBarEnabled = true;
-    publishOverlayToggles();
   }
   const nextOn = _milkUiDisabled;
-  _milkUiDisabled = !nextOn;
-  publishOverlayToggles();
   mmGoalVisible(nextOn);
   if (nextOn) mmSendGoalConfig();
   scheduleGistSave();
@@ -9066,7 +9061,8 @@ function mmSendGoalConfig() {
 }
 
 function mmGoalVisible(v) {
-  // forceVisible: true forces display even at 0%; false lets auto-hide below 5%
+  // Master Milk Bar switch: controls scoring, fill, text, segments, boosts, and wave layer.
+  if (v && !_streamBarEnabled) _streamBarEnabled = true;
   _milkUiDisabled = !v;
   publishOverlayToggles();
   ablyChannel.publish('milk-cta-config', { visible: v, forceVisible: !!v }).catch(() => {});
