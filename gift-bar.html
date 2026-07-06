@@ -99,6 +99,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ls-mini-window-thumb.is-pair { gap: 6px; }
 .ls-mini-window-thumb.is-pair .ls-art { width: 46px; height: 40px; }
 .ls-mini-window-thumb-arrow { font: 800 13px/1 'Nunito', sans-serif; color: rgba(255,241,224,.6); }
+/* Real card component (frame border + art + rank chip) embedded in the Player Window,
+   instead of a bare art sprite — makes a card reveal actually look like a card. */
+.ls-mini-window-thumb--card { display: block; }
+.ls-mini-window-thumb--card .ls-card-micro { margin: 0; }
 /* Optional right-side activity readout — sits above #bar-info's own slot (top:132px) so
    the two never overlap even though they share the same horizontal band. */
 #lsActivityPanel {
@@ -383,6 +387,26 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   color: #D9FFF3;
   box-shadow: 0 0 22px rgba(127,224,196,.18);
 }
+/* League Leaders now lives here (right lane of the middle bar) as a compact ticker —
+   swapped with the Event Log, which moved to the roomier bottom-right strip column
+   (see #leagueBottomShelf #leagueSprintEvent above). Reparented at init in the
+   LEAGUE_SPRINT closure; this just restyles it for its new, smaller home. */
+#leagueSprintBar #lsRankingsSlideshow {
+  height: 82px; padding: 8px 12px; border-radius: 14px;
+  background: rgba(20,16,28,.86); border: 1px solid rgba(255,201,64,.5);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; overflow: hidden;
+}
+.ls-ticker-label {
+  color: #FFE8A8; font: 800 9px/1 'Nunito', sans-serif; letter-spacing: .1em; text-transform: uppercase;
+}
+.ls-ticker-row {
+  display: flex; align-items: center; gap: 6px; max-width: 100%; overflow: hidden;
+  white-space: nowrap; font: 800 11px/1.2 'Nunito', sans-serif; color: #fff7ec;
+}
+.ls-ticker-item b { color: #FFC940; font-weight: 900; margin-right: 3px; }
+.ls-ticker-item em { color: rgba(255,241,224,.7); font-style: normal; margin-left: 3px; }
+.ls-ticker-sep { color: rgba(255,241,224,.35); }
 #leagueSprintCenter {
   display: flex; align-items: center; justify-content: center; gap: 14px; min-width: 0;
 }
@@ -394,23 +418,26 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
    in briefly via .is-flash + .is-error/.is-result, then reverts to the idle copy). */
 .ls-notice {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; width: 100%; max-width: 430px; height: 82px; padding: 8px 24px;
-  border-radius: 14px; background: rgba(13,12,24,.88); border: 1px solid rgba(255,255,255,.14);
-  box-shadow: 0 8px 22px rgba(0,0,0,.32);
+  gap: 6px; width: 100%; max-width: 430px; height: 82px; padding: 10px 24px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(35,26,50,.92), rgba(13,12,24,.92));
+  border: 1px solid rgba(232,146,107,.34);
+  box-shadow: 0 8px 22px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.05);
   transition: opacity .24s ease, filter .24s ease, max-width .24s ease, padding .24s ease,
     background .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
+/* Fixed-height, single-line-each rows (with ellipsis instead of wrapping) so the
+   primary/secondary text can never grow taller than its row and bleed into the
+   other line — that was the cause of the two lines visually overlapping/garbling. */
 .ls-notice-primary {
-  height: 34px; color: #fff7ec; font: 700 var(--ls-notice-primary-size, 24px)/1.08 'Fredoka', sans-serif;
+  height: 28px; color: #fff7ec; font: 700 var(--ls-notice-primary-size, 21px)/28px 'Fredoka', sans-serif;
   letter-spacing: .04em; text-transform: uppercase; text-align: center; max-width: 100%;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  -webkit-box-pack: center; overflow: hidden;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ls-notice-secondary {
-  height: 30px; color: rgba(255,241,224,.78); font: 800 var(--ls-notice-secondary-size, 14px)/1.18 'Nunito', sans-serif;
+  height: 20px; color: rgba(255,241,224,.78); font: 800 var(--ls-notice-secondary-size, 12px)/20px 'Nunito', sans-serif;
   letter-spacing: .02em; text-align: center; max-width: 100%;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  -webkit-box-pack: center; overflow: hidden;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ls-notice.no-helper .ls-notice-secondary { display: none; }
 .ls-notice.is-error {
@@ -572,7 +599,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #leagueBottomShelf {
   position: absolute; top: calc(1920px - var(--ls-bottom-shelf-height) - 48px); left: 34px;
   width: 1012px; height: var(--ls-bottom-shelf-height);
-  display: grid; grid-template-columns: 300px 1fr 280px; align-items: stretch; gap: 0;
+  /* Recent Challengers | Duel Preview | Event Log — Duel Preview and the Event Log
+     sit directly next to each other (no divider) since the log is now the natural
+     place to read what just happened in the fight shown right beside it. */
+  display: grid; grid-template-columns: 1fr 300px 280px; align-items: stretch; gap: 0;
   padding: 10px 0; pointer-events: none; z-index: 38;
   background: linear-gradient(90deg, rgba(11,13,22,.90), rgba(29,24,48,.78), rgba(11,13,22,.86));
   border: 1px solid rgba(255,255,255,.14); border-radius: 10px; box-shadow: var(--ls-card-shadow);
@@ -582,8 +612,30 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   align-items: center; justify-content: center; gap: 4px; overflow: hidden;
   padding: 0 14px;
 }
-#lsDuelPreview { border-right: 1px solid rgba(255,255,255,.12); position: relative; }
+#lsDuelPreview { position: relative; }
 #lsRecentChallengers { border-right: 1px solid rgba(255,255,255,.12); }
+/* The relocated Event Log (see the reparenting note near #leagueSprintEvent's CSS
+   below) fills this third column at full height, bumped directly against Duel
+   Preview with no divider between them. */
+#leagueBottomShelf #leagueSprintEvent {
+  height: 100%; width: 100%; border-radius: 0; background: transparent; border: none;
+  box-shadow: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 0 16px; overflow: hidden; white-space: normal;
+  font-size: 12px; text-transform: none;
+}
+#leagueBottomShelf #leagueSprintEvent.ls-event-ok,
+#leagueBottomShelf #leagueSprintEvent.ls-event-error,
+#leagueBottomShelf #leagueSprintEvent.ls-event-result { background: transparent; box-shadow: none; }
+#leagueBottomShelf .ls-event-log-label {
+  color: var(--ls-card-muted); font: 700 var(--ls-shelf-title-size, 12px)/1.2 'Fredoka', sans-serif;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+#leagueBottomShelf .ls-event-log-text {
+  max-width: 100%; text-align: center; text-transform: uppercase; letter-spacing: .04em;
+  font: 800 13px/1.3 'Nunito', sans-serif; display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
 .ls-zone-title {
   color: var(--ls-card-text); font: 700 var(--ls-shelf-title-size)/1.2 'Fredoka', sans-serif;
   letter-spacing: .1em; text-transform: uppercase;
@@ -2889,7 +2941,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="leagueSprintBar">
     <div id="leagueSprintStatus"><div class="ls-hud-badge">🫟 LEAGUE OF SPLATTIES</div><div class="ls-hud-round">ROUND 3</div><div class="ls-hud-timer"><span class="ls-hud-timer-digits">08:42</span><span class="ls-hud-timer-label">UNTIL LEAGUE RESET</span></div></div>
     <div id="leagueSprintCenter"><div class="ls-idle-hint">!pull - !show - !duel 1 - !reroll</div></div>
-    <div id="leagueSprintEvent">EVENT - viewer mini-game</div>
+    <div id="leagueSprintEvent"><div class="ls-event-log-label">EVENT LOG</div><div class="ls-event-log-text">EVENT - viewer mini-game</div></div>
     <div id="lsMicroPills" data-ls-zone="micro-pills"></div>
   </div>
   <div id="bar-hero">
@@ -3909,6 +3961,23 @@ const LEAGUE_SPRINT = (() => {
   let systemWindowTimer = null;
   const recentChallengers = [];
   let shelfMode = 'leaders';
+  // Swap the middle bar's right lane with the bottom strip's rankings column: the
+  // (roomier) Event Log now lives at bottom-right next to the Duel Preview, and a
+  // compact League Leaders ticker lives in the middle bar. Reparenting the actual
+  // elements (rather than juggling render targets in a dozen call sites) means every
+  // existing enqueueBarEvent()/renderShelf() call keeps working unchanged.
+  (function swapEventLogAndLeaderboard() {
+    if (!sprintEvent || !rankingsSlideshowEl || !duelPreviewEl || !recentChallengersEl) return;
+    const barGrid = sprintEvent.parentElement;
+    const stripGrid = rankingsSlideshowEl.parentElement;
+    if (!barGrid || !stripGrid || barGrid === stripGrid) return;
+    stripGrid.removeChild(rankingsSlideshowEl);
+    barGrid.replaceChild(rankingsSlideshowEl, sprintEvent);
+    // Bottom strip order becomes: Recent Challengers, Duel Preview, Event Log (bumped
+    // directly against Duel Preview).
+    stripGrid.insertBefore(recentChallengersEl, duelPreviewEl);
+    stripGrid.appendChild(sprintEvent);
+  })();
   let gameTitle = 'League of Splatties';
   const popupQueue = [];
   const barEventQueue = [];
@@ -4151,20 +4220,20 @@ const LEAGUE_SPRINT = (() => {
     stopIdleRotation();
     const item = barEventQueue.shift();
     clearEventClasses();
-    // Right-lane event log: this is the single middle-bar destination for command
-    // feedback so the center lane can stay calm.
+    // Event Log: the single destination for command/event feedback text, now living in
+    // the bottom-right strip column (bumped against Duel Preview) so it has real room
+    // instead of squeezing into the middle bar. Keep the center lane quiet so one event
+    // does not hit several Splat Cards outputs at once.
     if (sprintEvent) {
-      sprintEvent.textContent = item.text;
+      sprintEvent.innerHTML = `<div class="ls-event-log-label">EVENT LOG</div><div class="ls-event-log-text">${esc(item.text)}</div>`;
       sprintEvent.classList.add(item.kind === 'error' ? 'ls-event-error' : item.kind === 'result' ? 'ls-event-result' : 'ls-event-ok');
     }
-    // The right lane is the single home for command/event text. Keep the center lane
-    // quiet so one event does not hit several Splat Cards outputs at once.
     const lingerMs = item.kind === 'error' ? 2600 : 2100;
     clearTimeout(noticeRevertTimer);
     noticeRevertTimer = setTimeout(() => {
       clearEventClasses();
       if (!barEventQueue.length && !sprintBar?.classList.contains('ls-duel-active')) {
-        if (sprintEvent) sprintEvent.textContent = leaguePhase === 'results' ? 'RANKINGS UPDATE' : 'EVENT LOG';
+        if (sprintEvent) sprintEvent.innerHTML = `<div class="ls-event-log-label">EVENT LOG</div><div class="ls-event-log-text">awaiting activity</div>`;
         renderNotice(noticeCopy[leaguePhase]);
         startIdleRotation();
       }
@@ -4460,8 +4529,10 @@ const LEAGUE_SPRINT = (() => {
     const eventType = opts.eventType || 'SHOW_CARD';
     const copy = popupCopy(eventType, safeCard, label, opts.message, opts);
     clearTimeout(popupTimer);
+    // Real card component (frame border, art, rank, chips) instead of a bare art
+    // thumbnail — this is what makes the reveal actually look like a trading card.
     popupZone.innerHTML = `<div class="ls-mini-window-body">
-      <div class="ls-mini-window-thumb">${artHtml(safeCard)}<div class="ls-mini-window-thumb-rank">${esc(safeCard.currentRank)}</div></div>
+      <div class="ls-mini-window-thumb ls-mini-window-thumb--card">${renderCard(safeCard, 'micro')}</div>
       <div class="ls-mini-window-copy">
         <div class="ls-mini-window-title">${esc(copy.title)}</div>
         <div class="ls-mini-window-sub">${esc(copy.sub)}</div>
@@ -4483,8 +4554,11 @@ const LEAGUE_SPRINT = (() => {
     const after = normalizeCard(newCard || {});
     const copy = popupCopy('REBIRTH_SUCCESS', after, label, opts.message, opts);
     clearTimeout(popupTimer);
+    // Small "before" art chip -> arrow -> real "after" card, so the outcome of the
+    // rebirth reads as an actual card, not just a floating sprite.
     popupZone.innerHTML = `<div class="ls-mini-window-body">
-      <div class="ls-mini-window-thumb is-pair">${artHtml(before)}<span class="ls-mini-window-thumb-arrow">&gt;</span>${artHtml(after)}</div>
+      <div class="ls-mini-window-thumb is-pair">${artHtml(before)}<span class="ls-mini-window-thumb-arrow">&gt;</span></div>
+      <div class="ls-mini-window-thumb ls-mini-window-thumb--card">${renderCard(after, 'micro')}</div>
       <div class="ls-mini-window-copy">
         <div class="ls-mini-window-title">${esc(copy.title)}</div>
         <div class="ls-mini-window-sub">${esc(before.currentRank)} -&gt; ${esc(after.currentRank)}</div>
@@ -4700,8 +4774,19 @@ const LEAGUE_SPRINT = (() => {
   // Rankings Slideshow (bottom-strip right column): league leaders / round results.
   // Rotates slowly and clearly — no marquee-blur (Goal 6) — and lives in its own
   // column so it never competes with the Duel Preview or Recent Challengers columns.
+  // Compact League Leaders ticker — lives in the middle bar's right lane now (see the
+  // swapEventLogAndLeaderboard reparent above). Real production "leaders" updates route
+  // here; other renderShelf() modes (test/demo card grids) still use the full card-grid
+  // renderer below, which now displays inside the same relocated element.
+  function renderLeaderTicker(cards) {
+    if (!rankingsSlideshowEl) return;
+    const decorated = sortedByRank(decorateCards(cards || sampleCards())).slice(0, 3);
+    const items = decorated.map((c, i) => `<span class="ls-ticker-item"><b>#${i + 1}</b>${esc(c.username)}<em>${esc(c.currentRank)}</em></span>`);
+    rankingsSlideshowEl.innerHTML = `<div class="ls-ticker-label">LEAGUE LEADERS</div><div class="ls-ticker-row">${items.join('<span class="ls-ticker-sep">•</span>')}</div>`;
+  }
   function renderShelf(mode, cards, meta) {
     if (!rankingsSlideshowEl) return;
+    if (mode === 'leaders') { renderLeaderTicker(cards); return; }
     const decorated = decorateCards(cards || sampleCards());
     // Only re-order for the real leaders/results shelf — 'featured' and test states
     // pass a deliberately custom order (e.g. pip/badge demos) that must stay as-is.
