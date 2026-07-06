@@ -8328,22 +8328,25 @@ function losSeasonId() {
   const stamp = d.toISOString().slice(0,10);
   return `splatties-${stamp}-${Math.floor(Date.now() / 1000).toString(36)}`;
 }
-// Identity key used to look up a viewer's saved card. This USED to prefer the chat
-// widget's `userId` field over the username, but the TikTok/YouTube chat bridge that
-// feeds handleLeagueSprintChatCommand doesn't reliably send `userid` on every message
-// (it's present on some events, missing on others) — so a viewer's !pull could get
-// keyed one way and their !show look up a different, empty key, making the card look
-// like it "disappeared." Username is what's actually stable across every chat message
-// and every command, so it's now the primary key; userId is only a fallback for the
-// rare case a message has no username at all (e.g. some system/test events).
+// Identity key used to look up a viewer's saved card.
+// TikTok's live chat "uid" from the chat bridge isn't reliably sent on every message
+// (present on some events, missing on others), so a viewer's !pull could get keyed one
+// way and their !show look up a different, empty key — the card looked "disappeared."
+// Per JJ's call: TikTok never uses a uid for identity anymore — it's keyed purely by
+// username, the same way YouTube (and every other platform) is identified here. userId
+// is only ever used as a last-resort fallback when a message has no username at all
+// (e.g. some system/test events), and even then never for TikTok specifically.
 function losIdentity(payload) {
   const platform = String(payload?.platform || payload?.source || 'viewer').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'viewer';
   const name = String(payload?.username || payload?.displayName || payload?.chatname || '').replace(/^@/, '').trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
   if (name) return `${platform}:name:${name}`;
-  const rawId = payload?.userId || payload?.id || payload?.ownerId;
-  if (rawId) {
-    const cleanId = String(rawId).toLowerCase();
-    return cleanId.includes(':') ? cleanId : `${platform}:${cleanId}`;
+  const isTikTok = platform === 'tiktok' || platform === 'tt';
+  if (!isTikTok) {
+    const rawId = payload?.userId || payload?.id || payload?.ownerId;
+    if (rawId) {
+      const cleanId = String(rawId).toLowerCase();
+      return cleanId.includes(':') ? cleanId : `${platform}:${cleanId}`;
+    }
   }
   return `${platform}:name:viewer`;
 }
