@@ -2240,6 +2240,9 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
             <button class="tf-btn" onclick="lsEngineTest('round-recap')">Round Recap</button>
             <button class="tf-btn" onclick="lsEngineTest('promo-small')">Promote Rank</button>
             <button class="tf-btn" onclick="lsEngineTest('promo-league')">Promote League</button>
+            <button class="tf-btn" onclick="lsEngineTest('already-has-card')" title="Simulates !pull for a viewer who already has a card - should show as a quiet micro-pill, not a popup.">Already Has Card</button>
+            <button class="tf-btn" onclick="lsEngineTest('cooldown')" title="Simulates a duel while still on cooldown - should show as a quiet micro-pill.">Cooldown</button>
+            <button class="tf-btn" onclick="lsEngineTest('duel-queue')" title="Fires 3 duels back-to-back to test the fight-animation queue in the bottom Duel Preview.">Duel Queue x3</button>
             <button class="tf-btn c-off" onclick="lsEngineReset()" title="Clears the saved Splat Cards game state: players, round, phase, cards, duels, fragments, bosses, and champion. It does not wipe overlay layout/Gist settings.">Reset Splat Cards</button>
             <button class="tf-btn" onclick="lsEngineExportState()">Export JSON</button>
             <button class="tf-btn" onclick="lsEngineImportState()">Import JSON</button>
@@ -9653,6 +9656,30 @@ function lsEngineTest(name) {
     publishLeagueSprintVisual({ action:'popup', eventType:'PROMOTION', label:'LEAGUE UP', card, message:lsText('leagueUpMessage', lsCardVars(card)) });
   }
   else if (name === 'error') publishLeagueSprintVisual({ action:'bar-message', eventType:'INVALID_COMMAND', severity:'warn', message:lsText('invalidTarget') });
+  else if (name === 'already-has-card') {
+    lsSeedTestPlayer('test-already', 'already_have', { currentRank:'D5', power:100 });
+    handleLeagueSprintChatCommand({ platform:'test', userId:'test-already', username:'already_have', displayName:'already_have', messageText:lsCommand('pull'), timestamp:Date.now() });
+  }
+  else if (name === 'cooldown') {
+    lsSeedDuelTestOpponents();
+    const card = lsSeedTestPlayer('test-cooldown', 'cooldown_test', { currentRank:'C4', power:980 });
+    card.lastDuelAt = Date.now();
+    LeagueSprintState.setPhase('active');
+    handleLeagueSprintChatCommand({ platform:'test', userId:'test-cooldown', username:'cooldown_test', displayName:'cooldown_test', messageText:lsCommand('duel', '1'), timestamp:Date.now() });
+  }
+  else if (name === 'duel-queue') {
+    // Fires 3 duel commands back-to-back to exercise the overlay's fight-animation
+    // queue (Goal 7 of the structural rebuild) — should play one at a time in the
+    // bottom Duel Preview column, never overlapping.
+    lsSeedDuelTestOpponents();
+    LeagueSprintState.setPhase('active');
+    ['queue_a', 'queue_b', 'queue_c'].forEach((name2, i) => {
+      lsSeedTestPlayer('test-' + name2, name2, { currentRank:'C4', power:960 + i * 30 });
+      setTimeout(() => {
+        handleLeagueSprintChatCommand({ platform:'test', userId:'test-' + name2, username:name2, displayName:name2, messageText:lsCommand('duel', '1'), timestamp:Date.now() });
+      }, i * 150);
+    });
+  }
   doFlash('purple');
 }
 
