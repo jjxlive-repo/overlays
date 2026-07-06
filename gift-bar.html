@@ -3570,6 +3570,12 @@ const LEAGUE_SPRINT = (() => {
   let duelEndTimer = null;
   let duelIdleTimer = null;
   let noticeHelperVisible = true;
+  // Idle rotation: while the notice box is at rest (no toast, no fight), it cycles through
+  // the default round copy plus a handful of recent highlights (pulls, results, rebirths...)
+  // so there's always something worth glancing at between fights.
+  const recentActivity = [];
+  let idleRotationTimer = null;
+  let idleRotationIndex = 0;
   const eventMeta = {
     CARD_DRAWN: { text: 'card drawn', kind: 'ok', popup: true },
     SHOW_CARD: { text: 'show card', kind: 'ok', popup: true },
@@ -3648,11 +3654,15 @@ const LEAGUE_SPRINT = (() => {
     const previous = leaguePhase;
     leaguePhase = ['active', 'rebirth', 'results'].includes(phase) ? phase : 'active';
     const centerHasDuel = !!sprintCenter?.querySelector('.ls-card-mini');
-    if (previous !== leaguePhase || !sprintCenter?.innerHTML || !centerHasDuel) renderNotice(noticeCopy[leaguePhase]);
+    if (previous !== leaguePhase || !sprintCenter?.innerHTML || !centerHasDuel) {
+      renderNotice(noticeCopy[leaguePhase]);
+      startIdleRotation();
+    }
     setMissionStripText(phaseCopy[leaguePhase]);
   }
   function setDuelActive(active) {
     sprintBar?.classList.toggle('ls-duel-active', !!active);
+    if (active) stopIdleRotation();
   }
   // Fight animation priority: while a duel is on screen the notice box recedes (see CSS).
   // Once the fight ends, drop duel-active, flash the result in the notice box briefly,
@@ -3662,11 +3672,40 @@ const LEAGUE_SPRINT = (() => {
     clearTimeout(duelIdleTimer);
     duelEndTimer = setTimeout(() => {
       setDuelActive(false);
+      pushActivity(resultText || 'DUEL RESULT', '');
       renderNotice({ primary: resultText || 'DUEL RESULT', secondary: noticeCopy[leaguePhase]?.secondary || '' }, { kind: 'result', flash: true });
       duelIdleTimer = setTimeout(() => {
-        if (!sprintBar?.classList.contains('ls-duel-active')) renderNotice(noticeCopy[leaguePhase]);
+        if (!sprintBar?.classList.contains('ls-duel-active')) {
+          renderNotice(noticeCopy[leaguePhase]);
+          startIdleRotation();
+        }
       }, resultLingerMs);
     }, delayMs);
+  }
+  // Keeps a short list of recent highlights (pulls, results, rebirths, promotions...) that
+  // the idle rotation cycles through alongside the default round copy.
+  function pushActivity(primary, secondary) {
+    if (!primary) return;
+    recentActivity.unshift({ primary, secondary: secondary || '' });
+    if (recentActivity.length > 6) recentActivity.length = 6;
+  }
+  function stopIdleRotation() {
+    clearInterval(idleRotationTimer);
+    idleRotationTimer = null;
+  }
+  // Cycles the center notice box between the phase's default copy and recent highlights
+  // every ~4.2s. Pauses itself (via the guards below) whenever a toast is showing or a
+  // fight is active, so it never fights the command-feedback flash or the duel cards.
+  function startIdleRotation() {
+    stopIdleRotation();
+    if (!recentActivity.length) return;
+    idleRotationIndex = 0;
+    idleRotationTimer = setInterval(() => {
+      if (barBusy || sprintBar?.classList.contains('ls-duel-active')) return;
+      idleRotationIndex = (idleRotationIndex + 1) % (recentActivity.length + 1);
+      if (idleRotationIndex === 0) renderNotice(noticeCopy[leaguePhase]);
+      else renderNotice(recentActivity[idleRotationIndex - 1], { kind: 'ok' });
+    }, 4200);
   }
   function formatClock(ms) {
     const total = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
@@ -3700,6 +3739,7 @@ const LEAGUE_SPRINT = (() => {
   function processBarQueue() {
     if (barBusy || !barEventQueue.length) return;
     barBusy = true;
+    stopIdleRotation();
     const item = barEventQueue.shift();
     clearEventClasses();
     // #leagueSprintEvent is visually retired, but keep writing to it so nothing that
@@ -3720,6 +3760,7 @@ const LEAGUE_SPRINT = (() => {
       clearEventClasses();
       if (!barEventQueue.length && !sprintBar?.classList.contains('ls-duel-active')) {
         renderNotice(noticeCopy[leaguePhase]);
+        startIdleRotation();
       }
       barBusy = false;
       processBarQueue();
@@ -3855,10 +3896,15 @@ const LEAGUE_SPRINT = (() => {
     const detail = payload?.detail || payload?.reason || payload?.label || '';
     return `${meta.text.toUpperCase()} - ${user}${detail}`.trim();
   }
+  const ACTIVITY_HIGHLIGHT_TYPES = ['CARD_DRAWN', 'SHOW_CARD', 'PROMOTION', 'DEMOTION', 'REBIRTH_SUCCESS', 'KING_CHANGED'];
   function emitVisualEvent(type, payload = {}) {
     const meta = eventMeta[type] || eventMeta.INVALID_COMMAND;
     const card = payload.card ? normalizeCard(payload.card) : payload.username ? ensureCard(payload.username) : null;
     enqueueBarEvent(type, eventText(type, payload), meta.kind);
+    if (ACTIVITY_HIGHLIGHT_TYPES.includes(type)) {
+      const sub = card ? `${card.currentRank || 'D5'} ${typeLabels[card.type]?.label || card.type || ''}`.trim() : '';
+      pushActivity(eventText(type, payload), sub);
+    }
     if (meta.popup && card) enqueuePopup(card, payload.label || meta.text.toUpperCase(), payload.lingerMs || 8400, Object.assign({}, payload, { eventType: type }));
     if (meta.duel) renderDuel(payload.left || card, payload.right, payload.detail || 'EVENT - duel started');
     if (meta.shelf) enqueueShelfEvent(type, (payload.cards || [payload.left, payload.right, card]).filter(Boolean), payload.detail || meta.text);
