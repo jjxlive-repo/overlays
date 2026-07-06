@@ -8792,6 +8792,11 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
   publishLeagueSprintVisual({ action:'bar-message', eventType:'COMMAND_RECEIVED', message:lsText('commandReceived', { username:String(username || 'viewer').replace(/^@/,''), command:raw }) });
   const cleanedUser = LeagueSprintState.cleanUser(user);
   const playerExisted = !!LeagueSprintState.state.players[cleanedUser.id];
+  // Debug trail for the "!pull works, !show says no card" reports — open DevTools
+  // Console on this dock page during a stream to see exactly what identity key each
+  // command resolves to. If a !pull and a later !show for the same person log
+  // DIFFERENT keys, that's the chat bridge sending inconsistent identity fields.
+  console.log('[LeagueSprint]', action, 'raw userId:', userId, 'username:', username, '-> key:', cleanedUser.id, 'existed:', playerExisted, 'known players:', Object.keys(LeagueSprintState.state.players).length);
   if (action === 'show' && !playerExisted) {
     publishLeagueSprintVisual({ action:'bar-message', eventType:'NO_TARGET', severity:'warn', message:lsText('noCard', { pullCommand:lsCommand('pull') }) });
     return true;
