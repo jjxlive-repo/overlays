@@ -8321,15 +8321,24 @@ function losSeasonId() {
   const stamp = d.toISOString().slice(0,10);
   return `splatties-${stamp}-${Math.floor(Date.now() / 1000).toString(36)}`;
 }
+// Identity key used to look up a viewer's saved card. This USED to prefer the chat
+// widget's `userId` field over the username, but the TikTok/YouTube chat bridge that
+// feeds handleLeagueSprintChatCommand doesn't reliably send `userid` on every message
+// (it's present on some events, missing on others) — so a viewer's !pull could get
+// keyed one way and their !show look up a different, empty key, making the card look
+// like it "disappeared." Username is what's actually stable across every chat message
+// and every command, so it's now the primary key; userId is only a fallback for the
+// rare case a message has no username at all (e.g. some system/test events).
 function losIdentity(payload) {
   const platform = String(payload?.platform || payload?.source || 'viewer').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'viewer';
+  const name = String(payload?.username || payload?.displayName || payload?.chatname || '').replace(/^@/, '').trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+  if (name) return `${platform}:name:${name}`;
   const rawId = payload?.userId || payload?.id || payload?.ownerId;
   if (rawId) {
     const cleanId = String(rawId).toLowerCase();
     return cleanId.includes(':') ? cleanId : `${platform}:${cleanId}`;
   }
-  const name = String(payload?.username || payload?.displayName || payload?.chatname || 'viewer').replace(/^@/, '').trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
-  return `${platform}:name:${name || 'viewer'}`;
+  return `${platform}:name:viewer`;
 }
 function losDefaultStats(rank='D5') {
   return {
@@ -8495,6 +8504,16 @@ const LeagueSprintState = (() => {
     for (const ch of String(seedText || Date.now())) n = ((n << 5) - n + ch.charCodeAt(0)) | 0;
     return keys[Math.abs(n) % keys.length];
   }
+  // A !pull's starting league/rank is randomized too (gacha-style), weighted toward D
+  // league so a brand-new viewer usually starts low but occasionally gets a lucky pull.
+  // Weights: D 60% / C 25% / B 12% / A 3%. Division within a league is uniform.
+  function randomPullRank() {
+    const roll = Math.random();
+    const league = roll < 0.60 ? 'D' : roll < 0.85 ? 'C' : roll < 0.97 ? 'B' : 'A';
+    const divisions = league === 'A' ? [3, 2, 1] : [5, 4, 3, 2, 1];
+    const division = divisions[Math.floor(Math.random() * divisions.length)];
+    return `${league}${division}`;
+  }
   function ensurePlayer(userPayload, opts = {}) {
     const user = cleanUser(userPayload);
     if (state.players[user.id]) {
@@ -8507,6 +8526,13 @@ const LeagueSprintState = (() => {
     const starterMax = Math.max(mech.starterMin, mech.starterMax);
     const character = randomCharacter(user.id + ':' + Date.now());
     const type = characters[character].type;
+    const currentRank = randomPullRank();
+    const league = LeagueSprintRankUtils.getLeagueFromRank(currentRank);
+    // Power scales with the rolled rank so a lucky higher-league pull also starts with
+    // power that fits that league, instead of a flat starter range for every rank.
+    const rankIdx = LeagueSprintRankUtils.getRankIndex(currentRank);
+    const powerMin = starterMin + rankIdx * 35;
+    const powerMax = starterMax + rankIdx * 45;
     const card = {
       id: 'ls-' + user.id.replace(/[^a-z0-9_-]/gi, '-'),
       ownerId: user.id,
@@ -8517,10 +8543,10 @@ const LeagueSprintState = (() => {
       avatarUrl: user.avatarUrl,
       character,
       type,
-      league: 'D',
-      currentRank: 'D5',
-      originRank: 'D5',
-      power: starterMin + Math.floor(Math.random() * (starterMax - starterMin + 1)),
+      league,
+      currentRank,
+      originRank: currentRank,
+      power: powerMin + Math.floor(Math.random() * Math.max(1, powerMax - powerMin + 1)),
       activeDiamondPower: 0,
       seasonDiamondsEarned: 0,
       roundScore: 0,
@@ -8528,7 +8554,7 @@ const LeagueSprintState = (() => {
       stamina: 100,
       staminaDebuff: 0,
       fragments: 0,
-      fragmentMax: LeagueSprintRankUtils.getFragmentMax('D5'),
+      fragmentMax: LeagueSprintRankUtils.getFragmentMax(currentRank),
       battleStepsClimbed: 0,
       rebirthCount: 0,
       rebirthedThisRound: false,
@@ -8536,7 +8562,7 @@ const LeagueSprintState = (() => {
       losses: 0,
       lastDuelAt: 0,
       lastTargetedAt: 0,
-      currentLeagueStats: losDefaultStats('D5'),
+      currentLeagueStats: losDefaultStats(currentRank),
       rebirthHistory: [],
       isKing: false
     };
