@@ -6151,6 +6151,25 @@ function lsLoadCommandConfig() {
 let _lsCommandConfig = lsLoadCommandConfig();
 let _lsRemaining = Math.max(0, parseInt(localStorage.getItem('lsRemaining') || String(_lsRoundLength), 10));
 let _lsTicker = null;
+// The round ticker (_lsTicker) stops itself once a round ends and hands off to the
+// rebirth window — but nothing was watching the rebirth window's own clock, so once it
+// expired the game just sat in "rebirth" phase forever until someone manually clicked
+// Next Round + Start/Resume. This ticker watches rebirthEndsAt and auto-advances into
+// the next round on its own, so rounds actually cycle without babysitting the dock.
+let _lsRebirthTicker = null;
+function lsScheduleRebirthAutoAdvance() {
+  clearInterval(_lsRebirthTicker);
+  _lsRebirthTicker = setInterval(() => {
+    const endsAt = LeagueSprintState?.state?.rebirthEndsAt || 0;
+    if (_lsPhase !== 'rebirth' || !endsAt) { clearInterval(_lsRebirthTicker); _lsRebirthTicker = null; return; }
+    if (Date.now() >= endsAt) {
+      clearInterval(_lsRebirthTicker);
+      _lsRebirthTicker = null;
+      lsNextRound();
+      lsStartRound();
+    }
+  }, 1000);
+}
 let _lsPhase = ['active', 'rebirth', 'results'].includes(localStorage.getItem('lsPhase')) ? localStorage.getItem('lsPhase') : 'active';
 let _missionStripY    = parseInt(localStorage.getItem('missionStripY') || '0', 10);
 let _missionStripVisible = localStorage.getItem('missionStripVisible') !== '0';
@@ -6176,6 +6195,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const notifDisp = document.getElementById('notif-pos-display');
   if (notifDisp) notifDisp.textContent = `${_dockNotifPos.x}%, ${_dockNotifPos.y}px`;
   lsSyncInputs();
+  // Resume the round/rebirth auto-advance timers after a dock reload. Without this,
+  // reloading the dock page mid-round (or mid-rebirth-window) silently stopped the
+  // countdown until someone noticed and clicked Start/Resume by hand — rounds looked
+  // like they'd "stopped starting automatically."
+  if (typeof LeagueSprintState !== 'undefined') {
+    if (_lsPhase === 'active' && LeagueSprintState.state.roundEndsAt > Date.now()) {
+      _lsRemaining = Math.max(1, Math.round((LeagueSprintState.state.roundEndsAt - Date.now()) / 1000));
+      clearInterval(_lsTicker);
+      _lsTicker = setInterval(() => {
+        _lsRemaining = Math.max(0, _lsRemaining - 1);
+        if (_lsRemaining <= 0) {
+          clearInterval(_lsTicker);
+          if (typeof lsEngineStartResults === 'function') lsEngineStartResults();
+          else _lsPhase = 'results';
+        } else {
+          publishLeagueSprintState();
+        }
+      }, 1000);
+    } else if (_lsPhase === 'rebirth' && LeagueSprintState.state.rebirthEndsAt) {
+      lsScheduleRebirthAutoAdvance();
+    }
+  }
   layoutRenderTable();
 
   // Restore mission strip inputs
@@ -6678,6 +6719,8 @@ function lsSetPhase(phase) {
 }
 
 function lsStartRound() {
+  clearInterval(_lsRebirthTicker);
+  _lsRebirthTicker = null;
   lsApplyRoundSettings();
   _lsPhase = 'active';
   if (typeof LeagueSprintState !== 'undefined') {
@@ -6703,6 +6746,8 @@ function lsStartRound() {
 
 function lsNextRound() {
   clearInterval(_lsTicker);
+  clearInterval(_lsRebirthTicker);
+  _lsRebirthTicker = null;
   _lsRound += 1;
   _lsRemaining = _lsRoundLength;
   _lsPhase = 'active';
@@ -6713,6 +6758,8 @@ function lsNextRound() {
 
 function lsResetGame() {
   clearInterval(_lsTicker);
+  clearInterval(_lsRebirthTicker);
+  _lsRebirthTicker = null;
   _lsRound = 1;
   _lsRemaining = _lsRoundLength;
   _lsPhase = 'active';
@@ -8948,6 +8995,7 @@ function lsEngineStartRebirth() {
   LeagueSprintState.state.rebirthEndsAt = Date.now() + (mech.rebirthWindowSec * 1000);
   LeagueSprintState.save();
   publishLeagueSprintVisual({ action:'shelf', mode:'rebirth', cards:lsDecorateRankings(LeagueSprintState.sortedPlayers()).slice(0,5), meta:`!reroll = new type, -1 rank - ${mech.rebirthWindowSec}s` });
+  lsScheduleRebirthAutoAdvance();
 }
 
 function lsEngineApplyResults() {
@@ -9021,6 +9069,7 @@ function lsEngineStartResults() {
     message:lsText('resultsMessage', { summary:results.summary, seconds:Math.round(mech.rebirthWindowSec || 120) })
   });
   publishLeagueSprintVisual({ action:'shelf', mode:'leaders', cards:results.cards, meta:lsText('resultsShelf') });
+  lsScheduleRebirthAutoAdvance();
 }
 function lsEngineReset() {
   localStorage.removeItem('leagueSprintState.v1');
@@ -9456,6 +9505,9 @@ function losDeleteAllCards() {
   }
   const alsoWipeLifetime = !!document.getElementById('los-full-reset-wipe-lifetime')?.checked;
   if (!confirm(`Delete every player's card and start a brand-new League of Splatties?${alsoWipeLifetime ? ' Lifetime history will ALSO be wiped.' : ' Lifetime history/badges stay.'} This cannot be undone.`)) return;
+  clearInterval(_lsTicker);
+  clearInterval(_lsRebirthTicker);
+  _lsRebirthTicker = null;
   const st = LeagueSprintState.state;
   st.players = {};
   st.kingUserId = null;
