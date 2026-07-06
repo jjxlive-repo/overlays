@@ -2006,6 +2006,20 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Label</label>
             <input class="ctrl-in" id="ls-shelf-title-size" type="number" min="10" max="24" value="14" style="width:54px;text-align:right;" onchange="lsApplyShelfFonts()">
           </div>
+          <div class="ctrl-sep">
+            <div style="font-size:9px;color:var(--txt-dim);letter-spacing:.05em;" title="Controls the center notice box in the Splat Cards bar — the main place viewers see minor command feedback (received, invalid, cooldown, rebirth denied, etc.) between the bigger popup/duel animations.">CENTER NOTICE BOX</div>
+            <div class="ctrl-row" style="gap:5px;align-items:center;">
+              <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Primary size</label>
+              <input class="ctrl-in" id="ls-notice-primary-size" type="number" min="12" max="26" value="17" style="width:54px;text-align:right;" onchange="lsApplyNoticeFonts()">
+              <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Secondary size</label>
+              <input class="ctrl-in" id="ls-notice-secondary-size" type="number" min="9" max="18" value="12" style="width:54px;text-align:right;" onchange="lsApplyNoticeFonts()">
+            </div>
+            <div class="ctrl-row" style="gap:5px;">
+              <button class="ctrl-btn c-on" id="ls-notice-helper-toggle" style="flex:1;" onclick="lsToggleNoticeHelper()" title="Shows or hides the smaller secondary/helper line in the center notice box.">Helper Line: On</button>
+              <button class="tf-btn" style="flex:1;" onclick="lsTestNotice()" title="Flashes a sample command-feedback notice in the overlay's center notice box.">Test Center Notice</button>
+              <button class="tf-btn c-off" style="flex:1;" onclick="lsResetNoticeStyle()" title="Resets center notice text sizes and helper line back to defaults.">Reset Notice Style</button>
+            </div>
+          </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Round</label>
             <input class="ctrl-in" id="ls-round-num" type="number" min="1" max="99" value="1" style="width:54px;text-align:right;" onchange="lsApplyRoundSettings()" title="Current round number shown in the Splat Cards status bar.">
@@ -5900,6 +5914,9 @@ let _leagueShelfScale = parseInt(localStorage.getItem('leagueShelfScale') || '10
 let _lsShelfNameSize = parseInt(localStorage.getItem('lsShelfNameSize') || '13', 10);
 let _lsShelfRankSize = parseInt(localStorage.getItem('lsShelfRankSize') || '19', 10);
 let _lsShelfTitleSize = parseInt(localStorage.getItem('lsShelfTitleSize') || '14', 10);
+let _lsNoticePrimarySize = parseInt(localStorage.getItem('lsNoticePrimarySize') || '17', 10);
+let _lsNoticeSecondarySize = parseInt(localStorage.getItem('lsNoticeSecondarySize') || '12', 10);
+let _lsNoticeHelperVisible = localStorage.getItem('lsNoticeHelperVisible') !== '0';
 let _lsExplainerEnabled = localStorage.getItem('lsExplainerEnabled') === '1';
 let _geyserY = parseInt(localStorage.getItem('geyserY') || '1720', 10);
 let _geyserEnabled = localStorage.getItem('geyserEnabled') !== 'false';
@@ -6142,6 +6159,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const lsTitle = document.getElementById('ls-game-title');
   if (lsTitle) lsTitle.value = _lsGameTitle;
   lsSyncShelfFontInputs();
+  lsSyncNoticeFontInputs();
   const msYVal = document.getElementById('mission-strip-y-val');
   if (msYVal) msYVal.textContent = _missionStripY;
   publishSplatExplainerConfig();
@@ -6259,7 +6277,7 @@ function resetGiftBarY() {
   publishSplatCardLayout();
 }
 
-function publishSplatCardLayout() {
+function publishSplatCardLayout(extra) {
   localStorage.setItem('giftBarY', _giftBarY);
   localStorage.setItem('splatCardScale', _splatCardScale);
   localStorage.setItem('leagueShelfY', _leagueShelfY);
@@ -6267,17 +6285,23 @@ function publishSplatCardLayout() {
   localStorage.setItem('lsShelfNameSize', _lsShelfNameSize);
   localStorage.setItem('lsShelfRankSize', _lsShelfRankSize);
   localStorage.setItem('lsShelfTitleSize', _lsShelfTitleSize);
+  localStorage.setItem('lsNoticePrimarySize', _lsNoticePrimarySize);
+  localStorage.setItem('lsNoticeSecondarySize', _lsNoticeSecondarySize);
+  localStorage.setItem('lsNoticeHelperVisible', _lsNoticeHelperVisible ? '1' : '0');
   if (ablyChannel) {
     ablyChannel.publish('gift-bar-pos', { top: _giftBarY }).catch(() => {});
-    ablyChannel.publish('splat-card-layout', {
+    ablyChannel.publish('splat-card-layout', Object.assign({
       top: _giftBarY,
       scale: _splatCardScale / 100,
       shelfTop: _leagueShelfY,
       shelfScale: _leagueShelfScale / 100,
       shelfNameSize: _lsShelfNameSize,
       shelfRankSize: _lsShelfRankSize,
-      shelfTitleSize: _lsShelfTitleSize
-    }).catch(() => {});
+      shelfTitleSize: _lsShelfTitleSize,
+      noticePrimarySize: _lsNoticePrimarySize,
+      noticeSecondarySize: _lsNoticeSecondarySize,
+      noticeHelperVisible: _lsNoticeHelperVisible
+    }, extra || {})).catch(() => {});
   }
 }
 function publishSplatExplainerConfig() {
@@ -6321,6 +6345,54 @@ function lsApplyShelfFonts() {
   lsSyncShelfFontInputs();
   publishSplatCardLayout();
   scheduleGistSave();
+}
+
+/* Center notice box (replaces the old idle command pill) — text sizes + helper line. */
+function lsSyncNoticeFontInputs() {
+  const pairs = [
+    ['ls-notice-primary-size', _lsNoticePrimarySize],
+    ['ls-notice-secondary-size', _lsNoticeSecondarySize]
+  ];
+  pairs.forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+  const btn = document.getElementById('ls-notice-helper-toggle');
+  if (btn) {
+    btn.textContent = `Helper Line: ${_lsNoticeHelperVisible ? 'On' : 'Off'}`;
+    btn.classList.toggle('c-on', _lsNoticeHelperVisible);
+    btn.classList.toggle('c-off', !_lsNoticeHelperVisible);
+  }
+}
+function lsApplyNoticeFonts() {
+  const n = (id, fallback, min, max) => {
+    const raw = Number(document.getElementById(id)?.value);
+    return Math.max(min, Math.min(max, Number.isFinite(raw) ? raw : fallback));
+  };
+  _lsNoticePrimarySize = n('ls-notice-primary-size', _lsNoticePrimarySize, 12, 26);
+  _lsNoticeSecondarySize = n('ls-notice-secondary-size', _lsNoticeSecondarySize, 9, 18);
+  lsSyncNoticeFontInputs();
+  publishSplatCardLayout();
+  scheduleGistSave();
+}
+function lsToggleNoticeHelper(force) {
+  _lsNoticeHelperVisible = force === undefined ? !_lsNoticeHelperVisible : !!force;
+  lsSyncNoticeFontInputs();
+  publishSplatCardLayout();
+  scheduleGistSave();
+  doFlash(_lsNoticeHelperVisible ? 'green' : 'red');
+}
+function lsTestNotice() {
+  publishSplatCardLayout({ noticeTest: true });
+}
+function lsResetNoticeStyle() {
+  _lsNoticePrimarySize = 17;
+  _lsNoticeSecondarySize = 12;
+  _lsNoticeHelperVisible = true;
+  lsSyncNoticeFontInputs();
+  publishSplatCardLayout();
+  scheduleGistSave();
+  doFlash('purple');
 }
 
 function publishOverlayToggles() {
@@ -7444,6 +7516,9 @@ function gistGetConfig() {
     lsShelfNameSize:      localStorage.getItem('lsShelfNameSize'),
     lsShelfRankSize:      localStorage.getItem('lsShelfRankSize'),
     lsShelfTitleSize:     localStorage.getItem('lsShelfTitleSize'),
+    lsNoticePrimarySize:   localStorage.getItem('lsNoticePrimarySize'),
+    lsNoticeSecondarySize: localStorage.getItem('lsNoticeSecondarySize'),
+    lsNoticeHelperVisible: localStorage.getItem('lsNoticeHelperVisible'),
     geyserY:              localStorage.getItem('geyserY'),
     geyserEnabled:        localStorage.getItem('geyserEnabled'),
     milkUiDisabled:       localStorage.getItem('milkUiDisabled'),
@@ -7574,6 +7649,19 @@ function applyGistConfig(cfg) {
     _lsShelfTitleSize = parseInt(cfg.lsShelfTitleSize, 10) || 14;
   }
   lsSyncShelfFontInputs();
+  if (cfg.lsNoticePrimarySize != null) {
+    localStorage.setItem('lsNoticePrimarySize', cfg.lsNoticePrimarySize);
+    _lsNoticePrimarySize = parseInt(cfg.lsNoticePrimarySize, 10) || 17;
+  }
+  if (cfg.lsNoticeSecondarySize != null) {
+    localStorage.setItem('lsNoticeSecondarySize', cfg.lsNoticeSecondarySize);
+    _lsNoticeSecondarySize = parseInt(cfg.lsNoticeSecondarySize, 10) || 12;
+  }
+  if (cfg.lsNoticeHelperVisible != null) {
+    localStorage.setItem('lsNoticeHelperVisible', cfg.lsNoticeHelperVisible);
+    _lsNoticeHelperVisible = cfg.lsNoticeHelperVisible !== '0';
+  }
+  lsSyncNoticeFontInputs();
 
   // --- geyser Y ---
   if (cfg.geyserY != null) {
