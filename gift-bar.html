@@ -4560,9 +4560,14 @@ const LEAGUE_SPRINT = (() => {
     if (!d.action && d.eventType && eventMeta[d.eventType]) emitVisualEvent(d.eventType, Object.assign({}, d, { type: d.eventType }));
     if (d.action === 'popup') {
       const type = d.eventType || d.type || 'SHOW_CARD';
-      enqueueBarEvent(type, d.message || eventText(type, d), d.severity === 'warn' ? 'error' : (eventMeta[type]?.kind || d.kind || 'ok'));
+      // `previewOnly` (set by the dock's Card Art Preview trigger) means: just pop the
+      // card art, nothing else — skip the notice-box toast and the big center-screen
+      // takeover banner, which are meant for real game events, not an art preview.
+      if (!d.previewOnly) {
+        enqueueBarEvent(type, d.message || eventText(type, d), d.severity === 'warn' ? 'error' : (eventMeta[type]?.kind || d.kind || 'ok'));
+      }
       enqueuePopup(d.card, d.label || eventMeta[type]?.text?.toUpperCase() || 'SHOW CARD', d.lingerMs || 8400, Object.assign({}, d, { eventType: type }));
-      if (['CARD_DRAWN','SHOW_CARD','KING_CHANGED','PROMOTION','DEMOTION','BOSS_MVP','LOOT_CLAIMED'].includes(type)) {
+      if (!d.previewOnly && ['CARD_DRAWN','SHOW_CARD','KING_CHANGED','PROMOTION','DEMOTION','BOSS_MVP','LOOT_CLAIMED'].includes(type)) {
         showSplatPanelTakeover(d.label || eventMeta[type]?.text?.toUpperCase() || 'CARD EVENT', d.message || eventText(type, d), d.popupSub || '', type === 'KING_CHANGED' ? 7200 : 5200);
       }
     }
