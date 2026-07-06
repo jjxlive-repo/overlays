@@ -2170,6 +2170,13 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
               <input class="ctrl-in" id="los-wipe-confirm" type="text" placeholder="type CONFIRM to wipe lifetime" style="flex:1;">
               <button class="tf-btn tf-btn-danger" onclick="losWipeLifetime()">Wipe Lifetime History</button>
             </div>
+            <label class="ctrl-row" style="gap:6px;" title="Deletes every player's card entirely (not just their stats) — everyone has to !pull a brand-new card. Lifetime history/badges are untouched unless you also check the box below.">
+              <input type="checkbox" id="los-full-reset-wipe-lifetime"> <span style="font-size:9px;color:var(--txt-dim);">Also wipe lifetime history</span>
+            </label>
+            <div class="ctrl-row" style="gap:4px;">
+              <input class="ctrl-in" id="los-full-reset-confirm" type="text" placeholder="type DELETE to delete all cards" style="flex:1;">
+              <button class="tf-btn tf-btn-danger" onclick="losDeleteAllCards()">Delete All Cards (Full Reset)</button>
+            </div>
             <div class="ctrl-row" style="gap:4px;">
               <button class="tf-btn" onclick="losExportData()">Export League Data JSON</button>
               <button class="tf-btn" onclick="losImportData()">Import League Data JSON</button>
@@ -9434,6 +9441,43 @@ function losWipeLifetime() {
   if (document.getElementById('los-wipe-confirm')?.value !== 'CONFIRM') { alert('Type CONFIRM before wiping lifetime history.'); return; }
   if (!confirm('Wipe all lifetime League of Splatties history? Current player cards stay.')) return;
   losWriteLifetime({}); document.getElementById('los-wipe-confirm').value = ''; scheduleGistSave();
+}
+// Full reset — unlike "Reset Current Player Progress" (which keeps every player's card
+// and just resets their stats), this actually DELETES every card. Everyone starts from
+// zero and has to !pull a fresh card next time they type a command.
+function losDeleteAllCards() {
+  const confirmInput = document.getElementById('los-full-reset-confirm');
+  if ((confirmInput?.value || '').trim().toUpperCase() !== 'DELETE') {
+    alert('Type DELETE in the box before deleting all cards.');
+    return;
+  }
+  const alsoWipeLifetime = !!document.getElementById('los-full-reset-wipe-lifetime')?.checked;
+  if (!confirm(`Delete every player's card and start a brand-new League of Splatties?${alsoWipeLifetime ? ' Lifetime history will ALSO be wiped.' : ' Lifetime history/badges stay.'} This cannot be undone.`)) return;
+  const st = LeagueSprintState.state;
+  st.players = {};
+  st.kingUserId = null;
+  st.recentEvents = [];
+  st.activeBoss = null;
+  st.lootQueue = [];
+  st.duelQueue = [];
+  st.roundNumber = 1;
+  st.phase = 'active';
+  st.rebirthEndsAt = 0;
+  st.seasonId = losSeasonId();
+  _lsRound = 1;
+  _lsRemaining = _lsRoundLength;
+  _lsPhase = 'active';
+  LeagueSprintState.save();
+  if (alsoWipeLifetime) losWriteLifetime({});
+  lsSyncInputs();
+  lsDecorateRankings();
+  publishLeagueSprintState('EVENT - full reset - all cards deleted, fresh league started');
+  publishLeagueSprintVisual({ action: 'shelf', mode: 'leaders', cards: [], meta: 'no players yet - !pull to join' });
+  if (ablyChannel) ablyChannel.publish('league-sprint', { action: 'idle', text: `!pull - !show - !duel 1 - !reroll` }).catch(() => {});
+  confirmInput.value = '';
+  scheduleGistSave();
+  const status = document.getElementById('ls-status');
+  if (status) status.textContent = 'All cards deleted - fresh League of Splatties started';
 }
 function losExportData() {
   const payload = {
