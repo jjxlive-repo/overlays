@@ -2181,6 +2181,27 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="ctrl-btn" data-lsphase="results" style="flex:1;" onclick="lsSetPhase('results')" title="End of round reset: awards fragments, updates rankings, and opens the rebirth window.">End Reset</button>
           </div>
           <div id="ls-status" style="font-size:9px;color:var(--txt-dim);min-height:13px;text-align:center;">Round state saved locally</div>
+          <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;" title="Pop any character's card art on screen by character, league, and division — no real player needed. Handy for showing off card art on stream.">CARD ART PREVIEW</div>
+          <div class="ctrl-row" style="gap:5px;">
+            <select class="ctrl-in" id="los-preview-character" style="flex:1;">
+              <option value="wekka">Wekka · Defender</option>
+              <option value="layla">Layla · Attacker</option>
+              <option value="kinz">Kinz · Balanced</option>
+              <option value="jasper">Jasper · Gambler</option>
+              <option value="jamie">Jamie · Escapist</option>
+            </select>
+            <select class="ctrl-in" id="los-preview-league" style="width:64px;" onchange="losPreviewSyncDivisions()">
+              <option value="D">D league</option>
+              <option value="C">C league</option>
+              <option value="B">B league</option>
+              <option value="A">A league</option>
+            </select>
+            <select class="ctrl-in" id="los-preview-division" style="width:58px;"></select>
+          </div>
+          <div class="ctrl-row" style="gap:5px;">
+            <input class="ctrl-in" id="los-preview-username" type="text" placeholder="Label (optional, e.g. @showcase)" style="flex:1;">
+            <button class="tf-btn tf-btn-gold" onclick="losShowCharacterCardPreview()">Show Card</button>
+          </div>
           <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;letter-spacing:.05em;" title="Visual-only tests for the overlay renderer: popups, duel scene, leaders shelf, badges, pips, fragments, and promotions.">SPLAT CARD TESTS</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
             <button class="tf-btn" onclick="testLeagueSprint('popup')">Card Popup</button>
@@ -6152,6 +6173,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (lsTitle) lsTitle.value = _lsGameTitle;
   lsSyncShelfFontInputs();
   lsSyncNoticeFontInputs();
+  losPreviewSyncDivisions();
   const msYVal = document.getElementById('mission-strip-y-val');
   if (msYVal) msYVal.textContent = _missionStripY;
   publishSplatExplainerConfig();
@@ -7242,6 +7264,7 @@ function buildSplatCardSubsections() {
     { key:'bosses', label:'Boss Library', match:'BOSS LIBRARY', open:false },
     { key:'players', label:'Player Admin', match:'PLAYER ADMIN', open:false },
     { key:'resets', label:'Admin / Resets', match:'ADMIN / RESETS', open:false },
+    { key:'card-preview', label:'Card Art Preview', match:'CARD ART PREVIEW', open:false },
     { key:'visual-tests', label:'Splat Card Tests', match:'SPLAT CARD TESTS', open:false },
     { key:'command-engine', label:'Live Command Engine', match:'LIVE COMMAND ENGINE', open:false }
   ];
@@ -9274,6 +9297,40 @@ function losAdminSetTitle() {
 function losAdminShowCard() {
   const p = losSelectedPlayer(); if (!p) return;
     publishLeagueSprintVisual(Object.assign({ action:'popup', card:p }, lsPopupPayload('SHOW_CARD', 'showPopupLabel', 'showPopupTitle', 'showPopupSub', p), { label:'ADMIN SHOW' }));
+}
+// Repopulates the division dropdown to match the selected league — A only goes to A3/A2/A1,
+// D/C/B each run 5 down to 1 (matches LeagueSprintRankUtils' rank order).
+function losPreviewSyncDivisions() {
+  const league = document.getElementById('los-preview-league')?.value || 'D';
+  const sel = document.getElementById('los-preview-division');
+  if (!sel) return;
+  const opts = league === 'A' ? [3, 2, 1] : [5, 4, 3, 2, 1];
+  const prev = sel.value;
+  sel.innerHTML = opts.map(n => `<option value="${n}">${league}${n}</option>`).join('');
+  if (opts.includes(Number(prev))) sel.value = prev;
+}
+// Pops a card in the overlay window built purely from a chosen character + league + division —
+// no real player record needed. Lets JJ show off any card's art on stream on demand.
+function losShowCharacterCardPreview() {
+  const character = document.getElementById('los-preview-character')?.value || 'wekka';
+  const league = document.getElementById('los-preview-league')?.value || 'D';
+  const division = document.getElementById('los-preview-division')?.value || '5';
+  const charInfo = LeagueSprintState.characters[character] || { label: character, type: 'balanced' };
+  const rawLabel = (document.getElementById('los-preview-username')?.value || '').trim();
+  const username = rawLabel ? (rawLabel.startsWith('@') ? rawLabel : '@' + rawLabel) : `@${charInfo.label || character}`;
+  const card = {
+    username,
+    character,
+    type: charInfo.type,
+    currentRank: `${league}${division}`,
+    league,
+    power: 1000,
+    fragments: 0,
+    fragmentMax: league === 'A' ? 3 : 4,
+    rebirthCount: 0,
+    duelsThisRound: 0
+  };
+  publishLeagueSprintVisual(Object.assign({ action: 'popup', card }, lsPopupPayload('SHOW_CARD', 'showPopupLabel', 'showPopupTitle', 'showPopupSub', card), { label: 'CARD PREVIEW' }));
 }
 function losAdminForceRebirth() {
   const p = losSelectedPlayer(); if (!p) return;
