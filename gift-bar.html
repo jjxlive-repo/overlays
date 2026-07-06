@@ -405,12 +405,26 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 .ls-delta-badge.is-plus { color: #c7f2ff; border-color: rgba(128,199,222,.58); }
 .ls-delta-badge.is-minus { color: #ffe4e6; border-color: rgba(244,63,94,.58); }
+/* Live fight commentary — floats ABOVE the duel scene (names banner + cards) so it
+   plays out concurrently with the fight instead of being queued into the center
+   notice box (which only shows the result once the duel ends, per user feedback:
+   "notice bar announces battle after it ends, should be concurrent"). Re-renders
+   fresh on every beat so the pop animation replays each hit/block/ability. */
 .ls-duel-flavor {
-  position: absolute; top: -7px; left: 50%; transform: translateX(-50%);
-  padding: 3px 9px; border-radius: 999px; background: rgba(8,16,28,.86);
-  border: 1px solid rgba(128,199,222,.34); color: #FAF5FF;
-  font: 800 10px/1 'DM Sans', sans-serif; letter-spacing: .08em;
-  text-transform: uppercase; white-space: nowrap;
+  position: absolute; top: -86px; left: 50%; transform: translateX(-50%);
+  z-index: 93; min-width: 200px; max-width: min(600px, 90vw);
+  padding: 8px 22px; border-radius: 999px;
+  background: linear-gradient(180deg, rgba(123,47,190,.92), rgba(8,16,28,.92));
+  border: 1px solid rgba(232,121,249,.55); color: #FAF5FF;
+  font: 900 17px/1.15 'DM Sans', sans-serif; letter-spacing: .05em;
+  text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0,0,0,.6);
+  box-shadow: 0 10px 24px rgba(0,0,0,.45), 0 0 26px rgba(232,121,249,.32);
+  animation: lsFlavorPop 260ms cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes lsFlavorPop {
+  0% { transform: translateX(-50%) scale(.82); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
 }
 @keyframes lsDuelHit {
   0%,100% { transform: translateX(0); }
@@ -564,6 +578,11 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ls-card-popup .ls-art img { object-fit: contain; }
 .ls-card-mini .ls-art { width: 54px; height: 50px; }
 .ls-card-micro .ls-art { width: 64px; height: 54px; }
+/* Character art on the small shelf/explainer cards was framed with headroom baked
+   into the source image, so "contain" left the character sitting low with empty
+   space above. Crop + anchor to the top instead so the character/face reads clearly
+   at this tiny size. */
+.ls-card-micro .ls-art img { object-fit: cover; object-position: center 8%; }
 
 /* Bottom shelf cards are tiny; give rank + username their own readable footer.
    The username floats ABOVE the card frame (not overlaid on top of it) so the
@@ -581,12 +600,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ls-shelf-list .ls-card-micro .ls-card-top {
   position: absolute;
   left: 7px;
-  right: 7px;
+  right: 34px;
   bottom: 7px;
   height: 24px;
   z-index: 5;
   justify-content: flex-start;
   gap: 4px;
+  overflow: hidden;
 }
 .ls-shelf-list .ls-card-micro .ls-rank {
   min-width: 34px;
@@ -594,6 +614,24 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   font-size: var(--ls-shelf-rank-size);
   flex: 0 0 auto;
   box-shadow: 0 1px 6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.ls-shelf-list .ls-card-micro .ls-duel-num {
+  position: absolute;
+  bottom: 7px;
+  right: 7px;
+  z-index: 6;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(3,7,18,.88);
+  border: 1px solid rgba(255,255,255,.4);
+  color: #FAF5FF;
+  font: 900 14px/1 'Boogaloo', cursive;
+  box-shadow: 0 1px 6px rgba(0,0,0,.55);
 }
 .ls-shelf-list .ls-card-micro .ls-owner {
   position: absolute;
@@ -3740,6 +3778,11 @@ const LEAGUE_SPRINT = (() => {
     const idx = order.indexOf(String(rank || 'D5').toUpperCase());
     return { order, idx: idx >= 0 ? idx : 0 };
   }
+  // Best-ranked-first ordering used for the leaders shelf and for numbering duel targets,
+  // so the "#N" badge shown on a shelf card always matches what "!duel N" resolves to.
+  function sortedByRank(cards) {
+    return (cards || []).slice().sort((a, b) => rankIndex(b.currentRank).idx - rankIndex(a.currentRank).idx || (b.power || 0) - (a.power || 0));
+  }
   function shiftRank(rank, delta) {
     const r = rankIndex(rank);
     return r.order[Math.max(0, Math.min(r.order.length - 1, r.idx + delta))];
@@ -3977,7 +4020,7 @@ const LEAGUE_SPRINT = (() => {
     return cards.length ? cards : sampleCards().map(c => ensureCard(c.username, c));
   }
   function chooseDuelTarget(player, arg) {
-    const cards = allKnownCards().filter(c => userKey(c.username) !== userKey(player.username));
+    const cards = sortedByRank(allKnownCards().filter(c => userKey(c.username) !== userKey(player.username)));
     if (!cards.length) return null;
     const token = String(arg || '1').trim().toUpperCase();
     if (/^[1-9]\d*$/.test(token)) return cards[(Number(token) - 1) % cards.length];
@@ -4127,6 +4170,7 @@ const LEAGUE_SPRINT = (() => {
     if (variant === 'micro') {
       return `<div class="${classes.join(' ')}" data-league="${esc(card.league)}">
         ${card.isLeagueLeader ? `<div class="ls-leader-badge">${esc(card.league)} LEADER</div>` : ''}
+        ${opts.rankNum ? `<div class="ls-duel-num" title="!duel ${esc(opts.rankNum)}">#${esc(opts.rankNum)}</div>` : ''}
         ${artHtml(card)}
         <div class="ls-owner">${esc(card.username)}</div>
         <div class="ls-card-top"><span class="ls-rank">${esc(card.currentRank)}</span><span>${battleChipHtml(card, true)}${rebirthChipHtml(card, true)}</span></div>
@@ -4246,14 +4290,16 @@ const LEAGUE_SPRINT = (() => {
       return;
     }
     const beats = Array.isArray(d.beats) && d.beats.length ? d.beats : [];
+    // Fight commentary plays live via the floating .ls-duel-flavor caption (passed as the
+    // `flavor` arg to renderDuelFrame below) — it must NOT also go through enqueueBarEvent,
+    // which queues into the center notice box and only drains after the duel ends (that
+    // was the "notice bar announces the battle after it's over" bug).
     renderDuelFrame(attacker, defender, { attacker: 100, defender: 100 }, d.targetLabel || 'FACE OFF', { intro: true });
-    enqueueBarEvent('DUEL_STARTED', d.message || `${attacker.username} vs ${defender.username}`, 'ok');
     let step = 0;
     const advance = () => {
       if (step >= beats.length) {
         const result = d.result || {};
         const winner = result.winner || result.winnerCard || (result.winnerId === attacker.ownerId ? attacker : defender);
-        enqueueBarEvent('DUEL_RESULT', result.message || d.resultMessage || `RESULT - ${winner?.username || 'winner'} wins`, 'result');
         showSplatPanelTakeover('DUEL RESULT', result.message || d.resultMessage || `${winner?.username || 'winner'} wins`, result.kicker || '', 5600);
         enqueueShelfEvent('DUEL_RESULT', [attacker, defender], result.shelfText || 'recent duels');
         const winnerSide = result.winnerId === attacker.ownerId ? 'attacker' : 'defender';
@@ -4279,12 +4325,11 @@ const LEAGUE_SPRINT = (() => {
       const beat = beats[step++];
       if (beat.type === 'announce') {
         renderDuelFrame(attacker, defender, { attacker: beat.attackerHp ?? 100, defender: beat.defenderHp ?? 100 }, beat.label || beat.text || 'ABILITY');
-        enqueueBarEvent('DUEL_BEAT', beat.text || beat.label || 'ABILITY', 'ok');
         setTimeout(advance, Number(beat.delayMs) || 1300);
         return;
       }
       const hp = { attacker: beat.attackerHp ?? beat.hp?.attacker ?? 100, defender: beat.defenderHp ?? beat.hp?.defender ?? 100 };
-      renderDuelFrame(attacker, defender, hp, beat.label || beat.type || '');
+      renderDuelFrame(attacker, defender, hp, beat.label || beat.text || beat.message || beat.type || 'HIT');
       const targetSide = beat.target === 'attacker' ? 'attacker' : 'defender';
       const cardEl = sprintCenter?.querySelector(`[data-side="${targetSide}"]`);
       cardEl?.classList.add(beat.type === 'block' || beat.type === 'dodge' ? 'is-boost' : 'is-hit');
@@ -4294,7 +4339,6 @@ const LEAGUE_SPRINT = (() => {
         dmg.textContent = `${beat.type === 'crit' ? 'CRIT ' : ''}-${Math.max(0, Number(beat.damage) || 0)}`;
         cardEl.appendChild(dmg);
       }
-      enqueueBarEvent('DUEL_BEAT', beat.text || beat.message || 'HIT', beat.type === 'final' ? 'result' : 'ok');
       setTimeout(advance, Number(beat.delayMs) || 720);
     };
     setTimeout(advance, 620);
@@ -4340,11 +4384,14 @@ const LEAGUE_SPRINT = (() => {
   }
   function renderShelf(mode, cards, meta) {
     if (!bottomShelf) return;
-    const safeCards = decorateCards(cards || sampleCards()).slice(0, 7);
+    const decorated = decorateCards(cards || sampleCards());
+    // Only re-order for the real leaders/results shelf — 'featured' and test states
+    // pass a deliberately custom order (e.g. pip/badge demos) that must stay as-is.
+    const safeCards = (mode === 'leaders' ? sortedByRank(decorated) : decorated).slice(0, 7);
     const title = mode === 'duel' ? 'LIVE DUEL' : mode === 'featured' ? 'FEATURED' : 'LEAGUE LEADERS';
-    const sub = meta || (mode === 'duel' ? 'active now' : 'username + rank');
+    const sub = meta || (mode === 'duel' ? 'active now' : 'username + rank · # = !duel N');
     bottomShelf.innerHTML = `<div><div class="ls-shelf-title">${esc(title)}</div><div class="ls-shelf-sub">${esc(sub)}</div></div>
-      <div class="ls-shelf-list">${safeCards.map(c => renderCard(c, 'micro', { featured: mode === 'featured' })).join('')}</div>`;
+      <div class="ls-shelf-list">${safeCards.map((c, i) => renderCard(c, 'micro', { featured: mode === 'featured', rankNum: mode === 'leaders' ? i + 1 : null })).join('')}</div>`;
     shelfMode = mode;
   }
   function renderRankingsMarquee(cards, changed) {
