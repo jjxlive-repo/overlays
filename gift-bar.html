@@ -155,7 +155,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .gift-animations-disabled #gift-card { display: none !important; }
 
 #leagueCardPopupZone {
-  position: absolute; top: 88px; left: 42px;
+  position: absolute; top: var(--event-card-y, 88px); left: var(--event-card-x, 42px);
   width: 360px; min-height: 590px; pointer-events: none; z-index: 42;
 }
 #leagueCardPopupZone .ls-popup-shell {
@@ -221,9 +221,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 #gift-bar.gift-info-visible #leagueSprintStatus,
 #gift-bar.ls-right-panel-visible #leagueSprintStatus {
-  padding: 0 10px;
-  font-size: 13px;
-  letter-spacing: .035em;
+  padding: 6px 10px;
 }
 /* Compact mode (gifter/explainer panel active) only narrows the notice box — the frame's
    height and font sizes stay exactly the same so nothing reshapes, text just wraps tighter. */
@@ -235,11 +233,37 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #gift-bar.ep-passive-active #leagueSprintCenter {
   opacity: .72;
 }
+/* ══ League of Splatties HUD (left zone) — a branded mini-game status block, not plain
+   utility text: badge title, round number, and a big high-contrast countdown timer. ══ */
 #leagueSprintStatus {
-  display: flex; align-items: center; min-width: 0; height: 52px; padding: 0 15px;
-  border-radius: 10px; background: rgba(8,16,28,.78); border: 1px solid rgba(245,244,239,.12);
-  color: rgba(245,244,239,.90); font-size: 17px; font-weight: 800; letter-spacing: .05em;
-  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 0; width: 100%; height: 118px; padding: 8px 12px; gap: 2px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(28,12,48,.88), rgba(8,16,28,.88));
+  border: 1px solid rgba(168,85,247,.4);
+  box-shadow: 0 8px 22px rgba(0,0,0,.32), 0 0 0 1px rgba(255,255,255,.03) inset;
+}
+.ls-hud-badge {
+  color: #FBBF24; font: 900 clamp(11px, 1.1vw, 14px)/1.15 'DM Sans', sans-serif;
+  letter-spacing: .085em; text-transform: uppercase; text-align: center;
+  text-shadow: 0 1px 6px rgba(0,0,0,.75), 0 0 14px rgba(251,191,36,.4);
+  white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.ls-hud-round {
+  color: rgba(245,244,239,.85); font: 800 11px/1 'DM Sans', sans-serif;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.ls-hud-timer {
+  display: flex; flex-direction: column; align-items: center; gap: 0; margin-top: 3px;
+}
+.ls-hud-timer-digits {
+  color: #9fd8ea; font: 400 clamp(24px, 2.6vw, 32px)/1 'Boogaloo', cursive;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  text-shadow: 0 2px 8px rgba(0,0,0,.8), 0 0 16px rgba(128,199,222,.5);
+}
+.ls-hud-timer-label {
+  color: rgba(159,216,234,.9); font: 800 9px/1.2 'DM Sans', sans-serif;
+  letter-spacing: .09em; text-transform: uppercase;
 }
 /* Legacy right-column event pill — no longer rendered; the center notice box carries
    minor Splat Cards feedback now. Rules kept (harmless) in case anything still toggles
@@ -1211,6 +1235,21 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
     linear-gradient(180deg, rgba(18,10,8,0.98), rgba(28,10,42,0.96));
   border-left-color: rgba(251,191,36,.55);
   box-shadow: -16px 0 34px rgba(251,191,36,.14), inset 0 0 0 1px rgba(251,191,36,.16);
+}
+/* Reserved layout zones, not just z-index: a major-event takeover (round recap,
+   promotion, rebirth window, etc.) must never render underneath the card popup
+   (which always occupies the upper-left, see #leagueCardPopupZone). When both are
+   on screen at once, move the event panel to a guaranteed-clear bottom-center spot
+   instead of leaving it in the bar's normal right-side slot. */
+#gift-bar.has-card-popup.ls-panel-takeover #bar-info {
+  position: fixed;
+  left: 50%; right: auto; top: auto; bottom: var(--event-notification-y, 170px);
+  transform: translateX(calc(-50% + var(--event-notification-x, 0px)));
+  width: min(640px, 86vw); height: auto; min-height: 132px;
+  border-left: none; border: 1px solid rgba(251,191,36,.4);
+  border-radius: 16px;
+  align-items: center; text-align: center;
+  box-shadow: 0 18px 40px rgba(0,0,0,.5), 0 0 34px rgba(251,191,36,.18);
 }
 #bar-info-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; min-height: 18px; }
 #bar-slot-title {
@@ -2638,7 +2677,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   <div id="gb-milk-fill"></div>
   <div id="gb-bar-text"></div>
   <div id="leagueSprintBar">
-    <div id="leagueSprintStatus">LEAGUE OF SPLATTIES - R3 - 08:42</div>
+    <div id="leagueSprintStatus"><div class="ls-hud-badge">🫟 LEAGUE OF SPLATTIES</div><div class="ls-hud-round">ROUND 3</div><div class="ls-hud-timer"><span class="ls-hud-timer-digits">08:42</span><span class="ls-hud-timer-label">UNTIL LEAGUE RESET</span></div></div>
     <div id="leagueSprintCenter"><div class="ls-idle-hint">!pull - !show - !duel 1 - !reroll</div></div>
     <div id="leagueSprintEvent">EVENT - viewer mini-game</div>
   </div>
@@ -2947,6 +2986,11 @@ let leaderboard={}, activeSlots=SLOT_DEFS.slice(0,5);
 let currentIdx=0, rotateTimer=null, progressAnim=null;
 let pinned=false, alertQueue=[], alertActive=false;
 let alertTimeout=null, infoFadeTimer=null, monthlyTimer=null, activePlat='default';
+// Master switch for the gifter leaderboard slides (daily/weekly/monthly/youtube/tiktok/custom).
+// Persists across any live 'giftr' data that streams in afterward — a one-time clear isn't
+// enough because a real gift event can immediately repopulate the leaderboard. When this is
+// false, the right-side panel only ever shows Splat Explainer slides (if those are enabled).
+let gifterSlidesEnabled = true;
 let lsExplainerEnabled = false, lsPanelTakeoverTimer = null, lsPanelTakeoverActive = false;
 
 /* ══ GIFT BAR UTILS ══ */
@@ -3114,7 +3158,23 @@ function syncRightPanelVisibility(hasGiftData){
   }
   if(visible)bar?.classList.add('visible');
 }
-function onGiftrData(data){leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];rebuildRightPanelSlots(enabled);syncRightPanelVisibility(hasAny);if(!activeSlots.length)return;if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive&&!lsPanelTakeoverActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
+function onGiftrData(data){
+  // Gifter slides can be switched off from the dock entirely; that choice persists even
+  // if a real gift event streams in afterward and would otherwise repopulate the leaderboard.
+  if(!gifterSlidesEnabled){
+    leaderboard={};
+    rebuildRightPanelSlots([]);
+    syncRightPanelVisibility(false);
+    if(!activeSlots.length)return;
+    if(currentIdx>=activeSlots.length)currentIdx=0;
+    if(!alertActive&&!lsPanelTakeoverActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}
+    return;
+  }
+  leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];rebuildRightPanelSlots(enabled);syncRightPanelVisibility(hasAny);if(!activeSlots.length)return;if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive&&!lsPanelTakeoverActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
+function applyGifterSlidesConfig(data){
+  gifterSlidesEnabled = data?.enabled !== false;
+  onGiftrData(gifterSlidesEnabled ? leaderboard : {});
+}
 function applySplatExplainerConfig(data){
   lsExplainerEnabled=!!data?.enabled;
   rebuildRightPanelSlots(activeSlots.filter(s=>s.kind!=='explainer').map(s=>s.key));
@@ -3758,13 +3818,29 @@ const LEAGUE_SPRINT = (() => {
     const s = total % 60;
     return `${m}:${String(s).padStart(2, '0')}`;
   }
+  // Renders the League of Splatties left-zone HUD: branded badge + round + big timer.
+  // `statusText` is a back-compat fallback for any caller still sending a single string.
+  function renderStatusHud(opts = {}) {
+    if (!sprintStatus) return;
+    const badge = `<div class="ls-hud-badge">🫟 ${esc(gameTitle.toUpperCase())}</div>`;
+    if (opts.statusText) {
+      sprintStatus.innerHTML = `${badge}<div class="ls-hud-round">${esc(opts.statusText)}</div>`;
+      return;
+    }
+    const roundLabel = opts.roundLabel || '';
+    const clock = opts.clock || '';
+    const timerLabel = opts.timerLabel || 'UNTIL LEAGUE RESET';
+    sprintStatus.innerHTML = `${badge}
+      ${roundLabel ? `<div class="ls-hud-round">${esc(roundLabel)}</div>` : ''}
+      ${clock ? `<div class="ls-hud-timer"><span class="ls-hud-timer-digits">${esc(clock)}</span><span class="ls-hud-timer-label">${esc(timerLabel)}</span></div>` : ''}`;
+  }
   function startRebirthCountdown(endsAt) {
     clearInterval(rebirthCountdownTimer);
     const end = Number(endsAt || 0);
     if (!end || !sprintStatus) return;
     const tick = () => {
       const left = end - Date.now();
-      sprintStatus.textContent = `${gameTitle.toUpperCase()} - END OF ROUND RESET - REBIRTH WINDOW ${formatClock(left)}`;
+      renderStatusHud({ roundLabel: 'REBIRTH WINDOW', clock: formatClock(left), timerLabel: 'UNTIL WINDOW CLOSES' });
       if (left <= 0) {
         clearInterval(rebirthCountdownTimer);
         rebirthCountdownTimer = null;
@@ -4068,10 +4144,16 @@ const LEAGUE_SPRINT = (() => {
       <div class="ls-card-footer">${battleChipHtml(card, compact)}${rebirthChipHtml(card, compact)}</div>
     </div>`;
   }
+  // Card popup vs. event-notification overlap fix: whenever the card popup is on screen,
+  // flag it on #gift-bar so the round-recap/event panel (#bar-info) can reposition itself
+  // out of the way instead of rendering underneath the card. See .has-card-popup in CSS.
+  function setCardPopupFlag(active) {
+    document.getElementById('gift-bar')?.classList.toggle('has-card-popup', !!active);
+  }
   function hidePopupWithPop() {
     if (!popupZone) return;
     popupZone.classList.add('hiding');
-    setTimeout(() => popupZone.classList.remove('visible', 'hiding'), 470);
+    setTimeout(() => { popupZone.classList.remove('visible', 'hiding'); setCardPopupFlag(false); }, 470);
   }
   function showPopup(card, label = 'SHOW CARD', lingerMs = 8400, opts = {}) {
     if (!popupZone) return;
@@ -4089,7 +4171,7 @@ const LEAGUE_SPRINT = (() => {
       </div>
       <div class="ls-popup-card-wrap">${renderCard(safeCard, 'popup')}</div>
     </div></div>`;
-    requestAnimationFrame(() => popupZone.classList.add('visible'));
+    requestAnimationFrame(() => { popupZone.classList.add('visible'); setCardPopupFlag(true); });
     popupTimer = setTimeout(hidePopupWithPop, lingerMs);
   }
   function showRebirthPopup(oldCard, newCard, label = 'REBIRTH', lingerMs = 7600, opts = {}) {
@@ -4110,7 +4192,7 @@ const LEAGUE_SPRINT = (() => {
         <div class="ls-rebirth-new">${renderCard(after, 'popup')}</div>
       </div>
     </div></div>`;
-    requestAnimationFrame(() => popupZone.classList.add('visible'));
+    requestAnimationFrame(() => { popupZone.classList.add('visible'); setCardPopupFlag(true); });
     popupTimer = setTimeout(hidePopupWithPop, lingerMs);
   }
   function renderDuel(left, right, eventText) {
@@ -4379,6 +4461,7 @@ const LEAGUE_SPRINT = (() => {
         emitVisualEvent('REBIRTH_DENIED', { username, card, reason: 'not in rebirth window' });
         return true;
       }
+      const oldCard = Object.assign({}, card);
       const types = Object.keys(typeLabels);
       const currentTypeIndex = Math.max(0, types.indexOf(card.type));
       const newType = types[(currentTypeIndex + 1 + Math.abs(hashString(username)) % (types.length - 1)) % types.length];
@@ -4391,7 +4474,9 @@ const LEAGUE_SPRINT = (() => {
         fragments: 0,
         fragmentMax: newRank[0] === 'A' ? 3 : 4
       });
-      emitVisualEvent('REBIRTH_SUCCESS', { username, card: rerolled, detail: `${typeLabels[newType].label}, ${newRank}` });
+      // Pass oldCard so the popup shows the real burn-away -> reveal animation instead of
+      // just the new card appearing with nothing preceding it.
+      emitVisualEvent('REBIRTH_SUCCESS', { username, card: rerolled, oldCard, detail: `${typeLabels[newType].label}, ${newRank}` });
       return true;
     }
     emitVisualEvent('INVALID_COMMAND', { username, reason: parsed.raw });
@@ -4405,7 +4490,17 @@ const LEAGUE_SPRINT = (() => {
   function handleMessage(d) {
     if (!d) return;
     if (d.gameTitle || d.title) setGameTitle(d.gameTitle || d.title);
-    if (d.status && sprintStatus) sprintStatus.textContent = d.status;
+    if (d.round != null || d.remainingSec != null) {
+      const round = Math.max(1, Number(d.round) || 1);
+      const remaining = Math.max(0, Number(d.remainingSec) || 0);
+      renderStatusHud({
+        roundLabel: `ROUND ${round}`,
+        clock: formatClock(remaining * 1000),
+        timerLabel: d.phase === 'rebirth' ? 'UNTIL WINDOW CLOSES' : 'UNTIL LEAGUE RESET'
+      });
+    } else if (d.status && sprintStatus) {
+      renderStatusHud({ statusText: d.status });
+    }
     if (d.phase) setPhase(d.phase);
     if (d.message && !d.event && !d.action) enqueueBarEvent(d.eventType || d.type || 'COMMAND_RECEIVED', d.message, d.severity === 'warn' ? 'error' : d.kind || 'ok');
     if (d.event) enqueueBarEvent(d.type || 'DUEL_COMMAND_RECEIVED', d.event, d.kind || 'ok');
@@ -4512,10 +4607,8 @@ function applyLeagueSprintState(d) {
   if (!d) return;
   const round = Math.max(1, Number(d.round) || 1);
   const remaining = Math.max(0, Number(d.remainingSec) || 0);
-  const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
-  const ss = String(remaining % 60).padStart(2, '0');
   LEAGUE_SPRINT.handleMessage({
-    status: `${String(d.gameTitle || d.title || 'League of Splatties').toUpperCase()} - R${round} - ${mm}:${ss}`,
+    round, remainingSec: remaining,
     gameTitle: d.gameTitle || d.title || 'League of Splatties',
     event: d.event || 'EVENT - viewer mini-game',
     phase: d.phase || (remaining <= 0 ? 'results' : 'active')
@@ -4525,6 +4618,7 @@ function applyLeagueSprintState(d) {
 ablyChannel.subscribe('splat-card-layout', msg => applySplatCardLayout(msg?.data));
 ablyChannel.subscribe('league-sprint-state', msg => applyLeagueSprintState(msg?.data));
 ablyChannel.subscribe('splat-explainer-config', msg => applySplatExplainerConfig(msg?.data || {}));
+ablyChannel.subscribe('gifter-slides-config', msg => applyGifterSlidesConfig(msg?.data || {}));
 
 ablyChannel.subscribe('geyser-config', msg => {
   const d = msg?.data || {};

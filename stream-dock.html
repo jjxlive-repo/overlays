@@ -7079,6 +7079,7 @@ function dockToggleStreamBar() {
     }
     if (_dockGifterHighlightVisible) {
       _dockGifterHighlightVisible = false;
+      if (ablyChannel) ablyChannel.publish('gifter-slides-config', { enabled: false }).catch(() => {});
       gbUnfeature();
     }
     if (_ttbConfig?.enabled) ttbDockSetEnabled(false);
@@ -7145,6 +7146,9 @@ function dockToggleGifterHighlight() {
     publishOverlayToggles();
   }
   _dockGifterHighlightVisible = !_dockGifterHighlightVisible;
+  // Publish a persistent on/off switch — a one-time clear isn't enough because a real gift
+  // event can immediately repopulate the overlay's leaderboard slides right after.
+  if (ablyChannel) ablyChannel.publish('gifter-slides-config', { enabled: _dockGifterHighlightVisible }).catch(() => {});
   if (_dockGifterHighlightVisible) gbRefresh();
   else gbUnfeature();
   doFlash(_dockGifterHighlightVisible ? 'green' : 'red');
