@@ -1997,7 +1997,7 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
             <button class="ctrl-btn c-on" style="flex:1;" onclick="pushMissionStripFrom('ls-mission-strip-text-input')" title="Sends this mission strip text to the overlay and keeps it visible.">Send Mission Strip</button>
             <button class="ctrl-btn" style="flex:1;" onclick="toggleMissionStripVisible(true)" title="Shows the mission strip using the last saved text.">Show Mission Strip</button>
           </div>
-          <div class="ctrl-row" style="gap:5px;align-items:center;" title="Adds Splat Cards guide slides into the right-side slide rotation. Important game events briefly take over the same panel.">
+          <div class="ctrl-row" style="gap:5px;align-items:center;" title="Adds Splat Cards guide slides into the top-camera info panel. It no longer lives inside or resizes the middle Splat bar.">
             <span class="ctrl-lbl" style="min-width:92px;">Explainer slides</span>
             <button class="ctrl-btn" id="ls-explainer-toggle" style="flex:1;" onclick="lsToggleExplainerSlides()">Off</button>
             <button class="ctrl-btn" style="flex:1;" onclick="publishSplatExplainerConfig()">Send to Overlay</button>
@@ -5318,6 +5318,8 @@ const LAYOUT_ELEMENTS = [
     y:{min:0,max:1824} },
   { id:'league-shelf', label:'Bottom card shelf', group:'Splat Cards',
     y:{min:0,max:1766}, scale:{min:55,max:180} },
+  { id:'ls-side-panel', label:'Top camera info panel', group:'Splat Cards',
+    x:{min:0,max:780}, y:{min:40,max:430} },
   { id:'mission-strip', label:'Mission Strip', group:'Mission Strip',
     y:{min:-200,max:600} },
   { id:'geyser', label:'Geyser (EQ wave)', group:'Geyser',
@@ -5362,6 +5364,7 @@ function layoutGet(elDef, field) {
     case 'splat-pos': return field === 'y' ? _splatPosLevel : null;
     case 'gift-bar': return field === 'y' ? _giftBarY : (field === 'scale' ? _splatCardScale : null);
     case 'league-shelf': return field === 'y' ? _leagueShelfY : (field === 'scale' ? _leagueShelfScale : null);
+    case 'ls-side-panel': return field === 'x' ? _lsSidePanelX : (field === 'y' ? _lsSidePanelY : null);
     case 'mission-strip': return field === 'y' ? _missionStripY : null;
     case 'geyser': return field === 'y' ? _geyserY : null;
     case 'cg-stage': return field === 'scale' ? _cgStageScale : null;
@@ -5406,6 +5409,11 @@ function layoutSet(elDef, field, val) {
     case 'league-shelf':
       if (field === 'y') { _leagueShelfY = val; publishSplatCardLayout(); }
       if (field === 'scale') { _leagueShelfScale = val; publishSplatCardLayout(); }
+      break;
+    case 'ls-side-panel':
+      if (field === 'x') _lsSidePanelX = val;
+      if (field === 'y') _lsSidePanelY = val;
+      publishSplatCardLayout();
       break;
     case 'mission-strip':
       nudgeMissionStrip(val - _missionStripY);
@@ -5935,6 +5943,8 @@ let _giftBarY = parseInt(localStorage.getItem('giftBarY') || '450', 10);
 let _splatCardScale = parseInt(localStorage.getItem('splatCardScale') || '100', 10);
 let _leagueShelfY = Math.max(0, Math.min(1920 - 154, parseInt(localStorage.getItem('leagueShelfY') || String(1920 - 154), 10)));
 let _leagueShelfScale = parseInt(localStorage.getItem('leagueShelfScale') || '100', 10);
+let _lsSidePanelX = parseInt(localStorage.getItem('lsSidePanelX') || '726', 10);
+let _lsSidePanelY = parseInt(localStorage.getItem('lsSidePanelY') || '132', 10);
 let _lsShelfNameSize = parseInt(localStorage.getItem('lsShelfNameSize') || '17', 10);
 let _lsShelfRankSize = parseInt(localStorage.getItem('lsShelfRankSize') || '24', 10);
 let _lsShelfTitleSize = parseInt(localStorage.getItem('lsShelfTitleSize') || '18', 10);
@@ -6348,6 +6358,8 @@ function publishSplatCardLayout(extra) {
   localStorage.setItem('splatCardScale', _splatCardScale);
   localStorage.setItem('leagueShelfY', _leagueShelfY);
   localStorage.setItem('leagueShelfScale', _leagueShelfScale);
+  localStorage.setItem('lsSidePanelX', _lsSidePanelX);
+  localStorage.setItem('lsSidePanelY', _lsSidePanelY);
   localStorage.setItem('lsShelfNameSize', _lsShelfNameSize);
   localStorage.setItem('lsShelfRankSize', _lsShelfRankSize);
   localStorage.setItem('lsShelfTitleSize', _lsShelfTitleSize);
@@ -6361,6 +6373,8 @@ function publishSplatCardLayout(extra) {
       scale: _splatCardScale / 100,
       shelfTop: _leagueShelfY,
       shelfScale: _leagueShelfScale / 100,
+      sidePanelX: _lsSidePanelX,
+      sidePanelY: _lsSidePanelY,
       shelfNameSize: _lsShelfNameSize,
       shelfRankSize: _lsShelfRankSize,
       shelfTitleSize: _lsShelfTitleSize,
@@ -7059,7 +7073,7 @@ function dockBuildQuickToggles() {
       ${dockToggleHtml('Crowd Glass', "dockQuickToggle('crowd-glass')", 'crowd-glass')}
       ${dockToggleHtml('New Here Pile', "dockQuickToggle('new-here')", 'new-here')}
       ${dockToggleHtml('Gifter Highlight', "dockQuickToggle('gifter-highlight')", 'gifter-highlight')}
-      ${dockToggleHtml('Gifter Slide', "dockQuickToggle('gift-bar')", 'gift-bar')}
+      ${dockToggleHtml('Top Camera Gifter Panel', "dockQuickToggle('gift-bar')", 'gift-bar')}
       ${dockToggleHtml('Top Gifters', "dockQuickToggle('top-gifters')", 'top-gifters')}
       ${dockToggleHtml('Bait Card', "dockQuickToggle('bait')", 'bait')}
       ${dockToggleHtml('Team Timing', "dockQuickToggle('team-timing')", 'team-timing')}
@@ -7590,6 +7604,8 @@ function gistGetConfig() {
     splatCardScale:       localStorage.getItem('splatCardScale'),
     leagueShelfY:         localStorage.getItem('leagueShelfY'),
     leagueShelfScale:     localStorage.getItem('leagueShelfScale'),
+    lsSidePanelX:         localStorage.getItem('lsSidePanelX'),
+    lsSidePanelY:         localStorage.getItem('lsSidePanelY'),
     lsShelfNameSize:      localStorage.getItem('lsShelfNameSize'),
     lsShelfRankSize:      localStorage.getItem('lsShelfRankSize'),
     lsShelfTitleSize:     localStorage.getItem('lsShelfTitleSize'),
@@ -7712,6 +7728,14 @@ function applyGistConfig(cfg) {
   if (cfg.leagueShelfScale != null) {
     localStorage.setItem('leagueShelfScale', cfg.leagueShelfScale);
     _leagueShelfScale = parseInt(cfg.leagueShelfScale, 10) || 100;
+  }
+  if (cfg.lsSidePanelX != null) {
+    localStorage.setItem('lsSidePanelX', cfg.lsSidePanelX);
+    _lsSidePanelX = Math.max(0, Math.min(780, parseInt(cfg.lsSidePanelX, 10) || 726));
+  }
+  if (cfg.lsSidePanelY != null) {
+    localStorage.setItem('lsSidePanelY', cfg.lsSidePanelY);
+    _lsSidePanelY = Math.max(40, Math.min(430, parseInt(cfg.lsSidePanelY, 10) || 132));
   }
   if (cfg.lsShelfNameSize != null) {
     localStorage.setItem('lsShelfNameSize', cfg.lsShelfNameSize);

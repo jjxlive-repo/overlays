@@ -27,8 +27,14 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   --ls-ink: #1a1118;
   --ls-accent-purple: #8e71d4;
   --ls-accent-cyan: #80c7de;
-  --ls-bar-height: 136px;
-  --ls-bottom-shelf-height: 154px;
+  --ls-chrome: #0B0D16;
+  --ls-panel: #1D1830;
+  --ls-panel-mid: #211A35;
+  --ls-track: #14101C;
+  --ls-positive: #7FE0C4;
+  --ls-negative: #E8926B;
+  --ls-bar-height: 110px;
+  --ls-bottom-shelf-height: 177px;
   --ls-popup-card-width: 240px;
   --ls-shelf-name-size: 17px;
   --ls-shelf-rank-size: 24px;
@@ -180,14 +186,14 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 #leagueSprintBar {
   position: absolute; inset: 0; height: var(--ls-bar-height);
-  display: grid; grid-template-columns: minmax(210px, 286px) minmax(360px, 1fr); align-items: center;
-  gap: 10px; padding: 0 18px; pointer-events: none; z-index: 22;
+  display: grid; grid-template-columns: 260px minmax(0, 1fr) 278px; align-items: center;
+  gap: 10px; padding: 10px 28px; pointer-events: none; z-index: 22;
   color: var(--ls-card-text); font-family: 'Nunito', sans-serif;
   background:
-    linear-gradient(90deg, rgba(8,16,28,.82), rgba(24,18,46,.74), rgba(8,16,28,.84)),
-    repeating-linear-gradient(90deg, rgba(128,199,222,.12) 0 3px, transparent 3px 14px);
-  border-top: 1px solid rgba(192,132,252,.35);
-  border-bottom: 1px solid rgba(192,132,252,.42);
+    linear-gradient(90deg, rgba(11,13,22,.94), rgba(29,24,48,.88), rgba(11,13,22,.94)),
+    repeating-linear-gradient(90deg, rgba(243,232,210,.08) 0 2px, transparent 2px 13px);
+  border-top: 1px solid rgba(255,255,255,.14);
+  border-bottom: 1px solid rgba(232,146,107,.58);
   box-shadow: 0 12px 34px rgba(0,0,0,.28);
   transition: opacity .24s ease, filter .24s ease;
 }
@@ -212,30 +218,21 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   opacity: 1;
   filter: none;
 }
-/* Right zone (gifter/explainer/major-event slide panel) lives in #bar-info, outside this
-   bar, and reserves its space via padding-right below. #leagueSprintEvent is retired as a
-   visual element (superseded by the center notice box) but stays in the DOM/JS so nothing
-   that still writes to it errors. */
+/* The middle Splat bar owns three lanes only: state/timer, command notice, and event log.
+   Gifter/explainer slides are pinned to the top-camera region and never reserve bar space. */
 #gift-bar.gift-info-visible #leagueSprintBar,
 #gift-bar.ls-right-panel-visible #leagueSprintBar {
-  padding-right: 386px;
-  grid-template-columns: minmax(180px, 286px) minmax(0, 1fr);
-  gap: 8px;
+  padding: 10px 28px;
+  grid-template-columns: 260px minmax(0, 1fr) 278px;
+  gap: 10px;
 }
 #gift-bar.gift-info-visible #leagueSprintBar.ls-duel-active,
 #gift-bar.ls-right-panel-visible #leagueSprintBar.ls-duel-active {
-  grid-template-columns: minmax(190px, 272px) minmax(280px, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr) 278px;
 }
 #gift-bar.gift-info-visible #leagueSprintStatus,
 #gift-bar.ls-right-panel-visible #leagueSprintStatus {
-  padding: 6px 10px;
-}
-/* Compact mode (gifter/explainer panel active) only narrows the notice box — the frame's
-   height and font sizes stay exactly the same so nothing reshapes, text just wraps tighter. */
-#gift-bar.gift-info-visible #leagueSprintBar:not(.ls-duel-active) .ls-notice,
-#gift-bar.ls-right-panel-visible #leagueSprintBar:not(.ls-duel-active) .ls-notice {
-  max-width: 100%;
-  padding: 8px 16px;
+  padding: 8px 12px;
 }
 #gift-bar.ep-passive-active #leagueSprintCenter {
   opacity: .72;
@@ -244,10 +241,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
    utility text: badge title, round number, and a big high-contrast countdown timer. ══ */
 #leagueSprintStatus {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  min-width: 0; width: 100%; height: 118px; padding: 8px 12px; gap: 2px;
+  min-width: 0; width: 100%; height: 82px; padding: 8px 12px; gap: 2px;
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(28,12,48,.88), rgba(8,16,28,.88));
-  border: 1px solid rgba(168,85,247,.4);
+  background: linear-gradient(180deg, rgba(42,24,48,.90), rgba(20,16,28,.92));
+  border: 1px solid rgba(232,146,107,.58);
   box-shadow: 0 8px 22px rgba(0,0,0,.32), 0 0 0 1px rgba(255,255,255,.03) inset;
 }
 .ls-hud-badge {
@@ -272,25 +269,31 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   color: rgba(255,241,224,.74); font: 800 9px/1.2 'Nunito', sans-serif;
   letter-spacing: .09em; text-transform: uppercase;
 }
-/* Legacy right-column event pill — no longer rendered; the center notice box carries
-   minor Splat Cards feedback now. Rules kept (harmless) in case anything still toggles
-   these classes on the hidden element. */
-#leagueSprintEvent { display: none !important; }
+/* Right lane: low-motion event log. This is the only middle-bar lane for minor/major
+   text feedback, so gifter slides do not compete with Splat Cards. */
+#leagueSprintEvent {
+  min-width: 0; height: 82px; padding: 8px 12px; border-radius: 14px;
+  display: flex !important; align-items: center; justify-content: center;
+  background: rgba(20,16,28,.86); border: 1px solid rgba(255,255,255,.14);
+  color: rgba(243,232,210,.90); font: 800 13px/1.18 'Nunito', sans-serif;
+  letter-spacing: .055em; text-transform: uppercase; text-align: center;
+  overflow: hidden;
+}
 #leagueSprintEvent.ls-event-ok {
-  border-color: rgba(128,199,222,.42);
-  color: #FAF5FF;
-  box-shadow: 0 0 18px rgba(128,199,222,.18);
+  border-color: rgba(255,201,64,.68);
+  color: #fff7ec;
+  box-shadow: 0 0 18px rgba(255,201,64,.16);
 }
 #leagueSprintEvent.ls-event-error {
-  border-color: rgba(244,63,94,.68);
-  color: #FFE4E6;
-  background: rgba(88,22,42,.82);
-  box-shadow: 0 0 22px rgba(244,63,94,.22);
+  border-color: rgba(232,146,107,.78);
+  color: #FFE7D7;
+  background: rgba(64,28,35,.86);
+  box-shadow: 0 0 22px rgba(232,146,107,.20);
 }
 #leagueSprintEvent.ls-event-result {
-  border-color: rgba(232,121,249,.55);
-  color: #FAF5FF;
-  box-shadow: 0 0 22px rgba(232,121,249,.2);
+  border-color: rgba(127,224,196,.65);
+  color: #D9FFF3;
+  box-shadow: 0 0 22px rgba(127,224,196,.18);
 }
 #leagueSprintCenter {
   display: flex; align-items: center; justify-content: center; gap: 14px; min-width: 0;
@@ -303,32 +306,32 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
    in briefly via .is-flash + .is-error/.is-result, then reverts to the idle copy). */
 .ls-notice {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; width: 100%; max-width: 640px; height: 124px; padding: 8px 30px;
-  border-radius: 16px; background: rgba(16,10,30,.76); border: 1px solid rgba(128,199,222,.26);
+  gap: 4px; width: 100%; max-width: 430px; height: 82px; padding: 8px 24px;
+  border-radius: 14px; background: rgba(13,12,24,.88); border: 1px solid rgba(255,255,255,.14);
   box-shadow: 0 8px 22px rgba(0,0,0,.32);
   transition: opacity .24s ease, filter .24s ease, max-width .24s ease, padding .24s ease,
     background .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
 .ls-notice-primary {
-  height: 66px; color: #fff7ec; font: 700 var(--ls-notice-primary-size, 26px)/1.15 'Fredoka', sans-serif;
+  height: 34px; color: #fff7ec; font: 700 var(--ls-notice-primary-size, 24px)/1.08 'Fredoka', sans-serif;
   letter-spacing: .04em; text-transform: uppercase; text-align: center; max-width: 100%;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   -webkit-box-pack: center; overflow: hidden;
 }
 .ls-notice-secondary {
-  height: 40px; color: rgba(255,241,224,.78); font: 800 var(--ls-notice-secondary-size, 16px)/1.25 'Nunito', sans-serif;
+  height: 30px; color: rgba(255,241,224,.78); font: 800 var(--ls-notice-secondary-size, 14px)/1.18 'Nunito', sans-serif;
   letter-spacing: .02em; text-align: center; max-width: 100%;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   -webkit-box-pack: center; overflow: hidden;
 }
 .ls-notice.no-helper .ls-notice-secondary { display: none; }
 .ls-notice.is-error {
-  border-color: rgba(244,63,94,.62); background: rgba(88,22,42,.72);
-  box-shadow: 0 0 18px rgba(244,63,94,.22);
+  border-color: rgba(232,146,107,.72); background: rgba(64,28,35,.78);
+  box-shadow: 0 0 18px rgba(232,146,107,.20);
 }
 .ls-notice.is-result {
-  border-color: rgba(232,121,249,.55);
-  box-shadow: 0 0 18px rgba(232,121,249,.2);
+  border-color: rgba(127,224,196,.58);
+  box-shadow: 0 0 18px rgba(127,224,196,.16);
 }
 .ls-notice.is-flash { animation: lsNoticeFlash 260ms ease; }
 /* Fight animation takes visual priority: while a duel occupies #leagueSprintCenter the
@@ -475,26 +478,22 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 
 #leagueBottomShelf {
-  /* Was flush against the exact bottom pixel of the 1920px canvas (top: calc(1920px -
-     height), i.e. 0px of safety margin) — any tiny rendering discrepancy in TikTok
-     Studio clipped the shelf, which is what showed up as a card visually "falling out
-     of canvas." Pull it up with a real safety margin instead of sitting on the edge. */
   position: absolute; top: calc(1920px - var(--ls-bottom-shelf-height) - 48px); left: 34px;
   width: 1012px; height: var(--ls-bottom-shelf-height);
   display: grid; grid-template-columns: 176px 1fr; align-items: center; gap: 16px;
   padding: 13px 16px; pointer-events: none; z-index: 38;
-  background: linear-gradient(90deg, rgba(8,16,28,.83), rgba(24,18,46,.74), rgba(8,16,28,.72));
-  border: 1px solid rgba(245,244,239,.12); border-radius: 8px; box-shadow: var(--ls-card-shadow);
+  background: linear-gradient(90deg, rgba(11,13,22,.90), rgba(29,24,48,.78), rgba(11,13,22,.86));
+  border: 1px solid rgba(255,255,255,.14); border-radius: 10px; box-shadow: var(--ls-card-shadow);
 }
 #leagueBottomShelf.ls-fight-stage {
   grid-template-columns: 1fr;
   gap: 0;
   padding: 12px 18px;
   background:
-    radial-gradient(circle at 50% 50%, rgba(168,85,247,.28), transparent 42%),
-    linear-gradient(90deg, rgba(3,7,18,.98), rgba(18,10,36,.96), rgba(3,7,18,.98));
-  border-color: rgba(192,132,252,.62);
-  box-shadow: 0 10px 36px rgba(0,0,0,.72), 0 0 0 2px rgba(3,7,18,.78), inset 0 0 0 1px rgba(255,255,255,.06);
+    radial-gradient(circle at 50% 50%, rgba(232,146,107,.18), transparent 42%),
+    linear-gradient(90deg, rgba(11,13,22,.98), rgba(42,24,48,.96), rgba(11,13,22,.98));
+  border-color: rgba(232,146,107,.62);
+  box-shadow: 0 10px 36px rgba(0,0,0,.72), 0 0 0 2px rgba(11,13,22,.78), inset 0 0 0 1px rgba(255,255,255,.06);
   z-index: 68;
 }
 #leagueBottomShelf.ls-fight-stage .ls-duel-wrap {
@@ -510,8 +509,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   min-width: 420px;
   max-width: 780px;
   font-size: 17px;
-  background: rgba(3,7,18,.94);
-  border-color: rgba(250,245,255,.28);
+  background: rgba(11,13,22,.94);
+  border-color: rgba(243,232,210,.28);
 }
 #leagueBottomShelf.ls-fight-stage .ls-duel-card {
   width: 250px;
@@ -538,7 +537,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, rgba(88,28,135,.98), rgba(15,23,42,.96));
+  background: linear-gradient(180deg, rgba(42,24,48,.98), rgba(11,13,22,.96));
   font-size: 15px;
 }
 #leagueBottomShelf.ls-fight-stage .ls-hp { bottom: -9px; height: 9px; }
@@ -1378,22 +1377,25 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 /* ══ GIFT BAR INFO (rotating carousel slot) ══ */
 #bar-info {
-  position: absolute; right: 0; top: 0; width: 366px; height: var(--ls-bar-height); overflow: hidden;
-  background: linear-gradient(180deg, rgba(5,0,14,0.96), rgba(12,4,30,0.94));
-  border-left: 1px solid rgba(255,255,255,0.08);
+  position: fixed; right: 54px; top: 132px; width: 300px; height: 310px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(11,13,22,0.96), rgba(29,24,48,0.94));
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 14px;
   display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
-  padding: 11px 20px 11px 18px; gap: 5px; transition: opacity 0.28s ease;
-  z-index: 0;
+  padding: 18px 18px 16px; gap: 8px; transition: opacity 0.28s ease;
+  z-index: 34;
+  box-shadow: 0 18px 42px rgba(0,0,0,.36), inset 0 0 0 1px rgba(232,146,107,.10);
+  opacity: 0;
 }
 #gift-bar.gift-info-visible #bar-info,
 #gift-bar.ls-right-panel-visible #bar-info { z-index: 42; opacity: 1 !important; }
 #gift-bar.ls-panel-takeover #bar-info {
   z-index: 58;
   background:
-    radial-gradient(circle at 16% 50%, rgba(251,191,36,.22), transparent 34%),
-    linear-gradient(180deg, rgba(18,10,8,0.98), rgba(28,10,42,0.96));
-  border-left-color: rgba(251,191,36,.55);
-  box-shadow: -16px 0 34px rgba(251,191,36,.14), inset 0 0 0 1px rgba(251,191,36,.16);
+    radial-gradient(circle at 16% 50%, rgba(255,201,64,.20), transparent 34%),
+    linear-gradient(180deg, rgba(29,24,48,0.98), rgba(42,24,48,0.96));
+  border-color: rgba(255,201,64,.58);
+  box-shadow: 0 18px 42px rgba(0,0,0,.40), 0 0 34px rgba(255,201,64,.16);
 }
 /* Reserved layout zones, not just z-index: a major-event takeover (round recap,
    promotion, rebirth window, etc.) must never render underneath the card popup
@@ -1402,28 +1404,28 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
    instead of leaving it in the bar's normal right-side slot. */
 #gift-bar.has-card-popup.ls-panel-takeover #bar-info {
   position: fixed;
-  left: 50%; right: auto; top: auto; bottom: var(--event-notification-y, 170px);
+  left: 50%; right: auto; top: auto; bottom: var(--event-notification-y, 246px);
   transform: translateX(calc(-50% + var(--event-notification-x, 0px)));
   width: min(640px, 86vw); height: auto; min-height: 132px;
-  border-left: none; border: 1px solid rgba(251,191,36,.4);
+  border: 1px solid rgba(255,201,64,.48);
   border-radius: 16px;
   align-items: center; text-align: center;
-  box-shadow: 0 18px 40px rgba(0,0,0,.5), 0 0 34px rgba(251,191,36,.18);
+  box-shadow: 0 18px 40px rgba(0,0,0,.5), 0 0 34px rgba(255,201,64,.18);
 }
 #bar-info-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; min-height: 18px; }
 #bar-slot-title {
-  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 800;
-  letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.68); white-space: nowrap;
+  font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 900;
+  letter-spacing: 0.13em; text-transform: uppercase; color: rgba(243,232,210,0.78); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
 #bar-info-bot { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; width: 100%; min-width: 0; }
 #bar-info-name {
-  font-family: 'Bebas Neue', sans-serif; font-size: 39px; line-height: .9; letter-spacing: 2px; color: #fff;
+  font-family: 'Fredoka', sans-serif; font-size: 31px; font-weight: 700; line-height: .96; letter-spacing: 0; color: #fff;
   white-space: nowrap; width: 100%; overflow: hidden; text-overflow: ellipsis; text-align: right;
   text-shadow: 0 2px 8px rgba(0,0,0,0.9);
 }
 #bar-info-amount {
-  font-family: 'Bebas Neue', sans-serif; font-size: 31px; line-height: .9; letter-spacing: 2px;
+  font-family: 'Fredoka', sans-serif; font-size: 28px; font-weight: 700; line-height: .98; letter-spacing: 0;
   white-space: nowrap; flex-shrink: 0; transition: color 0.6s ease;
   text-shadow: -1px -1px 0 rgba(0,0,0,0.95), 1px -1px 0 rgba(0,0,0,0.95),
                -1px 1px 0 rgba(0,0,0,0.95), 1px 1px 0 rgba(0,0,0,0.95);
@@ -4043,23 +4045,20 @@ const LEAGUE_SPRINT = (() => {
     stopIdleRotation();
     const item = barEventQueue.shift();
     clearEventClasses();
-    // #leagueSprintEvent is visually retired, but keep writing to it so nothing that
-    // still reads its text/classes breaks.
+    // Right-lane event log: this is the single middle-bar destination for command
+    // feedback so the center lane can stay calm.
     if (sprintEvent) {
       sprintEvent.textContent = item.text;
       sprintEvent.classList.add(item.kind === 'error' ? 'ls-event-error' : item.kind === 'result' ? 'ls-event-result' : 'ls-event-ok');
     }
-    // Minor command/event feedback now flashes in the center notice box instead of a
-    // separate pill — but never while a fight animation owns the center.
-    const duelActive = sprintBar?.classList.contains('ls-duel-active');
-    if (!duelActive) {
-      renderNotice({ primary: item.text, secondary: noticeCopy[leaguePhase]?.secondary || '' }, { kind: item.kind, flash: true });
-    }
+    // The right lane is the single home for command/event text. Keep the center lane
+    // quiet so one event does not hit several Splat Cards outputs at once.
     const lingerMs = item.kind === 'error' ? 2600 : 2100;
     clearTimeout(noticeRevertTimer);
     noticeRevertTimer = setTimeout(() => {
       clearEventClasses();
       if (!barEventQueue.length && !sprintBar?.classList.contains('ls-duel-active')) {
+        if (sprintEvent) sprintEvent.textContent = leaguePhase === 'results' ? 'RANKINGS UPDATE' : 'EVENT LOG';
         renderNotice(noticeCopy[leaguePhase]);
         startIdleRotation();
       }
@@ -4327,8 +4326,8 @@ const LEAGUE_SPRINT = (() => {
     </div>`;
   }
   // Card popup vs. event-notification overlap fix: whenever the card popup is on screen,
-  // flag it on #gift-bar so the round-recap/event panel (#bar-info) can reposition itself
-  // out of the way instead of rendering underneath the card. See .has-card-popup in CSS.
+  // flag it on #gift-bar so the top-camera event panel (#bar-info) can move to a
+  // guaranteed-clear lower position instead of sitting underneath the card.
   function setCardPopupFlag(active) {
     document.getElementById('gift-bar')?.classList.toggle('has-card-popup', !!active);
   }
@@ -4508,7 +4507,6 @@ const LEAGUE_SPRINT = (() => {
   function renderNotice(copy, opts = {}) {
     if (!sprintCenter) return;
     if (sprintBar?.classList.contains('ls-duel-active')) return; // fight cards own the center right now
-    const rightPanel = document.getElementById('gift-bar')?.classList.contains('ls-right-panel-visible');
     let primary, secondary;
     if (typeof copy === 'string') {
       primary = copy;
@@ -4518,7 +4516,6 @@ const LEAGUE_SPRINT = (() => {
       secondary = copy?.secondary || '';
     }
     if (!primary) primary = noticeCopy[leaguePhase]?.primary || noticeCopy.active.primary;
-    if (rightPanel && /!duel D\/C\/B\/A/i.test(primary)) primary = '!pull · !show · !duel · !rebirth';
     const kindClass = opts.kind === 'error' ? ' is-error' : opts.kind === 'result' ? ' is-result' : '';
     const flashClass = opts.flash ? ' is-flash' : '';
     const helperClass = noticeHelperVisible ? '' : ' no-helper';
@@ -4833,6 +4830,7 @@ function applySplatCardLayout(d) {
   const bar = document.getElementById('gift-bar');
   const lines = document.getElementById('bar-lines');
   const shelf = document.getElementById('leagueBottomShelf');
+  const sidePanel = document.getElementById('bar-info');
   if (typeof d.top === 'number') {
     const top = Math.max(0, Math.min(1920 - 40, d.top));
     if (bar) bar.style.top = top + 'px';
@@ -4855,6 +4853,15 @@ function applySplatCardLayout(d) {
   if (typeof d.shelfScale === 'number' && shelf) {
     shelf.style.transformOrigin = 'bottom center';
     shelf.style.transform = `scale(${Math.max(0.55, Math.min(1.8, d.shelfScale))})`;
+  }
+  if (sidePanel) {
+    if (typeof d.sidePanelX === 'number') {
+      sidePanel.style.left = Math.max(0, Math.min(780, d.sidePanelX)) + 'px';
+      sidePanel.style.right = 'auto';
+    }
+    if (typeof d.sidePanelY === 'number') {
+      sidePanel.style.top = Math.max(40, Math.min(430, d.sidePanelY)) + 'px';
+    }
   }
   if (shelf) {
     if (typeof d.shelfNameSize === 'number') shelf.style.setProperty('--ls-shelf-name-size', Math.max(9, Math.min(30, d.shelfNameSize)) + 'px');
@@ -6408,8 +6415,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const _eqSeeds  = Array.from({length: ALL_COLS}, () => Math.random() * 100);
   const _barInfoEl = document.getElementById('bar-info');
   const _giftBarEl = document.getElementById('gift-bar');
-  // Bar-info is fixed-width (300px) so wave center is constant: (1080 - 300) / 2 = 390px
-  const _WAVE_CENTER = Math.round((EW - 300) / 2);
+  // Gifter/explainer slides no longer occupy the stream bar, so the milk/stream
+  // waveform can breathe across the full 1080px bar.
+  const _WAVE_CENTER = Math.round(EW / 2);
   if (_giftBarEl) _giftBarEl.style.setProperty('--wave-center', _WAVE_CENTER + 'px');
 
   (function drawHype(){
