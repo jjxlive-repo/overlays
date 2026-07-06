@@ -2176,7 +2176,9 @@ body.gc-shake { animation: gcShake 0.5s ease; }
             <button class="tf-btn" onclick="lsEngineTest('rebirth-denied')">Rebirth Deny</button>
             <button class="tf-btn" onclick="lsEngineTest('king')">New Champion</button>
             <button class="tf-btn" onclick="lsEngineStartRebirth()">Rebirth Window</button>
-            <button class="tf-btn" onclick="lsEngineStartResults()">Results</button>
+            <button class="tf-btn" onclick="lsEngineTest('round-recap')">Round Recap</button>
+            <button class="tf-btn" onclick="lsEngineTest('promo-small')">Promote Rank</button>
+            <button class="tf-btn" onclick="lsEngineTest('promo-league')">Promote League</button>
             <button class="tf-btn c-off" onclick="lsEngineReset()" title="Clears the saved Splat Cards game state: players, round, phase, cards, duels, fragments, bosses, and champion. It does not wipe overlay layout/Gist settings.">Reset Splat Cards</button>
             <button class="tf-btn" onclick="lsEngineExportState()">Export JSON</button>
             <button class="tf-btn" onclick="lsEngineImportState()">Import JSON</button>
@@ -5886,7 +5888,7 @@ const LS_MECH_DEFAULTS = {
   promoteMaxBase: 4,
   promoteMaxA: 3,
   targetShieldSec: 0,
-  duelBeatMs: 720
+  duelBeatMs: 1300
 };
 function lsLoadMechanics() {
   try { return Object.assign({}, LS_MECH_DEFAULTS, JSON.parse(localStorage.getItem('lsMechanics') || '{}')); }
@@ -8343,10 +8345,16 @@ const LeagueSprintDuelEngine = (() => {
     const attackerWins = attackerRoll >= defenderRoll;
     const bigLabel = coward ? 'COWARD PENALTY' : upset ? 'UPSET CHANCE' : aType.label || dType.label || 'CLASH';
     let aHp = 100, dHp = 100;
+    const crit1 = Math.random() < 0.18;
+    const crit2 = Math.random() < 0.14;
+    const crit3 = Math.random() < 0.22 || aType.label === 'CHAOS ROLL';
     const beats = [
-      { type:'strike', target:'defender', damage:22 + Math.max(0, Math.min(24, Math.abs(gap) * 2)), defenderHp:(dHp-=28), attackerHp:aHp, label:aType.label || 'STRIKE', text:`HIT - ${defender.username} -28` },
-      { type:dType.label === 'DODGE' ? 'dodge' : 'block', target:'attacker', damage:14, attackerHp:(aHp-=18), defenderHp:dHp, label:dType.label || 'BLOCK', text:`${dType.label || 'BLOCK'} - ${attacker.username} -18` },
-      { type:'chaos', target: attackerWins ? 'defender' : 'attacker', damage:32, attackerHp: attackerWins ? aHp : (aHp-=32), defenderHp: attackerWins ? (dHp-=32) : dHp, label:bigLabel, text:`${bigLabel} - swing` },
+      { type:'announce', label:aType.label || 'OPENING STRIKE', text:`${aType.label || 'STRIKE'} - ${attacker.username} prepares the hit`, delayMs:mech.duelBeatMs },
+      { type:crit1 ? 'crit' : 'strike', target:'defender', damage:(22 + Math.max(0, Math.min(24, Math.abs(gap) * 2))) * (crit1 ? 2 : 1), defenderHp:(dHp-=crit1 ? 42 : 28), attackerHp:aHp, label:crit1 ? 'CRIT HIT' : (aType.label || 'STRIKE'), text:`${crit1 ? 'CRIT HIT' : 'HIT'} - ${defender.username}` },
+      { type:'announce', label:dType.label || 'COUNTER', text:`${dType.label || 'COUNTER'} - ${defender.username} answers`, delayMs:mech.duelBeatMs },
+      { type:crit2 ? 'crit' : (dType.label === 'DODGE' ? 'dodge' : 'block'), target:'attacker', damage:crit2 ? 28 : 14, attackerHp:(aHp-=crit2 ? 30 : 18), defenderHp:dHp, label:crit2 ? 'CRIT COUNTER' : (dType.label || 'BLOCK'), text:`${crit2 ? 'CRIT COUNTER' : dType.label || 'BLOCK'} - ${attacker.username}` },
+      { type:'announce', label:bigLabel, text:coward ? `${attacker.username} loses less/gains less from rank gap pressure` : upset ? `${attacker.username} gets an upset boost` : `${bigLabel} changes the clash`, delayMs:mech.duelBeatMs },
+      { type:crit3 ? 'crit' : 'chaos', target: attackerWins ? 'defender' : 'attacker', damage:crit3 ? 56 : 32, attackerHp: attackerWins ? aHp : (aHp-=crit3 ? 48 : 32), defenderHp: attackerWins ? (dHp-=crit3 ? 48 : 32) : dHp, label:crit3 ? `CRIT ${bigLabel}` : bigLabel, text:`${crit3 ? 'CRIT ' : ''}${bigLabel} - swing` },
       { type:'final', target: attackerWins ? 'defender' : 'attacker', damage:45, attackerHp: attackerWins ? aHp : 0, defenderHp: attackerWins ? 0 : dHp, label:'FINAL HIT', text:`FINAL HIT - ${attackerWins ? attacker.username : defender.username} wins` }
     ];
     const winner = attackerWins ? attacker : defender;
@@ -8413,7 +8421,10 @@ const LeagueSprintDuelEngine = (() => {
         winnerId: winner.ownerId,
         loserId: loser.ownerId,
         winner,
-        message: attackerWins ? `RESULT - ${attacker.username} wins +${aDelta} PWR` : `RESULT - ${defender.username} holds - ${attacker.username} ${aDelta} PWR`,
+        loser,
+        winnerDelta: attackerWins ? aDelta : dDelta,
+        loserDelta: attackerWins ? dDelta : aDelta,
+        message: attackerWins ? `RESULT - ${attacker.username} wins +${aDelta} DP` : `RESULT - ${defender.username} holds - ${attacker.username} ${aDelta} DP`,
         shelfText: 'recent duels',
         major: !!newKing || (attackerWins && gap >= 3),
         kicker: newKing ? 'NEW CHAMPION' : attackerWins && gap >= 3 ? 'UPSET WIN' : 'DUEL RESULT'
@@ -8437,6 +8448,10 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
   const cleanedUser = LeagueSprintState.cleanUser(user);
   const playerExisted = !!LeagueSprintState.state.players[cleanedUser.id];
   if (action === 'show' && !playerExisted) {
+    publishLeagueSprintVisual({ action:'bar-message', eventType:'NO_TARGET', severity:'warn', message:`NO CARD - use ${lsCommand('pull')} first` });
+    return true;
+  }
+  if (!playerExisted && action !== 'pull') {
     publishLeagueSprintVisual({ action:'bar-message', eventType:'NO_TARGET', severity:'warn', message:`NO CARD - use ${lsCommand('pull')} first` });
     return true;
   }
@@ -9089,20 +9104,46 @@ function lsSeedDuelTestOpponents() {
   });
   LeagueSprintState.save();
 }
+function lsSeedTestPlayer(userId, username, patch = {}) {
+  const card = LeagueSprintState.ensurePlayer({ platform:'test', userId, username }, { silent:true });
+  Object.assign(card, patch || {});
+  card.league = LeagueSprintRankUtils.getLeagueFromRank(card.currentRank || card.league || 'D5');
+  card.fragmentMax = LeagueSprintRankUtils.getFragmentMax(card.currentRank || 'D5');
+  card.lastDuelAt = 0;
+  card.lastTargetedAt = 0;
+  LeagueSprintState.save();
+  return card;
+}
 function lsEngineTest(name) {
   const testUser = { platform:'test', userId:'test-' + name, username:'tester_' + name, displayName:'tester_' + name, messageText:lsCommand('show'), timestamp:Date.now() };
   if (name === 'draw') handleLeagueSprintChatCommand({ platform:'test', userId:'test-draw-' + Date.now(), username:'draw_' + Math.floor(Math.random() * 999), displayName:'draw tester', messageText:lsCommand('pull'), timestamp:Date.now() });
-  else if (name === 'show') handleLeagueSprintChatCommand(testUser);
-  else if (name === 'duel1') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-dueler-' + Date.now(), username:'dueler', messageText:lsCommand('duel', '1') })); }
-  else if (name === 'duelup') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-up-' + Date.now(), username:'upstart', messageText:lsCommand('duel', 'up') })); }
-  else if (name === 'duelA') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-a-' + Date.now(), username:'a_chaser', messageText:lsCommand('duel', 'A') })); }
-  else if (name === 'fight') { lsSeedDuelTestOpponents(); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-fight-' + Date.now(), username:'fighter', messageText:lsCommand('duel', '1') })); }
-  else if (name === 'rebirth-ok') { lsEngineStartRebirth(); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-rebirth', username:'reborn', messageText:lsCommand('reroll') })); }
-  else if (name === 'rebirth-denied') { LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-denied', username:'denied', messageText:lsCommand('reroll') })); }
+  else if (name === 'show') { lsSeedTestPlayer('test-show', 'tester_show', { currentRank:'C2', power:960, character:'layla', type:'attacker' }); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-show', username:'tester_show' })); }
+  else if (name === 'duel1') { lsSeedDuelTestOpponents(); lsSeedTestPlayer('test-dueler', 'dueler', { currentRank:'C4', power:980 }); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-dueler', username:'dueler', messageText:lsCommand('duel', '1') })); }
+  else if (name === 'duelup') { lsSeedDuelTestOpponents(); lsSeedTestPlayer('test-up', 'upstart', { currentRank:'C4', power:980 }); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-up', username:'upstart', messageText:lsCommand('duel', 'up') })); }
+  else if (name === 'duelA') { lsSeedDuelTestOpponents(); lsSeedTestPlayer('test-a', 'a_chaser', { currentRank:'B5', power:1420 }); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-a', username:'a_chaser', messageText:lsCommand('duel', 'A') })); }
+  else if (name === 'fight') { lsSeedDuelTestOpponents(); lsSeedTestPlayer('test-fight', 'fighter', { currentRank:'C3', power:1080 }); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-fight', username:'fighter', messageText:lsCommand('duel', '1') })); }
+  else if (name === 'rebirth-ok') { lsSeedTestPlayer('test-rebirth', 'reborn', { currentRank:'D5', power:100 }); lsEngineStartRebirth(); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-rebirth', username:'reborn', messageText:lsCommand('reroll') })); }
+  else if (name === 'rebirth-denied') { lsSeedTestPlayer('test-denied', 'denied', { currentRank:'D5', power:100 }); LeagueSprintState.setPhase('active'); handleLeagueSprintChatCommand(Object.assign(testUser, { userId:'test-denied', username:'denied', messageText:lsCommand('reroll') })); }
   else if (name === 'king') {
-    const card = LeagueSprintState.ensurePlayer({ userId:'test-king', username:'new_king', platform:'test' });
+    const card = LeagueSprintState.ensurePlayer({ userId:'test-king', username:'new_king', platform:'test' }, { silent:true });
     card.currentRank = 'A1'; card.league = 'A'; card.power = 2400; LeagueSprintState.updateKing(); LeagueSprintState.save();
     publishLeagueSprintVisual({ action:'popup', eventType:'KING_CHANGED', label:'NEW CHAMPION', card, message:`A new champion emerges - ${card.username}` });
+  }
+  else if (name === 'round-recap') {
+    lsSeedDuelTestOpponents();
+    lsSeedTestPlayer('test-recap-a', 'recap_up', { currentRank:'D1', fragments:3, fragmentMax:4, roundScore:40, power:780, character:'layla', type:'attacker' });
+    lsSeedTestPlayer('test-recap-b', 'recap_down', { currentRank:'C2', fragments:-1, fragmentMax:4, roundScore:-20, power:760, character:'jasper', type:'gambler' });
+    lsEngineStartResults();
+  }
+  else if (name === 'promo-small') {
+    const card = lsSeedTestPlayer('test-promo-small', 'rank_climber', { currentRank:'D2', league:'D', power:760, character:'wekka', type:'defender' });
+    card.originRank = 'D3';
+    publishLeagueSprintVisual({ action:'popup', eventType:'PROMOTION', label:'RANK UP', card, message:`RANK UP - ${card.username} D3>D2` });
+  }
+  else if (name === 'promo-league') {
+    const card = lsSeedTestPlayer('test-promo-league', 'league_jumper', { currentRank:'C5', league:'C', power:1120, character:'kinz', type:'balanced' });
+    card.originRank = 'D1';
+    publishLeagueSprintVisual({ action:'popup', eventType:'PROMOTION', label:'LEAGUE UP', card, message:`LEAGUE UP - ${card.username} D1>C5` });
   }
   else if (name === 'error') publishLeagueSprintVisual({ action:'bar-message', eventType:'INVALID_COMMAND', severity:'warn', message:'INVALID TARGET - use !duel 1, up, D, C, B, or A' });
   doFlash('purple');
