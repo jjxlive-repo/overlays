@@ -56,7 +56,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   pointer-events: none; z-index: 41;
 }
 .ls-mini-window {
-  position: absolute; top: 24px; width: 340px; height: 150px;
+  position: absolute; top: 24px; width: 340px; height: 210px;
   display: flex; flex-direction: column; gap: 6px;
   padding: 12px 16px; border-radius: 16px; overflow: hidden;
   background: linear-gradient(180deg, var(--ls-panel-mid), var(--ls-panel));
@@ -89,7 +89,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 #lsSystemWindow.is-empty .ls-mini-window-title { color: rgba(255,241,224,.5); }
 /* Compact art thumb used inside the Player Window (show/pull/rebirth) — reuses the
    card's .ls-art/.ls-art img rendering (object-fit: contain, never cropped) but pinned
-   to a small, fixed footprint so it fits the 340x150px mini-window. */
+   to a small, fixed footprint so it fits the 340x210px mini-window. */
 .ls-mini-window-thumb { display: flex; flex-direction: row; align-items: center; gap: 4px; }
 .ls-mini-window-thumb .ls-art { width: 64px; height: 54px; margin: 0; border-radius: 8px; }
 .ls-mini-window-thumb-rank {
@@ -489,9 +489,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   animation: lsDuelSettle 360ms ease both;
 }
 .ls-duel-card {
-  position: relative; display: grid; place-items: center; width: 210px; min-height: 128px;
+  position: relative; display: grid; place-items: center; width: 160px; min-height: 210px;
 }
-.ls-duel-card .ls-card-mini { width: 198px; height: 112px; }
+.ls-duel-card .ls-card-mini { width: 148px; height: 198px; }
+.ls-duel-card .ls-card-mini .ls-art { width: 108px; height: 108px; margin: 6px auto 4px; }
 .ls-hp {
   position: absolute; left: 8px; right: 8px; bottom: -5px; height: 8px;
   border-radius: 999px; background: rgba(245,244,239,.16); overflow: hidden;
@@ -643,22 +644,41 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ls-zone-sub { color: var(--ls-card-muted); font: 800 10px/1 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase; margin-top: 1px; }
 .ls-zone-empty { color: var(--ls-card-muted); font: 800 10px/1.3 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase; text-align: center; }
 /* Compact fight scene, scoped to the duel-preview column only — no upward translateY
-   escape hack; the whole scene now fits fully inside the 177px strip. */
-#lsDuelPreview .ls-duel-wrap { position: relative; transform: none; gap: 10px; filter: none; z-index: 1; }
+   escape hack; the whole scene now fits fully inside the 177px strip.
+   .ls-duel-wrap is display:flex (row) — .ls-duel-names and .ls-duel-flavor used to be
+   set to position:static assuming that would stack them above/below the row, but a
+   static flex child just becomes another item IN the row. That put the flavor/combat
+   caption beside (visually overlapping) the defender's card instead of below it.
+   flex-wrap + flex:0 0 100% forces both onto their own full-width line. */
+#lsDuelPreview .ls-duel-wrap { position: relative; transform: none; gap: 4px; filter: none; z-index: 1; flex-wrap: wrap; }
 #lsDuelPreview .ls-duel-names {
-  position: static; transform: none; margin-bottom: 4px; min-width: 0; max-width: 260px;
+  position: static; transform: none; margin-bottom: 0; min-width: 0; max-width: 260px;
   height: 18px; padding: 0 8px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 0 0 100%; order: -1;
 }
-#lsDuelPreview .ls-duel-card { width: 74px; min-height: 60px; }
-#lsDuelPreview .ls-card-mini { width: 68px; height: 42px; }
+#lsDuelPreview .ls-duel-card { width: 78px; min-height: 108px; }
+/* Portrait duel-preview mini card — was 68x42 (landscape) with the shared
+   .ls-card-mini art box absolutely pinned for the much bigger 154x84 base size, so at
+   this tiny landscape footprint the art overflowed past the card's overflow:hidden
+   edge and was effectively invisible. Sized portrait here with its own art override
+   so the art always has real, visible room. */
+#lsDuelPreview .ls-card-mini { width: 70px; height: 100px; padding: 4px 4px 6px; }
+#lsDuelPreview .ls-card-mini .ls-owner { top: 4px; left: 4px; right: 4px; height: 14px; font-size: 8px; line-height: 14px; }
+#lsDuelPreview .ls-card-mini .ls-card-top { margin-top: 18px; }
+#lsDuelPreview .ls-card-mini .ls-type-icon { display: none; }
+#lsDuelPreview .ls-card-mini .ls-rank { min-width: 22px; height: 14px; font-size: 10px; padding: 0 4px; }
+#lsDuelPreview .ls-card-mini .ls-art { width: 52px; height: 52px; margin: 4px auto 0; }
+#lsDuelPreview .ls-card-mini .ls-power,
+#lsDuelPreview .ls-card-mini .ls-card-footer { display: none; }
 #lsDuelPreview .ls-vs { font-size: 14px; }
 #lsDuelPreview .ls-duel-flavor {
-  position: static; transform: none; margin-top: 4px; max-width: 260px;
+  position: static; transform: none; margin-top: 0; max-width: 260px;
   white-space: normal; text-align: center; font-size: 9px; padding: 3px 8px;
+  flex: 0 0 100%; order: 99;
 }
 #lsDuelPreview .ls-hp { bottom: -4px; height: 4px; }
 #lsDuelPreview .ls-damage { top: -16px; right: -4px; font-size: 13px; padding: 2px 7px; }
-#lsDuelPreview .ls-delta-badge { bottom: -18px; height: 16px; min-width: 52px; font-size: 10px; }
+#lsDuelPreview .ls-delta-badge { bottom: -14px; height: 16px; min-width: 52px; font-size: 10px; }
 #lsDuelPreview[data-queue]:not([data-queue=""])::after {
   content: attr(data-queue);
   position: absolute; top: 6px; right: 8px;
@@ -726,8 +746,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 .ls-card-popup .ls-leader-badge { top: 32px; height: 20px; font-size: 8px; }
 .ls-card-popup { width: var(--ls-popup-card-width); min-height: 342px; padding: 11px; }
-.ls-card-mini { width: 154px; height: 84px; padding: 7px; border-radius: 10px; }
-.ls-card-micro { width: 96px; height: 92px; padding: 6px; border-radius: 10px; }
+.ls-card-mini { width: 112px; height: 150px; padding: 6px 6px 8px; border-radius: 10px; }
+.ls-card-micro { width: 96px; height: 128px; padding: 6px; border-radius: 10px; }
 .ls-card-featured { width: 132px; }
 .ls-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ls-rank {
@@ -746,7 +766,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 .ls-card-mini .ls-rank { min-width: 30px; height: 20px; font-size: 17px; padding: 0 6px; border-radius: 6px; }
 .ls-card-micro .ls-rank { min-width: 24px; height: 18px; font-size: 15px; padding: 0 5px; border-radius: 5px; }
-.ls-card-mini .ls-card-top { margin-top: 22px; }
+.ls-card-mini .ls-card-top { margin-top: 22px; justify-content: center; gap: 6px; }
+/* Pips read fine on the big popup card but just add clutter/overflow risk on the
+   narrow portrait mini card — rank chip + type icon already convey the info. */
+.ls-card-mini .ls-pips { display: none; }
 .ls-pips, .ls-fragments { display: flex; gap: 3px; align-items: center; }
 .ls-pip, .ls-fragment { width: 7px; height: 7px; border-radius: 999px; background: rgba(245,244,239,.24); }
 .ls-pip.is-filled { background: var(--ls-league-color); box-shadow: 0 0 8px rgba(245,244,239,.2); }
@@ -802,16 +825,16 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   width: 100%; height: 100%; font-size: 18px; font-weight: 900; letter-spacing: .06em;
   color: #FAF5FF; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,.7);
 }
-.ls-card-mini .ls-art { position: absolute; right: 7px; top: 28px; width: 48px; height: 42px; margin: 0; border-radius: 8px; }
+/* Vertical/portrait card art: centered in normal flow (not corner-pinned) so the
+   full illustration always has room and is never clipped by the card's overflow:hidden. */
+.ls-card-mini .ls-art { position: static; width: 82px; height: 84px; margin: 4px auto 4px; border-radius: 8px; }
 .ls-card-mini .ls-art-placeholder { font-size: 8px; }
-.ls-card-micro .ls-art { width: 58px; height: 46px; margin: 2px auto 4px; border-radius: 8px; }
+.ls-card-micro .ls-art { width: 70px; height: 70px; margin: 4px auto 4px; border-radius: 8px; }
 .ls-card-micro .ls-art-placeholder { font-size: 8px; }
 /* Layered rank art sizing fix: final creator art stays inside the dynamic card renderer. */
 .ls-card-popup .ls-art { width: 190px; height: 228px; margin: 7px auto 7px; }
 .ls-card-popup .ls-art img { object-fit: contain; object-position: center bottom; }
-.ls-card-mini .ls-art { width: 54px; height: 50px; }
 .ls-card-mini .ls-art img { object-fit: contain; object-position: center bottom; }
-.ls-card-micro .ls-art { width: 64px; height: 54px; }
 .ls-card-micro .ls-art img { object-fit: contain; object-position: center bottom; }
 
 /* Bottom shelf cards are tiny; give rank + username their own readable footer.
@@ -910,8 +933,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 .ls-character-line { font: 700 24px/1 'Fredoka', sans-serif; color: #fff7ec; text-transform: uppercase; letter-spacing:.01em; }
 .ls-type-label { color: var(--ls-card-muted); font: 800 10px/1 'Nunito', sans-serif; letter-spacing: .10em; text-transform: uppercase; }
 .ls-power { margin-top: 6px; color: #fff7ec; font: 700 28px/1 'Fredoka', sans-serif; }
-.ls-card-mini .ls-power { position: absolute; right: 61px; top: 48px; font-size: 18px; margin: 0; }
+.ls-card-mini .ls-power { position: static; text-align: center; font-size: 14px; margin: 0 0 2px; }
 .ls-card-footer { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.ls-card-mini .ls-card-footer { justify-content: center; margin-top: 2px; min-height: 18px; }
 .ls-chip {
   display: inline-flex; align-items: center; gap: 5px; max-width: 118px; height: 22px; padding: 0 8px;
   border-radius: 999px; background: rgba(245,244,239,.10); border: 1px solid rgba(245,244,239,.16);
@@ -4522,7 +4546,7 @@ const LEAGUE_SPRINT = (() => {
   }
   // Player Window (top camera region): compact thumbnail + kicker/title/sub only.
   // No floating popups over the main gameplay region — this renders into the fixed
-  // 340x150px #lsPlayerWindow mini-window (Goal 3/9 of the structural rebuild).
+  // 340x210px #lsPlayerWindow mini-window (Goal 3/9 of the structural rebuild).
   function showPopup(card, label = 'SHOW CARD', lingerMs = 8400, opts = {}) {
     if (!popupZone || !playerWindowEl) return;
     const safeCard = normalizeCard(card || {});
