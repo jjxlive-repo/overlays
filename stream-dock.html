@@ -127,7 +127,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 0;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -871,8 +871,10 @@ body.gc-shake { animation: gcShake 0.5s ease; }
   display: flex;
   flex-direction: column;
   gap: 5px;
-  width: 38%;
-  min-width: 0;
+  flex: 0 0 clamp(430px, 48vw, 560px);
+  width: clamp(430px, 48vw, 560px);
+  min-width: 430px;
+  max-width: 560px;
   overflow-y: auto;
   padding-right: 1px;
 }
@@ -960,6 +962,13 @@ body.gc-shake { animation: gcShake 0.5s ease; }
   background: rgba(105,201,208,.04);
 }
 .umsg.tt-member .msg-name { color: #69C9D0; }
+.umsg.tt-superfan {
+  border: 2px solid rgba(250,245,255,.78);
+  border-left: 7px solid #69C9D0;
+  box-shadow: 0 0 0 1px rgba(105,201,208,.28), 0 0 14px rgba(250,245,255,.18);
+  background: linear-gradient(90deg, rgba(105,201,208,.13), rgba(250,245,255,.045));
+}
+.umsg.tt-superfan .msg-name { color: #FAF5FF; }
 .umsg.tt-member.tt-top-gifter {
   border-color: rgba(105,201,208,.65);
   box-shadow: 0 0 12px rgba(105,201,208,.28), 0 0 5px rgba(192,132,252,.22);
@@ -990,6 +999,12 @@ body.gc-shake { animation: gcShake 0.5s ease; }
 .tt-badge.lv20 { background: rgba(250,204,21,0.2);   color:#facc15; }
 .tt-badge.lv50 { background: rgba(244,63,94,0.25);   color:#f43f5e; }
 .tt-badge.fan  { background: rgba(105,201,208,.2); color:#69C9D0; }
+.tt-badge.superfan {
+  background: rgba(250,245,255,.90);
+  color: #08101c;
+  border: 1px solid rgba(105,201,208,.85);
+  box-shadow: 0 0 8px rgba(105,201,208,.35);
+}
 
 /* Glow on TikTok rows by badge tier */
 .msg.tt-gifter {
@@ -1008,9 +1023,25 @@ body.gc-shake { animation: gcShake 0.5s ease; }
   background: rgba(105,201,208,.04);
 }
 .msg.tt-member .msg-name { color: #69C9D0; }
+.msg.tt-superfan {
+  border: 2px solid rgba(250,245,255,.78);
+  border-left: 7px solid #69C9D0;
+  box-shadow: 0 0 0 1px rgba(105,201,208,.28), 0 0 14px rgba(250,245,255,.18);
+  background: linear-gradient(90deg, rgba(105,201,208,.13), rgba(250,245,255,.045));
+}
+.msg.tt-superfan .msg-name { color: #FAF5FF; }
 .msg.tt-member.tt-top-gifter {
   border-color: rgba(105,201,208,.6);
   box-shadow: 0 0 12px rgba(105,201,208,.3), 0 0 5px rgba(192,132,252,.25);
+}
+
+@media (max-width: 980px) {
+  .main-row { gap: 5px; padding-left: 6px; padding-right: 6px; }
+  .col-controls {
+    flex-basis: min(440px, 52vw);
+    width: min(440px, 52vw);
+    min-width: min(430px, 52vw);
+  }
 }
 
 /* YouTube member highlight */
@@ -3902,6 +3933,38 @@ function toggleAllScroll(e) {
   });
 })();
 
+function ttFanInfo(data) {
+  const lower = value => String(value ?? '').toLowerCase();
+  const explicitSuper =
+    data?.isSuperfan === true || data?.isSuperFan === true || data?.superfan === true ||
+    data?.superFan === true || data?.isFanClubMember === true || data?.fanClubMember === true ||
+    data?.isTikTokFan === true || data?.tiktokFan === true;
+  const subscriber =
+    data?.isSubscriber === true || data?.subscriber === true || data?.isMember === true ||
+    data?.hasMembership === true || data?.isSub === true ||
+    (typeof data?.subBadge === 'string' && data.subBadge.length > 4);
+  const membershipText = [
+    data?.membership,
+    data?.memberLevel,
+    data?.memberLabel,
+    data?.subscriberType,
+    data?.userBadges,
+    data?.badges,
+    data?.badgeType
+  ].map(v => {
+    if (Array.isArray(v)) return v.map(lower).join(' ');
+    if (v && typeof v === 'object') return lower(JSON.stringify(v));
+    return lower(v);
+  }).join(' ');
+  const textSuper = /\b(super\s*fan|superfan|fan\s*club|subscriber|subscription|member)\b/.test(membershipText);
+  const active = explicitSuper || subscriber || textSuper;
+  return {
+    active,
+    superfan: explicitSuper || textSuper || subscriber,
+    label: active ? '★ Superfan' : ''
+  };
+}
+
 function addMsg(data, key) {
   const container = document.getElementById('msgs-' + key);
   document.getElementById('emp-' + key)?.remove();
@@ -3916,9 +3979,8 @@ function addMsg(data, key) {
       : data.badge != null && typeof data.badge === 'number' ? data.badge
       : null)
     : null;
-  const isTTMember = isTikTok && !!(data.subBadge || data.isSubscriber
-    || data.hasMembership
-    || (data.membership != null && data.badgeLevel == null));
+  const ttFan = isTikTok ? ttFanInfo(data) : { active:false, superfan:false, label:'' };
+  const isTTMember = isTikTok && ttFan.active;
   const isGifter    = badgeLevel != null && badgeLevel > 0;
   const isTopGifter = isGifter && badgeLevel >= 10;
 
@@ -3929,6 +3991,7 @@ function addMsg(data, key) {
   const rowClasses = ['msg'];
   if (isTikTok) {
     if (isTTMember)    rowClasses.push('tt-member');
+    if (ttFan.superfan) rowClasses.push('tt-superfan');
     if (isTopGifter)   rowClasses.push('tt-top-gifter');
     else if (isGifter) rowClasses.push('tt-gifter');
   }
@@ -3949,8 +4012,8 @@ function addMsg(data, key) {
 
   if (isTikTok && isTTMember) {
     const fanPill = document.createElement('span');
-    fanPill.className = 'tt-badge fan';
-    fanPill.textContent = '♥ Fan';
+    fanPill.className = 'tt-badge ' + (ttFan.superfan ? 'superfan' : 'fan');
+    fanPill.textContent = ttFan.label || '♥ Fan';
     nameLine.appendChild(fanPill);
   }
   if (isTikTok && isGifter) {
@@ -4001,11 +4064,8 @@ function addUnified(data, platform, isTT, isYT, isGift) {
       : data.badge != null && typeof data.badge === 'number' ? data.badge : null)
     : null;
 
-  // Fan Club member = paid TikTok subscriber (isSubscriber flag or subBadge URL present)
-  // data.hasMembership is set by SSN when "Treat TikTok fans/teamer as members" is enabled
-  // NOT data.membership alone — that field appears on too many non-subscriber messages
-  const isTTMember  = isTT && !!(data.isSubscriber === true || data.hasMembership === true ||
-    (data.subBadge && typeof data.subBadge === 'string' && data.subBadge.length > 4));
+  const ttFan = isTT ? ttFanInfo(data) : { active:false, superfan:false, label:'' };
+  const isTTMember  = isTT && ttFan.active;
   const isGifter    = badgeLevel != null && badgeLevel > 0;
   const isTopGifter = isGifter && badgeLevel >= 10;
   const isYTMember  = isYT && !!(data.membership || data.subBadge || data.isSubscriber || data.isMember);
@@ -4014,6 +4074,7 @@ function addUnified(data, platform, isTT, isYT, isGift) {
   const uClasses = ['umsg'];
   if (isGift)                      uClasses.push('is-gift');
   if (isTT && isTTMember)          uClasses.push('tt-member');
+  if (isTT && ttFan.superfan)       uClasses.push('tt-superfan');
   if (isTT && isTopGifter)         uClasses.push('tt-top-gifter');
   else if (isTT && isGifter)       uClasses.push('tt-gifter');
   if (isYTMember)                  uClasses.push('yt-member');
@@ -4042,7 +4103,7 @@ function addUnified(data, platform, isTT, isYT, isGift) {
 
   // Fan Club pill (only real subscribers)
   if (isTT && isTTMember) {
-    const fp = document.createElement('span'); fp.className = 'tt-badge fan'; fp.textContent = '♥ Fan'; name.appendChild(fp);
+    const fp = document.createElement('span'); fp.className = 'tt-badge ' + (ttFan.superfan ? 'superfan' : 'fan'); fp.textContent = ttFan.label || '♥ Fan'; name.appendChild(fp);
   }
   // Gift badge level
   if (isTT && isGifter) {
