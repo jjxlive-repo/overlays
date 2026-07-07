@@ -2002,6 +2002,12 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
             <button class="ctrl-btn" id="ls-explainer-toggle" style="flex:1;" onclick="lsToggleExplainerSlides()">Off</button>
             <button class="ctrl-btn" style="flex:1;" onclick="publishSplatExplainerConfig()">Send to Overlay</button>
           </div>
+          <div class="ctrl-row" style="gap:5px;align-items:center;" title="One slider scales ALL League of Splatties text at once (mission strip, HUD, target rows/boss field, micro pills, duel result pill, duel cards, card dock). 100% is already the bigger, more legible default.">
+            <span class="ctrl-lbl" style="min-width:92px;">Text size</span>
+            <input class="ctrl-in" id="ls-font-scale" type="range" min="70" max="160" step="5" value="100" style="flex:1;" oninput="lsSyncFontScaleInput()" onchange="lsApplyFontScale()">
+            <span id="ls-font-scale-val" style="font-size:11px;color:var(--txt-dim);min-width:38px;text-align:right;">100%</span>
+            <button class="tf-btn c-off" style="flex:0 0 auto;" onclick="lsResetFontScale()">Reset</button>
+          </div>
           <div class="ctrl-row" style="gap:5px;align-items:center;">
             <label style="font-size:9px;color:var(--txt-dim);white-space:nowrap;">Round</label>
             <input class="ctrl-in" id="ls-round-num" type="number" min="1" max="99" value="1" style="width:54px;text-align:right;" onchange="lsApplyRoundSettings()" title="Current round number shown in the Splat Cards status bar.">
@@ -2040,14 +2046,14 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
           <div style="font-size:9px;color:var(--txt-dim);line-height:1.35;">Main command is the primary public command. Aliases can be comma or space separated. Pull only works if the viewer has no card; Show only works if they already have one.</div>
           <div style="display:grid;grid-template-columns:.75fr 1fr 1.35fr;gap:4px;align-items:center;">
             <span class="ctrl-lbl">Action</span><span class="ctrl-lbl">Main</span><span class="ctrl-lbl">Aliases</span>
-            <span style="font-size:9px;color:var(--txt-dim);">Pull first card</span><input class="ctrl-in" id="ls-cmd-pull-main" value="!pull"><input class="ctrl-in" id="ls-cmd-pull-aliases" value="!draw">
+            <span style="font-size:9px;color:var(--txt-dim);">Pull first card</span><input class="ctrl-in" id="ls-cmd-pull-main" value="!pull"><input class="ctrl-in" id="ls-cmd-pull-aliases" value="!draw, !join">
             <span style="font-size:9px;color:var(--txt-dim);">Show card</span><input class="ctrl-in" id="ls-cmd-show-main" value="!show"><input class="ctrl-in" id="ls-cmd-show-aliases" value="!card, !ls, !cardgame">
             <span style="font-size:9px;color:var(--txt-dim);">Rank</span><input class="ctrl-in" id="ls-cmd-rank-main" value="!rank"><input class="ctrl-in" id="ls-cmd-rank-aliases" value="!me">
             <span style="font-size:9px;color:var(--txt-dim);">History</span><input class="ctrl-in" id="ls-cmd-history-main" value="!history"><input class="ctrl-in" id="ls-cmd-history-aliases" value="!stats">
             <span style="font-size:9px;color:var(--txt-dim);">Players</span><input class="ctrl-in" id="ls-cmd-players-main" value="!players"><input class="ctrl-in" id="ls-cmd-players-aliases" value="">
             <span style="font-size:9px;color:var(--txt-dim);">Duel</span><input class="ctrl-in" id="ls-cmd-duel-main" value="!duel"><input class="ctrl-in" id="ls-cmd-duel-aliases" value="">
             <span style="font-size:9px;color:var(--txt-dim);">Reroll</span><input class="ctrl-in" id="ls-cmd-reroll-main" value="!reroll"><input class="ctrl-in" id="ls-cmd-reroll-aliases" value="!rebirth">
-            <span style="font-size:9px;color:var(--txt-dim);">Boss join</span><input class="ctrl-in" id="ls-cmd-join-main" value="!join"><input class="ctrl-in" id="ls-cmd-join-aliases" value="">
+            <span style="font-size:9px;color:var(--txt-dim);">Boss join</span><input class="ctrl-in" id="ls-cmd-fight-main" value="!fight"><input class="ctrl-in" id="ls-cmd-fight-aliases" value="">
             <span style="font-size:9px;color:var(--txt-dim);">Loot</span><input class="ctrl-in" id="ls-cmd-loot-main" value="!loot"><input class="ctrl-in" id="ls-cmd-loot-aliases" value="">
           </div>
           <div class="ctrl-row" style="gap:4px;">
@@ -5932,6 +5938,9 @@ let _lsShelfTitleSize = parseInt(localStorage.getItem('lsShelfTitleSize') || '18
 let _lsNoticePrimarySize = parseInt(localStorage.getItem('lsNoticePrimarySize') || '26', 10);
 let _lsNoticeSecondarySize = parseInt(localStorage.getItem('lsNoticeSecondarySize') || '16', 10);
 let _lsNoticeHelperVisible = localStorage.getItem('lsNoticeHelperVisible') !== '0';
+// Global League of Splatties text-size multiplier (100 = the new bigger-by-default
+// baseline already baked into the overlay's CSS; range 70-160%).
+let _lsFontScale = parseInt(localStorage.getItem('lsFontScale') || '100', 10);
 let _lsExplainerEnabled = localStorage.getItem('lsExplainerEnabled') === '1';
 let _geyserY = parseInt(localStorage.getItem('geyserY') || '1720', 10);
 let _geyserEnabled = localStorage.getItem('geyserEnabled') !== 'false';
@@ -5968,14 +5977,16 @@ function lsLoadMechanics() {
 }
 let _lsMechanics = lsLoadMechanics();
 const LS_COMMAND_DEFAULTS = {
-  pull: { main: '!pull', aliases: ['!draw'] },
+  // !join now draws a card (alias of pull) — boss-fight joining moved to !fight so the
+  // two don't collide (see the "15 users playing, !join to draw a card" idle message).
+  pull: { main: '!pull', aliases: ['!draw', '!join'] },
   show: { main: '!show', aliases: ['!card', '!ls', '!cardgame'] },
   rank: { main: '!rank', aliases: ['!me'] },
   history: { main: '!history', aliases: ['!stats'] },
   players: { main: '!players', aliases: [] },
   duel: { main: '!duel', aliases: [] },
   reroll: { main: '!reroll', aliases: ['!rebirth'] },
-  join: { main: '!join', aliases: [] },
+  fight: { main: '!fight', aliases: [] },
   loot: { main: '!loot', aliases: [] }
 };
 const LS_EVENT_TEXT_DEFAULTS = {
@@ -5994,8 +6005,9 @@ const LS_EVENT_TEXT_DEFAULTS = {
   rank: { label:'Rank command', text:'{username} - Rank {rank} - {power} DP - {fragments}/{fragmentMax} fragments - {character}/{type} - round duels {roundDuels}' },
   history: { label:'History command', text:'{username} lifetime - duels {wins}W/{losses}L - bosses {bosses} - MVP {mvp} - {diamonds} DP earned - best {bestRank}' },
   rebirthClosed: { label:'Rebirth closed', text:'REBIRTH CLOSED - opens after round' },
-  rebirthUsed: { label:'Rebirth already used', text:'ALREADY REBORN - 1 reroll per round' },
-  rebirthPopupTitle: { label:'Rebirth popup title', text:'{username} rerolled a {type}!' },
+  rebirthUsed: { label:'Rebirth already used', text:'ALREADY REBORN - 1 gamble per round' },
+  rebirthTooPoor: { label:'Rebirth insufficient DP', text:'NOT ENOUGH DP - need {cost} DP to gamble' },
+  rebirthPopupTitle: { label:'Rebirth popup title', text:'{username} gambled {cost} DP - rolled {direction}!' },
   rebirthPopupSub: { label:'Rebirth popup subtext', text:'{oldRank} {oldType} -> {rank} {type}' },
   duelsPaused: { label:'Duels paused', text:'DUELS PAUSED - rebirth/results active' },
   duelCooldown: { label:'Duel cooldown', text:'WAIT - duel cooldown {seconds}s' },
@@ -6024,7 +6036,7 @@ const LS_EVENT_TEXT_DEFAULTS = {
   rankUpMessage: { label:'Rank-up test message', text:'RANK UP - {username} D3>D2' },
   leagueUpMessage: { label:'League-up test message', text:'LEAGUE UP - {username} D1>C5' },
   importFailed: { label:'Import failed', text:'IMPORT FAILED - invalid League of Splatties JSON' },
-  bossAppeared: { label:'Boss appeared', text:'BOSS APPEARED - {boss} ({difficulty}) - type !join' },
+  bossAppeared: { label:'Boss appeared', text:'BOSS APPEARED - {boss} ({difficulty}) - type !fight' },
   bossJoined: { label:'Boss joined', text:'{username} joined {boss}' },
   noBoss: { label:'No boss active', text:'NO BOSS ACTIVE - wait for a boss fight' },
   bossResult: { label:'Boss result', text:'BOSS {result} - MVP {mvp} - team {count} players - rewards +{reward} DP' },
@@ -6216,6 +6228,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (lsTitle) lsTitle.value = _lsGameTitle;
   lsSyncShelfFontInputs();
   lsSyncNoticeFontInputs();
+  lsSyncFontScaleInput();
   losPreviewSyncDivisions();
   const msYVal = document.getElementById('mission-strip-y-val');
   if (msYVal) msYVal.textContent = _missionStripY;
@@ -6347,6 +6360,7 @@ function publishSplatCardLayout(extra) {
   localStorage.setItem('lsNoticePrimarySize', _lsNoticePrimarySize);
   localStorage.setItem('lsNoticeSecondarySize', _lsNoticeSecondarySize);
   localStorage.setItem('lsNoticeHelperVisible', _lsNoticeHelperVisible ? '1' : '0');
+  localStorage.setItem('lsFontScale', _lsFontScale);
   if (ablyChannel) {
     ablyChannel.publish('gift-bar-pos', { top: _giftBarY }).catch(() => {});
     ablyChannel.publish('splat-card-layout', Object.assign({
@@ -6361,7 +6375,8 @@ function publishSplatCardLayout(extra) {
       shelfTitleSize: _lsShelfTitleSize,
       noticePrimarySize: _lsNoticePrimarySize,
       noticeSecondarySize: _lsNoticeSecondarySize,
-      noticeHelperVisible: _lsNoticeHelperVisible
+      noticeHelperVisible: _lsNoticeHelperVisible,
+      fontScale: _lsFontScale / 100
     }, extra || {})).catch(() => {});
   }
 }
@@ -6416,6 +6431,31 @@ function lsSyncNoticeFontInputs() {
     btn.classList.toggle('c-on', _lsNoticeHelperVisible);
     btn.classList.toggle('c-off', !_lsNoticeHelperVisible);
   }
+}
+
+// Global League of Splatties text-size control — one slider scales mission strip, HUD,
+// target rows/boss field, micro pills, duel result pill, duel cards, and card dock all
+// at once (see --ls-font-scale in gift-bar.html). 100% is the new bigger-by-default
+// baseline; range 70-160%.
+function lsSyncFontScaleInput() {
+  const input = document.getElementById('ls-font-scale');
+  const label = document.getElementById('ls-font-scale-val');
+  if (input) input.value = _lsFontScale;
+  if (label) label.textContent = _lsFontScale + '%';
+}
+function lsApplyFontScale() {
+  const raw = Number(document.getElementById('ls-font-scale')?.value);
+  _lsFontScale = Math.max(70, Math.min(160, Number.isFinite(raw) ? raw : _lsFontScale));
+  lsSyncFontScaleInput();
+  publishSplatCardLayout();
+  scheduleGistSave();
+}
+function lsResetFontScale() {
+  _lsFontScale = 100;
+  lsSyncFontScaleInput();
+  publishSplatCardLayout();
+  scheduleGistSave();
+  doFlash('purple');
 }
 
 function publishOverlayToggles() {
@@ -6588,14 +6628,20 @@ function lsStatusText() {
 function publishLeagueSprintState(eventText) {
   lsPersistRound();
   if (ablyChannel) {
-    ablyChannel.publish('league-sprint-state', {
+    // Only include `event` when a real one is passed in — this fires every second
+    // during a live round (the countdown ticker), and synthesizing a fake fallback
+    // event string here used to spam a micro pill on the overlay every tick.
+    const payload = {
       gameTitle: _lsGameTitle,
       round: _lsRound,
       roundLengthSec: _lsRoundLength,
       remainingSec: _lsRemaining,
       phase: _lsPhase,
-      event: eventText || 'EVENT - viewer mini-game'
-    }).catch(() => {});
+      // Drives the Duel Fight Area's idle "N users playing - !join to draw a card" message.
+      playerCount: typeof LeagueSprintState !== 'undefined' ? Object.keys(LeagueSprintState.state.players || {}).length : 0
+    };
+    if (eventText) payload.event = eventText;
+    ablyChannel.publish('league-sprint-state', payload).catch(() => {});
   }
   const st = document.getElementById('ls-status');
   if (st) st.textContent = `${_lsGameTitle} ${lsStatusText()} - ${_lsPhase}`;
@@ -7706,6 +7752,11 @@ function applyGistConfig(cfg) {
     _lsNoticeHelperVisible = cfg.lsNoticeHelperVisible !== '0';
   }
   lsSyncNoticeFontInputs();
+  if (cfg.lsFontScale != null) {
+    localStorage.setItem('lsFontScale', cfg.lsFontScale);
+    _lsFontScale = parseInt(cfg.lsFontScale, 10) || 100;
+  }
+  lsSyncFontScaleInput();
 
   // --- geyser Y ---
   if (cfg.geyserY != null) {
@@ -8528,13 +8579,13 @@ const LeagueSprintState = (() => {
     for (const ch of String(seedText || Date.now())) n = ((n << 5) - n + ch.charCodeAt(0)) | 0;
     return keys[Math.abs(n) % keys.length];
   }
-  // A !pull's starting league/rank is randomized too (gacha-style), weighted toward D
-  // league so a brand-new viewer usually starts low but occasionally gets a lucky pull.
-  // Weights: D 60% / C 25% / B 12% / A 3%. Division within a league is uniform.
+  // A !pull's starting league/rank is randomized (gacha-style) but locked to D league —
+  // B/A are earned by climbing, never handed out on a fresh pull. A very rare (3%) lucky
+  // pull can land in C league instead. Division within the rolled league is uniform.
   function randomPullRank() {
     const roll = Math.random();
-    const league = roll < 0.60 ? 'D' : roll < 0.85 ? 'C' : roll < 0.97 ? 'B' : 'A';
-    const divisions = league === 'A' ? [3, 2, 1] : [5, 4, 3, 2, 1];
+    const league = roll < 0.97 ? 'D' : 'C';
+    const divisions = [5, 4, 3, 2, 1];
     const division = divisions[Math.floor(Math.random() * divisions.length)];
     return `${league}${division}`;
   }
@@ -8863,7 +8914,7 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
     publishLeagueSprintVisual({ action:'bar-message', eventType:'SHOW_CARD', message:lsText('showBar', lsCardVars(card)) });
     return true;
   }
-  if (action === 'join') {
+  if (action === 'fight') {
     losBossJoin(card);
     return true;
   }
@@ -8880,25 +8931,33 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
       publishLeagueSprintVisual({ action:'bar-message', eventType:'REBIRTH_ALREADY_USED', severity:'warn', message:lsText('rebirthUsed') });
       return true;
     }
+    // Rebirth is a diamond-cost gamble, only usable during the rebirth window (between
+    // rounds, phase === 'rebirth'): pay 20% of your current DP (power) up front, then roll
+    // an even 1/3 chance each of rank up, rank down, or no rank change. Character/type
+    // always rerolls — that's the "reborn as someone new" part. One gamble per round.
     const oldCard = Object.assign({}, card);
+    const cost = Math.max(1, Math.round(card.power * 0.20));
+    if (card.power < cost) {
+      publishLeagueSprintVisual({ action:'bar-message', eventType:'REBIRTH_DENIED', severity:'warn', message:lsText('rebirthTooPoor', { cost }) });
+      return true;
+    }
+    card.power -= cost;
     const keys = Object.keys(LeagueSprintState.characters).filter(k => k !== card.character);
-    const fromPower = card.power;
     card.character = keys[Math.floor(Math.random() * keys.length)];
     card.type = LeagueSprintState.characters[card.character].type;
-    card.currentRank = LeagueSprintRankUtils.rankDown(card.currentRank);
+    const roll = Math.random();
+    const direction = roll < (1 / 3) ? 1 : roll < (2 / 3) ? -1 : 0;
+    if (direction > 0) card.currentRank = LeagueSprintRankUtils.rankUp(card.currentRank);
+    else if (direction < 0) card.currentRank = LeagueSprintRankUtils.rankDown(card.currentRank);
     card.league = LeagueSprintRankUtils.getLeagueFromRank(card.currentRank);
     card.fragmentMax = LeagueSprintRankUtils.getFragmentMax(card.currentRank);
     card.fragments = 0;
-    const mech = getLeagueSprintMechanics();
-    const rankIdx = LeagueSprintRankUtils.getRankIndex(card.currentRank);
-    const starterMin = Math.min(mech.starterMin, mech.starterMax) + rankIdx * 35;
-    const starterMax = Math.max(mech.starterMin, mech.starterMax) + rankIdx * 45;
-    card.power = starterMin + Math.floor(Math.random() * Math.max(1, starterMax - starterMin + 1));
     card.activeDiamondPower = card.power;
     card.rebirthCount = (card.rebirthCount || 0) + 1;
     card.currentLeagueStats = Object.assign(losDefaultStats(card.currentRank), card.currentLeagueStats || {});
     card.currentLeagueStats.rebirths++;
     card.rebirthedThisRound = true;
+    const directionLabel = direction > 0 ? 'UP' : direction < 0 ? 'DOWN' : 'SAME';
     card.rebirthHistory = Array.isArray(card.rebirthHistory) ? card.rebirthHistory : [];
     card.rebirthHistory.unshift({
       timestamp: Date.now(),
@@ -8908,7 +8967,9 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
       toType: card.type,
       fromRank: oldCard.currentRank,
       toRank: card.currentRank,
-      fromDiamondPower: fromPower,
+      direction: directionLabel,
+      cost,
+      fromDiamondPower: oldCard.power,
       toDiamondPower: card.power,
       reason: 'viewer_reroll'
     });
@@ -8918,9 +8979,15 @@ function handleLeagueSprintChatCommand({ platform, userId, username, displayName
       highestDiamondPowerEver: Math.max(life.highestDiamondPowerEver || 0, card.power || 0),
       highestRankEver: losHigherRank(life.highestRankEver, card.currentRank)
     });
-    LeagueSprintState.addRecent(`${card.username} rebirthed ${card.currentRank}`);
+    LeagueSprintState.addRecent(`${card.username} rebirthed (${directionLabel}) ${card.currentRank} - paid ${cost} DP`);
     LeagueSprintState.save();
-    publishLeagueSprintVisual({ action:'rebirth', eventType:'REBIRTH_SUCCESS', oldCard, newCard:card, message:lsText('rebirthPopupTitle', lsCardVars(card, { oldRank:oldCard.currentRank, oldType:oldCard.type })), popupTitle:lsText('rebirthPopupTitle', lsCardVars(card, { oldRank:oldCard.currentRank, oldType:oldCard.type })), popupSub:lsText('rebirthPopupSub', lsCardVars(card, { oldRank:oldCard.currentRank, oldType:oldCard.type })) });
+    const resultVars = lsCardVars(card, { oldRank:oldCard.currentRank, oldType:oldCard.type, cost, direction:directionLabel });
+    publishLeagueSprintVisual({
+      action:'rebirth', eventType:'REBIRTH_SUCCESS', oldCard, newCard:card, direction:directionLabel, cost,
+      message:lsText('rebirthPopupTitle', resultVars),
+      popupTitle:lsText('rebirthPopupTitle', resultVars),
+      popupSub:lsText('rebirthPopupSub', resultVars)
+    });
     return true;
   }
   if (action === 'duel') {
@@ -8961,7 +9028,7 @@ function lsEngineStartRebirth() {
   Object.values(LeagueSprintState.state.players).forEach(p => p.rebirthedThisRound = false);
   LeagueSprintState.state.rebirthEndsAt = Date.now() + (mech.rebirthWindowSec * 1000);
   LeagueSprintState.save();
-  publishLeagueSprintVisual({ action:'shelf', mode:'rebirth', cards:lsDecorateRankings(LeagueSprintState.sortedPlayers()).slice(0,5), meta:`!reroll = new type, -1 rank - ${mech.rebirthWindowSec}s` });
+  publishLeagueSprintVisual({ action:'bar-message', eventType:'RESULTS_STARTED', message:`REBIRTH OPEN - !reroll = 20% DP gamble, rank up/down/same - ${mech.rebirthWindowSec}s` });
   lsScheduleRebirthAutoAdvance();
 }
 
