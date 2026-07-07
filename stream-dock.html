@@ -2130,8 +2130,9 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
             </div>
             <textarea class="ctrl-in" id="los-boss-strengths" placeholder="Strengths, one per line" style="min-height:44px;resize:vertical;"></textarea>
             <textarea class="ctrl-in" id="los-boss-weaknesses" placeholder="Weaknesses, one per line" style="min-height:44px;resize:vertical;"></textarea>
-            <div class="ctrl-row" style="gap:5px;">
-              <input class="ctrl-in" id="los-boss-art" type="text" placeholder="Boss art URL or uploaded data" style="flex:1;">
+            <div class="ctrl-row" style="gap:5px;align-items:center;">
+              <img id="los-boss-art-preview" style="display:none;width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,.18);flex:0 0 auto;">
+              <input class="ctrl-in" id="los-boss-art" type="text" placeholder="Boss art URL or uploaded data" style="flex:1;" oninput="losBossSyncArtPreview()">
               <label class="ctrl-btn" style="cursor:pointer;">Upload<input type="file" accept="image/png,image/webp,image/jpeg" style="display:none;" onchange="losBossUploadArt(this)"></label>
             </div>
             <div class="ctrl-row" style="gap:4px;">
@@ -2963,6 +2964,18 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
             <button class="ctrl-btn" style="flex:1;" onclick="gbRefresh()">↺ Refresh</button>
             <button class="ctrl-btn" style="flex:1;background:rgba(168,85,247,0.25);border-color:rgba(168,85,247,0.5);" onclick="gbTestBar()">🧪 Test Bar</button>
             <button class="ctrl-btn c-off" style="flex:0 0 auto;" onclick="gbClearBar()" title="Clear test data">✕</button>
+          </div>
+          <div class="ctrl-sep" style="margin-top:6px;font-size:9px;color:var(--txt-dim);letter-spacing:.05em;">SLIDE WINDOW</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;">
+            <label style="font-size:9px;color:var(--txt-dim);">X <input class="ctrl-in" id="gb-slide-x" type="number" min="0" max="1080" step="5" value="540" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
+            <label style="font-size:9px;color:var(--txt-dim);">Y <input class="ctrl-in" id="gb-slide-y" type="number" min="0" max="1920" step="5" value="112" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
+            <label style="font-size:9px;color:var(--txt-dim);">W <input class="ctrl-in" id="gb-slide-w" type="number" min="180" max="900" step="5" value="486" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
+            <label style="font-size:9px;color:var(--txt-dim);">H <input class="ctrl-in" id="gb-slide-h" type="number" min="70" max="520" step="5" value="142" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
+          </div>
+          <div class="ctrl-row" style="gap:4px;">
+            <button class="ctrl-btn c-act" style="flex:1;" onclick="gbApplySlideWindow()">Send Window</button>
+            <button class="ctrl-btn" style="flex:1;" onclick="gbPresetSlideWindow('wide')">Wide Rectangle</button>
+            <button class="ctrl-btn" style="flex:1;" onclick="gbPresetSlideWindow('old')">Old Square</button>
           </div>
           <div class="ctrl-status" id="gb-status"></div>
           <div class="ctrl-sep" style="margin-top:6px;">
@@ -6031,6 +6044,10 @@ let _leagueShelfY = Math.max(0, Math.min(1920 - 154, parseInt(localStorage.getIt
 let _leagueShelfScale = parseInt(localStorage.getItem('leagueShelfScale') || '100', 10);
 let _lsSidePanelX = parseInt(localStorage.getItem('lsSidePanelX') || '726', 10);
 let _lsSidePanelY = parseInt(localStorage.getItem('lsSidePanelY') || '132', 10);
+let _gbSlideX = parseInt(localStorage.getItem('gbSlideX') || '540', 10);
+let _gbSlideY = parseInt(localStorage.getItem('gbSlideY') || '112', 10);
+let _gbSlideW = parseInt(localStorage.getItem('gbSlideW') || '486', 10);
+let _gbSlideH = parseInt(localStorage.getItem('gbSlideH') || '142', 10);
 let _lsShelfNameSize = parseInt(localStorage.getItem('lsShelfNameSize') || '17', 10);
 let _lsShelfRankSize = parseInt(localStorage.getItem('lsShelfRankSize') || '24', 10);
 let _lsShelfTitleSize = parseInt(localStorage.getItem('lsShelfTitleSize') || '18', 10);
@@ -7430,7 +7447,7 @@ function dockToggleGifterHighlight() {
   _dockGifterHighlightVisible = !_dockGifterHighlightVisible;
   // Publish a persistent on/off switch — a one-time clear isn't enough because a real gift
   // event can immediately repopulate the overlay's leaderboard slides right after.
-  if (ablyChannel) ablyChannel.publish('gifter-slides-config', { enabled: _dockGifterHighlightVisible }).catch(() => {});
+  gbPublishSlideWindow(false);
   if (_dockGifterHighlightVisible) gbRefresh();
   else gbUnfeature();
   doFlash(_dockGifterHighlightVisible ? 'green' : 'red');
@@ -7629,6 +7646,62 @@ function gbInit() {
   const custom = db?.settings?.giftrCustom;
   const st = document.getElementById('gb-status');
   if (st) st.textContent = custom ? `Featuring: ${custom.name}` : '';
+  gbSyncSlideWindowInputs();
+  gbPublishSlideWindow(false);
+}
+
+function gbSyncSlideWindowInputs() {
+  const pairs = [
+    ['gb-slide-x', _gbSlideX],
+    ['gb-slide-y', _gbSlideY],
+    ['gb-slide-w', _gbSlideW],
+    ['gb-slide-h', _gbSlideH]
+  ];
+  pairs.forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  });
+}
+
+function gbPublishSlideWindow(flash = true) {
+  localStorage.setItem('gbSlideX', _gbSlideX);
+  localStorage.setItem('gbSlideY', _gbSlideY);
+  localStorage.setItem('gbSlideW', _gbSlideW);
+  localStorage.setItem('gbSlideH', _gbSlideH);
+  if (ablyChannel) {
+    ablyChannel.publish('gifter-slides-config', {
+      enabled: _dockGifterHighlightVisible,
+      x: _gbSlideX,
+      y: _gbSlideY,
+      w: _gbSlideW,
+      h: _gbSlideH
+    }).catch(() => {});
+  }
+  if (flash) doFlash('purple');
+  if (typeof scheduleGistSave === 'function') scheduleGistSave();
+}
+
+function gbApplySlideWindow() {
+  const n = (id, fallback, min, max) => {
+    const raw = Number(document.getElementById(id)?.value);
+    return Math.max(min, Math.min(max, Number.isFinite(raw) ? Math.round(raw) : fallback));
+  };
+  _gbSlideX = n('gb-slide-x', _gbSlideX, 0, 1080);
+  _gbSlideY = n('gb-slide-y', _gbSlideY, 0, 1920);
+  _gbSlideW = n('gb-slide-w', _gbSlideW, 180, 900);
+  _gbSlideH = n('gb-slide-h', _gbSlideH, 70, 520);
+  gbSyncSlideWindowInputs();
+  gbPublishSlideWindow();
+}
+
+function gbPresetSlideWindow(kind) {
+  if (kind === 'old') {
+    _gbSlideX = 726; _gbSlideY = 132; _gbSlideW = 300; _gbSlideH = 310;
+  } else {
+    _gbSlideX = 540; _gbSlideY = 112; _gbSlideW = 486; _gbSlideH = 142;
+  }
+  gbSyncSlideWindowInputs();
+  gbPublishSlideWindow();
 }
 
 function gbPin(slot) {
@@ -7682,10 +7755,12 @@ function gbUnfeature() {
 }
 
 function gbRefresh() {
+  gbPublishSlideWindow(false);
   ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
 }
 
 function gbTestBar() {
+  gbPublishSlideWindow(false);
   const fake = name => ({ name, amount: 1234, type: 'tiktok_coins', platform: 'tiktok', profilePic: null });
   ablyChannel.publish('giftr', {
     daily:   fake('TestViewer'),
@@ -7802,6 +7877,10 @@ function gistGetConfig() {
     leagueShelfScale:     localStorage.getItem('leagueShelfScale'),
     lsSidePanelX:         localStorage.getItem('lsSidePanelX'),
     lsSidePanelY:         localStorage.getItem('lsSidePanelY'),
+    gbSlideX:             localStorage.getItem('gbSlideX'),
+    gbSlideY:             localStorage.getItem('gbSlideY'),
+    gbSlideW:             localStorage.getItem('gbSlideW'),
+    gbSlideH:             localStorage.getItem('gbSlideH'),
     lsShelfNameSize:      localStorage.getItem('lsShelfNameSize'),
     lsShelfRankSize:      localStorage.getItem('lsShelfRankSize'),
     lsShelfTitleSize:     localStorage.getItem('lsShelfTitleSize'),
@@ -7933,6 +8012,24 @@ function applyGistConfig(cfg) {
     localStorage.setItem('lsSidePanelY', cfg.lsSidePanelY);
     _lsSidePanelY = Math.max(40, Math.min(430, parseInt(cfg.lsSidePanelY, 10) || 132));
   }
+  if (cfg.gbSlideX != null) {
+    localStorage.setItem('gbSlideX', cfg.gbSlideX);
+    _gbSlideX = Math.max(0, Math.min(1080, parseInt(cfg.gbSlideX, 10) || 540));
+  }
+  if (cfg.gbSlideY != null) {
+    localStorage.setItem('gbSlideY', cfg.gbSlideY);
+    _gbSlideY = Math.max(0, Math.min(1920, parseInt(cfg.gbSlideY, 10) || 112));
+  }
+  if (cfg.gbSlideW != null) {
+    localStorage.setItem('gbSlideW', cfg.gbSlideW);
+    _gbSlideW = Math.max(180, Math.min(900, parseInt(cfg.gbSlideW, 10) || 486));
+  }
+  if (cfg.gbSlideH != null) {
+    localStorage.setItem('gbSlideH', cfg.gbSlideH);
+    _gbSlideH = Math.max(70, Math.min(520, parseInt(cfg.gbSlideH, 10) || 142));
+  }
+  gbSyncSlideWindowInputs();
+  gbPublishSlideWindow(false);
   if (cfg.lsShelfNameSize != null) {
     localStorage.setItem('lsShelfNameSize', cfg.lsShelfNameSize);
     _lsShelfNameSize = parseInt(cfg.lsShelfNameSize, 10) || 17;
@@ -9545,6 +9642,22 @@ function losBossToFields(boss) {
   set('los-boss-strengths', (boss.strengths || []).join('\n'));
   set('los-boss-weaknesses', (boss.weaknesses || []).join('\n'));
   set('los-boss-art', boss.art || '');
+  losBossSyncArtPreview();
+}
+// Thumbnail preview of the boss art field — so selecting a saved boss (or pasting a new
+// URL) shows what's actually there instead of a wall of base64/URL text, making it clear
+// there's something to replace via Upload.
+function losBossSyncArtPreview() {
+  const img = document.getElementById('los-boss-art-preview');
+  const src = document.getElementById('los-boss-art')?.value || '';
+  if (!img) return;
+  if (src) {
+    img.src = src;
+    img.style.display = 'block';
+  } else {
+    img.removeAttribute('src');
+    img.style.display = 'none';
+  }
 }
 function losRenderBossSelect() {
   const sel = document.getElementById('los-boss-select');
@@ -9591,7 +9704,7 @@ function losBossUploadArt(input) {
   if (!file) return;
   if (file.size > 900000) alert('Boss art is large. It can still work locally, but for Gist sync use a hosted asset path if GitHub rejects the payload.');
   const reader = new FileReader();
-  reader.onload = () => { const el = document.getElementById('los-boss-art'); if (el) el.value = reader.result; };
+  reader.onload = () => { const el = document.getElementById('los-boss-art'); if (el) el.value = reader.result; losBossSyncArtPreview(); };
   reader.readAsDataURL(file);
 }
 function losSelectedBoss() {
