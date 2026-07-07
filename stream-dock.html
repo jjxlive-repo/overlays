@@ -9632,9 +9632,19 @@ function losBossLibrary() {
   return lib;
 }
 function losSaveBossLibrary(lib) {
-  localStorage.setItem(LOS_KEYS.bosses, JSON.stringify(lib || { bosses: [], selectedId: '' }));
+  try {
+    localStorage.setItem(LOS_KEYS.bosses, JSON.stringify(lib || { bosses: [], selectedId: '' }));
+  } catch (e) {
+    // Was previously silent — a full localStorage quota (usually from accumulated boss art)
+    // threw here and the caller had no idea the save never happened.
+    const st = document.getElementById('los-boss-status');
+    if (st) st.textContent = 'Save failed — local storage is full. Delete an old boss or use a smaller image.';
+    doFlash('red');
+    return false;
+  }
   scheduleGistSave();
   losRenderBossSelect();
+  return true;
 }
 function losBossTypeChanged() {
   const type = document.getElementById('los-boss-type')?.value || 'Tank';
@@ -9697,8 +9707,14 @@ function losRenderBossSelect() {
   const sel = document.getElementById('los-boss-select');
   if (!sel) return;
   const lib = losBossLibrary();
-  sel.innerHTML = (lib.bosses || []).map(b => `<option value="${String(b.id).replace(/"/g,'&quot;')}">${String(b.name || 'Boss')}</option>`).join('');
-  if (lib.selectedId) sel.value = lib.selectedId;
+  // The leading value="" option matters: without a real <option> for the empty string, setting
+  // sel.value = '' (as losBossNew() does) doesn't stick — a single-select with no matching
+  // option just falls back to auto-selecting the first real option instead. That silently
+  // re-pointed "New Boss" at whatever boss happened to be first in the list, so Save Boss kept
+  // overwriting it instead of adding a new entry.
+  sel.innerHTML = '<option value="">— New Boss —</option>' +
+    (lib.bosses || []).map(b => `<option value="${String(b.id).replace(/"/g,'&quot;')}">${String(b.name || 'Boss')}</option>`).join('');
+  sel.value = lib.selectedId || '';
 }
 function losBossSave() {
   const lib = losBossLibrary();
@@ -9707,9 +9723,12 @@ function losBossSave() {
   const isNew = i < 0;
   if (i >= 0) lib.bosses[i] = boss; else lib.bosses.push(boss);
   lib.selectedId = boss.id;
-  losSaveBossLibrary(lib);
+  if (!losSaveBossLibrary(lib)) return;
   const st = document.getElementById('los-boss-status');
   if (st) st.textContent = (isNew ? 'Saved new boss: ' : 'Updated existing boss: ') + boss.name;
+}
+function losBossClearFields() {
+  losBossToFields({ name:'', type:'Tank', difficulty:'average', description:'', hpMod:1, damageMod:1, strengths:[], weaknesses:[], art:'' });
 }
 // Clears the fields and deselects the picker so the next Save Boss creates a genuinely new
 // entry. Without this, losBossFromFields() reuses whatever boss id is currently selected in
@@ -9718,7 +9737,7 @@ function losBossSave() {
 function losBossNew() {
   const sel = document.getElementById('los-boss-select');
   if (sel) sel.value = '';
-  losBossToFields({ name:'', type:'Tank', difficulty:'average', description:'', hpMod:1, damageMod:1, strengths:[], weaknesses:[], art:'' });
+  losBossClearFields();
   const st = document.getElementById('los-boss-status');
   if (st) st.textContent = 'New boss — fill in the fields, then Save Boss.';
 }
@@ -9727,7 +9746,7 @@ function losBossLoadSelected() {
   lib.selectedId = document.getElementById('los-boss-select')?.value || '';
   const boss = (lib.bosses || []).find(b => b.id === lib.selectedId);
   localStorage.setItem(LOS_KEYS.bosses, JSON.stringify(lib));
-  losBossToFields(boss);
+  if (boss) losBossToFields(boss); else losBossClearFields();
 }
 function losBossDuplicate() {
   const boss = losBossFromFields();
@@ -9749,9 +9768,35 @@ function losBossDelete() {
 function losBossUploadArt(input) {
   const file = input?.files?.[0];
   if (!file) return;
-  if (file.size > 900000) alert('Boss art is large. It can still work locally, but for Gist sync use a hosted asset path if GitHub rejects the payload.');
   const reader = new FileReader();
-  reader.onload = () => { const el = document.getElementById('los-boss-art'); if (el) el.value = reader.result; losBossSyncArtPreview(); };
+  reader.onload = () => {
+    // Downscale before storing. Boss art only ever renders as a small icon, but an
+    // unmodified upload (a phone photo can be several MB) turns into an even bigger base64
+    // string once read as a data URL, and the whole boss library lives in one localStorage
+    // key shared across every saved boss. A few full-size images was enough to blow past the
+    // ~5-10MB per-origin quota, and localStorage.setItem failing there was silent — saves just
+    // looked like they did nothing whenever art was attached. Capping dimensions here keeps
+    // every image a few tens of KB regardless of what was uploaded.
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 256;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        const scale = MAX / Math.max(width, height);
+        width = Math.max(1, Math.round(width * scale));
+        height = Math.max(1, Math.round(height * scale));
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const el = document.getElementById('los-boss-art');
+      if (el) el.value = canvas.toDataURL('image/png');
+      losBossSyncArtPreview();
+    };
+    img.onerror = () => alert('Could not read that image file.');
+    img.src = reader.result;
+  };
+  reader.onerror = () => alert('Could not read that image file.');
   reader.readAsDataURL(file);
 }
 function losSelectedBoss() {
