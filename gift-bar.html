@@ -4087,7 +4087,9 @@ const LEAGUE_SPRINT = (() => {
     BOSS_DEFEATED: { text: 'boss defeated', kind: 'result', boss: true },
     BOSS_LOST: { text: 'boss escaped', kind: 'error', boss: true },
     BOSS_MVP: { text: 'boss mvp', kind: 'result', dock: true },
-    LOOT_CLAIMED: { text: 'loot claimed', kind: 'result', dock: true }
+    LOOT_CLAIMED: { text: 'diamond grabbed', kind: 'result', dock: true },
+    ABILITY_READY: { text: 'ability ready', kind: 'ok', scout: true },
+    ABILITY_USED: { text: 'ability used', kind: 'ok', scout: true }
   };
 
   function getRankArtPath(character, rank) {
@@ -4431,7 +4433,7 @@ const LEAGUE_SPRINT = (() => {
     const cleaned = String(text || '').trim().replace(/\s+/g, ' ');
     if (!cleaned.startsWith('!')) return null;
     const parts = cleaned.slice(1).split(' ');
-    const aliases = { draw: 'pull', join: 'pull', card: 'show', ls: 'show', cardgame: 'show', rebirth: 'reroll' };
+    const aliases = { draw: 'pull', join: 'pull', card: 'show', ls: 'show', cardgame: 'show', rebirth: 'reroll', fight: 'boss', attack: 'boss', loot: 'grab' };
     const rawName = (parts.shift() || '').toLowerCase();
     return { name: aliases[rawName] || rawName, args: parts, raw: cleaned };
   }
@@ -4846,7 +4848,7 @@ const LEAGUE_SPRINT = (() => {
     const parsed = parseCommand(text);
     if (!parsed) return false;
     const commandName = parsed.name;
-    if (!['pull', 'show', 'duel', 'reroll'].includes(commandName)) {
+    if (!['pull', 'show', 'duel', 'reroll', 'boss', 'grab', 'guard', 'flank', 'chaos', 'run', 'buff'].includes(commandName)) {
       emitVisualEvent('INVALID_COMMAND', { username, reason: parsed.raw });
       return true;
     }
@@ -4870,6 +4872,11 @@ const LEAGUE_SPRINT = (() => {
     }
     if (commandName === 'show') {
       emitVisualEvent('SHOW_CARD', { username, card, detail: parsed.raw });
+      return true;
+    }
+    if (['boss', 'grab', 'guard', 'flank', 'chaos', 'run', 'buff'].includes(commandName)) {
+      const label = commandName === 'grab' ? 'diamond grab' : commandName === 'boss' ? 'boss command' : `${commandName} readied`;
+      emitVisualEvent(commandName === 'grab' ? 'LOOT_CLAIMED' : 'ABILITY_READY', { username, card, detail: label });
       return true;
     }
     if (commandName === 'duel') {
@@ -4940,7 +4947,7 @@ const LEAGUE_SPRINT = (() => {
         type: newType,
         currentRank: newRank,
         league: newRank[0],
-        power: Number(card.power || 0) - cost,
+        power: Math.min(newRank[0] === 'A' ? 2700 : newRank[0] === 'B' ? 1900 : newRank[0] === 'C' ? 1350 : 900, 120 + Math.max(0, rankIndex(newRank)) * 70),
         rebirthCount: Number(card.rebirthCount || 0) + 1,
         fragments: 0,
         fragmentMax: newRank[0] === 'A' ? 3 : 4
