@@ -9604,7 +9604,24 @@ function lsEngineImportState() {
 }
 
 function losBossLibrary() {
-  return losJsonGet(LOS_KEYS.bosses, { bosses: [], selectedId: '' });
+  const lib = losJsonGet(LOS_KEYS.bosses, { bosses: [], selectedId: '' });
+  lib.bosses = Array.isArray(lib.bosses) ? lib.bosses : [];
+  // Self-heal: any boss saved before the "id" field existed (or corrupted into the literal
+  // string "undefined") renders fine in the <select> list — the name is right there — but
+  // picking it can never match anything in losBossLoadSelected()'s find(b => b.id === ...),
+  // so the fields above stay blank. Assign a real id the first time we see one missing and
+  // persist it, so the dropdown and lookup are both working off the same real id from here on.
+  let migrated = false;
+  lib.bosses.forEach((b, i) => {
+    if (b && typeof b === 'object' && (!b.id || b.id === 'undefined')) {
+      b.id = 'boss-' + Date.now().toString(36) + '-' + i;
+      migrated = true;
+    }
+  });
+  if (migrated) {
+    try { localStorage.setItem(LOS_KEYS.bosses, JSON.stringify(lib)); } catch {}
+  }
+  return lib;
 }
 function losSaveBossLibrary(lib) {
   localStorage.setItem(LOS_KEYS.bosses, JSON.stringify(lib || { bosses: [], selectedId: '' }));
