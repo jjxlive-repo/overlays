@@ -2136,6 +2136,7 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
               <label class="ctrl-btn" style="cursor:pointer;">Upload<input type="file" accept="image/png,image/webp,image/jpeg" style="display:none;" onchange="losBossUploadArt(this)"></label>
             </div>
             <div class="ctrl-row" style="gap:4px;">
+              <button class="tf-btn" onclick="losBossNew()" title="Clears the fields and deselects the picker below, so Save Boss creates a new entry instead of overwriting whatever's currently selected.">New Boss</button>
               <button class="tf-btn" onclick="losBossSave()">Save Boss</button>
               <button class="tf-btn" onclick="losBossDuplicate()">Duplicate</button>
               <button class="tf-btn tf-btn-danger" onclick="losBossDelete()">Delete</button>
@@ -2967,8 +2968,8 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
           </div>
           <div class="ctrl-sep" style="margin-top:6px;font-size:9px;color:var(--txt-dim);letter-spacing:.05em;">SLIDE WINDOW</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;">
-            <label style="font-size:9px;color:var(--txt-dim);">X <input class="ctrl-in" id="gb-slide-x" type="number" min="0" max="1080" step="5" value="540" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
-            <label style="font-size:9px;color:var(--txt-dim);">Y <input class="ctrl-in" id="gb-slide-y" type="number" min="0" max="1920" step="5" value="112" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
+            <label style="font-size:9px;color:var(--txt-dim);">X <input class="ctrl-in" id="gb-slide-x" type="number" min="-400" max="1400" step="5" value="40" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
+            <label style="font-size:9px;color:var(--txt-dim);">Y <input class="ctrl-in" id="gb-slide-y" type="number" min="-400" max="2200" step="5" value="270" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
             <label style="font-size:9px;color:var(--txt-dim);">W <input class="ctrl-in" id="gb-slide-w" type="number" min="180" max="900" step="5" value="486" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
             <label style="font-size:9px;color:var(--txt-dim);">H <input class="ctrl-in" id="gb-slide-h" type="number" min="70" max="520" step="5" value="142" onchange="gbApplySlideWindow()" style="width:100%;text-align:right;margin-top:2px;"></label>
           </div>
@@ -5416,7 +5417,7 @@ const LAYOUT_ELEMENTS = [
   { id:'gift-bar', label:'Whole stream bar', group:'Stream Bar',
     y:{min:0,max:1824} },
   { id:'gb-slide', label:'Gifter/Explainer box', group:'Gift Bar',
-    x:{min:0,max:1080}, y:{min:0,max:1920} },
+    x:{min:-400,max:1400}, y:{min:-400,max:2200} },
   { id:'league-shelf', label:'Bottom card shelf', group:'Splat Cards',
     y:{min:0,max:1766}, scale:{min:55,max:180} },
   { id:'ls-side-panel', label:'Top camera info panel', group:'Splat Cards',
@@ -6053,8 +6054,8 @@ let _leagueShelfY = Math.max(0, Math.min(1920 - 154, parseInt(localStorage.getIt
 let _leagueShelfScale = parseInt(localStorage.getItem('leagueShelfScale') || '100', 10);
 let _lsSidePanelX = parseInt(localStorage.getItem('lsSidePanelX') || '726', 10);
 let _lsSidePanelY = parseInt(localStorage.getItem('lsSidePanelY') || '132', 10);
-let _gbSlideX = parseInt(localStorage.getItem('gbSlideX') || '540', 10);
-let _gbSlideY = parseInt(localStorage.getItem('gbSlideY') || '112', 10);
+let _gbSlideX = parseInt(localStorage.getItem('gbSlideX') || '40', 10);
+let _gbSlideY = parseInt(localStorage.getItem('gbSlideY') || '270', 10);
 let _gbSlideW = parseInt(localStorage.getItem('gbSlideW') || '486', 10);
 let _gbSlideH = parseInt(localStorage.getItem('gbSlideH') || '142', 10);
 let _lsShelfNameSize = parseInt(localStorage.getItem('lsShelfNameSize') || '17', 10);
@@ -7655,6 +7656,13 @@ function gbInit() {
   const custom = db?.settings?.giftrCustom;
   const st = document.getElementById('gb-status');
   if (st) st.textContent = custom ? `Featuring: ${custom.name}` : '';
+  // One-time migration: earlier default placed this box at x:540,y:112 (right of center, near
+  // top) — never a deliberate placement, just what shipped. Any dock still sitting on that
+  // exact untouched value gets moved to the new default (left side, above the gift bar) once.
+  if (_gbSlideX === 540 && _gbSlideY === 112 && !localStorage.getItem('gbSlideMigratedV2')) {
+    _gbSlideX = 40; _gbSlideY = 270;
+  }
+  localStorage.setItem('gbSlideMigratedV2', '1');
   gbSyncSlideWindowInputs();
   gbPublishSlideWindow(false);
 }
@@ -7695,8 +7703,8 @@ function gbApplySlideWindow() {
     const raw = Number(document.getElementById(id)?.value);
     return Math.max(min, Math.min(max, Number.isFinite(raw) ? Math.round(raw) : fallback));
   };
-  _gbSlideX = n('gb-slide-x', _gbSlideX, 0, 1080);
-  _gbSlideY = n('gb-slide-y', _gbSlideY, 0, 1920);
+  _gbSlideX = n('gb-slide-x', _gbSlideX, -400, 1400);
+  _gbSlideY = n('gb-slide-y', _gbSlideY, -400, 2200);
   _gbSlideW = n('gb-slide-w', _gbSlideW, 180, 900);
   _gbSlideH = n('gb-slide-h', _gbSlideH, 70, 520);
   gbSyncSlideWindowInputs();
@@ -8023,11 +8031,11 @@ function applyGistConfig(cfg) {
   }
   if (cfg.gbSlideX != null) {
     localStorage.setItem('gbSlideX', cfg.gbSlideX);
-    _gbSlideX = Math.max(0, Math.min(1080, parseInt(cfg.gbSlideX, 10) || 540));
+    _gbSlideX = Math.max(-400, Math.min(1400, parseInt(cfg.gbSlideX, 10) || 40));
   }
   if (cfg.gbSlideY != null) {
     localStorage.setItem('gbSlideY', cfg.gbSlideY);
-    _gbSlideY = Math.max(0, Math.min(1920, parseInt(cfg.gbSlideY, 10) || 112));
+    _gbSlideY = Math.max(-400, Math.min(2200, parseInt(cfg.gbSlideY, 10) || 270));
   }
   if (cfg.gbSlideW != null) {
     localStorage.setItem('gbSlideW', cfg.gbSlideW);
@@ -9696,10 +9704,23 @@ function losBossSave() {
   const lib = losBossLibrary();
   const boss = losBossFromFields();
   const i = (lib.bosses || []).findIndex(b => b.id === boss.id);
+  const isNew = i < 0;
   if (i >= 0) lib.bosses[i] = boss; else lib.bosses.push(boss);
   lib.selectedId = boss.id;
   losSaveBossLibrary(lib);
-  const st = document.getElementById('los-boss-status'); if (st) st.textContent = `Saved ${boss.name}`;
+  const st = document.getElementById('los-boss-status');
+  if (st) st.textContent = (isNew ? 'Saved new boss: ' : 'Updated existing boss: ') + boss.name;
+}
+// Clears the fields and deselects the picker so the next Save Boss creates a genuinely new
+// entry. Without this, losBossFromFields() reuses whatever boss id is currently selected in
+// the picker, so typing a new boss and hitting Save silently overwrites the selected one
+// instead of adding to the library — this is the fix for that trap.
+function losBossNew() {
+  const sel = document.getElementById('los-boss-select');
+  if (sel) sel.value = '';
+  losBossToFields({ name:'', type:'Tank', difficulty:'average', description:'', hpMod:1, damageMod:1, strengths:[], weaknesses:[], art:'' });
+  const st = document.getElementById('los-boss-status');
+  if (st) st.textContent = 'New boss — fill in the fields, then Save Boss.';
 }
 function losBossLoadSelected() {
   const lib = losBossLibrary();
