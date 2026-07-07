@@ -2147,7 +2147,10 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
               <button class="tf-btn tf-btn-danger" onclick="losBossResolve(false)">Loss</button>
               <button class="tf-btn tf-btn-gift" onclick="losBossResolve(true)">Win</button>
             </div>
-            <button class="tf-btn" style="width:100%;" onclick="losCompressAllBossArt()" title="Re-compresses every saved boss's art down to a small thumbnail. Fixes 'local storage is full' caused by old, full-size image uploads from before art was auto-compressed.">Shrink Saved Art (fix storage full)</button>
+            <div class="ctrl-row" style="gap:4px;">
+              <button class="tf-btn" style="flex:1;" onclick="losCompressAllBossArt()" title="Re-compresses every saved boss's art down to a small thumbnail. Fixes 'local storage is full' caused by old, full-size image uploads from before art was auto-compressed.">Shrink Saved Art</button>
+              <button class="tf-btn" style="flex:1;" onclick="losReportStorageUsage()" title="Shows exactly which saved data is taking up local storage — useful if shrinking boss art alone doesn't free enough room, since something else (viewer history, other uploaded images, etc.) may be the real culprit.">Show Storage Usage</button>
+            </div>
             <div class="ctrl-row" style="gap:5px;">
               <button class="ctrl-btn c-on" id="los-auto-boss-btn" onclick="losToggleAutoBoss()">Auto Boss Off</button>
               <input class="ctrl-in" id="los-auto-boss-min" type="number" min="1" max="240" value="15" style="width:58px;text-align:right;">
@@ -9847,6 +9850,25 @@ async function losCompressAllBossArt() {
   if (st) st.textContent = changed ? `Shrunk art on ${changed} boss(es). Try Save Boss again.` : 'No oversized art found — nothing to shrink.';
   doFlash('green');
   scheduleGistSave();
+}
+// Diagnostic: boss art isn't the only thing that can fill up localStorage — viewer lifetime
+// history, other uploaded images elsewhere in the dock, etc. all share the same quota. This
+// lists every key under this quota and how big it is, so if shrinking boss art alone doesn't
+// free enough room, we can see what the actual biggest consumer is instead of guessing.
+function losReportStorageUsage() {
+  const rows = [];
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const val = localStorage.getItem(key) || '';
+    const bytes = (key.length + val.length) * 2; // rough UTF-16 estimate
+    total += bytes;
+    rows.push({ key, bytes });
+  }
+  rows.sort((a, b) => b.bytes - a.bytes);
+  const fmt = n => (n / 1024).toFixed(1) + ' KB';
+  const lines = rows.slice(0, 15).map(r => `${fmt(r.bytes).padStart(9)}  ${r.key}`).join('\n');
+  alert(`Total localStorage used: ${fmt(total)}\n(Chrome's per-origin limit is usually ~5-10 MB)\n\nLargest keys:\n${lines}`);
 }
 function losSelectedBoss() {
   const lib = losBossLibrary();
