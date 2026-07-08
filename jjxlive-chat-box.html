@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
+<title>JJxLive Chat Box</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+* { box-sizing: border-box; }
+:root {
+  --overlay-top: 134px;
+  --overlay-right: 34px;
+  --chat-width: 235px;
+  --chat-height: 210px;
+  --event-width: 235px;
+  --event-height: 42px;
+  --event-gap: 8px;
+  --chat-radius: 16px;
+  --chat-font-scale: 1;
+  --chat-font-family: "Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif;
+
+  --jjx-bg: rgba(12, 4, 28, 0.72);
+  --jjx-bg-strong: rgba(8, 2, 22, 0.88);
+  --jjx-purple: #8b5cf6;
+  --jjx-purple-hot: #b56cff;
+  --jjx-cyan: #46d9ff;
+  --jjx-cream: #fff6ff;
+  --jjx-yellow: #ffd84d;
+  --jjx-pink: #ff4fd8;
+  --jjx-shadow: rgba(0, 0, 0, 0.72);
+}
+html, body {
+  width: 1080px;
+  height: 1920px;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--chat-font-family);
+}
+body {
+  color: var(--jjx-cream);
+  pointer-events: none;
+}
+.jjx-chat-overlay {
+  position: fixed;
+  top: var(--overlay-top);
+  right: var(--overlay-right);
+  width: var(--chat-width);
+  height: calc(var(--chat-height) + var(--event-height) + var(--event-gap));
+  pointer-events: none;
+  z-index: 20;
+}
+.event-zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--event-width);
+  height: var(--event-height);
+  z-index: 4;
+  opacity: 0;
+  transform: translateY(8px) scale(.98);
+  pointer-events: none;
+}
+.event-zone.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: eventIn .24s cubic-bezier(.34,1.56,.64,1) both, eventHold 1.2s ease-in-out infinite alternate;
+}
+.event-zone.is-out {
+  animation: eventOut .34s ease both;
+}
+.chat-zone {
+  position: absolute;
+  top: calc(var(--event-height) + var(--event-gap));
+  right: 0;
+  width: var(--chat-width);
+  height: var(--chat-height);
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+.chat-list {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 7px;
+  overflow: hidden;
+}
+.chat-message {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  animation: chatIn .28s cubic-bezier(.34,1.56,.64,1) both;
+}
+.chat-message.is-removing {
+  animation: chatOut .38s ease both;
+}
+.chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.platform-chip,
+.avatar-chip,
+.event-icon {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 8px;
+  color: var(--jjx-cream);
+  font-size: 10px;
+  font-weight: 900;
+  text-shadow: 0 1px 0 var(--jjx-shadow);
+  background: linear-gradient(135deg, rgba(70,217,255,.75), rgba(139,92,246,.8));
+  box-shadow: 0 0 12px rgba(70,217,255,.28);
+}
+.platform-chip[data-platform="tiktok"] {
+  background: linear-gradient(135deg, #46d9ff, #2185ff);
+  box-shadow: 0 0 12px rgba(70,217,255,.44);
+}
+.platform-chip[data-platform="youtube"] {
+  background: linear-gradient(135deg, #ff3b5f, #b7132f);
+  box-shadow: 0 0 12px rgba(255,59,95,.42);
+}
+.username {
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--jjx-cyan);
+  font-size: calc(12px * var(--chat-font-scale));
+  font-weight: 900;
+  line-height: 1.1;
+  text-shadow: 0 2px 0 var(--jjx-shadow), 0 0 8px rgba(70,217,255,.26);
+}
+.status-pill {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: #16051f;
+  background: linear-gradient(135deg, var(--jjx-yellow), var(--jjx-purple-hot));
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .04em;
+  box-shadow: 0 0 12px rgba(255,216,77,.38);
+}
+.status-pill.fanclub {
+  min-width: 16px;
+  width: 16px;
+  padding: 0;
+  color: var(--jjx-cream);
+  background: linear-gradient(135deg, var(--jjx-pink), var(--jjx-purple));
+}
+.chat-message.is-superfan,
+.chat-message.is-member {
+  outline: 1px solid rgba(255,216,77,.54);
+  box-shadow: 0 0 18px rgba(255,216,77,.22), 0 0 12px rgba(181,108,255,.18);
+}
+.chat-message.is-superfan .username,
+.chat-message.is-member .username {
+  color: var(--jjx-yellow);
+}
+.message-text {
+  display: -webkit-box;
+  -webkit-line-clamp: var(--clamp-lines, 2);
+  -webkit-box-orient: vertical;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--jjx-cream);
+  font-size: calc(15px * var(--chat-font-scale));
+  font-weight: 900;
+  line-height: 1.12;
+  text-shadow: 0 2px 0 var(--jjx-shadow), 0 0 8px rgba(0,0,0,.55);
+  overflow-wrap: anywhere;
+}
+.event-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+.event-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.event-main {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--jjx-cream);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.05;
+  text-shadow: 0 2px 0 var(--jjx-shadow), 0 0 8px rgba(0,0,0,.55);
+}
+.event-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--jjx-yellow);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 0 var(--jjx-shadow);
+}
+
+/* 1. sticker */
+[data-style="sticker"] .chat-zone {
+  padding: 10px;
+  border-radius: var(--chat-radius);
+  border: 2px solid rgba(181,108,255,.78);
+  background:
+    radial-gradient(circle at 16% 10%, rgba(70,217,255,.18), transparent 34%),
+    linear-gradient(180deg, rgba(18,6,42,.74), rgba(8,2,22,.84));
+  box-shadow: inset 0 0 18px rgba(181,108,255,.24), 0 12px 28px rgba(0,0,0,.32);
+}
+[data-style="sticker"] .chat-message {
+  padding: 7px 8px;
+  border-radius: 11px 14px 10px 16px;
+  background: linear-gradient(135deg, rgba(42,16,76,.9), rgba(22,8,44,.82));
+  border: 1px solid rgba(255,246,255,.16);
+  box-shadow: 0 6px 0 rgba(10,2,24,.58), 0 8px 14px rgba(0,0,0,.24);
+}
+[data-style="sticker"] .username {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(70,217,255,.14);
+}
+[data-style="sticker"] .event-zone {
+  border-radius: 14px;
+  border: 2px solid rgba(70,217,255,.68);
+  background: linear-gradient(135deg, rgba(25,8,58,.93), rgba(12,4,28,.88));
+  box-shadow: 0 0 18px rgba(181,108,255,.52), inset 0 0 16px rgba(70,217,255,.16);
+  padding: 8px;
+}
+
+/* 2. splat */
+[data-style="splat"] .chat-zone { overflow: visible; }
+[data-style="splat"] .chat-list { gap: 12px; }
+[data-style="splat"] .chat-message {
+  padding: 10px 11px;
+  border-radius: 18px 26px 16px 24px;
+  border: 2px solid rgba(255,246,255,.86);
+  background:
+    radial-gradient(circle at 8% 8%, rgba(255,79,216,.5), transparent 18%),
+    radial-gradient(circle at 92% 18%, rgba(70,217,255,.34), transparent 19%),
+    linear-gradient(135deg, rgba(139,92,246,.92), rgba(34,9,74,.92));
+  box-shadow: 0 4px 0 rgba(0,0,0,.72), 0 0 18px rgba(181,108,255,.38);
+  animation-name: splatPop;
+}
+[data-style="splat"] .chat-list .chat-message:nth-last-child(n+3) { display: none; }
+[data-style="splat"] .username {
+  max-width: 130px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: #13061f;
+  color: var(--jjx-yellow);
+  font-size: 11px;
+}
+[data-style="splat"] .message-text {
+  font-size: calc(16px * var(--chat-font-scale));
+}
+[data-style="splat"] .event-zone {
+  padding: 8px;
+  border-radius: 18px 26px 16px 24px;
+  border: 2px solid rgba(255,246,255,.86);
+  background: linear-gradient(135deg, rgba(181,108,255,.94), rgba(34,9,74,.92));
+  box-shadow: 0 4px 0 rgba(0,0,0,.72), 0 0 20px rgba(255,79,216,.4);
+}
+
+/* 3. arcade */
+[data-style="arcade"] .chat-zone {
+  padding: 9px;
+  border-radius: 6px;
+  border: 2px solid var(--jjx-cyan);
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,.04) 0 1px, transparent 1px 5px),
+    rgba(5,3,18,.88);
+  box-shadow: 0 0 18px rgba(70,217,255,.3), inset 0 0 0 2px rgba(181,108,255,.3);
+}
+[data-style="arcade"] .chat-zone::before {
+  content: "JJXLIVE CHAT";
+  display: block;
+  margin: 0 0 6px;
+  color: var(--jjx-yellow);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+[data-style="arcade"] .chat-list { gap: 4px; }
+[data-style="arcade"] .chat-message {
+  padding: 3px 0 3px 7px;
+  border-left: 3px solid var(--jjx-purple-hot);
+  animation-name: terminalType;
+}
+[data-style="arcade"] .message-text { font-size: calc(14px * var(--chat-font-scale)); }
+[data-style="arcade"] .event-zone {
+  padding: 7px;
+  border-radius: 6px;
+  border: 2px solid var(--jjx-yellow);
+  background: rgba(5,3,18,.92);
+  box-shadow: 0 0 18px rgba(255,216,77,.28);
+}
+
+/* 4. chips */
+[data-style="chips"] .chat-zone { overflow: visible; }
+[data-style="chips"] .chat-list { gap: 9px; }
+[data-style="chips"] .chat-message {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 999px 999px 999px 12px;
+  border: 1px solid rgba(181,108,255,.58);
+  background: rgba(14,5,32,.78);
+  box-shadow: 0 8px 18px rgba(0,0,0,.26), 0 0 12px rgba(139,92,246,.22);
+  animation-name: chipFloat;
+}
+[data-style="chips"] .chat-message:nth-child(even) { margin-left: auto; border-radius: 999px 999px 12px 999px; }
+[data-style="chips"] .chat-meta { display: none; }
+[data-style="chips"] .message-text { font-size: calc(15px * var(--chat-font-scale)); }
+[data-style="chips"] .event-zone {
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(70,217,255,.58);
+  background: rgba(14,5,32,.86);
+  box-shadow: 0 0 16px rgba(70,217,255,.28);
+}
+
+/* 5. comms */
+[data-style="comms"] .chat-zone {
+  padding: 10px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 8px);
+  border: 1px solid rgba(70,217,255,.5);
+  background: linear-gradient(135deg, rgba(10,4,30,.9), rgba(30,8,62,.76));
+  box-shadow: inset 0 0 20px rgba(70,217,255,.12), 0 0 18px rgba(139,92,246,.28);
+}
+[data-style="comms"] .chat-zone::before {
+  content: "LIVE COMMS";
+  display: block;
+  margin: 0 0 7px;
+  color: var(--jjx-cyan);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .09em;
+}
+[data-style="comms"] .chat-message {
+  padding: 6px 7px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 6px);
+  background: rgba(255,246,255,.07);
+  border-left: 3px solid var(--jjx-yellow);
+}
+[data-style="comms"] .event-zone {
+  padding: 8px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 8px);
+  background: rgba(8,2,22,.92);
+  border: 1px solid rgba(255,216,77,.62);
+}
+
+/* 6. spotlight */
+[data-style="spotlight"] .chat-zone {
+  padding: 13px;
+  border-radius: 18px;
+  border: 1px solid rgba(181,108,255,.7);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(181,108,255,.26), transparent 44%),
+    rgba(8,2,22,.82);
+  box-shadow: 0 0 24px rgba(181,108,255,.34);
+}
+[data-style="spotlight"] .chat-list { justify-content: center; }
+[data-style="spotlight"] .chat-message:not(:last-child) { display: none; }
+[data-style="spotlight"] .chat-message {
+  padding: 4px;
+}
+[data-style="spotlight"] .username {
+  max-width: 180px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(70,217,255,.16);
+}
+[data-style="spotlight"] .message-text {
+  margin-top: 6px;
+  font-size: calc(18px * var(--chat-font-scale));
+  line-height: 1.12;
+}
+[data-style="spotlight"] .event-zone {
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(8,2,22,.86);
+  border: 1px solid rgba(181,108,255,.64);
+  box-shadow: 0 0 18px rgba(181,108,255,.3);
+}
+
+/* 7. glass */
+[data-style="glass"] .chat-zone {
+  padding: 10px;
+  border-radius: 13px;
+  border: 1px solid rgba(255,246,255,.2);
+  background:
+    radial-gradient(circle at 80% 8%, rgba(70,217,255,.14), transparent 28%),
+    linear-gradient(180deg, rgba(59,7,100,.18), rgba(0,0,0,.16)),
+    rgba(8,8,14,.22);
+  box-shadow: inset 0 0 24px rgba(181,108,255,.16), 0 16px 28px rgba(0,0,0,.28);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+[data-style="glass"] .chat-message {
+  padding: 7px 9px;
+  border-left: 3px solid var(--jjx-purple-hot);
+  border-radius: 8px;
+  background: rgba(0,0,0,.36);
+  box-shadow: 0 8px 16px rgba(0,0,0,.22);
+}
+[data-style="glass"] .event-zone {
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,216,77,.52);
+  background: rgba(22,5,40,.86);
+  box-shadow: 0 0 18px rgba(181,108,255,.38);
+}
+
+/* 8. caption */
+[data-style="caption"] .chat-zone {
+  padding: 10px 4px;
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,.28) 14%, rgba(0,0,0,.24) 84%, transparent);
+}
+[data-style="caption"] .chat-list { gap: 9px; }
+[data-style="caption"] .chat-message {
+  padding: 0 0 0 10px;
+  border-left: 3px solid var(--jjx-purple-hot);
+}
+[data-style="caption"] .username {
+  color: var(--jjx-purple-hot);
+}
+[data-style="caption"] .message-text {
+  font-size: calc(17px * var(--chat-font-scale));
+  text-shadow: 0 2px 0 var(--jjx-shadow), 0 0 10px rgba(0,0,0,.74);
+}
+[data-style="caption"] .event-zone {
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,216,77,.58);
+  background: rgba(22,5,40,.88);
+  box-shadow: 0 0 18px rgba(181,108,255,.32);
+}
+
+/* 9. sidebar */
+[data-style="sidebar"] .chat-zone {
+  padding: 10px 8px 10px 14px;
+  border-left: 3px solid rgba(181,108,255,.9);
+  background: linear-gradient(90deg, rgba(59,7,100,.34), rgba(0,0,0,.08));
+}
+[data-style="sidebar"] .chat-list { gap: 10px; }
+[data-style="sidebar"] .chat-message {
+  overflow: visible;
+  padding-left: 4px;
+}
+[data-style="sidebar"] .chat-message::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--jjx-purple-hot);
+  box-shadow: 0 0 14px rgba(181,108,255,.84);
+}
+[data-style="sidebar"] .message-text { font-size: calc(16px * var(--chat-font-scale)); }
+[data-style="sidebar"] .event-zone {
+  padding: 8px;
+  border-radius: 10px;
+  border-left: 3px solid var(--jjx-yellow);
+  background: rgba(18,4,38,.9);
+}
+
+/* 10. neon */
+[data-style="neon"] .chat-zone {
+  padding: 10px 8px;
+  border-top: 2px solid rgba(181,108,255,.74);
+  border-bottom: 2px solid rgba(70,217,255,.68);
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.36) 18%, rgba(0,0,0,.34) 82%, transparent);
+}
+[data-style="neon"] .chat-message {
+  padding: 5px 0 5px 10px;
+  border-left: 3px solid var(--jjx-pink);
+}
+[data-style="neon"] .username {
+  color: var(--jjx-cyan);
+  text-shadow: 0 0 10px rgba(70,217,255,.75);
+}
+[data-style="neon"] .message-text {
+  font-size: calc(16px * var(--chat-font-scale));
+  text-shadow: 0 0 6px rgba(181,108,255,.85), 0 2px 0 var(--jjx-shadow);
+}
+[data-style="neon"] .event-zone {
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(70,217,255,.62);
+  background: rgba(8,2,22,.88);
+  box-shadow: 0 0 18px rgba(70,217,255,.24);
+}
+
+/* 11. bubble */
+[data-style="bubble"] .chat-zone { overflow: visible; }
+[data-style="bubble"] .chat-list { gap: 9px; }
+[data-style="bubble"] .chat-message {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,246,255,.92);
+  box-shadow: 0 8px 18px rgba(0,0,0,.28);
+}
+[data-style="bubble"] .chat-message:nth-child(even) {
+  margin-left: auto;
+  background: rgba(181,108,255,.92);
+}
+[data-style="bubble"] .username,
+[data-style="bubble"] .message-text {
+  color: #16051f;
+  text-shadow: none;
+}
+[data-style="bubble"] .chat-message:nth-child(even) .username,
+[data-style="bubble"] .chat-message:nth-child(even) .message-text {
+  color: var(--jjx-cream);
+  text-shadow: 0 1px 0 var(--jjx-shadow);
+}
+[data-style="bubble"] .event-zone {
+  padding: 8px;
+  border-radius: 999px;
+  background: rgba(255,246,255,.92);
+  border: 1px solid rgba(181,108,255,.62);
+}
+[data-style="bubble"] .event-main,
+[data-style="bubble"] .event-value {
+  color: #16051f;
+  text-shadow: none;
+}
+
+.event-zone[data-event-type="highGift"],
+.event-zone[data-event-type="diamondDrop"] {
+  box-shadow: 0 0 26px rgba(255,216,77,.44), 0 0 12px rgba(70,217,255,.24);
+}
+
+@keyframes chatIn {
+  from { opacity: 0; transform: translateX(18px) scale(.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes chatOut {
+  to { opacity: 0; transform: translateY(-14px) scale(.96); }
+}
+@keyframes chipFloat {
+  from { opacity: 0; transform: translateY(14px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes splatPop {
+  0% { opacity: 0; transform: scale(.82) rotate(-1deg); }
+  70% { opacity: 1; transform: scale(1.04) rotate(.7deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes terminalType {
+  from { opacity: 0; filter: blur(2px); transform: translateX(6px); }
+  to { opacity: 1; filter: blur(0); transform: translateX(0); }
+}
+@keyframes eventIn {
+  from { opacity: 0; transform: translateY(10px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes eventHold {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.12); }
+}
+@keyframes eventOut {
+  to { opacity: 0; transform: translateY(-10px) scale(.98); }
+}
+</style>
+</head>
+<body>
+<div id="jjx-chat-overlay" class="jjx-chat-overlay" data-style="sticker">
+  <div id="event-zone" class="event-zone"></div>
+  <div id="chat-zone" class="chat-zone">
+    <div id="chat-list" class="chat-list"></div>
+  </div>
+</div>
+
+<script>
+const CONFIG = {
+  defaultStyle: "sticker",
+  position: {
+    top: 134,
+    right: 34,
+    width: 235,
+    chatHeight: 210,
+    eventHeight: 42,
+    eventGap: 8
+  },
+  chat: {
+    maxMessages: 3,
+    messageLifetime: 8500,
+    clampLines: 2
+  },
+  events: {
+    enabled: true,
+    duration: 4000,
+    highDuration: 7000,
+    queue: true,
+    showFollowsAsEvents: true,
+    showJoinsAsEvents: false,
+    showLikesAsEvents: true,
+    likeMilestoneStep: 1000
+  },
+  accessibility: {
+    colorblindSafe: true,
+    strongTextShadow: true
+  },
+  socialStream: {
+    session: "usNkSpEutq",
+    connectWebSocket: true,
+    socketBase: "wss://io.socialstream.ninja/join"
+  },
+  ably: {
+    key: "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0",
+    channel: "splat-overlay",
+    enabled: true
+  }
+};
+
+const STYLE_PRESETS = ["sticker", "splat", "arcade", "chips", "comms", "spotlight", "glass", "caption", "sidebar", "neon", "bubble"];
+const chatQueue = [];
+const eventQueue = [];
+let activeEvent = false;
+let mockTimers = [];
+let ssnSocket = null;
+let ablyClient = null;
+let ablyChannel = null;
+let lastLikeMilestone = 0;
+
+const overlay = document.getElementById("jjx-chat-overlay");
+const eventZone = document.getElementById("event-zone");
+const chatZone = document.getElementById("chat-zone");
+const chatList = document.getElementById("chat-list");
+const params = new URLSearchParams(location.search);
+
+function param(name, fallback) {
+  const direct = params.get(name);
+  if (direct != null && direct !== "") return direct;
+  const loose = location.href.match(new RegExp(`${name}=([^&#?]+)`));
+  return loose ? decodeURIComponent(loose[1].replace(/\+/g, " ")) : fallback;
+}
+
+function asBool(value, fallback) {
+  if (value == null) return fallback;
+  if (String(value) === "0" || String(value).toLowerCase() === "false") return false;
+  if (String(value) === "1" || String(value).toLowerCase() === "true") return true;
+  return fallback;
+}
+
+function applyUrlParams() {
+  const style = STYLE_PRESETS.includes(param("style", CONFIG.defaultStyle))
+    ? param("style", CONFIG.defaultStyle)
+    : CONFIG.defaultStyle;
+  overlay.dataset.style = style;
+  CONFIG.events.enabled = asBool(param("events", null), CONFIG.events.enabled);
+  CONFIG.events.duration = Number(param("eventDuration", CONFIG.events.duration)) || CONFIG.events.duration;
+  CONFIG.chat.maxMessages = Number(param("maxMessages", CONFIG.chat.maxMessages)) || CONFIG.chat.maxMessages;
+  CONFIG.position.top = Number(param("top", CONFIG.position.top)) || CONFIG.position.top;
+  CONFIG.position.right = Number(param("right", CONFIG.position.right)) || CONFIG.position.right;
+  CONFIG.position.width = Number(param("width", CONFIG.position.width)) || CONFIG.position.width;
+  CONFIG.position.chatHeight = Number(param("height", CONFIG.position.chatHeight)) || CONFIG.position.chatHeight;
+  const fontScale = Number(param("fontScale", 1)) || 1;
+  const font = param("font", "");
+
+  document.documentElement.style.setProperty("--overlay-top", `${CONFIG.position.top}px`);
+  document.documentElement.style.setProperty("--overlay-right", `${CONFIG.position.right}px`);
+  document.documentElement.style.setProperty("--chat-width", `${CONFIG.position.width}px`);
+  document.documentElement.style.setProperty("--event-width", `${CONFIG.position.width}px`);
+  document.documentElement.style.setProperty("--chat-height", `${CONFIG.position.chatHeight}px`);
+  document.documentElement.style.setProperty("--event-height", `${CONFIG.position.eventHeight}px`);
+  document.documentElement.style.setProperty("--event-gap", `${CONFIG.position.eventGap}px`);
+  document.documentElement.style.setProperty("--clamp-lines", CONFIG.chat.clampLines);
+  applyOverlaySettings({ fontScale, font });
+}
+
+function safeFontFamily(font) {
+  const allowed = {
+    rounded: '"Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif',
+    trebuch: '"Trebuchet MS", Arial, sans-serif',
+    arial: 'Arial, Helvetica, sans-serif',
+    impact: 'Impact, "Arial Black", sans-serif',
+    mono: '"Lucida Console", "Courier New", monospace'
+  };
+  return allowed[String(font || "").toLowerCase()] || "";
+}
+
+function applyOverlaySettings(settings = {}) {
+  if (settings.style && STYLE_PRESETS.includes(settings.style)) {
+    overlay.dataset.style = settings.style;
+  }
+  if (settings.fontScale != null) {
+    const scale = Math.max(.75, Math.min(1.5, Number(settings.fontScale) || 1));
+    document.documentElement.style.setProperty("--chat-font-scale", String(scale));
+  }
+  if (settings.fontSize != null) {
+    const scale = Math.max(.75, Math.min(1.5, Number(settings.fontSize) / 15 || 1));
+    document.documentElement.style.setProperty("--chat-font-scale", String(scale));
+  }
+  if (settings.font) {
+    const family = safeFontFamily(settings.font);
+    if (family) document.documentElement.style.setProperty("--chat-font-family", family);
+  }
+  if (settings.showFollowsAsEvents != null) {
+    CONFIG.events.showFollowsAsEvents = Boolean(settings.showFollowsAsEvents);
+  }
+  if (settings.showLikesAsEvents != null) {
+    CONFIG.events.showLikesAsEvents = Boolean(settings.showLikesAsEvents);
+  }
+  if (settings.showJoinsAsEvents != null) {
+    CONFIG.events.showJoinsAsEvents = Boolean(settings.showJoinsAsEvents);
+  }
+}
+
+function sanitizeText(value) {
+  return String(value ?? "").replace(/[<>&]/g, char => ({
+    "<": "&lt;",
+    ">": "&gt;",
+    "&": "&amp;"
+  }[char]));
+}
+
+function textBlob(...values) {
+  return values.map(value => {
+    if (Array.isArray(value)) return value.map(v => textBlob(v)).join(" ");
+    if (value && typeof value === "object") {
+      try { return JSON.stringify(value); } catch (_) { return ""; }
+    }
+    return String(value || "");
+  }).join(" ").toLowerCase();
+}
+
+function platformLabel(platform) {
+  const p = String(platform || "").toLowerCase();
+  if (p.includes("tiktok")) return "TT";
+  if (p.includes("youtube")) return "YT";
+  if (p.includes("twitch")) return "TW";
+  return "JJ";
+}
+
+function platformKey(platform) {
+  const p = String(platform || "").toLowerCase();
+  if (p.includes("tiktok")) return "tiktok";
+  if (p.includes("youtube")) return "youtube";
+  return "other";
+}
+
+function viewerStatus(data, platform) {
+  const p = platformKey(platform);
+  const statusText = textBlob(
+    data.membership, data.memberLevel, data.memberLabel, data.subscriberType,
+    data.userBadges, data.badges, data.badgeType, data.badge, data.subBadge,
+    data.tiktokFan, data.fanClub, data.fanClubMember, data.isFan, data.fan
+  );
+  const isSuperfan = p === "tiktok" && (
+    data.isSuperfan === true || data.isSuperFan === true ||
+    data.superfan === true || data.superFan === true ||
+    /\b(super\s*fan|superfan|subscriber|subscription)\b/.test(statusText)
+  );
+  const isMember = p === "youtube" && (
+    data.isSubscriber === true || data.subscriber === true ||
+    data.isMember === true || data.member === true ||
+    Boolean(data.membership || data.subBadge) ||
+    /\b(member|membership|subscriber|sponsor)\b/.test(statusText)
+  );
+  const isFanClub = p === "tiktok" && !isSuperfan && (
+    data.isFanClubMember === true || data.fanClubMember === true ||
+    data.isTikTokFan === true || data.tiktokFan === true ||
+    data.isFan === true || data.fan === true ||
+    /\b(fan\s*club|fanclub|\bfan\b)\b/.test(statusText)
+  );
+
+  if (isSuperfan) return { kind: "superfan", label: "SUPERFAN" };
+  if (isMember) return { kind: "member", label: "MEMBER" };
+  if (isFanClub) return { kind: "fanclub", label: "♥" };
+  return null;
+}
+
+function getEventIcon(type) {
+  return {
+    follow: "*",
+    gift: "+",
+    highGift: "DI",
+    sub: "ST",
+    member: "MB",
+    likeMilestone: "LK",
+    join: "IN",
+    raid: "RD",
+    bossEvent: "BF",
+    leagueEvent: "LG",
+    diamondDrop: "DI",
+    system: "!"
+  }[type] || "!";
+}
+
+function buildEventText(msg) {
+  const name = msg.username || "Viewer";
+  const gift = msg.giftName || msg.text || msg.message || "";
+  return {
+    follow: `${name} followed`,
+    gift: `${name} sent ${gift || "a gift"}`,
+    highGift: `${name} sent ${gift || "a huge gift"}`,
+    sub: `New sub: ${name}`,
+    member: `New member: ${name}`,
+    likeMilestone: `${msg.value || msg.message || "Likes"} reached`,
+    join: `${name} joined`,
+    raid: `${name} raided`,
+    bossEvent: msg.message || msg.text || "Boss Fight Started",
+    leagueEvent: msg.message || msg.text || "League event",
+    diamondDrop: `${name} dropped diamonds`,
+    system: msg.message || msg.text || "System alert"
+  }[msg.eventType] || (msg.message || msg.text || `${name} did something`);
+}
+
+function normalizeIncomingMessage(raw) {
+  let data = raw;
+  if (typeof data === "string") {
+    try { data = JSON.parse(data); } catch (_) { data = { message: raw }; }
+  }
+  if (data?.detail && typeof data.detail === "object") data = data.detail;
+  if (data?.action === "content" && data.value) {
+    try { data = JSON.parse(data.value); } catch (_) {}
+  }
+
+  const event = String(data.event || data.action || data.typeEvent || "").toLowerCase();
+  const platform = data.platform || data.source || data.type || data.site || "unknown";
+  const username = data.username || data.chatname || data.name || data.displayName || "Viewer";
+  const message = data.message || data.chatmessage || data.text || "";
+  const giftName = data.giftName || data.gift || data.gifttitle || "";
+  const value = data.value || data.amount || data.coins || data.hasDonation || data.donoValue || "";
+  const status = viewerStatus(data, platform);
+
+  let kind = "chat";
+  let eventType = null;
+  const lowerMessage = String(message).toLowerCase();
+
+  if (event === "follow" || event === "follower") {
+    if (!CONFIG.events.showFollowsAsEvents) return { kind: "ignore", raw: data };
+    eventType = "follow";
+  }
+  else if (event === "gift" || event === "giftredemption" || event === "giftpurchase" || giftName || data.contentimg) eventType = value && Number(String(value).replace(/[^0-9.]/g, "")) >= 1000 ? "highGift" : "gift";
+  else if (event === "superchat" || event === "supersticker" || event === "donation") eventType = "highGift";
+  else if (event === "sub" || event === "subscribe") eventType = "sub";
+  else if (event === "member" || event === "membership" || event === "sponsor") eventType = "member";
+  else if (event === "like" || event === "like_batch" || data.likes != null) {
+    if (!CONFIG.events.showLikesAsEvents) return { kind: "ignore", raw: data };
+    const likes = Number(data.likes || data.count || value || 0);
+    if (likes >= lastLikeMilestone + CONFIG.events.likeMilestoneStep) {
+      lastLikeMilestone = Math.floor(likes / CONFIG.events.likeMilestoneStep) * CONFIG.events.likeMilestoneStep;
+      eventType = "likeMilestone";
+      data.value = `${lastLikeMilestone.toLocaleString()} likes`;
+    }
+  }
+  else if (event === "join" || event === "roomjoin" || event === "enter") {
+    if (!CONFIG.events.showJoinsAsEvents) return { kind: "ignore", raw: data };
+    eventType = "join";
+  }
+  else if (event === "raid") eventType = "raid";
+  else if (event === "bossevent" || data.bossEvent) eventType = "bossEvent";
+  else if (event === "leagueevent" || data.leagueEvent) eventType = "leagueEvent";
+  else if (event === "diamonddrop" || lowerMessage.includes("dropped diamonds")) eventType = "diamondDrop";
+  else if (event === "system" || data.system === true) eventType = "system";
+
+  if (eventType) kind = "event";
+
+  return {
+    kind,
+    eventType,
+    platform,
+    username,
+    message,
+    avatarUrl: data.avatar || data.avatarUrl || data.chatimg || "",
+    value: data.value || value,
+    giftName,
+    status,
+    raw: data
+  };
+}
+
+function handleIncoming(raw) {
+  const msg = normalizeIncomingMessage(raw);
+  if (msg.kind === "ignore") return;
+  if (msg.kind === "event") {
+    showEvent({
+      type: msg.eventType,
+      username: msg.username,
+      text: buildEventText(msg),
+      value: msg.value,
+      icon: getEventIcon(msg.eventType)
+    });
+    return;
+  }
+
+  if (!String(msg.message || "").trim()) return;
+  addChatMessage({
+    platform: msg.platform,
+    username: msg.username,
+    message: msg.message,
+    avatarUrl: msg.avatarUrl,
+    status: msg.status,
+    badges: []
+  });
+}
+
+function addChatMessage({ platform = "unknown", username = "Viewer", message = "", avatarUrl = "", badges = [], status = null }) {
+  const item = { platform, username, message, avatarUrl, badges, status, id: Date.now() + Math.random() };
+  chatQueue.push(item);
+  renderChatMessage(item);
+
+  while (chatQueue.length > CONFIG.chat.maxMessages) {
+    chatQueue.shift();
+    removeOldestChatElement();
+  }
+}
+
+function renderChatMessage(item) {
+  const row = document.createElement("div");
+  row.className = `chat-message${item.status ? ` is-${item.status.kind}` : ""}`;
+  row.dataset.id = item.id;
+  const statusHtml = item.status
+    ? `<span class="status-pill ${sanitizeText(item.status.kind)}">${sanitizeText(item.status.label)}</span>`
+    : "";
+  row.innerHTML = `
+    <div class="chat-meta">
+      <span class="platform-chip" data-platform="${sanitizeText(platformKey(item.platform))}">${sanitizeText(platformLabel(item.platform))}</span>
+      ${statusHtml}
+      <span class="username">${sanitizeText(item.username)}</span>
+    </div>
+    <div class="message-text">${sanitizeText(item.message)}</div>
+  `;
+  chatList.appendChild(row);
+
+  if (overlay.dataset.style === "chips") {
+    window.setTimeout(() => removeChatElement(row), CONFIG.chat.messageLifetime);
+  }
+}
+
+function removeOldestChatElement() {
+  const oldest = chatList.querySelector(".chat-message");
+  if (oldest) removeChatElement(oldest);
+}
+
+function removeChatElement(el) {
+  if (!el || el.classList.contains("is-removing")) return;
+  el.classList.add("is-removing");
+  window.setTimeout(() => el.remove(), 420);
+}
+
+function showEvent({ type = "system", username = "", text = "", value = "", icon = "!" }) {
+  if (!CONFIG.events.enabled) return;
+  const item = { type, username, text, value, icon };
+  if (activeEvent && CONFIG.events.queue) {
+    eventQueue.push(item);
+    return;
+  }
+  renderEvent(item);
+}
+
+function renderEvent(item) {
+  activeEvent = true;
+  eventZone.className = "event-zone is-visible";
+  eventZone.dataset.eventType = item.type;
+  eventZone.innerHTML = `
+    <div class="event-card">
+      <span class="event-icon">${sanitizeText(item.icon)}</span>
+      <span class="event-copy">
+        <span class="event-main">${sanitizeText(item.text)}</span>
+        ${item.value ? `<span class="event-value">${sanitizeText(item.value)}</span>` : ""}
+      </span>
+    </div>
+  `;
+  const duration = ["highGift", "diamondDrop", "bossEvent", "leagueEvent"].includes(item.type)
+    ? CONFIG.events.highDuration
+    : CONFIG.events.duration;
+
+  window.setTimeout(() => {
+    eventZone.classList.remove("is-visible");
+    eventZone.classList.add("is-out");
+    window.setTimeout(() => {
+      eventZone.className = "event-zone";
+      eventZone.innerHTML = "";
+      activeEvent = false;
+      const next = eventQueue.shift();
+      if (next) renderEvent(next);
+    }, 380);
+  }, duration);
+}
+
+function startMockMode() {
+  const chats = [
+    "LET'S GOOO",
+    "Joe lock in",
+    "Jamie carried",
+    "W stream",
+    "No way haha",
+    "That was clean",
+    "chat behave"
+  ];
+  const names = ["Sarah", "Mike", "Jamie", "Wekka", "Bob", "Layla", "Kinz"];
+  const events = [
+    { type: "follow", username: "Sarah", text: "Sarah followed", value: "", icon: "*" },
+    { type: "gift", username: "Mike", text: "Mike sent Galaxy", value: "1,000 coins", icon: "+" },
+    { type: "diamondDrop", username: "Joe", text: "Joe dropped diamonds", value: "Diamond Drop", icon: "DI" },
+    { type: "leagueEvent", username: "Wekka", text: "New Champion: Wekka", value: "League of Splatties", icon: "LG" },
+    { type: "bossEvent", username: "Boss", text: "Boss Fight Started", value: "Raid ready", icon: "BF" },
+    { type: "leagueEvent", username: "Jamie", text: "League Promotion: Jamie", value: "Rank up", icon: "LG" },
+    { type: "likeMilestone", username: "Chat", text: "1,000 likes reached", value: "Milestone", icon: "LK" }
+  ];
+
+  function nextChat() {
+    const roll = Math.random();
+    const status = roll > .82
+      ? { kind: "superfan", label: "SUPERFAN" }
+      : roll > .66
+        ? { kind: "member", label: "MEMBER" }
+        : roll > .5
+          ? { kind: "fanclub", label: "♥" }
+          : null;
+    addChatMessage({
+      platform: Math.random() > .45 ? "tiktok" : "youtube",
+      username: names[Math.floor(Math.random() * names.length)],
+      message: chats[Math.floor(Math.random() * chats.length)],
+      status
+    });
+    mockTimers.push(window.setTimeout(nextChat, 2000 + Math.random() * 2000));
+  }
+  function nextEvent() {
+    const evt = events[Math.floor(Math.random() * events.length)];
+    showEvent(evt);
+    mockTimers.push(window.setTimeout(nextEvent, 5000 + Math.random() * 4000));
+  }
+  nextChat();
+  nextEvent();
+}
+
+function cycleStyle() {
+  const current = STYLE_PRESETS.indexOf(overlay.dataset.style);
+  overlay.dataset.style = STYLE_PRESETS[(current + 1) % STYLE_PRESETS.length];
+}
+
+window.addEventListener("message", event => {
+  if (!event.data) return;
+  handleIncoming(event.data);
+});
+
+document.addEventListener("keydown", event => {
+  if (param("test", "0") !== "1") return;
+  if (event.key.toLowerCase() === "c") {
+    addChatMessage({ platform: "tiktok", username: "TestChat", message: "Manual chat pop" });
+  }
+  if (event.key.toLowerCase() === "e") {
+    showEvent({ type: "gift", username: "TestEvent", text: "TestEvent sent Galaxy", value: "1,000 coins", icon: "+" });
+  }
+  if (event.key.toLowerCase() === "s") cycleStyle();
+});
+
+function connectSocialStreamSocket() {
+  if (!CONFIG.socialStream.connectWebSocket) return;
+  const session = param("session", CONFIG.socialStream.session);
+  ssnSocket = new WebSocket(`${CONFIG.socialStream.socketBase}/${encodeURIComponent(session)}/4`);
+  ssnSocket.onmessage = event => handleIncoming(event.data);
+  ssnSocket.onclose = () => window.setTimeout(connectSocialStreamSocket, 3000);
+  ssnSocket.onerror = () => {
+    try { ssnSocket.close(); } catch (_) {}
+  };
+}
+
+function connectAblyControls() {
+  if (!CONFIG.ably.enabled || !window.Ably) return;
+  try {
+    ablyClient = new Ably.Realtime(CONFIG.ably.key);
+    ablyChannel = ablyClient.channels.get(CONFIG.ably.channel);
+    ablyChannel.subscribe("jjx-chat-settings", message => {
+      applyOverlaySettings(message.data || {});
+    });
+    ablyChannel.subscribe("jjx-chat-test", message => {
+      const data = message.data || {};
+      if (data.kind === "event") showEvent(data.event || { type: "system", text: "Controller test event", icon: "!" });
+      else addChatMessage(data.chat || { platform: "tiktok", username: "Controller", message: "Controller test chat" });
+    });
+  } catch (_) {}
+}
+
+applyUrlParams();
+if (param("test", "0") === "1") startMockMode();
+connectSocialStreamSocket();
+connectAblyControls();
+</script>
+</body>
+</html>
