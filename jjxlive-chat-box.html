@@ -86,6 +86,24 @@ body {
   justify-content: flex-end;
   gap: 7px;
   overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(0,0,0,.35) 8px,
+    #000 24px,
+    #000 calc(100% - 24px),
+    rgba(0,0,0,.35) calc(100% - 8px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(0,0,0,.35) 8px,
+    #000 24px,
+    #000 calc(100% - 24px),
+    rgba(0,0,0,.35) calc(100% - 8px),
+    transparent 100%
+  );
 }
 .chat-message {
   position: relative;
@@ -723,6 +741,24 @@ function applyOverlaySettings(settings = {}) {
   if (settings.font) {
     const family = safeFontFamily(settings.font);
     if (family) document.documentElement.style.setProperty("--chat-font-family", family);
+  }
+  if (settings.width != null) {
+    const width = Math.max(180, Math.min(420, Number(settings.width) || CONFIG.position.width));
+    CONFIG.position.width = width;
+    document.documentElement.style.setProperty("--chat-width", `${width}px`);
+    document.documentElement.style.setProperty("--event-width", `${width}px`);
+  }
+  if (settings.height != null) {
+    const height = Math.max(120, Math.min(520, Number(settings.height) || CONFIG.position.chatHeight));
+    CONFIG.position.chatHeight = height;
+    document.documentElement.style.setProperty("--chat-height", `${height}px`);
+  }
+  if (settings.maxMessages != null) {
+    CONFIG.chat.maxMessages = Math.max(1, Math.min(8, Number(settings.maxMessages) || CONFIG.chat.maxMessages));
+    while (chatQueue.length > CONFIG.chat.maxMessages) {
+      chatQueue.shift();
+      removeOldestChatElement();
+    }
   }
   if (settings.showFollowsAsEvents != null) {
     CONFIG.events.showFollowsAsEvents = Boolean(settings.showFollowsAsEvents);
