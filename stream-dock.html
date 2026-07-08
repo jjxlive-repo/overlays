@@ -3136,6 +3136,32 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
         </div>
       </div>
 
+      <!-- ── KEGEL WORKOUT ── -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('kw')">
+          <span class="ctrl-hd-title">🍑 Kegel Workout</span>
+          <span class="ctrl-hd-ch">▼</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-kw">
+          <div class="ctrl-row" style="gap:5px;align-items:center;justify-content:space-between;">
+            <span style="font-size:9px;color:var(--txt-dim);">Overlay status</span>
+            <span id="kw-overlay-status" style="font-size:9px;color:#6b7280;">● offline</span>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Segment (click in order)</span>
+            <button class="ctrl-btn c-on" style="width:100%;margin-bottom:4px;" onclick="kwCmd('start')">▶ Start (Countdown)</button>
+            <button class="ctrl-btn c-on" style="width:100%;margin-bottom:4px;" onclick="kwCmd('reps')">🔁 Reps Loop (5–10)</button>
+            <button class="ctrl-btn" style="width:100%;margin-bottom:4px;background:rgba(250,204,21,.16);border-color:rgba(250,204,21,.5);color:#fde047;" onclick="kwCmd('speed')">⚡ Speed Round (11–15)</button>
+            <button class="ctrl-btn c-off" style="width:100%;" onclick="kwCmd('end')">🏁 End / Finale</button>
+          </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <button class="ctrl-btn" style="width:100%;" onclick="kwCmd('reset')">↺ Reset / Hide</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ── TOP GIFTERS ── -->
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('tgo')">
@@ -4311,6 +4337,7 @@ ablyChannel.subscribe('new-here-alive', _nhMarkLive);
 // Ping the overlay when stream-dock loads (overlay responds with new-here-alive)
 ably.connection.once('connected', () => {
   ablyChannel.publish('new-here-ping', {}).catch(() => {});
+  ablyChannel.publish('kegel-ping', {}).catch(() => {});
   setTimeout(() => {
     publishMissionStrip?.();
     ablyChannel.publish('new-here-config', { enabled:_dockNewHereVisible, visible:_dockNewHereVisible }).catch(() => {});
@@ -4909,6 +4936,30 @@ document.addEventListener('keydown', e => {
   if (e.key === ']')      splatCmd('save');
   if (e.key === 'Escape') splatCmd('idle');
 });
+
+/* ═══════════════════════════════════════════
+   KEGEL WORKOUT — dock control panel
+   Each button fires one discrete segment command;
+   kegel-workout-overlay.html owns all frame timing
+   and looping — the dock just says which segment to
+   be in right now. Same alive/ping handshake pattern
+   as Crowd Glass above.
+═══════════════════════════════════════════ */
+let _kwAliveTimer = null;
+function _kwMarkLive() {
+  const el = document.getElementById('kw-overlay-status');
+  if (el) el.innerHTML = '<span style="color:#3b82f6">● LIVE</span>';
+  clearTimeout(_kwAliveTimer);
+  _kwAliveTimer = setTimeout(() => {
+    const el = document.getElementById('kw-overlay-status');
+    if (el) el.innerHTML = '<span style="color:#6b7280">● offline</span>';
+  }, 35000);
+}
+ablyChannel.subscribe('kegel-alive', _kwMarkLive);
+function kwCmd(action) {
+  if (ablyChannel) ablyChannel.publish('kegel-cmd', { action }).catch(() => {});
+  doFlash('purple');
+}
 
 /* ═══════════════════════════════════════════
    OVERLAY TEST — Giftr Bar
