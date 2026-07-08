@@ -109,6 +109,9 @@
   }
   #kw-stage.show { opacity: 1; transform: scale(1); }
 
+  /* two stacked layers crossfade against each other — the old frame
+     never drops to a blank/transparent state mid-swap (which is what
+     was reading as a white flash), it just fades under the new one. */
   #kw-stage img {
     position: absolute;
     top: 0;
@@ -116,10 +119,10 @@
     width: 1000px;
     height: 1000px;
     display: block;
-    opacity: 1;
-    transition: opacity .09s linear;
+    opacity: 0;
+    transition: opacity var(--kw-crossfade, .35s) linear;
   }
-  #kw-stage img.fading { opacity: 0; }
+  #kw-stage img.front { opacity: 1; z-index: 2; }
 
   /* gentle "armed and waiting" pulse while holding on
      the last countdown frame, waiting for Reps Loop */
@@ -141,7 +144,8 @@
 
 <div id="scene">
   <div id="kw-stage">
-    <img id="kw-img-a" src="" alt="">
+    <img id="kw-img-a" class="front" src="" alt="">
+    <img id="kw-img-b" src="" alt="">
   </div>
   <div id="kw-rep-pill"></div>
   <div id="kw-status-dot"></div>
@@ -157,12 +161,12 @@ const CONFIG = {
   // rename them) into this path in the jjxlive-repo/overlays repo.
   FRAME_BASE: "https://jjxlive-repo.github.io/overlays/kegel-frames/",
 
-  // Per-frame hold times (ms)
-  FRAME_MS_INTRO:  900,   // ready + countdown frames, speed-round intro card
-  FRAME_MS_REP:    750,   // rep loop (frames 5-10)
-  FRAME_MS_FAST:   420,   // speed round loop (frames 12-15)
-  CROSSFADE_MS:    90,
-  FINALE_HOLD_MS:  1100,  // perfect-rep / final-hold cards
+  // Every frame (countdown, reps, speed round, finale) holds for exactly
+  // this long before cutting to the next one.
+  FRAME_MS:        1000,
+  // Smooth crossfade duration between frames — comfortably inside the
+  // 1s hold so each frame still reads as a full second on screen.
+  CROSSFADE_MS:    350,
   FINALE_LINGER_MS: 6000, // how long "complete" stays up before auto-idle
 
   // Audio (swap in real files once uploaded to GitHub — leave blank
@@ -231,8 +235,27 @@ function playFail() { playUrlOrBeep(CONFIG.SOUND_FAIL, () => { _beep(220, 0.25, 
    FRAME PLAYBACK
 ═══════════════════════════════════════════ */
 const stage = document.getElementById('kw-stage');
-const img   = document.getElementById('kw-img-a');
 const repPill = document.getElementById('kw-rep-pill');
+stage.style.setProperty('--kw-crossfade', (CONFIG.CROSSFADE_MS / 1000) + 's');
+
+// Preload every frame up front so switching src is instant — no network
+// wait mid-swap, which is what was reading as a white flash.
+const _preload = {};
+Object.keys(FRAMES).forEach(key => {
+  const im = new Image();
+  im.src = frameUrl(key);
+  _preload[key] = im;
+});
+
+// Two stacked <img> layers cross-fade against each other: the "front"
+// one is opacity:1, the other is opacity:0 underneath. To change frame,
+// load the new image into the back layer (already decoded from the
+// preload cache) and swap which layer is "front" — both layers are
+// always showing *some* frame, so there's never a blank/transparent
+// gap between frames.
+let _front = document.getElementById('kw-img-a');
+let _back  = document.getElementById('kw-img-b');
+let _currentKey = null;
 
 let _seqTimer = null;
 let _segment = 'idle'; // idle | countdown | reps | speed | finale
@@ -242,11 +265,12 @@ function showStage() { stage.classList.add('show'); }
 function hideStage() { stage.classList.remove('show', 'armed', 'speeding'); }
 
 function setFrame(key) {
-  img.classList.add('fading');
-  setTimeout(() => {
-    img.src = frameUrl(key);
-    img.classList.remove('fading');
-  }, CONFIG.CROSSFADE_MS);
+  if (key === _currentKey) return;
+  _currentKey = key;
+  _back.src = frameUrl(key);
+  _back.classList.add('front');
+  _front.classList.remove('front');
+  const tmp = _front; _front = _back; _back = tmp;
 }
 
 function updateRepPill() {
@@ -303,10 +327,10 @@ function cmdStart() {
   showStage();
   stage.classList.remove('armed', 'speeding');
   const seq = [
-    { key: 'ready', ms: CONFIG.FRAME_MS_INTRO },
-    { key: 'c3',    ms: CONFIG.FRAME_MS_INTRO },
-    { key: 'c2',    ms: CONFIG.FRAME_MS_INTRO },
-    { key: 'c1',    ms: CONFIG.FRAME_MS_INTRO },
+    { key: 'ready', ms: CONFIG.FRAME_MS },
+    { key: 'c3',    ms: CONFIG.FRAME_MS },
+    { key: 'c2',    ms: CONFIG.FRAME_MS },
+    { key: 'c1',    ms: CONFIG.FRAME_MS },
   ];
   let i = 0;
   function step() {
@@ -332,7 +356,7 @@ function cmdReps() {
     i = (i + 1) % loop.length;
     setFrame(loop[i]);
     if (loop[i] === 'recover') { _repCount++; updateRepPill(); }
-    _seqTimer = setTimeout(step, CONFIG.FRAME_MS_REP);
+    _seqTimer = setTimeout(step, CONFIG.FRAME_MS);
   }
   step();
 }
@@ -345,10 +369,10 @@ function cmdSpeed() {
   stage.classList.remove('armed');
   stage.classList.add('speeding');
   const loop = ['fc1', 'fr1', 'fc2', 'fr2'];
-  function startLoop() { playLoop(loop, CONFIG.FRAME_MS_FAST); }
+  function startLoop() { playLoop(loop, CONFIG.FRAME_MS); }
   if (wasAlreadySpeed) { startLoop(); return; }
   setFrame('speedintro');
-  _seqTimer = setTimeout(startLoop, CONFIG.FRAME_MS_INTRO);
+  _seqTimer = setTimeout(startLoop, CONFIG.FRAME_MS);
 }
 
 function cmdEnd() {
@@ -359,8 +383,8 @@ function cmdEnd() {
   stage.classList.remove('armed', 'speeding');
   playHero();
   playOnce([
-    { key: 'perfect',   ms: CONFIG.FINALE_HOLD_MS },
-    { key: 'finalhold', ms: CONFIG.FINALE_HOLD_MS },
+    { key: 'perfect',   ms: CONFIG.FRAME_MS },
+    { key: 'finalhold', ms: CONFIG.FRAME_MS },
     { key: 'complete',  ms: CONFIG.FINALE_LINGER_MS },
   ], () => { goIdle(); });
 }
