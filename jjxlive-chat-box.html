@@ -214,6 +214,39 @@ body {
   border-radius: 4px;
   filter: drop-shadow(0 2px 1px rgba(0,0,0,.55));
 }
+.chat-image-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.chat-inline-image {
+  display: block;
+  max-width: min(88px, 44%);
+  max-height: 58px;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255,246,255,.18);
+  object-fit: contain;
+  background: rgba(0,0,0,.22);
+  filter: drop-shadow(0 3px 2px rgba(0,0,0,.45));
+}
+.chat-link-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(70,217,255,.45);
+  color: var(--jjx-cyan);
+  background: rgba(8,2,22,.66);
+  font-size: .78em;
+  font-weight: 900;
+  line-height: 1.1;
+  vertical-align: 1px;
+  text-shadow: none;
+}
 .event-card {
   width: 100%;
   height: 100%;
@@ -807,11 +840,46 @@ function sanitizeText(value) {
   }[char]));
 }
 
+const ALLOWED_IMAGE_HOSTS = /(^|\.)(tiktokcdn|ttlivecdn|byteoversea|ibyteimg|akamaized|giphy|tenor|socialstream|ggpht|googleusercontent|ytimg)\.[a-z.]+$/i;
+
+function isLikelyImageUrl(url) {
+  try {
+    const parsed = new URL(url, location.href);
+    return /^https?:$/.test(parsed.protocol) &&
+      (/\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(parsed.href) || ALLOWED_IMAGE_HOSTS.test(parsed.hostname));
+  } catch (_) {
+    return false;
+  }
+}
+
 function sanitizeMessageContent(value) {
   const raw = String(value ?? "");
   const template = document.createElement("template");
   template.innerHTML = raw;
-  const allowedImgHosts = /(^|\.)((tiktokcdn|ttlivecdn|byteoversea|ibyteimg|akamaized|giphy|tenor|socialstream)\.[a-z.]+)$/i;
+  const makeSticker = url => {
+    const img = document.createElement("img");
+    img.className = "chat-sticker";
+    img.src = url;
+    img.alt = "";
+    img.loading = "eager";
+    img.referrerPolicy = "no-referrer";
+    return img;
+  };
+  const makeLinkChip = url => {
+    const chip = document.createElement("span");
+    chip.className = "chat-link-chip";
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.replace(/^www\./, "");
+      chip.textContent = /(^|\.)youtu\.be$|(^|\.)youtube\.com$/.test(host)
+        ? "YOUTUBE LINK"
+        : host.toUpperCase().slice(0, 18);
+    } catch (_) {
+      chip.textContent = "LINK";
+    }
+    return chip;
+  };
+
   template.content.querySelectorAll("script, style, iframe, object, embed, video, audio, source").forEach(el => el.remove());
   template.content.querySelectorAll("*").forEach(el => {
     if (el.tagName.toLowerCase() !== "img") {
@@ -822,8 +890,7 @@ function sanitizeMessageContent(value) {
     let url;
     try { url = new URL(src, location.href); } catch (_) { el.remove(); return; }
     if (!/^https?:$/.test(url.protocol)) { el.remove(); return; }
-    const likelyImage = /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url.href) || allowedImgHosts.test(url.hostname);
-    if (!likelyImage) { el.replaceWith(document.createTextNode(url.href)); return; }
+    if (!isLikelyImageUrl(url.href)) { el.replaceWith(document.createTextNode(url.href)); return; }
     [...el.attributes].forEach(attr => el.removeAttribute(attr.name));
     el.src = url.href;
     el.alt = "";
@@ -831,11 +898,35 @@ function sanitizeMessageContent(value) {
     el.referrerPolicy = "no-referrer";
     el.className = "chat-sticker";
   });
-  const withSafeImgs = template.innerHTML || sanitizeText(raw);
-  return withSafeImgs.replace(
-    /(https?:\/\/[^\s<>"']+\.(?:png|jpe?g|gif|webp|avif)(?:\?[^\s<>"']*)?)/gi,
-    url => `<img class="chat-sticker" src="${sanitizeText(url)}" alt="" referrerpolicy="no-referrer">`
-  );
+
+  function replaceUrlsInText(node) {
+    const text = node.nodeValue || "";
+    const urlRe = /https?:\/\/[^\s<>"']+/gi;
+    if (!urlRe.test(text)) return;
+    urlRe.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let match;
+    while ((match = urlRe.exec(text))) {
+      if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
+      const cleanUrl = match[0].replace(/[),.;!?]+$/g, "");
+      frag.appendChild(isLikelyImageUrl(cleanUrl) ? makeSticker(cleanUrl) : makeLinkChip(cleanUrl));
+      const trailing = match[0].slice(cleanUrl.length);
+      if (trailing) frag.appendChild(document.createTextNode(trailing));
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    node.replaceWith(frag);
+  }
+
+  function walk(node) {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === 3) replaceUrlsInText(child);
+      else if (child.nodeType === 1 && child.tagName.toLowerCase() !== "img") walk(child);
+    });
+  }
+  walk(template.content);
+  return template.innerHTML || sanitizeText(raw);
 }
 
 function textBlob(...values) {
@@ -846,6 +937,37 @@ function textBlob(...values) {
     }
     return String(value || "");
   }).join(" ").toLowerCase();
+}
+
+function collectImageUrls(data) {
+  const candidates = [
+    data.image,
+    data.imageUrl,
+    data.img,
+    data.imgUrl,
+    data.media,
+    data.mediaUrl,
+    data.attachment,
+    data.attachmentUrl,
+    data.photo,
+    data.photoUrl,
+    data.picture,
+    data.pictureUrl,
+    data.contentImg,
+    data.contentimg
+  ];
+  if (Array.isArray(data.images)) candidates.push(...data.images);
+  if (Array.isArray(data.attachments)) {
+    data.attachments.forEach(item => {
+      if (typeof item === "string") candidates.push(item);
+      else if (item && typeof item === "object") candidates.push(item.url, item.src, item.imageUrl, item.mediaUrl);
+    });
+  }
+  return [...new Set(candidates
+    .filter(Boolean)
+    .map(value => String(value).trim())
+    .filter(isLikelyImageUrl)
+  )].slice(0, 3);
 }
 
 function platformLabel(platform) {
@@ -947,6 +1069,7 @@ function normalizeIncomingMessage(raw) {
   const giftName = data.giftName || data.gift || data.gifttitle || "";
   const value = data.value || data.amount || data.coins || data.hasDonation || data.donoValue || "";
   const status = viewerStatus(data, platform);
+  const imageUrls = collectImageUrls(data);
 
   let kind = "chat";
   let eventType = null;
@@ -956,7 +1079,7 @@ function normalizeIncomingMessage(raw) {
     if (!CONFIG.events.showFollowsAsEvents) return { kind: "ignore", raw: data };
     eventType = "follow";
   }
-  else if (event === "gift" || event === "giftredemption" || event === "giftpurchase" || giftName || data.contentimg) eventType = value && Number(String(value).replace(/[^0-9.]/g, "")) >= 1000 ? "highGift" : "gift";
+  else if (event === "gift" || event === "giftredemption" || event === "giftpurchase" || giftName || data.hasDonation || data.donoValue) eventType = value && Number(String(value).replace(/[^0-9.]/g, "")) >= 1000 ? "highGift" : "gift";
   else if (event === "superchat" || event === "supersticker" || event === "donation") eventType = "highGift";
   else if (event === "sub" || event === "subscribe") eventType = "sub";
   else if (event === "member" || event === "membership" || event === "sponsor") eventType = "member";
@@ -988,6 +1111,7 @@ function normalizeIncomingMessage(raw) {
     username,
     message,
     avatarUrl: data.avatar || data.avatarUrl || data.chatimg || "",
+    imageUrls,
     value: data.value || value,
     giftName,
     status,
@@ -1015,13 +1139,14 @@ function handleIncoming(raw) {
     username: msg.username,
     message: msg.message,
     avatarUrl: msg.avatarUrl,
+    imageUrls: msg.imageUrls,
     status: msg.status,
     badges: []
   });
 }
 
-function addChatMessage({ platform = "unknown", username = "Viewer", message = "", avatarUrl = "", badges = [], status = null }) {
-  const item = { platform, username, message, avatarUrl, badges, status, id: Date.now() + Math.random() };
+function addChatMessage({ platform = "unknown", username = "Viewer", message = "", avatarUrl = "", imageUrls = [], badges = [], status = null }) {
+  const item = { platform, username, message, avatarUrl, imageUrls, badges, status, id: Date.now() + Math.random() };
   chatQueue.push(item);
   renderChatMessage(item);
 
@@ -1038,6 +1163,9 @@ function renderChatMessage(item) {
   const statusHtml = item.status
     ? `<span class="status-pill ${sanitizeText(item.status.kind)}">${sanitizeText(item.status.label)}</span>`
     : "";
+  const imageHtml = item.imageUrls?.length
+    ? `<div class="chat-image-row">${item.imageUrls.map(url => `<img class="chat-inline-image" src="${sanitizeText(url)}" alt="" referrerpolicy="no-referrer">`).join("")}</div>`
+    : "";
   row.innerHTML = `
     <div class="chat-meta">
       <span class="platform-chip" data-platform="${sanitizeText(platformKey(item.platform))}">${sanitizeText(platformLabel(item.platform))}</span>
@@ -1045,6 +1173,7 @@ function renderChatMessage(item) {
       <span class="username">${sanitizeText(item.username)}</span>
     </div>
     <div class="message-text">${sanitizeMessageContent(item.message)}</div>
+    ${imageHtml}
   `;
   chatList.appendChild(row);
 
@@ -1113,7 +1242,8 @@ function startMockMode() {
     "No way haha",
     "That was clean",
     "chat behave",
-    "sticker check https://media.tenor.com/2roX3uxz_68AAAAM/cat-space.gif"
+    "sticker check https://media.tenor.com/2roX3uxz_68AAAAM/cat-space.gif",
+    "check this https://youtu.be/dQw4w9WgXcQ"
   ];
   const names = ["Sarah", "Mike", "Jamie", "Wekka", "Bob", "Layla", "Kinz"];
   const events = [
@@ -1139,6 +1269,7 @@ function startMockMode() {
       platform: Math.random() > .45 ? "tiktok" : "youtube",
       username: names[Math.floor(Math.random() * names.length)],
       message: chats[Math.floor(Math.random() * chats.length)],
+      imageUrls: Math.random() > .82 ? ["https://media.tenor.com/2roX3uxz_68AAAAM/cat-space.gif"] : [],
       status
     });
     mockTimers.push(window.setTimeout(nextChat, 2000 + Math.random() * 2000));
