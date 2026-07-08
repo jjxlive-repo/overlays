@@ -481,7 +481,7 @@ h1 {
       </div>
     </div>
     <div class="toggle-row" aria-label="Event visibility toggles">
-      <label class="toggle"><input id="jjx-show-follows" type="checkbox" checked> Show follows</label>
+      <label class="toggle"><input id="jjx-show-follows" type="checkbox"> Show follows</label>
       <label class="toggle"><input id="jjx-show-likes" type="checkbox" checked> Show like milestones</label>
       <label class="toggle"><input id="jjx-show-joins" type="checkbox"> Show joins</label>
     </div>
@@ -570,6 +570,7 @@ let controlChannel = null;
 let currentStyle = "sticker";
 let pendingPayload = null;
 let isControlConnected = false;
+const CONTROLLER_STORAGE_KEY = "jjxlive-chat-controller-settings-v1";
 
 const statusEl = document.getElementById("jjx-controller-status");
 const fontEl = document.getElementById("jjx-font");
@@ -589,6 +590,32 @@ function setStatus(text) {
   if (statusEl) statusEl.textContent = text;
 }
 
+function loadSavedControllerSettings() {
+  try { return JSON.parse(localStorage.getItem(CONTROLLER_STORAGE_KEY) || "{}") || {}; }
+  catch (_) { return {}; }
+}
+
+function saveControllerSettings(payload) {
+  try { localStorage.setItem(CONTROLLER_STORAGE_KEY, JSON.stringify(payload)); } catch (_) {}
+}
+
+function applyControllerSettingsToForm(settings = {}) {
+  if (settings.style) currentStyle = settings.style;
+  if (fontEl && settings.font) fontEl.value = settings.font;
+  if (fontScaleEl && settings.fontScale != null) fontScaleEl.value = Math.round(Number(settings.fontScale) * 100);
+  if (showFollowsEl && settings.showFollowsAsEvents != null) showFollowsEl.checked = Boolean(settings.showFollowsAsEvents);
+  if (showLikesEl && settings.showLikesAsEvents != null) showLikesEl.checked = Boolean(settings.showLikesAsEvents);
+  if (showJoinsEl && settings.showJoinsAsEvents != null) showJoinsEl.checked = Boolean(settings.showJoinsAsEvents);
+  if (widthEl && settings.width != null) widthEl.value = settings.width;
+  if (heightEl && settings.height != null) heightEl.value = settings.height;
+  if (maxMessagesEl && settings.maxMessages != null) maxMessagesEl.value = settings.maxMessages;
+  updateSizeLabels();
+  if (fontScaleLabel) fontScaleLabel.textContent = `${Math.round(Number(fontScaleEl?.value || 100))}%`;
+  document.querySelectorAll("[data-style-button]").forEach(button => {
+    button.classList.toggle("active", button.dataset.styleButton === currentStyle);
+  });
+}
+
 function connectControlChannel() {
   if (!window.Ably) {
     setStatus("Ably did not load. The live overlay controls need the hosted page/network connection.");
@@ -601,6 +628,7 @@ function connectControlChannel() {
       isControlConnected = true;
       setStatus("Connected. Changes will update the one live overlay.");
       if (pendingPayload) sendPayload(pendingPayload);
+      else publishSettings();
     });
     ablyClient.connection.on("disconnected", () => {
       isControlConnected = false;
@@ -648,6 +676,7 @@ function publishSettings(extra = {}) {
   if (widthLabel) widthLabel.textContent = `${payload.width}px`;
   if (heightLabel) heightLabel.textContent = `${payload.height}px`;
   if (maxMessagesLabel) maxMessagesLabel.textContent = String(payload.maxMessages);
+  saveControllerSettings(payload);
   sendPayload(payload);
 }
 
@@ -681,6 +710,7 @@ widthEl?.addEventListener("change", () => publishSettings());
 heightEl?.addEventListener("change", () => publishSettings());
 maxMessagesEl?.addEventListener("change", () => publishSettings());
 updateSizeLabels();
+applyControllerSettingsToForm(loadSavedControllerSettings());
 
 connectControlChannel();
 </script>

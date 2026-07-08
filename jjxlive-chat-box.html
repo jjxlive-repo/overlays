@@ -202,6 +202,18 @@ body {
   text-shadow: 0 2px 0 var(--jjx-shadow), 0 0 8px rgba(0,0,0,.55);
   overflow-wrap: anywhere;
 }
+.message-text img,
+.chat-sticker {
+  display: inline-block;
+  max-width: calc(22px * var(--chat-font-scale));
+  max-height: calc(22px * var(--chat-font-scale));
+  width: auto;
+  height: auto;
+  margin: 0 2px;
+  vertical-align: -5px;
+  border-radius: 4px;
+  filter: drop-shadow(0 2px 1px rgba(0,0,0,.55));
+}
 .event-card {
   width: 100%;
   height: 100%;
@@ -638,7 +650,7 @@ const CONFIG = {
     duration: 4000,
     highDuration: 7000,
     queue: true,
-    showFollowsAsEvents: true,
+    showFollowsAsEvents: false,
     showJoinsAsEvents: false,
     showLikesAsEvents: true,
     likeMilestoneStep: 1000
@@ -674,6 +686,7 @@ const eventZone = document.getElementById("event-zone");
 const chatZone = document.getElementById("chat-zone");
 const chatList = document.getElementById("chat-list");
 const params = new URLSearchParams(location.search);
+const SETTINGS_STORAGE_KEY = "jjxlive-chat-box-settings-v1";
 
 function param(name, fallback) {
   const direct = params.get(name);
@@ -769,6 +782,21 @@ function applyOverlaySettings(settings = {}) {
   if (settings.showJoinsAsEvents != null) {
     CONFIG.events.showJoinsAsEvents = Boolean(settings.showJoinsAsEvents);
   }
+  saveOverlaySettings(settings);
+}
+
+function saveOverlaySettings(settings = {}) {
+  const saved = loadOverlaySettings();
+  const next = {
+    ...saved,
+    ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value != null && value !== ""))
+  };
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
+}
+
+function loadOverlaySettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "{}") || {}; }
+  catch (_) { return {}; }
 }
 
 function sanitizeText(value) {
@@ -777,6 +805,37 @@ function sanitizeText(value) {
     ">": "&gt;",
     "&": "&amp;"
   }[char]));
+}
+
+function sanitizeMessageContent(value) {
+  const raw = String(value ?? "");
+  const template = document.createElement("template");
+  template.innerHTML = raw;
+  const allowedImgHosts = /(^|\.)((tiktokcdn|ttlivecdn|byteoversea|ibyteimg|akamaized|giphy|tenor|socialstream)\.[a-z.]+)$/i;
+  template.content.querySelectorAll("script, style, iframe, object, embed, video, audio, source").forEach(el => el.remove());
+  template.content.querySelectorAll("*").forEach(el => {
+    if (el.tagName.toLowerCase() !== "img") {
+      el.replaceWith(document.createTextNode(el.textContent || ""));
+      return;
+    }
+    const src = el.getAttribute("src") || el.getAttribute("data-src") || "";
+    let url;
+    try { url = new URL(src, location.href); } catch (_) { el.remove(); return; }
+    if (!/^https?:$/.test(url.protocol)) { el.remove(); return; }
+    const likelyImage = /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(url.href) || allowedImgHosts.test(url.hostname);
+    if (!likelyImage) { el.replaceWith(document.createTextNode(url.href)); return; }
+    [...el.attributes].forEach(attr => el.removeAttribute(attr.name));
+    el.src = url.href;
+    el.alt = "";
+    el.loading = "eager";
+    el.referrerPolicy = "no-referrer";
+    el.className = "chat-sticker";
+  });
+  const withSafeImgs = template.innerHTML || sanitizeText(raw);
+  return withSafeImgs.replace(
+    /(https?:\/\/[^\s<>"']+\.(?:png|jpe?g|gif|webp|avif)(?:\?[^\s<>"']*)?)/gi,
+    url => `<img class="chat-sticker" src="${sanitizeText(url)}" alt="" referrerpolicy="no-referrer">`
+  );
 }
 
 function textBlob(...values) {
@@ -985,7 +1044,7 @@ function renderChatMessage(item) {
       ${statusHtml}
       <span class="username">${sanitizeText(item.username)}</span>
     </div>
-    <div class="message-text">${sanitizeText(item.message)}</div>
+    <div class="message-text">${sanitizeMessageContent(item.message)}</div>
   `;
   chatList.appendChild(row);
 
@@ -1053,7 +1112,8 @@ function startMockMode() {
     "W stream",
     "No way haha",
     "That was clean",
-    "chat behave"
+    "chat behave",
+    "sticker check https://media.tenor.com/2roX3uxz_68AAAAM/cat-space.gif"
   ];
   const names = ["Sarah", "Mike", "Jamie", "Wekka", "Bob", "Layla", "Kinz"];
   const events = [
@@ -1141,6 +1201,7 @@ function connectAblyControls() {
 }
 
 applyUrlParams();
+applyOverlaySettings(loadOverlaySettings());
 if (param("test", "0") === "1") startMockMode();
 connectSocialStreamSocket();
 connectAblyControls();
