@@ -3210,6 +3210,15 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
                 style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;" oninput="peekSetLineY(this.value)">
               <span class="ctrl-status" id="peek-liney-val" style="font-size:10px;min-width:32px;text-align:right;font-weight:600;">55%</span>
             </div>
+            <div class="ctrl-row" style="align-items:center;gap:6px;margin-top:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">Peek depth</span>
+              <input type="range" id="peek-depth-slider" min="0" max="100" step="1" value="35"
+                style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;" oninput="peekSetDepth(this.value)">
+              <span class="ctrl-status" id="peek-depth-val" style="font-size:10px;min-width:32px;text-align:right;font-weight:600;">35%</span>
+            </div>
+            <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;line-height:1.4;">
+              How far each sprite crosses its edge/slit line — low = just a sliver poking in, high = fully emerged. Never reaches toward center; it's a % of the sprite's own size, not the canvas.
+            </div>
             <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:var(--txt-dim);margin-top:6px;">
               <input type="checkbox" id="peek-debug-toggle" onchange="peekSetDebug(this.checked)">
               Show debug guide line (turn off before going live)
@@ -5057,6 +5066,7 @@ const PEEK_DEFAULTS = {
   holdDuration: 2,
   sizePercent: 22,
   lineY: 55,
+  depthPercent: 35,
   debug: false,
   edges: { bottom: true, top: true, left: true, right: true },
 };
@@ -5077,6 +5087,7 @@ function peekSyncUI() {
   setSlider('peek-hold-slider', cfg.holdDuration.toFixed(1), 'peek-hold-val', 's');
   setSlider('peek-size-slider', cfg.sizePercent, 'peek-size-val', '%');
   setSlider('peek-liney-slider', cfg.lineY, 'peek-liney-val', '%');
+  setSlider('peek-depth-slider', cfg.depthPercent, 'peek-depth-val', '%');
   const dbg = document.getElementById('peek-debug-toggle'); if (dbg) dbg.checked = !!cfg.debug;
   ['bottom','top','left','right'].forEach(edge => {
     const el = document.getElementById('peek-edge-' + edge);
@@ -5120,6 +5131,11 @@ function peekSetSize(v) {
 function peekSetLineY(v) {
   _peekConfig.lineY = parseFloat(v);
   const l = document.getElementById('peek-liney-val'); if (l) l.textContent = v + '%';
+  _peekDebouncedPublish();
+}
+function peekSetDepth(v) {
+  _peekConfig.depthPercent = parseFloat(v);
+  const l = document.getElementById('peek-depth-val'); if (l) l.textContent = v + '%';
   _peekDebouncedPublish();
 }
 function peekSetDebug(checked) {
