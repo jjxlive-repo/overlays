@@ -132,14 +132,20 @@ const CONFIG = {
   ABLY_CHANNEL: "splat-overlay",
 };
 
+// `slit: true` marks the couple of characters that peek through the
+// "slit" line (lineY) instead of the true canvas edge — i.e. they're
+// meant to look like they're hiding behind the game/camera area below
+// the slit and poke up (or down) past it. Everyone else enters from
+// the real top/bottom edge of the 1080x1920 canvas. Reassign this flag
+// to different assets any time — it's the only thing that decides it.
 const ASSETS = [
   { edge: 'bottom', file: 'assets/bottom_duo_happy.png',        aspect: 1.049, label: 'happy duo' },
-  { edge: 'bottom', file: 'assets/bottom_duo_scared.png',       aspect: 1.252, label: 'startled duo' },
+  { edge: 'bottom', file: 'assets/bottom_duo_scared.png',       aspect: 1.252, label: 'startled duo', slit: true },
   { edge: 'bottom', file: 'assets/bottom_dog_happy.png',        aspect: 1.207, label: 'happy dog' },
   { edge: 'top',    file: 'assets/top_duo_sleepy.png',          aspect: 0.563, label: 'sleepy duo' },
   { edge: 'top',    file: 'assets/top_boy_sleepy.png',          aspect: 0.803, label: 'sleepy boy' },
   { edge: 'top',    file: 'assets/top_dog_alert.png',           aspect: 1.201, label: 'alert dog' },
-  { edge: 'top',    file: 'assets/top_duo_surprised_close.png', aspect: 0.563, label: 'surprised duo close' },
+  { edge: 'top',    file: 'assets/top_duo_surprised_close.png', aspect: 0.563, label: 'surprised duo close', slit: true },
   { edge: 'top',    file: 'assets/top_duo_surprised_wide.png',  aspect: 1.535, label: 'surprised duo wide' },
   { edge: 'left',   file: 'assets/left_boy_grumpy.png',         aspect: 1.689, label: 'grumpy boy left' },
   { edge: 'right',  file: 'assets/left_boy_grumpy.png',         aspect: 1.689, label: 'grumpy boy right', mirror: true },
@@ -151,6 +157,11 @@ const DEFAULTS = {
   maxInterval: 80,
   holdDuration: 2,
   lineY: 55,
+  // How far a sprite crosses past its boundary (true edge, or the slit
+  // for the two slit: true assets) at full "peek" — a percentage of its
+  // own height/width, NOT of the canvas. Keeps these as little peeks
+  // instead of sliding fully onto the canvas.
+  depthPercent: 35,
   edges: { bottom: true, top: true, left: true, right: true },
   debug: false,
 };
@@ -226,18 +237,28 @@ function computeGeometry(asset) {
   const spriteH = (_cfg.sizePercent / 100) * CW;
   const spriteW = spriteH * asset.aspect;
   const lineY = (_cfg.lineY / 100) * CH;
+  const depthFactor = Math.max(0, Math.min(1, (_cfg.depthPercent ?? 35) / 100));
   let restLeft, restTop, hiddenLeft, hiddenTop, origin;
 
   if (asset.edge === 'bottom') {
-    restTop = lineY - spriteH;
-    hiddenTop = CH + MARGIN;
+    // Non-slit: boundary is the true bottom edge of the canvas (CH) — a
+    // small poke up over the edge. Slit assets rise up through the lineY
+    // slit instead, as if popping up from behind the game/camera below it.
+    const boundary = asset.slit ? lineY : CH;
+    const fullTop = boundary - spriteH;      // fully risen — sprite's bottom right at the boundary
+    hiddenTop = boundary + MARGIN;           // fully hidden below the boundary
+    restTop = hiddenTop + (fullTop - hiddenTop) * depthFactor;
     const cx = CW * 0.5 + (Math.random() - 0.5) * CW * 0.5;
     restLeft = Math.min(Math.max(cx - spriteW / 2, MARGIN), CW - spriteW - MARGIN);
     hiddenLeft = restLeft;
     origin = '50% 100%';
   } else if (asset.edge === 'top') {
-    restTop = lineY;
-    hiddenTop = -spriteH - MARGIN;
+    // Non-slit: boundary is the true top edge (0) — a small poke down
+    // over the edge. Slit assets hang down through the lineY slit instead.
+    const boundary = asset.slit ? lineY : 0;
+    const fullTop = boundary;                    // fully dropped — sprite's top right at the boundary
+    hiddenTop = boundary - spriteH - MARGIN;     // fully hidden above the boundary
+    restTop = hiddenTop + (fullTop - hiddenTop) * depthFactor;
     const cx = CW * 0.5 + (Math.random() - 0.5) * CW * 0.5;
     restLeft = Math.min(Math.max(cx - spriteW / 2, MARGIN), CW - spriteW - MARGIN);
     hiddenLeft = restLeft;
@@ -245,14 +266,16 @@ function computeGeometry(asset) {
   } else if (asset.edge === 'left') {
     restTop = lineY - spriteH;
     hiddenTop = restTop;
-    restLeft = MARGIN * 0.5;
+    const fullLeft = 0;                 // fully entered — sprite's left edge at the canvas edge
     hiddenLeft = -spriteW - MARGIN;
+    restLeft = hiddenLeft + (fullLeft - hiddenLeft) * depthFactor;
     origin = '0% 100%';
   } else {
     restTop = lineY - spriteH;
     hiddenTop = restTop;
-    restLeft = CW - spriteW - MARGIN * 0.5;
+    const fullLeft = CW - spriteW;      // fully entered — sprite's right edge at the canvas edge
     hiddenLeft = CW + MARGIN;
+    restLeft = hiddenLeft + (fullLeft - hiddenLeft) * depthFactor;
     origin = '100% 100%';
   }
   return { spriteW, spriteH, restLeft, restTop, hiddenLeft, hiddenTop, origin };
