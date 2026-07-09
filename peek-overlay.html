@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Peek Overlay</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+  /* ═══════════════════════════════════════════
+     CONFIG
+     Ambient bit: character sprites (duo/dog/boy)
+     randomly peek in from the top/bottom/left/right
+     edges of the canvas, hold a moment, then retreat.
+     Ported from the Peek Overlay.dc.html design proto
+     — that version used BroadcastChannel + localStorage
+     to sync with a matching dock page, which doesn't
+     work between TikTok Studio and Chrome. This build
+     uses Ably instead, same as every other overlay here.
+  ═══════════════════════════════════════════ */
+  html, body {
+    width: 1080px;
+    height: 1920px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  #scene {
+    width: 1080px;
+    height: 1920px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* connection status dot — top-right, 12-14px.
+     grey (disconnected) -> BLUE (connected), never green
+     (JJ is red-green colorblind and can't reliably tell
+     purple/blue apart either — blue is the one reserved
+     "connected" accent across all his overlays). */
+  #peek-status-dot {
+    position: absolute;
+    top: 28px;
+    right: 28px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #6b7280;
+    box-shadow: 0 0 0 3px rgba(0,0,0,.25);
+    transition: background .25s ease;
+    z-index: 50;
+  }
+  #peek-status-dot.connected { background: #3b82f6; box-shadow: 0 0 8px #3b82f6, 0 0 0 3px rgba(0,0,0,.25); }
+
+  /* debug guide line — dock-only calibration aid, off by
+     default; never anchored to bottom, positioned via top. */
+  #peek-guide-line {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1080px;
+    height: 0;
+    border-top: 2px dashed rgba(255,60,60,0.85);
+    z-index: 40;
+    display: none;
+  }
+  #peek-guide-label {
+    position: absolute;
+    left: 12px;
+    top: 0;
+    color: #ff3c3c;
+    font: 600 22px system-ui, sans-serif;
+    text-shadow: 0 0 6px rgba(0,0,0,0.6);
+    z-index: 40;
+    display: none;
+  }
+
+  /* the peeking sprite itself — outer div handles position
+     (left/top, never bottom), inner div handles the scale/
+     mirror transform so the two can animate independently
+     (a "zoom" peek moves position and scale on different
+     timings), img just fills the box. */
+  #peek-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: none;
+    z-index: 30;
+  }
+  #peek-inner {
+    width: 100%;
+    height: 100%;
+  }
+  #peek-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.28));
+  }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <div id="peek-guide-line"></div>
+  <div id="peek-guide-label">peek line</div>
+  <div id="peek-wrap">
+    <div id="peek-inner">
+      <img id="peek-img" alt="">
+    </div>
+  </div>
+  <div id="peek-status-dot"></div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════════ */
+const CW = 1080, CH = 1920;
+const MARGIN = 40;
+
+const CONFIG = {
+  // Where the peek sprite PNGs live once uploaded to GitHub Pages.
+  // Keep the same "assets/whatever.png" relative names from the
+  // design pack — just upload that assets/ folder here as-is.
+  ASSET_BASE: "https://jjxlive-repo.github.io/overlays/peek-overlay/",
+
+  ABLY_KEY:     "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0",
+  ABLY_CHANNEL: "splat-overlay",
+};
+
+const ASSETS = [
+  { edge: 'bottom', file: 'assets/bottom_duo_happy.png',        aspect: 1.049, label: 'happy duo' },
+  { edge: 'bottom', file: 'assets/bottom_duo_scared.png',       aspect: 1.252, label: 'startled duo' },
+  { edge: 'bottom', file: 'assets/bottom_dog_happy.png',        aspect: 1.207, label: 'happy dog' },
+  { edge: 'top',    file: 'assets/top_duo_sleepy.png',          aspect: 0.563, label: 'sleepy duo' },
+  { edge: 'top',    file: 'assets/top_boy_sleepy.png',          aspect: 0.803, label: 'sleepy boy' },
+  { edge: 'top',    file: 'assets/top_dog_alert.png',           aspect: 1.201, label: 'alert dog' },
+  { edge: 'top',    file: 'assets/top_duo_surprised_close.png', aspect: 0.563, label: 'surprised duo close' },
+  { edge: 'top',    file: 'assets/top_duo_surprised_wide.png',  aspect: 1.535, label: 'surprised duo wide' },
+  { edge: 'left',   file: 'assets/left_boy_grumpy.png',         aspect: 1.689, label: 'grumpy boy left' },
+  { edge: 'right',  file: 'assets/left_boy_grumpy.png',         aspect: 1.689, label: 'grumpy boy right', mirror: true },
+];
+
+const DEFAULTS = {
+  sizePercent: 22,
+  minInterval: 20,
+  maxInterval: 80,
+  holdDuration: 2,
+  lineY: 55,
+  edges: { bottom: true, top: true, left: true, right: true },
+  debug: false,
+};
+
+// Live config, updated whenever the dock publishes 'peek-config'.
+// Cached to localStorage purely so a page reload of THIS overlay
+// remembers the last settings before the dock reconnects and
+// re-publishes — not used to sync between windows (that's Ably's job).
+let _cfg = { ...DEFAULTS, edges: { ...DEFAULTS.edges } };
+try {
+  const cached = JSON.parse(localStorage.getItem('peekOverlayLastConfig') || 'null');
+  if (cached) _cfg = { ...DEFAULTS, ...cached, edges: { ...DEFAULTS.edges, ...(cached.edges || {}) } };
+} catch (e) {}
+
+function applyConfig(patch) {
+  _cfg = { ..._cfg, ...patch, edges: { ..._cfg.edges, ...(patch.edges || {}) } };
+  try { localStorage.setItem('peekOverlayLastConfig', JSON.stringify(_cfg)); } catch (e) {}
+  renderGuide();
+}
+
+/* ═══════════════════════════════════════════
+   PRELOAD — warm the browser cache so the first
+   time a sprite is picked it's already decoded.
+═══════════════════════════════════════════ */
+const _preload = {};
+ASSETS.forEach(a => {
+  if (_preload[a.file]) return;
+  const im = new Image();
+  im.src = CONFIG.ASSET_BASE + a.file;
+  _preload[a.file] = im;
+});
+
+/* ═══════════════════════════════════════════
+   DEBUG GUIDE LINE
+═══════════════════════════════════════════ */
+const guideLine  = document.getElementById('peek-guide-line');
+const guideLabel = document.getElementById('peek-guide-label');
+function renderGuide() {
+  const lineYPx = (_cfg.lineY / 100) * CH;
+  const show = !!_cfg.debug;
+  guideLine.style.display  = show ? 'block' : 'none';
+  guideLabel.style.display = show ? 'block' : 'none';
+  guideLine.style.top  = lineYPx + 'px';
+  guideLabel.style.top = Math.max(0, lineYPx - 32) + 'px';
+}
+
+/* ═══════════════════════════════════════════
+   PEEK PLAYBACK
+   Ported from Peek Overlay.dc.html's Component
+   class — same geometry/timing logic, just driven
+   by plain DOM mutation instead of a virtual-DOM
+   re-render.
+═══════════════════════════════════════════ */
+const wrap  = document.getElementById('peek-wrap');
+const inner = document.getElementById('peek-inner');
+const img   = document.getElementById('peek-img');
+
+let _scheduleTimer = null;
+let _stepTimer = null;
+
+function pickAsset(forceEdge, forceFile) {
+  if (forceFile) {
+    const exact = ASSETS.find(a => a.file === forceFile && (!forceEdge || a.edge === forceEdge));
+    if (exact) return exact;
+  }
+  let pool = ASSETS.filter(a => _cfg.edges[a.edge]);
+  if (forceEdge) pool = pool.filter(a => a.edge === forceEdge);
+  if (pool.length === 0) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function computeGeometry(asset) {
+  const spriteH = (_cfg.sizePercent / 100) * CW;
+  const spriteW = spriteH * asset.aspect;
+  const lineY = (_cfg.lineY / 100) * CH;
+  let restLeft, restTop, hiddenLeft, hiddenTop, origin;
+
+  if (asset.edge === 'bottom') {
+    restTop = lineY - spriteH;
+    hiddenTop = CH + MARGIN;
+    const cx = CW * 0.5 + (Math.random() - 0.5) * CW * 0.5;
+    restLeft = Math.min(Math.max(cx - spriteW / 2, MARGIN), CW - spriteW - MARGIN);
+    hiddenLeft = restLeft;
+    origin = '50% 100%';
+  } else if (asset.edge === 'top') {
+    restTop = lineY;
+    hiddenTop = -spriteH - MARGIN;
+    const cx = CW * 0.5 + (Math.random() - 0.5) * CW * 0.5;
+    restLeft = Math.min(Math.max(cx - spriteW / 2, MARGIN), CW - spriteW - MARGIN);
+    hiddenLeft = restLeft;
+    origin = '50% 0%';
+  } else if (asset.edge === 'left') {
+    restTop = lineY - spriteH;
+    hiddenTop = restTop;
+    restLeft = MARGIN * 0.5;
+    hiddenLeft = -spriteW - MARGIN;
+    origin = '0% 100%';
+  } else {
+    restTop = lineY - spriteH;
+    hiddenTop = restTop;
+    restLeft = CW - spriteW - MARGIN * 0.5;
+    hiddenLeft = CW + MARGIN;
+    origin = '100% 100%';
+  }
+  return { spriteW, spriteH, restLeft, restTop, hiddenLeft, hiddenTop, origin };
+}
+
+function lerp(geo, asset, factor) {
+  const vertical = asset.edge === 'top' || asset.edge === 'bottom';
+  if (vertical) {
+    return { left: geo.restLeft, top: geo.restTop + (geo.hiddenTop - geo.restTop) * factor };
+  }
+  return { left: geo.restLeft + (geo.hiddenLeft - geo.restLeft) * factor, top: geo.restTop };
+}
+
+function applyPeekStyle(p) {
+  if (p.width  != null) wrap.style.width  = p.width + 'px';
+  if (p.height != null) wrap.style.height = p.height + 'px';
+  if (p.left   != null) wrap.style.left   = p.left + 'px';
+  if (p.top    != null) wrap.style.top    = p.top + 'px';
+  wrap.style.transition = p.posTransition || 'none';
+  if (p.origin)    inner.style.transformOrigin = p.origin;
+  if (p.transform) inner.style.transform = p.transform;
+  inner.style.transition = p.scaleTransition || 'none';
+  if (p.imgSrc) {
+    img.src = CONFIG.ASSET_BASE + p.imgSrc;
+    img.alt = p.label || '';
+  }
+  wrap.style.display = 'block';
+}
+
+function scheduleNext() {
+  clearTimeout(_scheduleTimer);
+  const min = Math.max(1, _cfg.minInterval);
+  const max = Math.max(min, _cfg.maxInterval);
+  const wait = (min + Math.random() * (max - min)) * 1000;
+  _scheduleTimer = setTimeout(() => playPeek(), wait);
+}
+
+function playPeek(forceEdge, forceFile) {
+  const asset = pickAsset(forceEdge, forceFile);
+  if (!asset) { scheduleNext(); return; }
+
+  const geo = computeGeometry(asset);
+  const mirror = asset.mirror ? -1 : 1;
+  const holdMs = Math.max(200, _cfg.holdDuration * 1000);
+  const styles = ['slow', 'zoom', 'double'];
+  const style = styles[Math.floor(Math.random() * styles.length)];
+
+  const mk = (left, top, scale) => ({
+    imgSrc: asset.file,
+    label: asset.label,
+    width: geo.spriteW,
+    height: geo.spriteH,
+    origin: geo.origin,
+    left, top,
+    transform: `scaleX(${mirror}) scale(${scale})`,
+  });
+
+  let steps;
+  if (style === 'slow') {
+    steps = [
+      { ...mk(geo.restLeft, geo.restTop, 1), posMs: 1400, scaleMs: 1, posEasing: 'cubic-bezier(.2,.8,.2,1)', holdMs },
+      { ...mk(geo.hiddenLeft, geo.hiddenTop, 1), posMs: 1200, scaleMs: 1, posEasing: 'cubic-bezier(.4,0,.2,1)' },
+    ];
+  } else if (style === 'zoom') {
+    steps = [
+      { ...mk(geo.restLeft, geo.restTop, 1), posMs: 500, scaleMs: 1, posEasing: 'cubic-bezier(.34,1.56,.64,1)', holdMs: 250 },
+      { ...mk(geo.restLeft, geo.restTop, 1.22), posMs: 1, scaleMs: 350, scaleEasing: 'cubic-bezier(.34,1.56,.64,1)', holdMs: Math.max(holdMs - 200, 400) },
+      { ...mk(geo.restLeft, geo.restTop, 1), posMs: 1, scaleMs: 300, holdMs: 200 },
+      { ...mk(geo.hiddenLeft, geo.hiddenTop, 1), posMs: 450, scaleMs: 1, posEasing: 'cubic-bezier(.4,0,.2,1)' },
+    ];
+  } else {
+    const partial = lerp(geo, asset, 0.55);
+    steps = [
+      { ...mk(geo.restLeft, geo.restTop, 1), posMs: 450, scaleMs: 1, posEasing: 'cubic-bezier(.34,1.56,.64,1)', holdMs: 400 },
+      { ...mk(partial.left, partial.top, 1), posMs: 350, scaleMs: 1, holdMs: 200 },
+      { ...mk(geo.restLeft, geo.restTop, 1), posMs: 350, scaleMs: 1, posEasing: 'cubic-bezier(.34,1.56,.64,1)', holdMs },
+      { ...mk(geo.hiddenLeft, geo.hiddenTop, 1), posMs: 500, scaleMs: 1, posEasing: 'cubic-bezier(.4,0,.2,1)' },
+    ];
+  }
+
+  clearTimeout(_stepTimer);
+  applyPeekStyle({ ...mk(geo.hiddenLeft, geo.hiddenTop, 1), posTransition: 'none', scaleTransition: 'none' });
+  requestAnimationFrame(() => requestAnimationFrame(() => runSteps(steps, 0)));
+}
+
+function runSteps(steps, i) {
+  if (i >= steps.length) {
+    wrap.style.display = 'none';
+    scheduleNext();
+    return;
+  }
+  const step = steps[i];
+  const posTransition   = `left ${step.posMs}ms ${step.posEasing || 'ease'}, top ${step.posMs}ms ${step.posEasing || 'ease'}`;
+  const scaleTransition = `transform ${step.scaleMs}ms ${step.scaleEasing || 'ease'}`;
+  applyPeekStyle({ ...step, posTransition, scaleTransition });
+  const waitMs = Math.max(step.posMs, step.scaleMs) + (step.holdMs || 0);
+  _stepTimer = setTimeout(() => runSteps(steps, i + 1), waitMs);
+}
+
+// Start the ambient loop immediately on load, using whatever config
+// is cached/default — it'll pick up live settings the moment the
+// dock's 'peek-config' arrives.
+renderGuide();
+scheduleNext();
+
+/* ═══════════════════════════════════════════
+   ABLY — live config + manual triggers, plus the
+   alive heartbeat so the dock shows LIVE/offline.
+═══════════════════════════════════════════ */
+const dot = document.getElementById('peek-status-dot');
+const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
+const channel = ably.channels.get(CONFIG.ABLY_CHANNEL);
+
+ably.connection.on('connected',    () => dot.classList.add('connected'));
+ably.connection.on('disconnected', () => dot.classList.remove('connected'));
+ably.connection.on('suspended',    () => dot.classList.remove('connected'));
+ably.connection.on('failed',       () => dot.classList.remove('connected'));
+
+channel.subscribe('peek-config', (msg) => {
+  if (msg?.data) applyConfig(msg.data);
+});
+
+channel.subscribe('peek-cmd', (msg) => {
+  const edge = msg?.data?.edge || undefined;
+  const file = msg?.data?.file || undefined;
+  clearTimeout(_scheduleTimer);
+  clearTimeout(_stepTimer);
+  playPeek(edge, file);
+});
+
+let _aliveHeartbeat = null;
+function announceAlive() { channel.publish('peek-alive', {}).catch(() => {}); }
+channel.subscribe('peek-ping', announceAlive);
+ably.connection.once('connected', () => {
+  announceAlive();
+  _aliveHeartbeat = setInterval(announceAlive, 15000);
+});
+</script>
+</body>
+</html>
