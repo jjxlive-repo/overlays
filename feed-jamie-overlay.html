@@ -154,23 +154,23 @@
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
   }
 
-  /* gift showcase — small square cycling through configured gift → item mappings */
+  /* gift showcase — small square cycling through configured gift → item mappings.
+     Text wraps instead of clipping; height grows to fit. */
   #gift-showcase {
-    position: absolute; z-index: 55; width: 130px; box-sizing: border-box;
-    padding: 10px 8px 7px; border-radius: 16px; text-align: center;
+    position: absolute; z-index: 55; width: 150px; box-sizing: border-box;
+    padding: 10px 10px 8px; border-radius: 16px; text-align: center;
     background: rgba(30, 8, 56, 0.5); border: 2px solid #C084FC66;
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out;
     transform-origin: top left;
   }
-  #gift-showcase img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto; }
-  #gift-showcase .gs-emoji { font-size: 46px; line-height: 64px; height: 64px; display: none; }
+  #gift-showcase img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 2px; }
   #gift-showcase .gs-gift {
-    font: 700 15px 'DM Sans'; color: var(--fj-gold); margin-top: 3px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000;
+    font: 700 16px 'DM Sans'; color: var(--fj-gold); margin-top: 2px; line-height: 1.2;
+    white-space: normal; overflow-wrap: break-word; text-shadow: 0 1px 3px #000;
   }
   #gift-showcase .gs-item {
-    font: 400 19px 'Boogaloo'; color: var(--fj-white); margin-top: 1px; letter-spacing: .5px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000;
+    font: 400 20px 'Boogaloo'; color: var(--fj-white); margin-top: 2px; letter-spacing: .5px; line-height: 1.15;
+    white-space: normal; overflow-wrap: break-word; text-shadow: 0 1px 3px #000;
   }
 
   /* effects layer */
@@ -205,7 +205,6 @@
   <div id="like-meter"></div>
   <div id="gift-showcase">
     <img alt="">
-    <div class="gs-emoji">🎁</div>
     <div class="gs-gift"></div>
     <div class="gs-item"></div>
   </div>
@@ -1567,16 +1566,42 @@ function promptLoop() {
   }, CFG.prompts.intervalSec * 1000 - 600);
 }
 /* gift showcase: cycles through configured gift → item mappings so viewers
-   can see what each gift triggers. Hidden when disabled or nothing is mapped. */
+   can see what each gift triggers. Hidden when disabled or nothing is mapped.
+   No icon available = name-only card (no emoji placeholder). */
 const GIFT_ITEM_LABELS = {
-  'treat-biscuit': '🍪 Biscuit', 'treat-bone': '🦴 Bone Treat', 'treat-purple-splat': '💜 Splat Treat',
-  'treat-heart': '🍪 Heart Cookie', 'tennis-ball': '🎾 Tennis Ball', 'golden-tennis-ball': '⭐ Golden Ball',
-  'squeaky-toy': '🔵 Squeaky Toy', 'duck': '🦆 Duck', 'sock': '🧦 Sock', 'bubble': '🫧 Bubble',
-  'heart-large': '💜 Big Heart', 'heartme': '🎉 MEGA Party'
+  'treat-biscuit': 'Biscuit', 'treat-bone': 'Bone Treat', 'treat-purple-splat': 'Splat Treat',
+  'treat-heart': 'Heart Cookie', 'tennis-ball': 'Tennis Ball', 'golden-tennis-ball': 'Golden Ball',
+  'squeaky-toy': 'Squeaky Toy', 'duck': 'Duck', 'sock': 'Sock', 'bubble': 'Bubble',
+  'heart-large': 'Big Heart', 'heartme': 'MEGA Party'
 };
+/* self-heal: mappings saved before icon-embedding lack giftImg — look the
+   icons up from the catalog once and fill them in-memory. */
+let giftImgLookup = null, giftImgLookupTried = false;
+function fillGiftImgs() {
+  if (!giftImgLookup) return;
+  for (const m of (CFG.events.giftMappings || [])) {
+    if (m.giftName && !m.giftImg) {
+      const img = giftImgLookup.get(String(m.giftName).toLowerCase());
+      if (img) m.giftImg = img;
+    }
+  }
+}
+async function healGiftImages() {
+  if (giftImgLookupTried) { fillGiftImgs(); return; }
+  if (!(CFG.events.giftMappings || []).some(m => m.giftName && !m.giftImg)) return;
+  giftImgLookupTried = true;
+  try {
+    const res = await fetch(CFG.assets.basePath + 'tiktok-gifts.json?v=' + FJ_CACHE_BUST);
+    if (!res.ok) return;
+    const cat = await res.json();
+    giftImgLookup = new Map(cat.map(g => [g.name.toLowerCase(), g.img]));
+    fillGiftImgs();
+  } catch (e) { /* catalog unavailable — name-only cards */ }
+}
 let showcaseIdx = 0, showcaseTimer = null;
 function giftShowcaseLoop() {
   clearTimeout(showcaseTimer);
+  healGiftImages();
   const gs = $('gift-showcase');
   const sc = CFG.visuals.giftShowcase;
   const maps = (CFG.events.giftMappings || []).filter(m => m.giftName && GIFT_ITEM_LABELS[m.itemType]);
@@ -1587,13 +1612,13 @@ function giftShowcaseLoop() {
   }
   const m = maps[showcaseIdx % maps.length];
   showcaseIdx++;
-  const img = gs.querySelector('img'), emoji = gs.querySelector('.gs-emoji');
+  const img = gs.querySelector('img');
   if (m.giftImg) {
+    img.style.display = 'block';
+    img.onerror = () => { img.style.display = 'none'; };
     img.src = m.giftImg;
-    img.style.display = 'block'; emoji.style.display = 'none';
-    img.onerror = () => { img.style.display = 'none'; emoji.style.display = 'block'; };
   } else {
-    img.style.display = 'none'; emoji.style.display = 'block';
+    img.style.display = 'none';
   }
   gs.querySelector('.gs-gift').textContent = m.giftName;   /* textContent only — never HTML */
   gs.querySelector('.gs-item').textContent = '→ ' + GIFT_ITEM_LABELS[m.itemType];
