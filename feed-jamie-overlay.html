@@ -277,6 +277,10 @@ const FJ_ABLY_KEY   = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0
 const FJ_ABLY_CH    = 'splat-overlay';
 const FJ_ABLY_MSG_IN  = 'feed-jamie';        /* control -> overlay */
 const FJ_ABLY_MSG_OUT = 'feed-jamie-status'; /* overlay -> control */
+/* cache-bust key: forces a fresh fetch of every asset on each page load, so
+   replacing a PNG under the same filename (common during art iteration)
+   can never keep showing a stale browser-cached copy. */
+const FJ_CACHE_BUST = Date.now();
 
 function fjDeepMerge(base, extra) {
   if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
@@ -492,7 +496,7 @@ try { assetOverrides = JSON.parse(localStorage.getItem(FJ_LS_ASSETS) || '{}'); }
 
 function fjAssetUrl(file) {
   if (assetOverrides[file]) return assetOverrides[file];
-  return CFG.assets.basePath + file;
+  return CFG.assets.basePath + file + '?v=' + FJ_CACHE_BUST;
 }
 function fjProbe(file) {
   return new Promise(resolve => {
@@ -500,7 +504,7 @@ function fjProbe(file) {
     const img = new Image();
     img.onload  = () => { assetAvailable[file] = true;  resolve(true);  };
     img.onerror = () => { assetAvailable[file] = false; resolve(false); };
-    img.src = CFG.assets.basePath + file;
+    img.src = CFG.assets.basePath + file + '?v=' + FJ_CACHE_BUST;
   });
 }
 function fjFrameMeta(file) {
@@ -1037,7 +1041,7 @@ function spawnObject(itemType, opts = {}) {
   const el = document.createElement('div');
   el.className = 'fj-object';
   el.style.width = w + 'px'; el.style.height = h + 'px';
-  const url = assetOverrides[def.file] ? assetOverrides[def.file] : CFG.assets.basePath + def.file;
+  const url = assetOverrides[def.file] ? assetOverrides[def.file] : CFG.assets.basePath + def.file + '?v=' + FJ_CACHE_BUST;
   if (assetAvailable[def.file]) {
     const img = document.createElement('img');
     img.src = url;

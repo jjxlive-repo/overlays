@@ -314,6 +314,10 @@ const FJ_ABLY_KEY  = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0'
 const FJ_ABLY_CH   = 'splat-overlay';
 const FJ_ABLY_MSG_OUT = 'feed-jamie';
 const FJ_ABLY_MSG_IN  = 'feed-jamie-status';
+/* cache-bust key: guarantees thumbnails and the local preview always show
+   the current on-disk PNGs, never a stale browser-cached copy from an
+   earlier art iteration under the same filename. */
+const FJ_CACHE_BUST = Date.now();
 const TIKFINITY_URL   = 'ws://localhost:21213/';
 
 function fjDeepMerge(base, extra) {
@@ -647,7 +651,7 @@ function buildAssetList() {
     row.dataset.file = file;
     const short = file.replace('items/', '');
     row.innerHTML = `
-      <img class="thumb" alt="" src="assets/feed-jamie/${file}" onerror="this.style.opacity=.15">
+      <img class="thumb" alt="" src="assets/feed-jamie/${file}?v=${FJ_CACHE_BUST}" onerror="this.style.opacity=.15">
       <span class="name">${short}${group === 'item' ? ' <span style="color:#B8A6D9">(item)</span>' : ''}</span>
       <span class="st">…</span>
       <button style="padding:4px 8px;font-size:11px;">replace</button>
@@ -894,7 +898,7 @@ document.getElementById('preview-toggle').onchange = function () {
     if (!wrap.querySelector('iframe')) {
       const f = document.createElement('iframe');
       f.id = 'preview-frame';
-      f.src = 'feed-jamie-overlay.html';
+      f.src = 'feed-jamie-overlay.html?v=' + FJ_CACHE_BUST;
       wrap.appendChild(f);
     }
   } else {
