@@ -319,6 +319,10 @@ const FJ_DEFAULT_CONFIG = {
        · L4 MEGA (Heart-Me style) · L5 MEGA + item shower.
        A mapping can pin itself to a level, or leave 'auto' to use these breakpoints. */
     intensityThresholds: { l2: 100, l3: 1000, l4: 5000, l5: 30000 },
+    /* cheap gifts (and all likes) skip the bounce entirely and go straight
+       into Jamie's mouth — instant payoff, and they never occupy a bounce
+       slot so a big gift right after isn't stuck waiting behind a Rose. */
+    instantFeed: { enabled: true, maxCoins: 1 },
     giftMappings: [],   /* [{giftName, itemType ('heartme' = mega reaction), minValue, maxValue, showUsername, intensity: 'auto'|1-5}] */
     /* YouTube Super Chats — same 5-level ladder, dollar thresholds. Fed via
        stream-dock's existing 'gift-alert' Ably broadcast; no direct YouTube
@@ -481,6 +485,11 @@ function fjValidateConfig() {
   it.l3 = Math.min(Math.max(Math.round(num(it.l3, 1000)), 1), 1000000);
   it.l4 = Math.min(Math.max(Math.round(num(it.l4, 5000)), 1), 1000000);
   it.l5 = Math.min(Math.max(Math.round(num(it.l5, 30000)), 1), 1000000);
+  if (!c.events.instantFeed || typeof c.events.instantFeed !== 'object') {
+    c.events.instantFeed = { enabled: true, maxCoins: 1 };
+  }
+  c.events.instantFeed.enabled = c.events.instantFeed.enabled !== false;
+  c.events.instantFeed.maxCoins = Math.min(Math.max(Math.round(num(c.events.instantFeed.maxCoins, 1)), 0), 1000000);
   if (!c.events.superchat || typeof c.events.superchat !== 'object') {
     c.events.superchat = { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } };
   }
@@ -562,15 +571,65 @@ function reactAtLevel(itemType, level, sizeScale, username, rawGiftName, mapping
     sourceEvent: sourceEvent || 'gift', username, priority: 70 + level * 5,
     premium: level >= 3,
     showName: showName && !!CFG.visuals.usernameEvents.gift,
-    nameSeconds: CFG.visuals.usernameSeconds,
+    /* bigger gifts keep the @username tag on screen longer while it bounces */
+    nameSeconds: CFG.visuals.usernameSeconds * (1 + Math.max(0, level - 1) * 0.5),
     sizeScale: sizeScale * (1 + (level - 1) * 0.08),
     intensityLevel: level
   });
   playSound('gift');
 }
 /* TikTok gift entry point — mapped or fallback — resolves level from coins. */
+/* ── instant feed: tiny/free events (likes, 1-coin gifts) skip the bounce
+   entirely. No object ever enters `objects[]`, so it never occupies a
+   maxObjects slot — a big gift spawned right after isn't stuck queued
+   behind a Rose. Just a quick pop-into-mouth + crumb FX + catch sound. */
+function instantFeed(itemType, opts = {}) {
+  const def = ITEM_DEFS[itemType];
+  if (!def) return;
+  const r = REACTION_SEQ[def.reaction] || REACTION_SEQ.treat;
+  const tp = targetPoint(def.target, r.targetFrame || SEQ[r.payoff][0].f);
+  const w = def.width * CFG.movement.objectScale * 0.55;
+  const el = document.createElement('div');
+  el.className = 'fj-object fj-instant';
+  el.style.width = w + 'px'; el.style.height = w + 'px';
+  el.style.opacity = '0';
+  el.style.transform = `translate3d(${tp.x - w / 2}px, ${tp.y - w / 2}px, 0) scale(0.5)`;
+  const url = assetOverrides[def.file] ? assetOverrides[def.file] : CFG.assets.basePath + def.file + '?v=' + FJ_CACHE_BUST;
+  if (assetAvailable[def.file]) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.onerror = () => { el.innerHTML = ITEM_SVGS[itemType] || ITEM_SVGS['treat-biscuit']; };
+    el.appendChild(img);
+  } else {
+    el.innerHTML = ITEM_SVGS[itemType] || ITEM_SVGS['treat-biscuit'];
+  }
+  objectsLayer.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.transition = 'transform .16s cubic-bezier(.3,0,.6,1), opacity .12s ease-out';
+    el.style.opacity = '1';
+    el.style.transform = `translate3d(${tp.x - w / 2}px, ${tp.y - w / 2}px, 0) scale(1)`;
+  });
+  playSound(def.catchSound);
+  setTimeout(() => {
+    el.style.transition = 'opacity .15s ease-in, transform .15s ease-in';
+    el.style.opacity = '0';
+    el.style.transform = `translate3d(${tp.x - w / 2}px, ${tp.y - w / 2}px, 0) scale(0.4)`;
+    if (def.reaction === 'treat') { spawnFx('crumb', tp.x, tp.y, 3); setTimeout(() => playSound('crunch'), 90); }
+    applyGrowthCatch({ premium: false });
+    setTimeout(() => el.remove(), 180);
+  }, 180);
+  if (['IDLE', 'TRACKING'].includes(J.state) && Math.random() < 0.3) jamieOneShot('look', 500);
+}
 function reactToGift(itemType, value, username, rawGiftName, mapping, showName) {
-  reactAtLevel(itemType, resolveIntensity(mapping, value), giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift');
+  const level = resolveIntensity(mapping, value);
+  const f = CFG.events.instantFeed;
+  if (f.enabled && level === 1 && itemType !== 'heartme' && (+value || 0) <= f.maxCoins && ITEM_DEFS[itemType]) {
+    showGiftFloat(mapping || { itemType }, username, rawGiftName);
+    instantFeed(itemType, { username });
+    playSound('gift');
+    return;
+  }
+  reactAtLevel(itemType, level, giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift');
 }
 /* YouTube Super Chat ladder — separate dollar thresholds + size curve,
    fed via stream-dock's existing 'gift-alert' Ably broadcast (no new
@@ -1440,6 +1499,7 @@ function spawnObject(itemType, opts = {}) {
   let nx = rand(0.35, 0.85) * (Math.random() < 0.5 ? -1 : 1);
   let ny = Math.sqrt(1 - nx * nx) * (Math.random() < 0.6 ? 1 : -1);
   let x, y;
+  const lvl = opts.intensityLevel || 0;
   if (opts.entry === 'throw') {
     const fromLeft = CFG.jamie.side === 'right';
     x = fromLeft ? -w * 0.5 : 1080 - w * 0.5;
@@ -1447,7 +1507,15 @@ function spawnObject(itemType, opts = {}) {
     nx = Math.abs(nx) * (fromLeft ? 1 : -1);
     ny = Math.abs(ny);
   } else {
-    x = rand(40, 1080 - w - 40);
+    const minX = 40, maxX = 1080 - w - 40;
+    /* bigger gifts intentionally spawn farther from Jamie so they take
+       longer to bounce their way over — more time for the username tag
+       and bigger item to stay on screen before he ever gets a shot. */
+    const farBias = Math.min(1, Math.max(0, lvl - 1) * 0.22);
+    const jamieOnLeft = CFG.jamie.side !== 'right';
+    const uniformX = rand(minX, maxX);
+    const farX = jamieOnLeft ? rand(minX + (maxX - minX) * 0.55, maxX) : rand(minX, minX + (maxX - minX) * 0.45);
+    x = uniformX * (1 - farBias) + farX * farBias;
     y = rand(30, Math.max(60, CFG.floor.y - h - 60));
   }
   const el = document.createElement('div');
@@ -1482,7 +1550,9 @@ function spawnObject(itemType, opts = {}) {
     rotation: rand(0, 360), angularVelocity: rand(-1, 1) * CFG.movement.spin,
     priority: opts.priority || 0,
     createdAt: performance.now(), age: 0,
-    maxLifetime: (premium ? CFG.movement.maxLifetimePremium : CFG.movement.maxLifetimeNormal) * 1000,
+    /* higher-level gifts get more total bounce time before guidance forces
+       a catch — bigger spends buy the spotlight longer. */
+    maxLifetime: (premium ? CFG.movement.maxLifetimePremium : CFG.movement.maxLifetimeNormal) * 1000 * (1 + Math.max(0, lvl - 1) * 0.2),
     captured: false, paused: false,
     cornerHitCount: 0, rewardLevel: premium ? 1 : 0,
     premium, intensityLevel: opts.intensityLevel || 0,
@@ -1529,13 +1599,18 @@ function stepObject(obj, dt, now) {
   if (obj.captured || obj.paused) return;
   obj.age = now - obj.createdAt;
 
-  /* final-seconds guidance: bias trajectory toward the reach zone */
-  if (CFG.movement.guidanceEnabled && obj.maxLifetime - obj.age < 5000 && !obj.captured) {
+  /* final-seconds guidance: bias trajectory toward the reach zone.
+     Higher-level gifts get a shorter, gentler guidance window — they wander
+     freely for most of their (also extended) lifetime instead of getting
+     pulled in early, so bigger spends stay bouncing/on-screen longer. */
+  const guideWindowMs = Math.max(1200, 5000 - (obj.intensityLevel || 0) * 700);
+  const guideStrengthMult = Math.max(0.4, 1 - (obj.intensityLevel || 0) * 0.1);
+  if (CFG.movement.guidanceEnabled && obj.maxLifetime - obj.age < guideWindowMs && !obj.captured) {
     const rz = reachZoneRect();
     const tx = rz.cx - (obj.x + obj.w / 2), ty = rz.cy - (obj.y + obj.h / 2);
     const tlen = Math.hypot(tx, ty) || 1;
     const sp = Math.hypot(obj.vx, obj.vy);
-    const k = CFG.movement.guidanceStrength * dt * 1.6;
+    const k = CFG.movement.guidanceStrength * guideStrengthMult * dt * 1.6;
     obj.vx += (tx / tlen) * sp * k;
     obj.vy += (ty / tlen) * sp * k;
     const nsp = Math.hypot(obj.vx, obj.vy) || 1;
@@ -1756,7 +1831,7 @@ function handleEvent(evt) {
       likeAccumulator += Math.max(1, Math.round(+evt.count || 1));
       while (likeAccumulator >= CFG.events.likesPerTreat) {
         likeAccumulator -= CFG.events.likesPerTreat;
-        queueSpawn(pickTreat(), { sourceEvent: 'like', priority: 30 });
+        instantFeed(pickTreat(), { sourceEvent: 'like' });
       }
       updateLikeMeter();
       break;
