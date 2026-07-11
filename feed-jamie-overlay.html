@@ -64,7 +64,9 @@
   #jamie {
     position: absolute; z-index: 30; will-change: transform;
     transform-origin: 50% 100%;
-    transition: transform .18s ease-out;
+    /* width/height transition makes growth (eating) swell smoothly;
+       transform matches so the feet stay glued to the floor line while growing */
+    transition: transform .45s ease-out, width .45s ease-out, height .45s ease-out;
   }
   #jamie.hidden-state { display: none; }
   #jamie svg { width: 100%; height: 100%; display: block; }
@@ -297,6 +299,12 @@ const FJ_DEFAULT_CONFIG = {
     },
     urls: {}  /* soundName -> https URL; empty = Web Audio placeholder synth */
   },
+  growth: {
+    enabled: true,       /* Jamie grows a little with every item he catches */
+    maxScale: 2,         /* size cap (1 = no growth possible, 2 = double size) */
+    perCatch: 0.05,      /* size gained per catch (premium items count double) */
+    decayPerMinute: 0.05 /* how fast he shrinks back toward 1x (0 = never) */
+  },
   assets: { basePath: 'assets/feed-jamie/', manifestFile: 'asset-manifest.json' },
   debug: { setupGuides: false, showReachZone: false, showJamieBox: false, showSafeArea: false, showState: false, showWarnings: false }
 };
@@ -364,6 +372,12 @@ function fjValidateConfig() {
   c.visuals.giftShowcase.y = Math.min(Math.max(+c.visuals.giftShowcase.y || 240, 0), 1920);
   c.visuals.giftShowcase.scale = Math.min(Math.max(+c.visuals.giftShowcase.scale || 1, 0.4), 2.5);
   c.visuals.giftShowcase.intervalSec = Math.min(Math.max(+c.visuals.giftShowcase.intervalSec || 5, 2), 30);
+  if (!c.growth || typeof c.growth !== 'object') {
+    c.growth = { enabled: true, maxScale: 2, perCatch: 0.05, decayPerMinute: 0.05 };
+  }
+  c.growth.maxScale = Math.min(Math.max(+c.growth.maxScale || 2, 1), 3);
+  c.growth.perCatch = Math.min(Math.max(+c.growth.perCatch || 0.05, 0.01), 0.5);
+  c.growth.decayPerMinute = Math.min(Math.max(+c.growth.decayPerMinute ?? 0.05, 0), 1);
   c.events.giftSizeScaling.maxScale = Math.min(Math.max(+c.events.giftSizeScaling.maxScale || 2, 1), 3);
   c.events.giftSizeScaling.coinsForMax = Math.min(Math.max(Math.round(+c.events.giftSizeScaling.coinsForMax || 5000), 10), 100000);
 }
@@ -379,6 +393,37 @@ function giftSizeScale(coins) {
 fjValidateConfig();
 function applyMotionVar() {
   document.documentElement.style.setProperty('--fj-motion', CFG.visuals.intensity);
+}
+
+/* ── Jamie growth: eating makes him bigger (capped), then he slowly
+     shrinks back so viewers keep feeding him. Persists across reloads
+     (decay is applied for the time the overlay was closed). ── */
+const FJ_LS_GROWTH = 'feedJamie.growth.v1';
+let growth = 1;
+try {
+  const s = JSON.parse(localStorage.getItem(FJ_LS_GROWTH) || 'null');
+  if (s && s.g > 1) {
+    const minsAway = Math.max(0, (Date.now() - (s.t || Date.now())) / 60000);
+    growth = Math.max(1, Math.min(CFG.growth.maxScale, s.g - CFG.growth.decayPerMinute * minsAway));
+  }
+} catch (e) {}
+function growthScale() { return CFG.growth.enabled ? growth : 1; }
+function saveGrowth() {
+  try { localStorage.setItem(FJ_LS_GROWTH, JSON.stringify({ g: growth, t: Date.now() })); } catch (e) {}
+}
+function applyGrowthCatch(obj) {
+  const g = CFG.growth;
+  if (!g.enabled || growth >= g.maxScale) return;
+  growth = Math.min(g.maxScale, growth + g.perCatch * (obj.premium ? 2 : 1));
+  saveGrowth();
+  applyLayout();
+  publishStatus();
+}
+function resetGrowth() {
+  growth = 1;
+  saveGrowth();
+  applyLayout();
+  publishStatus(true);
 }
 
 /* ── 2. ITEM DEFINITIONS ───────────────────────────────────────── */
@@ -744,8 +789,8 @@ function jamieHeightFor(width) {
 }
 function applyLayout() {
   const j = CFG.jamie;
-  const w = j.width * j.scale;
-  const h = jamieHeightFor(j.width) * j.scale;
+  const w = j.width * j.scale * growthScale();
+  const h = jamieHeightFor(j.width) * j.scale * growthScale();
   const x = j.side === 'right' ? (1080 - j.x - w) : j.x;
   /* anchor: bottom of sprite sits at floorY + yOffset (top-positioned; never CSS bottom) */
   const mc = MANIFEST.canvas || { width: 1200, height: 1400, floorAnchor: { y: 1320 } };
@@ -1327,6 +1372,7 @@ function captureObject(obj) {
 function finishCapture(obj, tp) {
   if (obj.finished) return;
   obj.finished = true;
+  applyGrowthCatch(obj);
   const rx = obj.def.reaction;
   if (rx === 'treat') { spawnFx('crumb', tp.x, tp.y, 5); setTimeout(() => playSound('crunch'), 150); }
   if (rx === 'bubble') { spawnFx('pop', tp.x, tp.y, 6); }
@@ -1689,6 +1735,7 @@ function spawnFx(kind, x, y, count) {
 
 /* ── 14. MAIN LOOP ─────────────────────────────────────────────── */
 let lastFrame = performance.now();
+let growthDecayAccum = 0;
 let rafId = null;
 function tick(now) {
   rafId = requestAnimationFrame(tick);
@@ -1696,6 +1743,12 @@ function tick(now) {
   lastFrame = now;
   if (dt > 0.05) dt = 0.05;  /* clamp after tab-hidden gaps */
   if (J.paused || J.hidden) return;
+  /* growth decay: shrink slowly back toward 1x (layout refresh throttled to ~1/s) */
+  if (CFG.growth.enabled && growth > 1 && CFG.growth.decayPerMinute > 0) {
+    growth = Math.max(1, growth - CFG.growth.decayPerMinute * dt / 60);
+    growthDecayAccum += dt;
+    if (growthDecayAccum >= 1) { growthDecayAccum = 0; saveGrowth(); applyLayout(); }
+  }
   const active = objects.filter(o => !o.captured);
   for (const o of objects) stepObject(o, dt, now);
   if (J.state === 'TRACKING' && active.length) {
@@ -1735,6 +1788,7 @@ function processMessage(msg) {
     case 'HIDE':   setHidden(true);  break;
     case 'SHOW':   setHidden(false); break;
     case 'RESET_STATE': forceReset('control'); break;
+    case 'RESET_GROWTH': resetGrowth(); break;
     case 'SETUP_GUIDES':
       CFG.debug = fjDeepMerge(CFG.debug, msg.data || {});
       applyLayout();
@@ -1778,6 +1832,7 @@ function publishStatus(immediate) {
         objectTypes: objects.filter(o => !o.captured).map(o => o.itemType),
         queued: spawnQueue.length,
         likeProgress: likeAccumulator, likesPerTreat: CFG.events.likesPerTreat,
+        growth: Math.round(growth * 100) / 100,
         lastEvent: lastEventInfo,
         warnings: assetWarnings.slice(0, 40),
         assetAvailable: Object.fromEntries(Object.entries(assetAvailable)),
@@ -1849,11 +1904,12 @@ window.feedJamie = {
     else handleEvent({ type: t, username: 'test_viewer', value: t === 'gift' ? 500 : 0, giftName: 'Test' });
   },
   getState: () => ({
-    state: J.state, paused: J.paused, hidden: J.hidden,
+    state: J.state, paused: J.paused, hidden: J.hidden, growth,
     objects: objects.map(o => ({ id: o.id, itemType: o.itemType, x: o.x, y: o.y, captured: o.captured })),
     queued: spawnQueue.length, likeAccumulator, warnings: assetWarnings.slice(),
     config: fjClone(CFG)
   }),
+  resetGrowth,
   reloadAssets: fjLoadAssets,
   getConfig: () => fjClone(CFG)
 };

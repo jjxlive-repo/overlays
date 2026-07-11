@@ -129,6 +129,7 @@
         <span class="k">Object types</span><span class="v" id="st-types">—</span>
         <span class="k">Queued</span><span class="v" id="st-queued">—</span>
         <span class="k">Like progress</span><span class="v" id="st-likes">—</span>
+        <span class="k">Jamie size</span><span class="v" id="st-growth">—</span>
         <span class="k">Paused</span><span class="v" id="st-paused">—</span>
         <span class="k">Hidden</span><span class="v" id="st-hidden">—</span>
         <span class="k">Last event</span><span class="v" id="st-last">—</span>
@@ -330,6 +331,7 @@ const FJ_DEFAULT_CONFIG = {
     likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1,
     giftShowcase: { enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5 }
   },
+  growth: { enabled: true, maxScale: 2, perCatch: 0.05, decayPerMinute: 0.05 },
   audio: {
     muted: false, master: 0.7, cooldownMs: 140,
     volumes: { bounce: 0.25, catch: 0.7, crunch: 0.6, ballBounce: 0.5, squeak: 0.7, quack: 0.7, pop: 0.6, jackpot: 0.7, heartMe: 0.85, subscribe: 0.8, gift: 0.7 },
@@ -420,6 +422,7 @@ function renderStatus(s) {
   set('st-types', (s.objectTypes || []).join(', ') || 'none');
   set('st-queued', s.queued ?? 0);
   set('st-likes', `${s.likeProgress ?? 0} / ${s.likesPerTreat ?? '?'}`);
+  set('st-growth', s.growth ? s.growth.toFixed(2) + '×' : '—');
   set('st-paused', s.paused ? 'YES ⏸' : 'no');
   set('st-hidden', s.hidden ? 'YES 🚫' : 'no');
   set('st-last', s.lastEvent || '—');
@@ -580,6 +583,22 @@ function colorInput(parent, label, path) {
   slider(p, 'Corner tolerance', 'movement.cornerTolerance', 5, 90, 1, v => v + 'px');
   slider(p, 'Corner reward multiplier', 'movement.cornerRewardMultiplier', 0, 3, 0.5);
   toggle(p, 'Squash/stretch', 'movement.squashStretch');
+  const growthNote = document.createElement('div');
+  growthNote.className = 'note';
+  growthNote.innerHTML = '<b>Jamie growth</b> — every catch makes Jamie a little bigger (premium items count double), and he slowly shrinks back so viewers keep feeding him. His reach zone grows too, so a fed Jamie catches easier.';
+  p.appendChild(growthNote);
+  toggle(p, 'Growth enabled', 'growth.enabled');
+  slider(p, 'Max size', 'growth.maxScale', 1, 3, 0.05, v => (+v).toFixed(2) + '×');
+  slider(p, 'Growth per catch', 'growth.perCatch', 0.01, 0.25, 0.01, v => '+' + Math.round(v * 100) + '%');
+  slider(p, 'Shrink per minute', 'growth.decayPerMinute', 0, 0.5, 0.01, v => '−' + Math.round(v * 100) + '%/min');
+  const growthBtnRow = document.createElement('div');
+  growthBtnRow.className = 'btnrow';
+  const growthResetBtn = document.createElement('button');
+  growthResetBtn.className = 'warn';
+  growthResetBtn.textContent = '↩ Reset Jamie size';
+  growthResetBtn.onclick = () => send({ cmd: 'RESET_GROWTH' });
+  growthBtnRow.appendChild(growthResetBtn);
+  p.appendChild(growthBtnRow);
 })();
 
 /* E. EVENT RULES */
