@@ -284,13 +284,18 @@ const FJ_DEFAULT_CONFIG = {
     followShowUsername: true, followNameSeconds: 1.5,
     heartMeDurationSec: 3, heartMeSpawnHeart: true, heartMeNameSeconds: 2,
     subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
-    giftLowMax: 99, giftMediumMax: 999, giftMappings: []
+    giftLowMax: 99, giftMediumMax: 4999, giftHighMin: 5000, giftMappings: []
   },
   prompts: {
     enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
     list: ['LIKES = TREATS 🦴', 'COMMENT BALL, TREAT, OR TOY', 'FOLLOW TO THROW THE BALL 🎾', 'HEART ME = BIG JAMIE REACTION 💜']
   },
-  visuals: { usernameLabels: true, likeMeter: true, particleLevel: 'low', blueAccent: true, stickerBorder: true, highContrast: false, intensity: 1, cornerGlow: 1, frameCrossfadeMs: 120, frameDurationScale: 1 },
+  visuals: {
+    usernameLabels: true, likeMeter: true, particleLevel: 'low', blueAccent: true, stickerBorder: true, highContrast: false,
+    intensity: 1, cornerGlow: 1, frameCrossfadeMs: 120, frameDurationScale: 1,
+    eventLabelX: 540, eventLabelY: 110, eventLabelScale: 1,
+    likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1
+  },
   audio: {
     muted: false, master: 0.7, cooldownMs: 140,
     volumes: { bounce: 0.25, catch: 0.7, crunch: 0.6, ballBounce: 0.5, squeak: 0.7, quack: 0.7, pop: 0.6, jackpot: 0.7, heartMe: 0.85, subscribe: 0.8, gift: 0.7 },
@@ -470,9 +475,27 @@ function colorInput(parent, label, path) {
   toggle(p, 'Horizontal flip', 'jamie.flip');
   slider(p, 'Jamie scale', 'jamie.scale', 0.5, 1.6, 0.02, v => (+v).toFixed(2));
   slider(p, 'Rotation correction', 'jamie.rotation', -12, 12, 0.5, v => v + '°');
-  slider(p, 'Prompt X', 'prompts.x', 60, 1020, 5);
-  slider(p, 'Prompt Y', 'prompts.y', 20, 1880, 5);
+  const promptNote = document.createElement('div');
+  promptNote.className = 'note';
+  promptNote.innerHTML = '<b>FYP bait prompt</b> (the rotating "LIKES = TREATS" pill)';
+  p.appendChild(promptNote);
+  slider(p, 'Prompt X', 'prompts.x', 0, 1080, 5);
+  slider(p, 'Prompt Y', 'prompts.y', 0, 1920, 5);
   slider(p, 'Prompt scale', 'prompts.scale', 0.5, 1.8, 0.05, v => (+v).toFixed(2));
+  const eventLabelNote = document.createElement('div');
+  eventLabelNote.className = 'note';
+  eventLabelNote.innerHTML = '<b>Event label</b> (the "@user threw Jamie a ball!" / Heart Me / subscribe / gift text)';
+  p.appendChild(eventLabelNote);
+  slider(p, 'Event label X', 'visuals.eventLabelX', 0, 1080, 5);
+  slider(p, 'Event label Y', 'visuals.eventLabelY', 0, 1920, 5);
+  slider(p, 'Event label scale', 'visuals.eventLabelScale', 0.5, 2, 0.05, v => (+v).toFixed(2));
+  const likeMeterNote = document.createElement('div');
+  likeMeterNote.className = 'note';
+  likeMeterNote.innerHTML = '<b>Like meter</b> (the small "🦴 30/50" progress pill)';
+  p.appendChild(likeMeterNote);
+  slider(p, 'Like meter X', 'visuals.likeMeterX', 0, 1080, 5);
+  slider(p, 'Like meter Y', 'visuals.likeMeterY', 0, 1920, 5);
+  slider(p, 'Like meter scale', 'visuals.likeMeterScale', 0.5, 2, 0.05, v => (+v).toFixed(2));
   toggle(p, 'Setup guides', 'debug.setupGuides');
   toggle(p, 'Safe-area guide', 'debug.showSafeArea');
   toggle(p, 'Jamie bounding box', 'debug.showJamieBox');
@@ -528,6 +551,7 @@ function colorInput(parent, label, path) {
   slider(p, 'Subscribe reaction', 'events.subscribeDurationSec', 1, 6, 0.25, v => v + 's');
   numberInput(p, 'Gift: low tier max (coins)', 'events.giftLowMax', 1, 100000);
   numberInput(p, 'Gift: medium tier max', 'events.giftMediumMax', 1, 1000000);
+  numberInput(p, 'Gift: high tier starts (coins)', 'events.giftHighMin', 1, 1000000);
   document.getElementById('kw-editor').value =
     Object.entries(CFG.events.keywords).map(([k, v]) => `${k} = ${v}`).join('\n');
   document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings || [], null, 1);
