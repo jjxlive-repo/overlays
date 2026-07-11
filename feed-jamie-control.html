@@ -77,6 +77,28 @@
   .asset-row img.thumb { width: 34px; height: 34px; object-fit: contain; background: #ffffff14; border-radius: 6px; }
   .note { font-size: 12px; color: var(--txt-dim); margin: 6px 0; line-height: 1.45; }
   .note b { color: var(--light); }
+  /* gift → item mapping editor */
+  .gift-map-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 6px 0;
+    background: var(--panel2); border: 1px solid #4a2b78; border-radius: 10px; flex-wrap: wrap;
+  }
+  .gift-map-row img.gift-thumb { width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: #ffffff10; }
+  .gift-map-row .arrow { color: var(--accent); font-weight: 700; }
+  .gift-picker { position: relative; flex: 1; min-width: 150px; }
+  .gift-picker input { width: 100%; }
+  .gift-picker .gift-list {
+    position: absolute; z-index: 50; left: 0; right: 0; top: calc(100% + 4px);
+    max-height: 280px; overflow-y: auto; background: var(--panel);
+    border: 1px solid #5b3790; border-radius: 10px; box-shadow: 0 8px 24px #000a;
+  }
+  .gift-picker .gift-opt {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px;
+  }
+  .gift-picker .gift-opt:hover, .gift-picker .gift-opt.hl { background: #3a1d63; }
+  .gift-picker .gift-opt img { width: 30px; height: 30px; object-fit: contain; }
+  .gift-picker .gift-opt .coins { margin-left: auto; color: var(--gold); font-weight: 700; font-size: 12px; white-space: nowrap; }
+  .gift-map-row select.item-pick { min-width: 140px; }
+  .gift-map-row .del { border-color: var(--warn); color: var(--warn); padding: 4px 10px; }
   #preview-wrap { position: relative; width: 302px; height: 538px; overflow: hidden; border: 1px solid #4a2b78; border-radius: 10px;
     background: repeating-conic-gradient(#1d0d33 0% 25%, #241040 0% 50%) 0 0/24px 24px; }
   #preview-frame { width: 1080px; height: 1920px; transform: scale(0.28); transform-origin: top left; border: 0; }
@@ -156,9 +178,18 @@
         <textarea id="kw-editor" spellcheck="false"></textarea></div>
       <div class="note">Items: treat-biscuit, treat-bone, treat-purple-splat, treat-heart, tennis-ball, golden-tennis-ball, squeaky-toy, duck, sock, bubble, heart-large — or <b>random-treat</b> / <b>look</b> (Jamie looks at camera).</div>
       <div class="btnrow"><button onclick="applyKeywords()">Apply keywords</button></div>
-      <div class="row" style="align-items:flex-start;"><label>Gift mappings (JSON)</label>
-        <textarea id="gift-editor" spellcheck="false" placeholder='[{"giftName":"Rose","minValue":0,"maxValue":10,"itemType":"treat-heart","priority":70,"showUsername":true}]'></textarea></div>
-      <div class="btnrow"><button onclick="applyGiftMappings()">Apply gift mappings</button></div>
+      <div class="note" style="margin-top:14px;"><b>Gift → item mappings</b> — pick a TikTok gift and the item it throws into the arena (Tikfinity-style). Mapped gifts always win over the coin-value tiers below; add as many as you like.</div>
+      <div id="gift-map-rows"></div>
+      <div class="btnrow">
+        <button class="primary" onclick="addGiftMapping()">➕ Add gift mapping</button>
+      </div>
+      <div id="gift-fallback-toggle-slot"></div>
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--txt-dim);">Advanced: raw JSON editor (supports coin-range rules)</summary>
+        <div class="row" style="align-items:flex-start;margin-top:6px;">
+          <textarea id="gift-editor" spellcheck="false" placeholder='[{"giftName":"Rose","itemType":"treat-heart","showUsername":true}] — itemType "heartme" triggers the mega reaction'></textarea></div>
+        <div class="btnrow"><button onclick="applyGiftMappings()">Apply JSON</button></div>
+      </details>
     </div>
   </details>
 
@@ -284,7 +315,9 @@ const FJ_DEFAULT_CONFIG = {
     followShowUsername: true, followNameSeconds: 1.5,
     heartMeDurationSec: 3, heartMeSpawnHeart: true, heartMeNameSeconds: 2,
     subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
-    giftLowMax: 99, giftMediumMax: 4999, giftHighMin: 5000, giftMappings: []
+    giftLowMax: 99, giftMediumMax: 4999, giftHighMin: 5000, giftFallbackEnabled: true,
+    giftSizeScaling: { enabled: true, maxScale: 2, coinsForMax: 5000 },
+    giftMappings: []
   },
   prompts: {
     enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
@@ -556,6 +589,13 @@ function colorInput(parent, label, path) {
   numberInput(p, 'Gift: low tier max (coins)', 'events.giftLowMax', 1, 100000);
   numberInput(p, 'Gift: medium tier max', 'events.giftMediumMax', 1, 1000000);
   numberInput(p, 'Gift: high tier starts (coins)', 'events.giftHighMin', 1, 1000000);
+  const sizeNote = document.createElement('div');
+  sizeNote.className = 'note';
+  sizeNote.innerHTML = '<b>Gift size scaling</b> — pricier gifts throw bigger items. Grows on a log curve from 1× (a 1-coin Rose) up to the max multiplier.';
+  p.appendChild(sizeNote);
+  toggle(p, 'Scale item size with gift value', 'events.giftSizeScaling.enabled');
+  slider(p, 'Max size multiplier', 'events.giftSizeScaling.maxScale', 1, 3, 0.05, v => (+v).toFixed(2) + '×');
+  slider(p, 'Coins for max size', 'events.giftSizeScaling.coinsForMax', 100, 50000, 100, v => (+v).toLocaleString() + ' 🪙');
   document.getElementById('kw-editor').value =
     Object.entries(CFG.events.keywords).map(([k, v]) => `${k} = ${v}`).join('\n');
   document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings || [], null, 1);
@@ -575,9 +615,150 @@ function applyKeywords() {
 function applyGiftMappings() {
   try {
     const arr = JSON.parse(document.getElementById('gift-editor').value || '[]');
-    if (Array.isArray(arr)) { CFG.events.giftMappings = arr; pushConfig(); }
+    if (Array.isArray(arr)) { CFG.events.giftMappings = arr; pushConfig(); renderGiftMappings(); }
   } catch (e) { alert('Gift mappings: invalid JSON'); }
 }
+
+/* ── GIFT → ITEM MAPPING EDITOR (Tikfinity-style gift picker) ────
+   Catalog scraped from streamtoearn.io/gifts (TikTok CDN images).
+   Matching happens by gift NAME against the Tikfinity gift event. */
+let GIFT_CATALOG = [];
+const GIFT_ITEM_CHOICES = [
+  ['treat-biscuit', '🍪 Biscuit treat'], ['treat-bone', '🦴 Bone treat'],
+  ['treat-purple-splat', '💜 Purple splat treat'], ['treat-heart', '🍪 Heart cookie'],
+  ['tennis-ball', '🎾 Tennis ball'], ['golden-tennis-ball', '⭐ Golden tennis ball'],
+  ['squeaky-toy', '🔵 Squeaky toy'], ['duck', '🦆 Rubber duck'],
+  ['sock', '🧦 Sock'], ['bubble', '🫧 Bubble'], ['heart-large', '💜 Big heart'],
+  ['heartme', '🎉 MEGA reaction (Heart Me style)']
+];
+function giftByName(name) {
+  const n = String(name || '').toLowerCase();
+  return GIFT_CATALOG.find(g => g.name.toLowerCase() === n) || null;
+}
+async function loadGiftCatalog() {
+  try {
+    const res = await fetch('assets/feed-jamie/tiktok-gifts.json?v=' + FJ_CACHE_BUST);
+    if (res.ok) GIFT_CATALOG = await res.json();
+  } catch (e) { /* editor still works with manual typing */ }
+  renderGiftMappings();
+}
+function saveGiftMappingsFromUI() {
+  const rows = [...document.querySelectorAll('.gift-map-row')];
+  CFG.events.giftMappings = rows.map(r => ({
+    giftName: r.dataset.gift || '',
+    itemType: r.querySelector('.item-pick').value,
+    showUsername: r.querySelector('.show-user').checked,
+    priority: 80
+  })).filter(m => m.giftName);
+  document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings, null, 1);
+  pushConfig();
+}
+function makeGiftPicker(row, initialName) {
+  const wrap = document.createElement('div');
+  wrap.className = 'gift-picker';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search TikTok gifts…';
+  input.value = initialName || '';
+  const list = document.createElement('div');
+  list.className = 'gift-list';
+  list.style.display = 'none';
+  wrap.appendChild(input); wrap.appendChild(list);
+  const thumb = row.querySelector('.gift-thumb');
+  const setGift = g => {
+    row.dataset.gift = g.name;
+    input.value = g.name;
+    thumb.src = g.img;
+    thumb.style.opacity = 1;
+    list.style.display = 'none';
+    saveGiftMappingsFromUI();
+  };
+  const refresh = () => {
+    const q = input.value.trim().toLowerCase();
+    const matches = (q
+      ? GIFT_CATALOG.filter(g => g.name.toLowerCase().includes(q))
+      : GIFT_CATALOG
+    ).slice(0, 60);
+    list.innerHTML = '';
+    for (const g of matches) {
+      const opt = document.createElement('div');
+      opt.className = 'gift-opt';
+      const im = document.createElement('img');
+      im.loading = 'lazy'; im.src = g.img;
+      const nm = document.createElement('span');
+      nm.textContent = g.name;
+      const co = document.createElement('span');
+      co.className = 'coins';
+      co.textContent = g.coins.toLocaleString() + ' 🪙';
+      opt.appendChild(im); opt.appendChild(nm); opt.appendChild(co);
+      opt.addEventListener('mousedown', e => { e.preventDefault(); setGift(g); });
+      list.appendChild(opt);
+    }
+    list.style.display = matches.length ? 'block' : 'none';
+  };
+  input.addEventListener('focus', refresh);
+  input.addEventListener('input', refresh);
+  input.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; }, 150));
+  /* free-typed names still save (for gifts missing from the catalog) */
+  input.addEventListener('change', () => {
+    if (!giftByName(input.value)) { row.dataset.gift = input.value.trim(); saveGiftMappingsFromUI(); }
+  });
+  return wrap;
+}
+function buildGiftMapRow(mapping) {
+  const row = document.createElement('div');
+  row.className = 'gift-map-row';
+  row.dataset.gift = mapping.giftName || '';
+  const thumb = document.createElement('img');
+  thumb.className = 'gift-thumb';
+  const known = giftByName(mapping.giftName);
+  if (known) thumb.src = known.img; else thumb.style.opacity = 0.15;
+  row.appendChild(thumb);
+  row.appendChild(makeGiftPicker(row, mapping.giftName));
+  const arrow = document.createElement('span');
+  arrow.className = 'arrow';
+  arrow.textContent = '→';
+  row.appendChild(arrow);
+  const sel = document.createElement('select');
+  sel.className = 'item-pick';
+  for (const [val, label] of GIFT_ITEM_CHOICES) {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    sel.appendChild(o);
+  }
+  sel.value = GIFT_ITEM_CHOICES.some(([v]) => v === mapping.itemType) ? mapping.itemType : 'treat-heart';
+  sel.addEventListener('change', saveGiftMappingsFromUI);
+  row.appendChild(sel);
+  const userLbl = document.createElement('label');
+  userLbl.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;color:var(--txt-dim);flex:0 0 auto;';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'show-user';
+  cb.checked = mapping.showUsername !== false;
+  cb.addEventListener('change', saveGiftMappingsFromUI);
+  userLbl.appendChild(cb);
+  userLbl.appendChild(document.createTextNode('@name'));
+  row.appendChild(userLbl);
+  const del = document.createElement('button');
+  del.className = 'del';
+  del.textContent = '✕';
+  del.title = 'Remove mapping';
+  del.addEventListener('click', () => { row.remove(); saveGiftMappingsFromUI(); });
+  row.appendChild(del);
+  return row;
+}
+function renderGiftMappings() {
+  const holder = document.getElementById('gift-map-rows');
+  holder.innerHTML = '';
+  for (const m of (CFG.events.giftMappings || [])) holder.appendChild(buildGiftMapRow(m));
+  const slot = document.getElementById('gift-fallback-toggle-slot');
+  if (!slot.hasChildNodes()) toggle(slot, 'Unmapped gifts use coin tiers', 'events.giftFallbackEnabled');
+}
+function addGiftMapping() {
+  document.getElementById('gift-map-rows').appendChild(
+    buildGiftMapRow({ giftName: '', itemType: 'treat-heart', showUsername: true }));
+}
+loadGiftCatalog();
 
 /* F. VISUALS */
 (function () {
