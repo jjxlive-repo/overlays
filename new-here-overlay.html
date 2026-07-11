@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NEW HERE — Crowd Pile Overlay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1080px;
+    height: 1920px;
+    background: transparent;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 1080px;
+    height: 1920px;
+  }
+  /* Ably connection dot — grey disconnected, blue connected (JJ is red-green colorblind) */
+  #conn-dot {
+    position: fixed; top: 12px; right: 12px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #555; z-index: 9999;
+    transition: background .3s, box-shadow .3s;
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+</head>
+<body>
+<div id="conn-dot"></div>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG — receives events from stream-dock via Ably pub/sub
+// ═══════════════════════════════════════════════════════════════════
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+
+// Display params — adjustable live from stream-dock via 'new-here-config' Ably event
+let SIGN_SCALE    = 1.0;
+let SIGN_X_OFFSET = 0;
+let SIGN_Y_OFFSET = 0;
+let CTR_SCALE     = 1.0;
+let CTR_X_OFFSET  = 0;
+let CTR_Y_OFFSET  = 0;
+let SIGN_LABEL    = 'JUST JOINED';
+let CTR_LABEL     = 'NEW HERE';
+let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
+let IDLE_TITLE    = 'Be the first!';
+let IDLE_SUB      = 'type NEW HERE';
+let FLOOR_OFFSET  = 0;   // shifts the pile floor up/down from its base position
+let BLOB_SCALE    = 1.0; // multiplier on mascot body render size (packing geometry unaffected)
+let NAME_SCALE    = 1.0; // per-figure name pill scale
+let NAME_X_OFFSET = 0;
+let NAME_Y_OFFSET = 0;
+let IDLE_SCALE    = 1.0;
+let IDLE_X_OFFSET = 0;
+let IDLE_Y_OFFSET = 0;
+let TIMER_ENABLED = false;
+let TIMER_PAUSED  = false;
+let TIMER_SECONDS = 300;
+let TIMER_END_AT       = null; // epoch ms when timer finishes (running state)
+let TIMER_REMAINING_MS = null; // frozen remaining time while paused
+let TIMER_LABEL   = 'STARTING SOON';
+let TIMER_SCALE   = 1.0;
+let TIMER_X_OFFSET = 0;
+let TIMER_Y_OFFSET = 0;
+let SIGN_PILL_ENABLED  = true; // false = text only, no pill background
+let CTR_PILL_ENABLED   = true;
+let TIMER_PILL_ENABLED = true;
+let NAME_PILL_ENABLED  = true;
+let DEDUPE_ENABLED     = true; // false = same viewer can join/splat repeatedly
+let OVERLAY_ENABLED    = false;
+document.body.style.display = 'none';
+
+// ── PRESSURE / INFLATION mechanic ────────────────────────────────────
+// Every join adds "pressure." Pressure decays on its own after a grace
+// period of inactivity (urgency: the pile visibly deflates if chat goes
+// quiet). Hitting the pop threshold triggers an early explodeAndReset(),
+// independent of the countdown timer above — whichever fires first wins.
+let PRESSURE_ENABLED        = true;
+let PRESSURE_GAIN_PER_JOIN  = 6;     // pressure units added per NEW HERE join
+let PRESSURE_POP_THRESHOLD  = 100;   // pressure units needed to trigger a pop
+let PRESSURE_DECAY_PER_SEC  = 0.4;   // units lost per second once decay starts (slow by default)
+let PRESSURE_DECAY_GRACE_MS = 4000;  // ms of inactivity before decay kicks in
+let PRESSURE_WARN_PCT       = 0.6;   // fraction of threshold where warn zone starts
+let PRESSURE_DANGER_PCT     = 0.85;  // fraction of threshold where danger zone starts
+let PRESSURE_LABEL          = 'PRESSURE';
+let POP_LABEL                = 'PRESSURE POPPED! \u{1F389}';
+let PRESSURE_SCALE          = 1.0;
+let PRESSURE_X_OFFSET       = 0;
+let PRESSURE_Y_OFFSET       = 0;
+let PRESSURE_PILL_ENABLED   = true;
+
+function saveDisplayCfg() {
+  try {
+    localStorage.setItem('nh_display_cfg', JSON.stringify({
+      signScale: SIGN_SCALE, signXOffset: SIGN_X_OFFSET, signYOffset: SIGN_Y_OFFSET,
+      ctrScale: CTR_SCALE, ctrXOffset: CTR_X_OFFSET, ctrYOffset: CTR_Y_OFFSET,
+      signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT,
+      idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
+      floorOffset: FLOOR_OFFSET,
+      blobScale: BLOB_SCALE,
+      nameScale: NAME_SCALE, nameXOffset: NAME_X_OFFSET, nameYOffset: NAME_Y_OFFSET,
+      idleScale: IDLE_SCALE, idleXOffset: IDLE_X_OFFSET, idleYOffset: IDLE_Y_OFFSET,
+      timerLabel: TIMER_LABEL, timerScale: TIMER_SCALE,
+      timerXOffset: TIMER_X_OFFSET, timerYOffset: TIMER_Y_OFFSET,
+      timerEnabled: TIMER_ENABLED, timerPaused: TIMER_PAUSED,
+      timerSeconds: TIMER_SECONDS, timerEndAt: TIMER_END_AT, timerRemainingMs: TIMER_REMAINING_MS,
+      signPillOn: SIGN_PILL_ENABLED, ctrPillOn: CTR_PILL_ENABLED,
+      timerPillOn: TIMER_PILL_ENABLED, namePillOn: NAME_PILL_ENABLED,
+      dedupeOn: DEDUPE_ENABLED,
+      pressureEnabled: PRESSURE_ENABLED, pressureGainPerJoin: PRESSURE_GAIN_PER_JOIN,
+      pressurePopThreshold: PRESSURE_POP_THRESHOLD, pressureDecayPerSec: PRESSURE_DECAY_PER_SEC,
+      pressureDecayGraceMs: PRESSURE_DECAY_GRACE_MS, pressureWarnPct: PRESSURE_WARN_PCT,
+      pressureDangerPct: PRESSURE_DANGER_PCT, pressureLabel: PRESSURE_LABEL, popLabel: POP_LABEL,
+      pressureScale: PRESSURE_SCALE, pressureXOffset: PRESSURE_X_OFFSET, pressureYOffset: PRESSURE_Y_OFFSET,
+      pressurePillOn: PRESSURE_PILL_ENABLED,
+    }));
+  } catch {}
+}
+
+(function loadDisplayCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem('nh_display_cfg') || '{}');
+    if (c.signScale    != null) SIGN_SCALE    = c.signScale;
+    if (c.signXOffset  != null) SIGN_X_OFFSET = c.signXOffset;
+    if (c.signYOffset  != null) SIGN_Y_OFFSET = c.signYOffset;
+    if (c.ctrScale     != null) CTR_SCALE     = c.ctrScale;
+    if (c.ctrXOffset   != null) CTR_X_OFFSET  = c.ctrXOffset;
+    if (c.ctrYOffset   != null) CTR_Y_OFFSET  = c.ctrYOffset;
+    if (c.signLabel    != null) SIGN_LABEL    = c.signLabel;
+    if (c.ctrLabel     != null) CTR_LABEL     = c.ctrLabel;
+    if (c.ctrFormat    != null) CTR_FORMAT    = c.ctrFormat;
+    if (c.idleTitle    != null) IDLE_TITLE    = c.idleTitle;
+    if (c.idleSub      != null) IDLE_SUB      = c.idleSub;
+    if (c.floorOffset  != null) FLOOR_OFFSET  = c.floorOffset;
+    if (c.blobScale    != null) BLOB_SCALE    = c.blobScale;
+    if (c.nameScale    != null) NAME_SCALE    = c.nameScale;
+    if (c.nameXOffset  != null) NAME_X_OFFSET = c.nameXOffset;
+    if (c.nameYOffset  != null) NAME_Y_OFFSET = c.nameYOffset;
+    if (c.idleScale    != null) IDLE_SCALE    = c.idleScale;
+    if (c.idleXOffset  != null) IDLE_X_OFFSET = c.idleXOffset;
+    if (c.idleYOffset  != null) IDLE_Y_OFFSET = c.idleYOffset;
+    if (c.timerLabel   != null) TIMER_LABEL   = c.timerLabel;
+    if (c.timerScale   != null) TIMER_SCALE   = c.timerScale;
+    if (c.timerXOffset != null) TIMER_X_OFFSET = c.timerXOffset;
+    if (c.timerYOffset != null) TIMER_Y_OFFSET = c.timerYOffset;
+    if (c.timerEnabled != null) TIMER_ENABLED = c.timerEnabled;
+    if (c.timerPaused  != null) TIMER_PAUSED  = c.timerPaused;
+    if (c.timerSeconds != null) TIMER_SECONDS = c.timerSeconds;
+    if (c.timerEndAt   != null) TIMER_END_AT  = c.timerEndAt;
+    if (c.timerRemainingMs != null) TIMER_REMAINING_MS = c.timerRemainingMs;
+    if (c.signPillOn   != null) SIGN_PILL_ENABLED  = c.signPillOn;
+    if (c.ctrPillOn    != null) CTR_PILL_ENABLED   = c.ctrPillOn;
+    if (c.timerPillOn  != null) TIMER_PILL_ENABLED = c.timerPillOn;
+    if (c.namePillOn   != null) NAME_PILL_ENABLED  = c.namePillOn;
+    if (c.dedupeOn     != null) DEDUPE_ENABLED     = c.dedupeOn;
+    if (c.pressureEnabled      != null) PRESSURE_ENABLED        = c.pressureEnabled;
+    if (c.pressureGainPerJoin  != null) PRESSURE_GAIN_PER_JOIN   = c.pressureGainPerJoin;
+    if (c.pressurePopThreshold != null) PRESSURE_POP_THRESHOLD   = c.pressurePopThreshold;
+    if (c.pressureDecayPerSec  != null) PRESSURE_DECAY_PER_SEC   = c.pressureDecayPerSec;
+    if (c.pressureDecayGraceMs != null) PRESSURE_DECAY_GRACE_MS  = c.pressureDecayGraceMs;
+    if (c.pressureWarnPct      != null) PRESSURE_WARN_PCT        = c.pressureWarnPct;
+    if (c.pressureDangerPct    != null) PRESSURE_DANGER_PCT      = c.pressureDangerPct;
+    if (c.pressureLabel        != null) PRESSURE_LABEL           = c.pressureLabel;
+    if (c.popLabel             != null) POP_LABEL                = c.popLabel;
+    if (c.pressureScale        != null) PRESSURE_SCALE           = c.pressureScale;
+    if (c.pressureXOffset      != null) PRESSURE_X_OFFSET        = c.pressureXOffset;
+    if (c.pressureYOffset      != null) PRESSURE_Y_OFFSET        = c.pressureYOffset;
+    if (c.pressurePillOn       != null) PRESSURE_PILL_ENABLED    = c.pressurePillOn;
+  } catch {}
+})();
+
+const CONFIG = {
+  maxFigures: 200,          // beyond this, count keeps rising but no new bodies render
+  maxPerSec: 5,             // throttle burst events to this rate
+  persist: true,            // save crowd to localStorage so OBS refresh doesn't reset
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════════
+const W = 1080, H = 1920;
+const BASE_FLOOR_Y = 1788;
+let FLOOR_Y = BASE_FLOOR_Y + FLOOR_OFFSET;  // adjustable at runtime via setFloorOffset()
+const SIGN_GAP = 170;        // vertical distance from pile peak to the JUST JOINED pill
+const S = 0.46;             // figure scale (body ≈ 90 px tall at this scale)
+const PACK_R = 55 * S;      // packing radius ≈ 25.3 px
+const BIN_W = 2 * PACK_R * 0.9;   // ≈ 45.5 px per column
+const LAYER_H = 2 * PACK_R * 0.78; // ≈ 39.5 px per row
+const LO_X = 150 + PACK_R;
+const HI_X = 930 - PACK_R;
+const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 16 columns
+
+const ENTER_DUR   = 1100;  // ms for a figure to travel to its resting position
+const SPLAT_DUR   = 420;   // ms for the squash+burst animation on landing
+const EXPLODE_DUR = 950;   // ms for the pile-clear burst animation
+const SIGN_HOLD_MS = 6000; // ms the JUST JOINED sign stays fully visible
+const SIGN_FADE_MS = 900;  // ms it takes to fade out after the hold period
+const QUEUE_GAP  = 1000 / CONFIG.maxPerSec;
+
+// ═══════════════════════════════════════════════════════════════════
+// PALETTES
+// ═══════════════════════════════════════════════════════════════════
+const YT = {
+  source:      'youtube',
+  figs:        ['#7F1D1D','#991B1B','#B91C1C','#DC2626','#EF4444','#F87171','#FCA5A5','#FB7185'],
+  accent:      '#F87171',
+  accent2:     '#FCA5A5',
+  plate:       '#2a0808',
+  plateTx:     '#FECACA',
+  plateStroke: '#F87171',
+  deep:        '#1a0505',
+  glow:        '#DC2626',
+};
+const TK = {
+  source:      'tiktok',
+  figs:        ['#1E3A8A','#1D4ED8','#2563EB','#3B82F6','#60A5FA','#93C5FD','#38BDF8','#22D3EE'],
+  accent:      '#38BDF8',
+  accent2:     '#93C5FD',
+  plate:       '#081026',
+  plateTx:     '#BFDBFE',
+  plateStroke: '#38BDF8',
+  deep:        '#05091c',
+  glow:        '#2563EB',
+};
+const PALETTES = { youtube: YT, tiktok: TK };
+
+// ═══════════════════════════════════════════════════════════════════
+// SEEDED RNG (xorshift32 — not for security, just reproducible placement)
+// ═══════════════════════════════════════════════════════════════════
+let _seed = (Date.now() ^ 0xDEAD_BEEF) >>> 0 || 1;
+function rnd() {
+  _seed ^= _seed << 13;
+  _seed ^= _seed >>> 17;
+  _seed ^= _seed << 5;
+  return (_seed >>> 0) / 4294967296;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let figures  = [];
+let heights  = new Array(N_BINS).fill(0);
+let queue    = [];
+let count    = 0;
+let newestName   = '';
+let newestSource = null;
+let newestJoinAt = 0;         // timestamp the sign should hold/fade relative to
+let pilePeakY    = FLOOR_Y;   // min feet-Y of settled figures
+let signPeakY    = FLOOR_Y;   // tweened version of pilePeakY for smooth sign rise
+let lastSpawn    = 0;
+let seenUsers    = new Set();
+let figIdSeq     = 0;
+let resetPending = false;  // true while the explode-and-clear animation is playing
+let resetAt      = 0;      // timestamp when the explosion finishes and hardReset() fires
+
+// Pressure/inflation runtime state
+let PRESSURE             = 0;         // current pressure units (0..PRESSURE_POP_THRESHOLD)
+let lastPressureEventAt  = 0;         // performance.now() of last join, gates decay grace
+let popFlashAt           = -Infinity; // performance.now() of last pop, drives the flash text
+
+// ═══════════════════════════════════════════════════════════════════
+// HEIGHTMAP DEPOSITION
+// Center-biased column pick, then roll to the lowest neighbor (±2 bins)
+// so the heap stays wide and rounded, never spiked.
+// ═══════════════════════════════════════════════════════════════════
+function getDepositionPos() {
+  const g = (rnd() + rnd() + rnd() - 1.5) / 1.5; // approx normal(-1..1)
+  let b = Math.max(0, Math.min(N_BINS - 1, Math.round((g * 0.5 + 0.5) * (N_BINS - 1))));
+  let best = b;
+  for (let dd = -2; dd <= 2; dd++) {
+    const bb = b + dd;
+    if (bb < 0 || bb >= N_BINS) continue;
+    if (heights[bb] < heights[best]) best = bb;
+  }
+  const level = heights[best]++;
+  const x = LO_X + (best + 0.5) * BIN_W + (rnd() - 0.5) * BIN_W * 0.55;
+  const y = FLOOR_Y - level * LAYER_H + (rnd() * 8 - 4);
+  return { x: Math.max(LO_X, Math.min(HI_X, x)), y };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PILE PEAK
+// ═══════════════════════════════════════════════════════════════════
+function updatePilePeak() {
+  const resting = figures.filter(f => f.phase !== 'entering');
+  pilePeakY = resting.length > 0 ? Math.min(...resting.map(f => f.y)) : FLOOR_Y;
+}
+
+// Shifts the floor (and every already-placed figure) so the adjustment
+// applies instantly to the current pile, not just future spawns.
+function setFloorOffset(offset) {
+  const newFloorY = BASE_FLOOR_Y + offset;
+  const delta = newFloorY - FLOOR_Y;
+  FLOOR_Y = newFloorY;
+  FLOOR_OFFSET = offset;
+  if (delta !== 0) {
+    for (const f of figures) { f.y += delta; f.startY += delta; }
+    pilePeakY += delta;
+    signPeakY += delta;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SPAWN — places one figure and starts its enter animation
+// ═══════════════════════════════════════════════════════════════════
+function spawnFigure(username, source) {
+  const pal   = PALETTES[source] || YT;
+  const color = pal.figs[Math.floor(rnd() * pal.figs.length)];
+
+  if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
+    const { x: tx, y: ty } = getDepositionPos();
+
+    // Entry path: 60% fall from top, 40% run in from side
+    const useTop   = rnd() < 0.6;
+    const fromLeft = rnd() < 0.5;
+    let startX, startY;
+    if (useTop) {
+      startX = 540 + (rnd() * 180 - 90);
+      startY = 120 + rnd() * 60;
+    } else {
+      startX = fromLeft ? -80 : W + 80;
+      startY = Math.max(ty - 260, 380) - rnd() * 80;
+    }
+
+    figures.push({
+      id:            ++figIdSeq,
+      x:             tx,
+      y:             ty,
+      color,
+      source,
+      username,
+      phase:         'entering',  // entering | splatting | settled
+      enterProgress: 0,
+      splatProgress: 0,
+      useTop,
+      fromLeft,
+      startX,
+      startY,
+      rot:           rnd() * 10 - 5,
+      pal,
+    });
+  }
+
+  count++;
+  newestName   = username;
+  newestSource = source;
+  newestJoinAt = performance.now();
+
+  if (PRESSURE_ENABLED) {
+    PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
+    lastPressureEventAt = newestJoinAt;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// QUEUE — deduplication + rate limiting
+// ═══════════════════════════════════════════════════════════════════
+function enqueue(username, source) {
+  if (DEDUPE_ENABLED) {
+    const key = `${source}:${username.toLowerCase()}`;
+    if (seenUsers.has(key)) return;
+    seenUsers.add(key);
+  }
+  queue.push({ username, source });
+}
+
+function processQueue(now) {
+  if (!queue.length) return;
+  if (now - lastSpawn < QUEUE_GAP) return;
+  // Allow at most 2 figures traveling at once (for burst feel without chaos)
+  if (figures.filter(f => f.phase === 'entering').length >= 2) return;
+  const { username, source } = queue.shift();
+  lastSpawn = now;
+  spawnFigure(username, source);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CANVAS HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x, y + h - r,     r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x,     y,     x + r, y,          r);
+  ctx.closePath();
+}
+
+function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+
+// ═══════════════════════════════════════════════════════════════════
+// FIGURE DRAWING
+// Origin = feet center; body extends upward (negative y).
+// All coords are in local "large" space; caller scales by S.
+// ═══════════════════════════════════════════════════════════════════
+function drawMascot(ctx, color, pal, splatPhase, splatT) {
+  // Squash-and-stretch: splatPhase=true means we're in the splat animation
+  // splatT goes 0→1; max squash at splatT≈0.4 then springs back
+  let sx = 1, sy = 1;
+  if (splatPhase) {
+    const squash = Math.sin(splatT * Math.PI); // 0 → peak → 0
+    sx = 1 + squash * 0.22;
+    sy = 1 - squash * 0.22;
+  }
+
+  ctx.save();
+  ctx.scale(sx, sy);
+
+  // Ground shadow
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = '#0c0a12';
+  ctx.beginPath();
+  ctx.ellipse(0, 8, 58, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Ears
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(-38, -126, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 38, -126, 17, 0, Math.PI * 2); ctx.fill();
+
+  // Arms
+  ctx.save(); ctx.translate(-60, -50);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(0, 0, 15, 22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.translate(60, -50);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(0, 0, 15, 22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, -70, 64, 72, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Depth shade (vertical linear gradient)
+  {
+    const g = ctx.createLinearGradient(0, -142, 0, 2);
+    g.addColorStop(0,   'rgba(255,255,255,0.10)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0)');
+    g.addColorStop(1,   'rgba(12,10,18,0.50)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, -70, 64, 72, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Gloss sheen (radial highlight, upper-left)
+  {
+    const g = ctx.createRadialGradient(-22, -98, 0, -22, -98, 34);
+    g.addColorStop(0, 'rgba(255,255,255,0.65)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(-22, -98, 26, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Eye whites
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-22, -78, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 22, -78, 16, 0, Math.PI * 2); ctx.fill();
+
+  // Pupils
+  ctx.fillStyle = '#23052e';
+  ctx.beginPath(); ctx.arc(-19, -76, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 25, -76, 8, 0, Math.PI * 2); ctx.fill();
+
+  // Catch-lights
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-16, -79, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 28, -79, 3, 0, Math.PI * 2); ctx.fill();
+
+  // Blush
+  ctx.save();
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = '#F9A8D4';
+  ctx.beginPath(); ctx.ellipse(-40, -56, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( 40, -56, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // Mouth (smile arc)
+  ctx.strokeStyle = '#23052e';
+  ctx.lineWidth   = 4;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-10, -50);
+  ctx.quadraticCurveTo(0, -42, 10, -50);
+  ctx.stroke();
+
+  ctx.restore(); // end squash transform
+}
+
+// Small pill above a mascot's head — drawn with its own independent
+// scale/offset transform (NAME_SCALE etc.) so it doesn't inherit the
+// blob's S*BLOB_SCALE sizing. cx/cy are the pill's own local center.
+function drawNamePill(ctx, cx, cy, pal, username) {
+  const padX = 12, padY = 8;
+  let fsize = 16;
+  ctx.font = `600 ${fsize}px Fredoka, sans-serif`;
+  let tw = ctx.measureText(username).width;
+  while (tw > 140 && fsize > 10) {
+    fsize -= 1;
+    ctx.font = `600 ${fsize}px Fredoka, sans-serif`;
+    tw = ctx.measureText(username).width;
+  }
+
+  if (!NAME_PILL_ENABLED) {
+    ctx.fillStyle    = pal.plateTx;
+    ctx.font         = `600 ${fsize}px Fredoka, sans-serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(username, cx, cy);
+    return;
+  }
+
+  const pillW = Math.max(50, tw + padX * 2);
+  const pillH = fsize + padY * 2;
+
+  ctx.fillStyle   = pal.plate;
+  ctx.strokeStyle = pal.plateStroke;
+  ctx.lineWidth   = 2;
+  roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, pillH / 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Downward pointer nub
+  ctx.fillStyle = pal.plate;
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy + pillH / 2 - 2);
+  ctx.lineTo(cx,     cy + pillH / 2 + 8);
+  ctx.lineTo(cx + 6, cy + pillH / 2 - 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle    = pal.plateTx;
+  ctx.font         = `600 ${fsize}px Fredoka, sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(username, cx, cy);
+}
+
+// Speed streaks shown while figure is in transit
+function drawStreaks(ctx, useTop, fromLeft, pal) {
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.lineCap     = 'round';
+
+  if (useTop) {
+    // Vertical trails
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth   = 4;
+    ctx.beginPath(); ctx.moveTo(-30, -150); ctx.lineTo(-30,  -92); ctx.stroke();
+    ctx.strokeStyle = pal.accent2;
+    ctx.lineWidth   = 4;
+    ctx.beginPath(); ctx.moveTo( 34, -168); ctx.lineTo( 34, -110); ctx.stroke();
+  } else {
+    // Horizontal trails
+    const d = fromLeft ? -1 : 1;
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth   = 5;
+    ctx.beginPath(); ctx.moveTo(d * 72, -72); ctx.lineTo(d * 132,  -72); ctx.stroke();
+    ctx.strokeStyle = pal.accent2;
+    ctx.lineWidth   = 5;
+    ctx.beginPath(); ctx.moveTo(d * 64, -112); ctx.lineTo(d * 114, -112); ctx.stroke();
+    ctx.lineWidth   = 4;
+    ctx.beginPath(); ctx.moveTo(d * 60,  -42); ctx.lineTo(d * 106,  -42); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Impact burst ring + spark lines
+function drawSplatBurst(ctx, pal, t) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, 1 - t) * 0.70;
+  ctx.strokeStyle = pal.accent2;
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 80 * (1 + t * 0.5), 15 * (1 + t * 0.3), 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth   = 4;
+  ctx.lineCap     = 'round';
+  const d = t * 28;
+  ctx.beginPath(); ctx.moveTo(-74, -34); ctx.lineTo(-96 - d, -50 - d); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 74, -34); ctx.lineTo( 96 + d, -50 - d); ctx.stroke();
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENE ELEMENTS
+// ═══════════════════════════════════════════════════════════════════
+function drawFloor(ctx) {
+  const g = ctx.createRadialGradient(540, FLOOR_Y, 0, 540, FLOOR_Y, 420);
+  g.addColorStop(0, 'rgba(71,85,105,0.45)');
+  g.addColorStop(1, 'rgba(71,85,105,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(540, FLOOR_Y, 420, 62, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Compact single-row pill — sized to match gift-bar.html's notification pills
+// (dot + label + value, ~44-48px tall, auto-width with tight padding).
+// showBg=false drops the rounded background/border/dot and centers the
+// label+value text alone ("text only" mode).
+function drawPill(ctx, opts) {
+  const {
+    cx, cy, dotColor, bg, stroke, labelColor, label, labelSize,
+    value, valueColor, valueSize, valueFont = 'Fredoka', maxWidth = 560,
+    showBg = true,
+  } = opts;
+
+  const dotR = 5, padL = 16, padR = 18, gapDotLabel = 8, gapLabelValue = 10, pillH = 46;
+
+  ctx.font = `700 ${labelSize}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '2px';
+  const labelW = ctx.measureText(label).width + label.length * 2;
+  ctx.letterSpacing = '0px';
+
+  let vSize = valueSize;
+  ctx.font = `700 ${vSize}px ${valueFont}, sans-serif`;
+  let valueW = ctx.measureText(value).width;
+  const reserveDot = showBg ? dotR * 2 + gapDotLabel : 0;
+  const availW = maxWidth - (padL + padR + reserveDot + labelW + gapLabelValue);
+  while (valueW > availW && vSize > 13) {
+    vSize -= 1;
+    ctx.font = `700 ${vSize}px ${valueFont}, sans-serif`;
+    valueW = ctx.measureText(value).width;
+  }
+
+  if (!showBg) {
+    // Text-only: center label+value as one group directly on cx, no box/dot.
+    const totalW = labelW + gapLabelValue + valueW;
+    const labelX = cx - totalW / 2;
+
+    ctx.fillStyle     = labelColor;
+    ctx.font          = `700 ${labelSize}px "Space Grotesk", sans-serif`;
+    ctx.letterSpacing = '2px';
+    ctx.textAlign     = 'left';
+    ctx.textBaseline  = 'middle';
+    ctx.fillText(label, labelX, cy + 1);
+    ctx.letterSpacing = '0px';
+
+    ctx.fillStyle    = valueColor;
+    ctx.font         = `700 ${vSize}px ${valueFont}, sans-serif`;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(value, labelX + labelW + gapLabelValue, cy);
+    return;
+  }
+
+  const contentW = reserveDot + labelW + gapLabelValue + valueW;
+  const pillW = Math.min(maxWidth, contentW + padL + padR);
+  const left = cx - pillW / 2;
+
+  ctx.save();
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  roundRect(ctx, left, cy - pillH / 2, pillW, pillH, pillH / 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = dotColor;
+  ctx.beginPath();
+  ctx.arc(left + padL + dotR, cy, dotR, 0, Math.PI * 2);
+  ctx.fill();
+
+  const labelX = left + padL + dotR * 2 + gapDotLabel;
+  ctx.fillStyle     = labelColor;
+  ctx.font          = `700 ${labelSize}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '2px';
+  ctx.textAlign     = 'left';
+  ctx.textBaseline  = 'middle';
+  ctx.fillText(label, labelX, cy + 1);
+  ctx.letterSpacing = '0px';
+
+  ctx.fillStyle    = valueColor;
+  ctx.font         = `700 ${vSize}px ${valueFont}, sans-serif`;
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(value, labelX + labelW + gapLabelValue, cy);
+}
+
+function timerRemainingMs() {
+  if (!TIMER_ENABLED) return null;
+  if (TIMER_PAUSED) return Math.max(0, TIMER_REMAINING_MS ?? 0);
+  if (TIMER_END_AT == null) return null;
+  return Math.max(0, TIMER_END_AT - Date.now());
+}
+
+function drawTimer(ctx) {
+  const remMs = timerRemainingMs();
+  if (remMs == null) return;
+  const totalSec = Math.ceil(remMs / 1000);
+  const mm = Math.floor(totalSec / 60);
+  const ss = totalSec % 60;
+  const value = `${mm}:${String(ss).padStart(2, '0')}`;
+  drawPill(ctx, {
+    cx: 540, cy: 210,
+    dotColor: remMs > 0 ? '#FBBF24' : '#F87171',
+    bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
+    labelColor: '#CBD5E1', label: TIMER_LABEL, labelSize: 14,
+    value, valueColor: '#fff', valueSize: 20,
+    showBg: TIMER_PILL_ENABLED,
+    maxWidth: 420,
+  });
+}
+
+function drawCounter(ctx, n) {
+  drawPill(ctx, {
+    cx: 540, cy: 150,
+    dotColor: '#34D399', bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
+    labelColor: '#CBD5E1', label: CTR_LABEL, labelSize: 15,
+    value: CTR_FORMAT.replace('{n}', n), valueColor: '#fff', valueSize: 21,
+    maxWidth: 480,
+    showBg: CTR_PILL_ENABLED,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRESSURE / INFLATION — helpers + drawing
+// ═══════════════════════════════════════════════════════════════════
+function pressurePct() {
+  if (!PRESSURE_ENABLED || PRESSURE_POP_THRESHOLD <= 0) return 0;
+  return Math.max(0, Math.min(1, PRESSURE / PRESSURE_POP_THRESHOLD));
+}
+
+function pressureZone(pct) {
+  if (pct >= PRESSURE_DANGER_PCT) return 'danger';
+  if (pct >= PRESSURE_WARN_PCT)   return 'warn';
+  return 'safe';
+}
+
+const PRESSURE_ZONE_COLOR = {
+  safe:   { dot: '#34D399', rgb: '168,85,247' },  // purple
+  warn:   { dot: '#FB923C', rgb: '244,114,182' }, // hot pink
+  danger: { dot: '#F43F5E', rgb: '244,63,94'   },  // red
+};
+
+// Breathing scale multiplier applied on top of BLOB_SCALE — the whole pile
+// "inflates," pulsing faster and wider as pressure climbs toward pop.
+function pileBreath(now, pct) {
+  const freq = 1.1 + pct * 2.6;    // cycles/sec: ~1.1 idle → ~3.7 near pop
+  const amp  = 0.015 + pct * 0.09; // scale wobble: ±1.5% idle → ±10.5% near pop
+  return 1 + Math.sin((now / 1000) * freq * Math.PI * 2) * amp;
+}
+
+// Glow ring under the pile that widens and intensifies with pressure —
+// reads as the mound bulging/inflating rather than just stacking taller.
+// Radius capped well inside the 1080-wide canvas so it never clips edges.
+function drawPressureGlow(ctx, now, pct) {
+  if (pct <= 0) return;
+  const zone  = pressureZone(pct);
+  const zc    = PRESSURE_ZONE_COLOR[zone];
+  const pulseFreq = zone === 'danger' ? 5.5 : zone === 'warn' ? 3 : 1.2;
+  const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * pulseFreq * Math.PI * 2);
+  const rx = Math.min(480, 300 + pct * 180);
+  const ry = Math.min(90,  55  + pct * 35);
+
+  ctx.save();
+  ctx.globalAlpha = 0.25 + pct * 0.35 * pulse;
+  const g = ctx.createRadialGradient(540, FLOOR_Y - 40, 0, 540, FLOOR_Y - 40, rx);
+  g.addColorStop(0, `rgba(${zc.rgb},0.55)`);
+  g.addColorStop(1, `rgba(${zc.rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(540, FLOOR_Y - 40, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Full-screen red vignette flash, only in the danger zone — a frantic,
+// impossible-to-miss cue that the pop is imminent.
+function drawDangerVignette(ctx, now, pct) {
+  if (pressureZone(pct) !== 'danger') return;
+  const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * 6 * Math.PI * 2);
+  ctx.save();
+  const g = ctx.createRadialGradient(540, 960, 600, 540, 960, 1150);
+  g.addColorStop(0, 'rgba(244,63,94,0)');
+  g.addColorStop(1, `rgba(244,63,94,${0.12 + pulse * 0.18})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function drawPressureMeter(ctx, pct) {
+  if (!PRESSURE_ENABLED) return;
+  const zone = pressureZone(pct);
+  drawPill(ctx, {
+    cx: 540, cy: 270,
+    dotColor: PRESSURE_ZONE_COLOR[zone].dot,
+    bg: 'rgba(20,16,25,0.94)', stroke: '#F1F5F9',
+    labelColor: '#CBD5E1', label: PRESSURE_LABEL, labelSize: 14,
+    value: `${Math.round(pct * 100)}%`, valueColor: '#fff', valueSize: 20,
+    showBg: PRESSURE_PILL_ENABLED,
+    maxWidth: 420,
+  });
+}
+
+// Punchy call-out text shown briefly right when the pile pops from pressure
+// (as opposed to the countdown timer hitting 0:00, which has no call-out).
+const POP_FLASH_MS = 2200;
+function drawPopFlash(ctx, now) {
+  const el = now - popFlashAt;
+  if (el < 0 || el > POP_FLASH_MS) return;
+  const t     = el / POP_FLASH_MS;
+  const scale = 1 + Math.sin(Math.min(1, t * 3) * Math.PI) * 0.25;
+  const alpha = t < 0.8 ? 1 : Math.max(0, 1 - (t - 0.8) / 0.2);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(540, 860);
+  ctx.scale(scale, scale);
+  ctx.font = '700 54px Fredoka, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth   = 8;
+  ctx.strokeStyle = '#1a0505';
+  ctx.strokeText(POP_LABEL, 0, 0);
+  ctx.fillStyle = '#F43F5E';
+  ctx.fillText(POP_LABEL, 0, 0);
+  ctx.restore();
+}
+
+// peakY = feet-Y of the topmost figure in the pile
+function drawJoinSign(ctx, name, source, peakY) {
+  const pal = source ? PALETTES[source] : null;
+  drawPill(ctx, {
+    cx: 540, cy: peakY - SIGN_GAP,
+    dotColor: '#34D399',
+    bg:    pal ? pal.plate  : 'rgba(20,16,25,0.94)',
+    stroke: pal ? pal.accent : '#F1F5F9',
+    labelColor: pal ? pal.accent2 : '#CBD5E1', label: SIGN_LABEL, labelSize: 15,
+    value: name, valueColor: '#fff', valueSize: 21,
+    maxWidth: 560,
+    showBg: SIGN_PILL_ENABLED,
+  });
+}
+
+function drawIdleState(ctx, now) {
+  const t    = now / 1000;
+  const PI2  = Math.PI * 2;
+  const bob1 = Math.sin(t * (PI2 / 3.2)) * 12;
+  const bob2 = Math.sin(t * (PI2 / 3.2) + 1.2) * 12;
+
+  // YouTube host (red)
+  ctx.save();
+  ctx.translate(455, 1650 + bob1);
+  ctx.scale(1.05, 1.05);   // slightly larger than pile figures for visibility
+  drawMascot(ctx, '#DC2626', YT, false, 0);
+  ctx.restore();
+
+  // TikTok host (blue)
+  ctx.save();
+  ctx.translate(625, 1665 + bob2);
+  ctx.scale(1.05, 1.05);
+  drawMascot(ctx, '#2563EB', TK, false, 0);
+  ctx.restore();
+
+  // Speech bubble — auto-size to fit both editable lines
+  const MAX_BUBBLE_W = 860;
+  let titleFS = 30;
+  ctx.font = `600 ${titleFS}px Fredoka, sans-serif`;
+  while (ctx.measureText(IDLE_TITLE).width > MAX_BUBBLE_W - 60 && titleFS > 16) { titleFS -= 2; ctx.font = `600 ${titleFS}px Fredoka, sans-serif`; }
+  const titleW = ctx.measureText(IDLE_TITLE).width;
+
+  let subFS = 24;
+  ctx.font = `700 ${subFS}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '1px';
+  while (ctx.measureText(IDLE_SUB).width + IDLE_SUB.length * 1 > MAX_BUBBLE_W - 60 && subFS > 12) { subFS -= 1; ctx.font = `700 ${subFS}px "Space Grotesk", sans-serif`; }
+  const subW = ctx.measureText(IDLE_SUB).width;
+  ctx.letterSpacing = '0px';
+
+  const bubbleW = Math.min(MAX_BUBBLE_W, Math.max(300, Math.max(titleW, subW) + 60));
+  const bubbleX = 540 - bubbleW / 2;
+
+  ctx.fillStyle   = '#1a0808';
+  ctx.strokeStyle = '#F87171';
+  ctx.lineWidth   = 3;
+  roundRect(ctx, bubbleX, 1300, bubbleW, 120, 34);
+  ctx.fill();
+  ctx.stroke();
+
+  // Bubble tail
+  ctx.fillStyle = '#1a0808';
+  ctx.beginPath();
+  ctx.moveTo(520, 1418);
+  ctx.lineTo(545, 1458);
+  ctx.lineTo(570, 1418);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle    = '#fff';
+  ctx.font         = `600 ${titleFS}px Fredoka, sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(IDLE_TITLE, 540, 1352);
+
+  ctx.fillStyle     = '#FCA5A5';
+  ctx.font          = `700 ${subFS}px "Space Grotesk", sans-serif`;
+  ctx.letterSpacing = '1px';
+  ctx.textAlign     = 'center';
+  ctx.textBaseline  = 'middle';
+  ctx.fillText(IDLE_SUB, 540, 1394);
+  ctx.letterSpacing = '0px';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CURRENT POSITION OF A FIGURE (interpolated during entry)
+// ═══════════════════════════════════════════════════════════════════
+function currentPos(fig) {
+  if (fig.phase !== 'entering') return { x: fig.x, y: fig.y };
+
+  const t = easeOutQuart(Math.min(1, fig.enterProgress));
+
+  if (fig.useTop) {
+    // Falls from top: x drifts to target in first 25% of travel, y eases down
+    const xt = easeOutQuart(Math.min(1, fig.enterProgress * 4));
+    return {
+      x: fig.startX + (fig.x - fig.startX) * xt,
+      y: fig.startY + (fig.y - fig.startY) * t,
+    };
+  } else {
+    // Runs from side: horizontal dash (0-70% of time), then drops (60-100%)
+    const runT  = easeOutQuart(Math.min(1, fig.enterProgress / 0.70));
+    const dropT = easeOutQuart(Math.max(0, (fig.enterProgress - 0.60) / 0.40));
+    return {
+      x: fig.startX + (fig.x - fig.startX) * runT,
+      y: fig.startY + (fig.y - fig.startY) * dropT,
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let lastTime = 0;
+let lastTick = 0;
+
+// State advancement (queue drain, entry/splat progress, sign tween). Called
+// from both the rAF loop (smooth 60fps) and a setInterval fallback, so the
+// pile still advances even if a browser tab throttles requestAnimationFrame
+// (e.g. testing in an unfocused/backgrounded tab — OBS sources are unaffected).
+function tick(now) {
+  const dt = Math.min(now - lastTick, 100);
+  lastTick = now;
+
+  // Countdown timer — auto-explode the pile the instant it hits 0:00
+  if (TIMER_ENABLED && !TIMER_PAUSED && !resetPending) {
+    const rem = timerRemainingMs();
+    if (rem != null && rem <= 0) {
+      console.log('[NEW HERE] countdown timer hit 0:00 — triggering pile reset');
+      TIMER_ENABLED = false;
+      TIMER_END_AT  = null;
+      saveDisplayCfg();
+      explodeAndReset();
+    }
+  }
+
+  // Pressure decay + pop — independent of the countdown timer above.
+  // Whichever condition (timer hits 0, or pressure hits threshold) fires
+  // first wins; explodeAndReset() is a no-op re-entry-safe call once
+  // resetPending is already true.
+  if (PRESSURE_ENABLED && !resetPending) {
+    const idleMs = now - lastPressureEventAt;
+    if (idleMs > PRESSURE_DECAY_GRACE_MS && PRESSURE > 0) {
+      PRESSURE = Math.max(0, PRESSURE - PRESSURE_DECAY_PER_SEC * (dt / 1000));
+    }
+    if (PRESSURE >= PRESSURE_POP_THRESHOLD) {
+      console.log('[NEW HERE] pressure hit pop threshold — triggering pile pop');
+      popFlashAt = now;
+      PRESSURE = 0;
+      lastPressureEventAt = now;
+      explodeAndReset();
+    }
+  }
+
+  if (resetPending) {
+    const dtSec = dt / 1000;
+    for (const fig of figures) {
+      fig.explodeT += dt / EXPLODE_DUR;
+      fig.vy += 1500 * dtSec; // gravity
+      fig.x  += fig.vx * dtSec;
+      fig.y  += fig.vy * dtSec;
+      fig.rot += fig.rotSpeed * dtSec;
+    }
+    if (now >= resetAt) hardReset();
+    return;
+  }
+
+  processQueue(now);
+
+  for (const fig of figures) {
+    if (fig.phase === 'entering') {
+      fig.enterProgress += dt / ENTER_DUR;
+      if (fig.enterProgress >= 1) {
+        fig.enterProgress = 1;
+        fig.phase         = 'splatting';
+        fig.splatProgress = 0;
+        updatePilePeak();
+      }
+    } else if (fig.phase === 'splatting') {
+      fig.splatProgress += dt / SPLAT_DUR;
+      if (fig.splatProgress >= 1) {
+        fig.splatProgress = 1;
+        fig.phase         = 'settled';
+        updatePilePeak();
+        saveState();
+      }
+    }
+  }
+
+  const tweenK = Math.min(1, dt * 0.0035);
+  signPeakY += (pilePeakY - signPeakY) * tweenK;
+}
+
+function frame(now) {
+  lastTime = now;
+  tick(now);
+
+  // ── Draw ──────────────────────────────────────────────────
+  ctx.clearRect(0, 0, W, H);
+
+  const pPct   = pressurePct();
+  const pBreath = pileBreath(now, pPct);
+
+  drawFloor(ctx);
+  drawPressureGlow(ctx, now, pPct);
+
+  if (count === 0) {
+    const iCX = 540, iCY = 1500;
+    ctx.save();
+    ctx.translate(iCX + IDLE_X_OFFSET, iCY + IDLE_Y_OFFSET);
+    ctx.scale(IDLE_SCALE, IDLE_SCALE);
+    ctx.translate(-iCX, -iCY);
+    drawIdleState(ctx, now);
+    ctx.restore();
+  } else {
+    // Sort back-to-front by current y so overlapping figures look correct
+    const sorted = [...figures].sort((a, b) => currentPos(a).y - currentPos(b).y);
+
+    // Names shown on: any figure still in flight (entering/splatting — the
+    // "just landed" ones), plus the topmost settled figures (the visible
+    // surface of the pile). Recomputed every frame so names always track
+    // who's actually on top, instead of freezing on the first 12 joiners.
+    const NAME_CAP = 12;
+    const topSettled = figures
+      .filter(f => f.phase === 'settled')
+      .sort((a, b) => a.y - b.y)
+      .slice(0, NAME_CAP);
+    const nameIds = new Set(topSettled.map(f => f.id));
+    for (const f of figures) { if (f.phase !== 'settled' && f.phase !== 'exploding') nameIds.add(f.id); }
+
+    for (const fig of sorted) {
+      const pos = currentPos(fig);
+      // Exploding/entering figures skip the breathing multiplier so the pop
+      // burst and mid-air travel read as clean physics, not a wobble.
+      const blobS = S * BLOB_SCALE * (fig.phase === 'settled' ? pBreath : 1);
+      const exploding = fig.phase === 'exploding';
+
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      if (exploding) ctx.globalAlpha = Math.max(0, 1 - fig.explodeT);
+      ctx.scale(blobS, blobS);
+      ctx.rotate(fig.rot * Math.PI / 180);
+
+      // Speed streaks (fade out in last 15% of entry)
+      if (fig.phase === 'entering' && fig.enterProgress < 0.85) {
+        const fade = 1 - fig.enterProgress / 0.85;
+        ctx.save();
+        ctx.globalAlpha = fade;
+        drawStreaks(ctx, fig.useTop, fig.fromLeft, fig.pal);
+        ctx.restore();
+      }
+
+      // Splat burst
+      if (fig.phase === 'splatting') {
+        drawSplatBurst(ctx, fig.pal, fig.splatProgress);
+      }
+
+      // The figure itself
+      drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress);
+
+      ctx.restore();
+
+      // Name pill — independent scale/offset from the blob itself
+      if (!exploding && nameIds.has(fig.id) && fig.username) {
+        const headY = pos.y - 172 * blobS; // sits just above the head, tracks blob size
+        ctx.save();
+        ctx.translate(pos.x + NAME_X_OFFSET, headY + NAME_Y_OFFSET);
+        ctx.scale(NAME_SCALE, NAME_SCALE);
+        drawNamePill(ctx, 0, 0, fig.pal, fig.username);
+        ctx.restore();
+      }
+    }
+
+    // JUST JOINED sign — holds fully visible, then fades out and disappears
+    // so it doesn't sit on screen forever showing a stale name.
+    const signElapsed = now - newestJoinAt;
+    const signAlpha = signElapsed <= SIGN_HOLD_MS ? 1
+      : 1 - (signElapsed - SIGN_HOLD_MS) / SIGN_FADE_MS;
+    if (newestName && signAlpha > 0) {
+      const clampedPeak = Math.max(600, signPeakY);
+      const sCX = 540, sCY = clampedPeak - SIGN_GAP;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, signAlpha);
+      ctx.translate(sCX + SIGN_X_OFFSET, sCY + SIGN_Y_OFFSET);
+      ctx.scale(SIGN_SCALE, SIGN_SCALE);
+      ctx.translate(-sCX, -sCY);
+      drawJoinSign(ctx, newestName, newestSource, clampedPeak);
+      ctx.restore();
+    }
+  }
+
+  // Counter (always visible)
+  {
+    const cCX = 540, cCY = 150;
+    ctx.save();
+    ctx.translate(cCX + CTR_X_OFFSET, cCY + CTR_Y_OFFSET);
+    ctx.scale(CTR_SCALE, CTR_SCALE);
+    ctx.translate(-cCX, -cCY);
+    drawCounter(ctx, count);
+    ctx.restore();
+  }
+
+  // Countdown timer (always visible when enabled)
+  if (TIMER_ENABLED) {
+    const tCX = 540, tCY = 210;
+    ctx.save();
+    ctx.translate(tCX + TIMER_X_OFFSET, tCY + TIMER_Y_OFFSET);
+    ctx.scale(TIMER_SCALE, TIMER_SCALE);
+    ctx.translate(-tCX, -tCY);
+    drawTimer(ctx);
+    ctx.restore();
+  }
+
+  // Pressure meter (always visible when enabled)
+  if (PRESSURE_ENABLED) {
+    const pCX = 540, pCY = 270;
+    ctx.save();
+    ctx.translate(pCX + PRESSURE_X_OFFSET, pCY + PRESSURE_Y_OFFSET);
+    ctx.scale(PRESSURE_SCALE, PRESSURE_SCALE);
+    ctx.translate(-pCX, -pCY);
+    drawPressureMeter(ctx, pPct);
+    ctx.restore();
+  }
+
+  // Danger-zone screen flash + pop call-out — drawn last so they sit on top
+  // of everything else in the scene.
+  drawDangerVignette(ctx, now, pPct);
+  drawPopFlash(ctx, now);
+
+  requestAnimationFrame(frame);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PERSISTENCE (localStorage)
+// ═══════════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'newhere_overlay_v1';
+
+function saveState() {
+  if (!CONFIG.persist) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      count,
+      newestName,
+      newestSource,
+      heights: Array.from(heights),
+      figures: figures.filter(f => f.phase === 'settled').map(f => ({
+        id: f.id, x: f.x, y: f.y, color: f.color,
+        source: f.source, username: f.username, rot: f.rot,
+      })),
+      seenUsers: Array.from(seenUsers),
+      pressure: PRESSURE,
+    }));
+  } catch {}
+}
+
+function loadState() {
+  if (!CONFIG.persist) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    count       = s.count || 0;
+    newestName  = s.newestName || '';
+    newestSource = s.newestSource || null;
+    heights     = s.heights || new Array(N_BINS).fill(0);
+    seenUsers   = new Set(s.seenUsers || []);
+    figures     = (s.figures || []).map(f => ({
+      ...f,
+      phase:         'settled',
+      enterProgress: 1,
+      splatProgress: 1,
+      useTop:        false,
+      fromLeft:      false,
+      startX:        f.x,
+      startY:        f.y,
+      pal:           PALETTES[f.source] || YT,
+    }));
+    updatePilePeak();
+    signPeakY = pilePeakY; // snap sign to current peak without tweening
+    PRESSURE  = s.pressure || 0;
+    // Reset the decay clock to "now" rather than trying to reconcile
+    // performance.now() (page-relative) against a saved timestamp — avoids
+    // a burst of decay firing the instant the overlay reloads.
+    lastPressureEventAt = performance.now();
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ABLY ADAPTER — listens for events published by stream-dock.html
+// ═══════════════════════════════════════════════════════════════════
+function connectAbly() {
+  const client = new Ably.Realtime({ key: ABLY_KEY });
+  const ch     = client.channels.get(ABLY_CH);
+
+  ch.subscribe('new-here', msg => {
+    if (!OVERLAY_ENABLED) return;
+    const { username, source } = msg.data || {};
+    if (username && source) enqueue(username, source);
+  });
+
+  ch.subscribe('new-here-reset', () => {
+    console.log('[NEW HERE] received new-here-reset from stream-dock');
+    resetOverlay();
+  });
+
+  ch.subscribe('new-here-config', msg => {
+    const d = msg.data || {};
+    if (d.enabled != null || d.visible != null) {
+      OVERLAY_ENABLED = d.enabled != null ? !!d.enabled : !!d.visible;
+      document.body.style.display = OVERLAY_ENABLED ? 'block' : 'none';
+      if (!OVERLAY_ENABLED) resetOverlay();
+    }
+    if (d.signScale    != null) SIGN_SCALE    = d.signScale;
+    if (d.signXOffset  != null) SIGN_X_OFFSET = d.signXOffset;
+    if (d.signYOffset  != null) SIGN_Y_OFFSET = d.signYOffset;
+    if (d.ctrScale     != null) CTR_SCALE     = d.ctrScale;
+    if (d.ctrXOffset   != null) CTR_X_OFFSET  = d.ctrXOffset;
+    if (d.ctrYOffset   != null) CTR_Y_OFFSET  = d.ctrYOffset;
+    if (d.signLabel    != null) SIGN_LABEL    = d.signLabel || SIGN_LABEL;
+    if (d.ctrLabel     != null) CTR_LABEL     = d.ctrLabel  || CTR_LABEL;
+    if (d.ctrFormat    != null) CTR_FORMAT    = d.ctrFormat  || CTR_FORMAT;
+    if (d.idleTitle    != null) IDLE_TITLE    = d.idleTitle  || IDLE_TITLE;
+    if (d.idleSub      != null) IDLE_SUB      = d.idleSub    || IDLE_SUB;
+    if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
+    if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
+    if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
+    if (d.nameXOffset  != null) NAME_X_OFFSET = d.nameXOffset;
+    if (d.nameYOffset  != null) NAME_Y_OFFSET = d.nameYOffset;
+    if (d.idleScale    != null) IDLE_SCALE    = d.idleScale;
+    if (d.idleXOffset  != null) IDLE_X_OFFSET = d.idleXOffset;
+    if (d.idleYOffset  != null) IDLE_Y_OFFSET = d.idleYOffset;
+    if (d.timerLabel   != null) TIMER_LABEL   = d.timerLabel || TIMER_LABEL;
+    if (d.timerScale   != null) TIMER_SCALE   = d.timerScale;
+    if (d.timerXOffset != null) TIMER_X_OFFSET = d.timerXOffset;
+    if (d.timerYOffset != null) TIMER_Y_OFFSET = d.timerYOffset;
+    if (d.signPillOn   != null) SIGN_PILL_ENABLED  = d.signPillOn;
+    if (d.ctrPillOn    != null) CTR_PILL_ENABLED   = d.ctrPillOn;
+    if (d.timerPillOn  != null) TIMER_PILL_ENABLED = d.timerPillOn;
+    if (d.namePillOn   != null) NAME_PILL_ENABLED  = d.namePillOn;
+    if (d.dedupeOn     != null) DEDUPE_ENABLED     = d.dedupeOn;
+    if (d.pressureEnabled      != null) PRESSURE_ENABLED        = d.pressureEnabled;
+    if (d.pressureGainPerJoin  != null) PRESSURE_GAIN_PER_JOIN   = d.pressureGainPerJoin;
+    if (d.pressurePopThreshold != null) PRESSURE_POP_THRESHOLD   = d.pressurePopThreshold;
+    if (d.pressureDecayPerSec  != null) PRESSURE_DECAY_PER_SEC   = d.pressureDecayPerSec;
+    if (d.pressureDecayGraceMs != null) PRESSURE_DECAY_GRACE_MS  = d.pressureDecayGraceMs;
+    if (d.pressureWarnPct      != null) PRESSURE_WARN_PCT        = d.pressureWarnPct;
+    if (d.pressureDangerPct    != null) PRESSURE_DANGER_PCT      = d.pressureDangerPct;
+    if (d.pressureLabel        != null) PRESSURE_LABEL           = d.pressureLabel || PRESSURE_LABEL;
+    if (d.popLabel             != null) POP_LABEL                = d.popLabel || POP_LABEL;
+    if (d.pressureScale        != null) PRESSURE_SCALE           = d.pressureScale;
+    if (d.pressureXOffset      != null) PRESSURE_X_OFFSET        = d.pressureXOffset;
+    if (d.pressureYOffset      != null) PRESSURE_Y_OFFSET        = d.pressureYOffset;
+    if (d.pressurePillOn       != null) PRESSURE_PILL_ENABLED    = d.pressurePillOn;
+    saveDisplayCfg();
+  });
+
+  // Countdown timer commands — kept separate from the config snapshot above
+  // since these are one-shot state transitions, not cosmetic settings.
+  ch.subscribe('new-here-timer-cmd', msg => {
+    const { action, seconds } = msg.data || {};
+    if (action === 'start') {
+      TIMER_ENABLED = true;
+      TIMER_PAUSED  = false;
+      TIMER_SECONDS = seconds || TIMER_SECONDS;
+      TIMER_END_AT  = Date.now() + TIMER_SECONDS * 1000;
+      TIMER_REMAINING_MS = null;
+    } else if (action === 'pause') {
+      if (TIMER_ENABLED && !TIMER_PAUSED) {
+        TIMER_REMAINING_MS = Math.max(0, TIMER_END_AT - Date.now());
+        TIMER_PAUSED = true;
+      }
+    } else if (action === 'resume') {
+      if (TIMER_ENABLED && TIMER_PAUSED) {
+        TIMER_END_AT = Date.now() + (TIMER_REMAINING_MS ?? 0);
+        TIMER_PAUSED = false;
+      }
+    } else if (action === 'reset') {
+      TIMER_ENABLED = false;
+      TIMER_PAUSED  = false;
+      TIMER_END_AT  = null;
+      TIMER_REMAINING_MS = null;
+    }
+    saveDisplayCfg();
+  });
+
+  // Pressure test/override commands from stream-dock — one-shot actions,
+  // kept separate from the config snapshot the same way timer commands are.
+  ch.subscribe('new-here-pressure-cmd', msg => {
+    const { action, amount } = msg.data || {};
+    if (action === 'add') {
+      PRESSURE = Math.max(0, Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + (amount || 0)));
+      lastPressureEventAt = performance.now();
+    } else if (action === 'set') {
+      PRESSURE = Math.max(0, Math.min(PRESSURE_POP_THRESHOLD, amount || 0));
+      lastPressureEventAt = performance.now();
+    } else if (action === 'forcePop') {
+      popFlashAt = performance.now();
+      PRESSURE = 0;
+      lastPressureEventAt = performance.now();
+      explodeAndReset();
+    }
+  });
+
+  // Respond to ping from stream-dock so it can show connection status
+  ch.subscribe('new-here-ping', () => {
+    ch.publish('new-here-alive', {}).catch(() => {});
+  });
+
+  const sendAlive = () => ch.publish('new-here-alive', {}).catch(() => {});
+
+  // Registered once, outside the 'connected' handler, so reconnects don't stack intervals
+  const connDotEl = document.getElementById('conn-dot');
+  client.connection.on(stateChange => {
+    const s = stateChange.current;
+    if (!connDotEl) return;
+    if (s === 'connected') {
+      connDotEl.style.background = '#3b82f6';
+      connDotEl.style.boxShadow = '0 0 6px #3b82f6';
+    } else if (s === 'connecting') {
+      connDotEl.style.background = '#facc15';
+      connDotEl.style.boxShadow = 'none';
+    } else {
+      connDotEl.style.background = '#555';
+      connDotEl.style.boxShadow = 'none';
+    }
+  });
+  client.connection.on('connected', () => {
+    console.log('[Ably] connected →', ABLY_CH);
+    sendAlive();
+  });
+  client.connection.on('disconnected', () => console.warn('[Ably] disconnected'));
+  client.connection.on('suspended',    () => console.warn('[Ably] suspended'));
+  client.connection.on('failed',       (err) => console.error('[Ably] connection failed', err));
+  setInterval(() => { if (client.connection.state === 'connected') sendAlive(); }, 25000);
+
+  // Debug hooks — inspect from devtools/preview via window.__nh
+  window.__nh = {
+    client, ch,
+    get count() { return count; },
+    get figures() { return figures; },
+    get queue() { return queue; },
+    get seenUsers() { return Array.from(seenUsers); },
+    get entering() { return figures.filter(f => f.phase === 'entering').length; },
+    get pressure() { return PRESSURE; },
+    get pressurePct() { return pressurePct(); },
+    get pressureZone() { return pressureZone(pressurePct()); },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PUBLIC API (browser console or test page)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * simulateJoin(username, source)
+ * Add a single viewer to the pile. Open browser console in OBS or a
+ * normal browser tab to call this for local testing.
+ *   source: 'youtube' | 'tiktok'  (defaults to random)
+ */
+window.simulateJoin = function (username, source) {
+  source   = source || (Math.random() < 0.5 ? 'youtube' : 'tiktok');
+  username = username || 'viewer' + Math.floor(Math.random() * 9999);
+  enqueue(username, source);
+};
+
+/**
+ * simulateBurst(n, source)
+ * Quickly add n viewers (default 10) to stress-test the pile.
+ */
+window.simulateBurst = function (n, source) {
+  const names = [
+    'PixelPanda','vortex_xX','luna92','GG_Mango','sleepydino','bunnyhopz',
+    'toastykat','vibeLord','mochi_','crimsonFox','zephyr_','jellybean',
+    'novaaa','pochi','sunnyD','kiwibyte','grumpcat','m0onpie','flux',
+    'dazzleq','snackman','tofu_','blip','wandr','echo7','peachy',
+    'goblin','riptide','cozyfox','muffn','zappy','larkz','quokka',
+    'byteme','plush','glitchk','marmot','dewdrop','spark_','yumz',
+  ];
+  for (let i = 0; i < (n || 10); i++) {
+    const src  = source || (Math.random() < 0.5 ? 'youtube' : 'tiktok');
+    const name = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 99);
+    enqueue(name, src);
+  }
+};
+
+// Immediately clears all state — the actual "instant" reset, called once the
+// explode animation (below) finishes playing. Does NOT touch `queue`: joins
+// that arrived mid-explosion (e.g. someone typing "new here" right as the
+// pile resets) must survive so they spawn once resetPending clears, instead
+// of being silently dropped.
+function hardReset() {
+  figures       = [];
+  heights       = new Array(N_BINS).fill(0);
+  count         = 0;
+  newestName    = '';
+  newestSource  = null;
+  pilePeakY     = FLOOR_Y;
+  signPeakY     = FLOOR_Y;
+  seenUsers     = new Set();
+  resetPending  = false;
+  PRESSURE            = 0;
+  lastPressureEventAt = performance.now();
+  if (CONFIG.persist) localStorage.removeItem(STORAGE_KEY);
+}
+
+// Sends every current figure flying outward/upward with gravity + spin, then
+// clears the pile once the burst finishes. Used for both manual "Reset Pile"
+// and the timer hitting 0:00.
+function explodeAndReset() {
+  console.log('[NEW HERE] explodeAndReset() —', figures.length, 'figures flying apart');
+  if (!figures.length) { hardReset(); return; }
+  for (const f of figures) {
+    const ang   = rnd() * Math.PI * 2;
+    const speed = 320 + rnd() * 520;
+    f.phase     = 'exploding';
+    f.explodeT  = 0;
+    f.vx        = Math.cos(ang) * speed;
+    f.vy        = Math.sin(ang) * speed - 480; // upward bias so it reads as a burst
+    f.rotSpeed  = (rnd() - 0.5) * 720;          // deg/sec spin
+  }
+  queue = []; // don't spawn queued joins mid-explosion
+  newestName = ''; // hide the JUST JOINED sign immediately
+  resetPending = true;
+  resetAt = performance.now() + EXPLODE_DUR;
+}
+
+/**
+ * resetOverlay()
+ * Explode the current pile outward, then clear everything. Also clears
+ * localStorage once the animation completes.
+ */
+window.resetOverlay = function () {
+  explodeAndReset();
+};
+
+/**
+ * setPressure(amount)
+ * Force pressure to a specific value (0..PRESSURE_POP_THRESHOLD) for testing
+ * decay/warn/danger zones without spamming joins.
+ */
+window.setPressure = function (amount) {
+  PRESSURE = Math.max(0, Math.min(PRESSURE_POP_THRESHOLD, amount));
+  lastPressureEventAt = performance.now();
+};
+
+/**
+ * forcePop()
+ * Immediately triggers a pressure-driven pop (flash text + explosion),
+ * bypassing the threshold check. Useful for testing the pop visuals.
+ */
+window.forcePop = function () {
+  popFlashAt = performance.now();
+  PRESSURE = 0;
+  lastPressureEventAt = performance.now();
+  explodeAndReset();
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════════
+loadState();
+connectAbly();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
