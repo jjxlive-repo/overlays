@@ -327,7 +327,8 @@ const FJ_DEFAULT_CONFIG = {
     usernameLabels: true, likeMeter: true, particleLevel: 'low', blueAccent: true, stickerBorder: true, highContrast: false,
     intensity: 1, cornerGlow: 1, frameCrossfadeMs: 120, frameDurationScale: 1,
     eventLabelX: 540, eventLabelY: 110, eventLabelScale: 1,
-    likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1
+    likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1,
+    giftShowcase: { enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5 }
   },
   audio: {
     muted: false, master: 0.7, cooldownMs: 140,
@@ -533,6 +534,15 @@ function colorInput(parent, label, path) {
   slider(p, 'Like meter X', 'visuals.likeMeterX', 0, 1080, 5);
   slider(p, 'Like meter Y', 'visuals.likeMeterY', 0, 1920, 5);
   slider(p, 'Like meter scale', 'visuals.likeMeterScale', 0.5, 2, 0.05, v => (+v).toFixed(2));
+  const showcaseNote = document.createElement('div');
+  showcaseNote.className = 'note';
+  showcaseNote.innerHTML = '<b>Gift showcase</b> (small square cycling through your gift → item mappings; hidden when nothing is mapped)';
+  p.appendChild(showcaseNote);
+  toggle(p, 'Gift showcase enabled', 'visuals.giftShowcase.enabled');
+  slider(p, 'Gift showcase X', 'visuals.giftShowcase.x', 0, 1080, 5);
+  slider(p, 'Gift showcase Y', 'visuals.giftShowcase.y', 0, 1920, 5);
+  slider(p, 'Gift showcase scale', 'visuals.giftShowcase.scale', 0.5, 2, 0.05, v => (+v).toFixed(2));
+  slider(p, 'Gift showcase cycle', 'visuals.giftShowcase.intervalSec', 2, 20, 0.5, v => v + 's');
   toggle(p, 'Setup guides', 'debug.setupGuides');
   toggle(p, 'Safe-area guide', 'debug.showSafeArea');
   toggle(p, 'Jamie bounding box', 'debug.showJamieBox');
@@ -644,12 +654,19 @@ async function loadGiftCatalog() {
 }
 function saveGiftMappingsFromUI() {
   const rows = [...document.querySelectorAll('.gift-map-row')];
-  CFG.events.giftMappings = rows.map(r => ({
-    giftName: r.dataset.gift || '',
-    itemType: r.querySelector('.item-pick').value,
-    showUsername: r.querySelector('.show-user').checked,
-    priority: 80
-  })).filter(m => m.giftName);
+  CFG.events.giftMappings = rows.map(r => {
+    const g = giftByName(r.dataset.gift);
+    return {
+      giftName: r.dataset.gift || '',
+      itemType: r.querySelector('.item-pick').value,
+      showUsername: r.querySelector('.show-user').checked,
+      priority: 80,
+      /* embedded so the overlay's gift showcase can display the icon
+         without fetching the full catalog */
+      giftImg: g ? g.img : undefined,
+      coins: g ? g.coins : undefined
+    };
+  }).filter(m => m.giftName);
   document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings, null, 1);
   pushConfig();
 }
@@ -712,7 +729,9 @@ function buildGiftMapRow(mapping) {
   const thumb = document.createElement('img');
   thumb.className = 'gift-thumb';
   const known = giftByName(mapping.giftName);
-  if (known) thumb.src = known.img; else thumb.style.opacity = 0.15;
+  if (known) thumb.src = known.img;
+  else if (mapping.giftImg) thumb.src = mapping.giftImg;
+  else thumb.style.opacity = 0.15;
   row.appendChild(thumb);
   row.appendChild(makeGiftPicker(row, mapping.giftName));
   const arrow = document.createElement('span');

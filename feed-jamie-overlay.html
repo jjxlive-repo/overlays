@@ -154,6 +154,25 @@
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
   }
 
+  /* gift showcase — small square cycling through configured gift → item mappings */
+  #gift-showcase {
+    position: absolute; z-index: 55; width: 130px; box-sizing: border-box;
+    padding: 10px 8px 7px; border-radius: 16px; text-align: center;
+    background: rgba(30, 8, 56, 0.5); border: 2px solid #C084FC66;
+    opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out;
+    transform-origin: top left;
+  }
+  #gift-showcase img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto; }
+  #gift-showcase .gs-emoji { font-size: 46px; line-height: 64px; height: 64px; display: none; }
+  #gift-showcase .gs-gift {
+    font: 700 15px 'DM Sans'; color: var(--fj-gold); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000;
+  }
+  #gift-showcase .gs-item {
+    font: 400 19px 'Boogaloo'; color: var(--fj-white); margin-top: 1px; letter-spacing: .5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000;
+  }
+
   /* effects layer */
   #effects { position: absolute; inset: 0; z-index: 50; overflow: hidden; }
   .fj-fx {
@@ -184,6 +203,12 @@
   <div id="prompt-pill"></div>
   <div id="event-label"></div>
   <div id="like-meter"></div>
+  <div id="gift-showcase">
+    <img alt="">
+    <div class="gs-emoji">🎁</div>
+    <div class="gs-gift"></div>
+    <div class="gs-item"></div>
+  </div>
   <div id="debug-hud"></div>
   <div id="conn-dot" title="Ably connection"></div>
 </div>
@@ -260,7 +285,10 @@ const FJ_DEFAULT_CONFIG = {
     frameCrossfadeMs: 120,   /* dissolve duration between Jamie sprite frames — smoothness */
     frameDurationScale: 1,   /* multiplies every animation frame's hold time — pacing/calmness */
     eventLabelX: 540, eventLabelY: 110, eventLabelScale: 1,  /* follow/heart-me/sub/gift username text */
-    likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1
+    likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1,
+    giftShowcase: {   /* small square cycling through gift → item mappings */
+      enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5
+    }
   },
   audio: {
     muted: false, master: 0.7, cooldownMs: 140,
@@ -330,6 +358,13 @@ function fjValidateConfig() {
   if (!c.events.giftSizeScaling || typeof c.events.giftSizeScaling !== 'object') {
     c.events.giftSizeScaling = { enabled: true, maxScale: 2, coinsForMax: 5000 };
   }
+  if (!c.visuals.giftShowcase || typeof c.visuals.giftShowcase !== 'object') {
+    c.visuals.giftShowcase = { enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5 };
+  }
+  c.visuals.giftShowcase.x = Math.min(Math.max(+c.visuals.giftShowcase.x || 930, 0), 1080);
+  c.visuals.giftShowcase.y = Math.min(Math.max(+c.visuals.giftShowcase.y || 240, 0), 1920);
+  c.visuals.giftShowcase.scale = Math.min(Math.max(+c.visuals.giftShowcase.scale || 1, 0.4), 2.5);
+  c.visuals.giftShowcase.intervalSec = Math.min(Math.max(+c.visuals.giftShowcase.intervalSec || 5, 2), 30);
   c.events.giftSizeScaling.maxScale = Math.min(Math.max(+c.events.giftSizeScaling.maxScale || 2, 1), 3);
   c.events.giftSizeScaling.coinsForMax = Math.min(Math.max(Math.round(+c.events.giftSizeScaling.coinsForMax || 5000), 10), 100000);
 }
@@ -765,6 +800,10 @@ function applyLayout() {
   el.style.left = CFG.visuals.eventLabelX + 'px';
   el.style.top = CFG.visuals.eventLabelY + 'px';
   el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
+  const gs = $('gift-showcase');
+  gs.style.left = CFG.visuals.giftShowcase.x + 'px';
+  gs.style.top = CFG.visuals.giftShowcase.y + 'px';
+  gs.style.transform = `scale(${CFG.visuals.giftShowcase.scale})`;
 }
 function isFlipped() {
   /* default art faces right when Jamie sits on the left */
@@ -1527,6 +1566,45 @@ function promptLoop() {
     promptTimer = setTimeout(promptLoop, 600);
   }, CFG.prompts.intervalSec * 1000 - 600);
 }
+/* gift showcase: cycles through configured gift → item mappings so viewers
+   can see what each gift triggers. Hidden when disabled or nothing is mapped. */
+const GIFT_ITEM_LABELS = {
+  'treat-biscuit': '🍪 Biscuit', 'treat-bone': '🦴 Bone Treat', 'treat-purple-splat': '💜 Splat Treat',
+  'treat-heart': '🍪 Heart Cookie', 'tennis-ball': '🎾 Tennis Ball', 'golden-tennis-ball': '⭐ Golden Ball',
+  'squeaky-toy': '🔵 Squeaky Toy', 'duck': '🦆 Duck', 'sock': '🧦 Sock', 'bubble': '🫧 Bubble',
+  'heart-large': '💜 Big Heart', 'heartme': '🎉 MEGA Party'
+};
+let showcaseIdx = 0, showcaseTimer = null;
+function giftShowcaseLoop() {
+  clearTimeout(showcaseTimer);
+  const gs = $('gift-showcase');
+  const sc = CFG.visuals.giftShowcase;
+  const maps = (CFG.events.giftMappings || []).filter(m => m.giftName && GIFT_ITEM_LABELS[m.itemType]);
+  if (!sc.enabled || !maps.length || J.hidden) {
+    gs.style.opacity = 0;
+    showcaseTimer = setTimeout(giftShowcaseLoop, 2000);
+    return;
+  }
+  const m = maps[showcaseIdx % maps.length];
+  showcaseIdx++;
+  const img = gs.querySelector('img'), emoji = gs.querySelector('.gs-emoji');
+  if (m.giftImg) {
+    img.src = m.giftImg;
+    img.style.display = 'block'; emoji.style.display = 'none';
+    img.onerror = () => { img.style.display = 'none'; emoji.style.display = 'block'; };
+  } else {
+    img.style.display = 'none'; emoji.style.display = 'block';
+  }
+  gs.querySelector('.gs-gift').textContent = m.giftName;   /* textContent only — never HTML */
+  gs.querySelector('.gs-item').textContent = '→ ' + GIFT_ITEM_LABELS[m.itemType];
+  gs.style.opacity = 1;
+  const iv = sc.intervalSec * 1000;
+  if (maps.length <= 1) { showcaseTimer = setTimeout(giftShowcaseLoop, iv); return; } /* single mapping: hold steady */
+  showcaseTimer = setTimeout(() => {
+    gs.style.opacity = 0;
+    showcaseTimer = setTimeout(giftShowcaseLoop, 450);
+  }, Math.max(1000, iv - 450));
+}
 let meterTimer = null;
 function updateLikeMeter() {
   if (!CFG.visuals.likeMeter) return;
@@ -1620,7 +1698,7 @@ function processMessage(msg) {
     case 'CONFIG_UPDATE':
       CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), msg.data || {});
       fjValidateConfig();
-      applyLayout(); promptLoop(); applyMotionVar();
+      applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar();
       break;
     case 'SPAWN_ITEM':
       if (msg.data && ITEM_DEFS[msg.data.itemType]) spawnObject(msg.data.itemType, msg.data.options || {});
@@ -1698,7 +1776,7 @@ function initComms() {
       try { const wrap = JSON.parse(e.newValue); processMessage(wrap.p); } catch (err) {}
     }
     if (e.key === FJ_LS_CONFIG && e.newValue) {
-      try { CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), JSON.parse(e.newValue)); fjValidateConfig(); applyLayout(); promptLoop(); applyMotionVar(); } catch (err) {}
+      try { CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), JSON.parse(e.newValue)); fjValidateConfig(); applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar(); } catch (err) {}
     }
   });
   if (window.Ably) {
@@ -1761,6 +1839,7 @@ applyMotionVar();
 showFrame('jamie-idle-01.png', { instant: true });
 setJamieState('IDLE');
 promptLoop();
+giftShowcaseLoop();
 initComms();
 fjLoadAssets();
 rafId = requestAnimationFrame(tick);
