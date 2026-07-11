@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FEED JAMIE — Overlay</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* ── FEED JAMIE overlay — 1080x1920 transparent browser source ── */
+  :root {
+    --fj-purple-deep:   #3B0764;
+    --fj-purple-mid:    #7B2FBE;
+    --fj-purple-bright: #A855F7;
+    --fj-purple-light:  #C084FC;
+    --fj-accent:        #E879F9;
+    --fj-white:         #FAF5FF;
+    --fj-blue:          #3B82F6;
+    --fj-gold:          #F5C518;
+    --fj-charcoal:      #3A3A40;
+  }
+  html, body {
+    width: 1080px; height: 1920px;
+    margin: 0; padding: 0;
+    overflow: hidden;
+    background: transparent;
+    pointer-events: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+  #stage { position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; overflow: hidden; }
+
+  /* connection dot — blue filled = Ably connected, hollow orange = not (colorblind-safe) */
+  #conn-dot {
+    position: absolute; top: 10px; right: 10px; width: 13px; height: 13px;
+    border-radius: 50%; background: transparent; border: 3px solid #F59E0B;
+    box-sizing: border-box; opacity: .8; z-index: 90;
+  }
+  #conn-dot.connected { background: var(--fj-blue); border-color: var(--fj-blue); box-shadow: 0 0 8px #3B82F688; }
+
+  /* floor line */
+  #floor-line {
+    position: absolute; left: 0; width: 1080px; height: 3px;
+    background: var(--fj-purple-bright); opacity: 0; z-index: 5;
+    transition: opacity .3s;
+  }
+
+  /* setup guides */
+  #guide-canvas { position: absolute; inset: 0; border: 3px dashed #3B82F666; box-sizing: border-box; display: none; z-index: 80; }
+  #guide-floor-label {
+    position: absolute; left: 12px; padding: 3px 10px; font: 700 20px 'DM Sans';
+    color: #fff; background: #3B82F6CC; border-radius: 8px; display: none; z-index: 81;
+  }
+  #reach-zone-vis {
+    position: absolute; border: 3px dashed var(--fj-accent); background: #E879F922;
+    display: none; z-index: 40; box-sizing: border-box;
+  }
+  #jamie-box { position: absolute; border: 2px dashed var(--fj-gold); display: none; z-index: 41; box-sizing: border-box; }
+  #safe-area { position: absolute; inset: 60px 40px; border: 2px dotted #FAF5FF55; display: none; z-index: 79; box-sizing: border-box; }
+  #debug-hud {
+    position: absolute; top: 30px; left: 12px; padding: 6px 10px; display: none; z-index: 82;
+    font: 500 16px 'DM Sans'; color: #fff; background: #000000AA; border-radius: 8px; white-space: pre;
+  }
+
+  /* Jamie */
+  #jamie {
+    position: absolute; z-index: 30; will-change: transform;
+    transform-origin: 50% 100%;
+    transition: transform .18s ease-out;
+  }
+  #jamie.hidden-state { display: none; }
+  #jamie svg { width: 100%; height: 100%; display: block; }
+  #jamie-inner { width: 100%; height: 100%; transform-origin: 50% 100%; position: relative; }
+  /* crossfade-capable frame layers — stacked absolutely so old/new frames overlap exactly.
+     JS drives opacity/transform transitions per-layer (duration = visuals.frameCrossfadeMs). */
+  #jamie .fj-jamie-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* synthetic wobble/squash/hop/tilt — ONLY used as a fallback when no real drawn
+     frame exists for the current pose (class .no-real-art). Real hand-drawn sprites
+     play cleanly with no extra CSS motion layered on top. Amplitude scales with
+     --fj-motion (0 = none .. 1 = normal .. 1.5+ = extra), set from visuals.intensity. */
+  :root { --fj-motion: 1; }
+  #jamie-inner { transition: transform .16s ease-out; }
+  #jamie.no-real-art.pose-anticipation #jamie-inner {
+    transform: scaleY(calc(1 - 0.12 * var(--fj-motion))) scaleX(calc(1 + 0.05 * var(--fj-motion))) translateY(calc(4% * var(--fj-motion)));
+  }
+  #jamie.no-real-art.pose-payoff #jamie-inner {
+    transform: translateY(calc(-7% * var(--fj-motion))) scaleY(calc(1 + 0.04 * var(--fj-motion)));
+  }
+  #jamie.no-real-art.pose-celebrate #jamie-inner { animation: fjHop .45s ease-in-out infinite; }
+  #jamie.no-real-art.pose-track-left  #jamie-inner { transform: rotate(calc(-5deg * var(--fj-motion))); }
+  #jamie.no-real-art.pose-track-right #jamie-inner { transform: rotate(calc(5deg * var(--fj-motion))); }
+  #jamie.pose-sleep #jamie-inner { transform: scaleY(.8) translateY(9%); filter: brightness(.85); }
+  @keyframes fjHop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(calc(-9% * var(--fj-motion))); } }
+
+  /* idle breathing — only a fallback; real idle sequences already alternate
+     between drawn breathing frames, so this stays off when real art is present. */
+  #jamie.no-real-art.breathe #jamie-inner { animation: fjBreathe 4s ease-in-out infinite; }
+  @keyframes fjBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(calc(1 + 0.012 * var(--fj-motion)), calc(1 + 0.028 * var(--fj-motion))); } }
+  #jamie.pose-anticipation.breathe #jamie-inner,
+  #jamie.pose-celebrate.breathe #jamie-inner,
+  #jamie.pose-payoff.breathe #jamie-inner { animation: none; }
+
+  /* placeholder SVG internal state classes (driven by container classes) */
+  .fj-eyes-closed { display: none; }
+  #jamie.ph-blink .fj-eyes-open   { display: none; }
+  #jamie.ph-blink .fj-eyes-closed { display: block; }
+  .fj-tongue { display: none; }
+  #jamie.ph-happy .fj-tongue { display: block; }
+  #jamie.ph-happy .fj-mouth-line { display: none; }
+
+  /* objects */
+  .fj-object {
+    position: absolute; top: 0; left: 0; z-index: 20;
+    will-change: transform; pointer-events: none;
+  }
+  .fj-object img, .fj-object svg { width: 100%; height: 100%; display: block; }
+  .fj-object.premium-glow { filter: drop-shadow(0 0 14px #F5C518CC) drop-shadow(0 0 26px #F5C51866); }
+  .fj-object.jackpot-glow { filter: drop-shadow(0 0 14px #A855F7DD) drop-shadow(0 0 26px #A855F788); }
+  .fj-object.splat-glow   { filter: drop-shadow(0 0 10px #A855F7AA); }
+  .fj-object.dimmed { opacity: .25; transition: opacity .3s; }
+
+  /* item username tag */
+  .fj-obj-tag {
+    position: absolute; left: 50%; top: -30px; transform: translateX(-50%);
+    font: 700 22px 'DM Sans'; color: #fff; white-space: nowrap;
+    text-shadow: 0 2px 4px #000, 0 0 6px #000;
+  }
+
+  /* prompt pill */
+  #prompt-pill {
+    position: absolute; z-index: 60; transform: translateX(-50%);
+    padding: 10px 26px; border-radius: 999px;
+    background: rgba(30, 8, 56, 0.45);
+    border: 2px solid #C084FC88;
+    font: 400 34px 'Boogaloo', sans-serif; letter-spacing: 1px;
+    color: var(--fj-white); text-align: center; white-space: nowrap;
+    opacity: 0; transition: opacity .5s;
+    text-shadow: 0 2px 4px #00000099;
+  }
+
+  /* event label (follow / heart me / sub / gift) */
+  #event-label {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    z-index: 61; padding: 8px 22px; border-radius: 999px;
+    background: rgba(59, 7, 100, 0.55); border: 2px solid var(--fj-accent);
+    font: 400 32px 'Boogaloo'; color: #fff; white-space: nowrap;
+    opacity: 0; transition: opacity .3s; text-shadow: 0 2px 4px #000;
+  }
+  #event-label.gold { border-color: var(--fj-gold); background: rgba(80, 60, 4, 0.55); }
+
+  /* like meter */
+  #like-meter {
+    position: absolute; z-index: 55; padding: 5px 14px; border-radius: 999px;
+    background: rgba(30, 8, 56, 0.5); border: 2px solid #C084FC66;
+    font: 700 22px 'DM Sans'; color: #fff; white-space: nowrap;
+    opacity: 0; transition: opacity .4s; text-shadow: 0 1px 3px #000;
+  }
+
+  /* effects layer */
+  #effects { position: absolute; inset: 0; z-index: 50; overflow: hidden; }
+  .fj-fx {
+    position: absolute; top: 0; left: 0; will-change: transform, opacity;
+    font-size: 30px; line-height: 1; user-select: none;
+  }
+  .fj-fx svg { display: block; }
+
+  /* heart-me flash */
+  #heartme-veil {
+    position: absolute; inset: 0; z-index: 45; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at 50% 40%, #A855F72E 0%, transparent 65%);
+    transition: opacity .35s;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="heartme-veil"></div>
+  <div id="floor-line"></div>
+  <div id="guide-canvas"></div>
+  <div id="safe-area"></div>
+  <div id="guide-floor-label">floor Y</div>
+  <div id="reach-zone-vis"></div>
+  <div id="jamie-box"></div>
+  <div id="jamie"><div id="jamie-inner"></div></div>
+  <div id="effects"></div>
+  <div id="prompt-pill"></div>
+  <div id="event-label"></div>
+  <div id="like-meter"></div>
+  <div id="debug-hud"></div>
+  <div id="conn-dot" title="Ably connection"></div>
+</div>
+
+<script>
+'use strict';
+/* ════════════════════════════════════════════════════════════════
+   FEED JAMIE — overlay engine
+   1080x1920 transparent browser source for TikTok Live Studio.
+   Receives events/config from feed-jamie-control.html via Ably
+   (live), BroadcastChannel + localStorage (local testing).
+════════════════════════════════════════════════════════════════ */
+
+/* ── 1. DEFAULT CONFIG ─────────────────────────────────────────── */
+const FJ_DEFAULT_CONFIG = {
+  canvas: { width: 1080, height: 1920 },
+  floor: {
+    y: 500, min: 180, max: 1500,
+    liveVisible: false, color: '#A855F7', opacity: 0.35, thickness: 3
+  },
+  jamie: {
+    x: 130, width: 260, yOffset: 0, side: 'left', flip: false,
+    scale: 1, rotation: 0
+  },
+  reachZone: {
+    xOffset: 0, yOffset: 0, width: 135, height: 150, shape: 'ellipse',
+    anticipationDistance: 180, nearMissDistance: 70
+  },
+  movement: {
+    normalSpeedMin: 150, normalSpeedMax: 220,
+    premiumSpeedMin: 190, premiumSpeedMax: 280,
+    objectScale: 1, maxObjects: 1, spin: 40,
+    maxLifetimeNormal: 25, maxLifetimePremium: 35,
+    guidanceEnabled: true, guidanceStrength: 0.6,
+    cornerJackpot: true, cornerTolerance: 30, cornerWindowMs: 150,
+    cornerRewardMultiplier: 1, squashStretch: true
+  },
+  events: {
+    likesPerTreat: 50, likeQueueCap: 2,
+    commentCooldown: 4, perUserCooldown: 10,
+    genericSpawnChance: 0.05, keywordOnly: false,
+    keywords: {
+      ball: 'tennis-ball', treat: 'random-treat', toy: 'squeaky-toy',
+      duck: 'duck', sock: 'sock', bubble: 'bubble', jamie: 'look'
+    },
+    keywordShowUsername: false,
+    treatWeights: { 'treat-biscuit': 45, 'treat-bone': 30, 'treat-purple-splat': 20, 'treat-heart': 5 },
+    followShowUsername: true, followNameSeconds: 1.5,
+    heartMeDurationSec: 3, heartMeSpawnHeart: true, heartMeNameSeconds: 2,
+    subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
+    giftLowMax: 99, giftMediumMax: 999,
+    giftMappings: []   /* [{giftName, minValue, maxValue, itemType, showUsername}] */
+  },
+  prompts: {
+    enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1,
+    opacity: 1, bgOpacity: 0.45,
+    list: [
+      'LIKES = TREATS 🦴',
+      'COMMENT BALL, TREAT, OR TOY',
+      'FOLLOW TO THROW THE BALL 🎾',
+      'HEART ME = BIG JAMIE REACTION 💜'
+    ]
+  },
+  visuals: {
+    usernameLabels: true, likeMeter: true, particleLevel: 'low',
+    blueAccent: true, stickerBorder: true, highContrast: false,
+    intensity: 1, cornerGlow: 1,
+    frameCrossfadeMs: 120,   /* dissolve duration between Jamie sprite frames — smoothness */
+    frameDurationScale: 1    /* multiplies every animation frame's hold time — pacing/calmness */
+  },
+  audio: {
+    muted: false, master: 0.7, cooldownMs: 140,
+    volumes: {
+      bounce: 0.25, catch: 0.7, crunch: 0.6, ballBounce: 0.5, squeak: 0.7,
+      quack: 0.7, pop: 0.6, jackpot: 0.7, heartMe: 0.85, subscribe: 0.8, gift: 0.7
+    },
+    urls: {}  /* soundName -> https URL; empty = Web Audio placeholder synth */
+  },
+  assets: { basePath: 'assets/feed-jamie/', manifestFile: 'asset-manifest.json' },
+  debug: { setupGuides: false, showReachZone: false, showJamieBox: false, showSafeArea: false, showState: false, showWarnings: false }
+};
+
+const FJ_LS_CONFIG  = 'feedJamie.config.v1';
+const FJ_LS_MSG     = 'feedJamie.msg';
+const FJ_LS_STATUS  = 'feedJamie.status';
+const FJ_LS_ASSETS  = 'feedJamie.assetOverrides.v1';
+const FJ_BC_NAME    = 'feed-jamie-control';
+const FJ_ABLY_KEY   = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const FJ_ABLY_CH    = 'splat-overlay';
+const FJ_ABLY_MSG_IN  = 'feed-jamie';        /* control -> overlay */
+const FJ_ABLY_MSG_OUT = 'feed-jamie-status'; /* overlay -> control */
+
+function fjDeepMerge(base, extra) {
+  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
+  const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k of Object.keys(extra)) {
+    const bv = out[k], ev = extra[k];
+    if (bv && ev && typeof bv === 'object' && typeof ev === 'object' && !Array.isArray(bv) && !Array.isArray(ev)) {
+      out[k] = fjDeepMerge(bv, ev);
+    } else if (ev !== undefined) {
+      out[k] = ev;
+    }
+  }
+  return out;
+}
+function fjClone(o) { return JSON.parse(JSON.stringify(o)); }
+
+let CFG = fjClone(FJ_DEFAULT_CONFIG);
+try {
+  const saved = JSON.parse(localStorage.getItem(FJ_LS_CONFIG) || 'null');
+  if (saved) CFG = fjDeepMerge(CFG, saved);
+} catch (e) {}
+
+/* clamp critical values so a bad import can't break the overlay */
+function fjValidateConfig() {
+  const c = CFG;
+  c.floor.y = Math.min(Math.max(+c.floor.y || 500, 180), 1500);
+  c.movement.maxObjects = Math.min(Math.max(Math.round(+c.movement.maxObjects || 1), 1), 3);
+  c.events.likesPerTreat = Math.min(Math.max(Math.round(+c.events.likesPerTreat || 50), 10), 1000);
+  c.jamie.width = Math.min(Math.max(+c.jamie.width || 260, 80), 600);
+  if (!['ellipse', 'rect'].includes(c.reachZone.shape)) c.reachZone.shape = 'ellipse';
+  if (!['off', 'low', 'medium'].includes(c.visuals.particleLevel)) c.visuals.particleLevel = 'low';
+  c.visuals.intensity = Math.min(Math.max(+c.visuals.intensity ?? 1, 0), 2);
+  c.visuals.frameCrossfadeMs = Math.min(Math.max(Math.round(+c.visuals.frameCrossfadeMs || 0), 0), 500);
+  c.visuals.frameDurationScale = Math.min(Math.max(+c.visuals.frameDurationScale || 1, 0.4), 3);
+}
+fjValidateConfig();
+function applyMotionVar() {
+  document.documentElement.style.setProperty('--fj-motion', CFG.visuals.intensity);
+}
+
+/* ── 2. ITEM DEFINITIONS ───────────────────────────────────────── */
+const ITEM_DEFS = {
+  'treat-biscuit':      { file: 'items/treat-biscuit.png',      width: 88,  reaction: 'treat',   target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1 },
+  'treat-bone':         { file: 'items/treat-bone.png',         width: 96,  reaction: 'treat',   target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1 },
+  'treat-purple-splat': { file: 'items/treat-purple-splat.png', width: 92,  reaction: 'treat',   target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1, splat: true },
+  'treat-heart':        { file: 'items/treat-heart.png',        width: 92,  reaction: 'treat',   target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1 },
+  'tennis-ball':        { file: 'items/tennis-ball.png',        width: 84,  reaction: 'fetch',   target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1, bounceSound: 'ballBounce' },
+  'golden-tennis-ball': { file: 'items/golden-tennis-ball.png', width: 94,  reaction: 'premium', target: 'mouth', catchSound: 'subscribe', premium: true, speedFactor: 1, glow: 'gold', trail: true, bounceSound: 'ballBounce' },
+  'squeaky-toy':        { file: 'items/squeaky-toy.png',        width: 96,  reaction: 'toy',     target: 'paw',   catchSound: 'squeak', premium: false, speedFactor: 1 },
+  'duck':               { file: 'items/duck.png',               width: 96,  reaction: 'duck',    target: 'paw',   catchSound: 'quack',  premium: false, speedFactor: 1 },
+  'sock':               { file: 'items/sock.png',               width: 100, reaction: 'sock',    target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1 },
+  'bubble':             { file: 'items/bubble.png',             width: 96,  reaction: 'bubble',  target: 'paw',   catchSound: 'pop',    premium: false, speedFactor: 0.55 },
+  'heart-large':        { file: 'items/heart-large.png',        width: 150, reaction: 'treat',   target: 'mouth', catchSound: 'heartMe', premium: true, speedFactor: 0.8, glow: 'purple' }
+};
+
+/* ── 3. ANIMATION SEQUENCES (frame files + ms) — the asset report
+       (FEED-JAMIE-ASSET-REQUIREMENTS.md) mirrors these exactly ── */
+const SEQ = {
+  idle:         [{ f: 'jamie-idle-01.png',            d: 2600 },
+                 { f: 'jamie-idle-03-breathe.png',    d: 1200 }],
+  blink:        [{ f: 'jamie-idle-02-blink.png',      d: 160  }],
+  trackLeft:    [{ f: 'jamie-track-left.png',         d: 0    }],
+  trackCenter:  [{ f: 'jamie-track-center.png',       d: 0    }],
+  trackRight:   [{ f: 'jamie-track-right.png',        d: 0    }],
+  trackHigh:    [{ f: 'jamie-track-high.png',         d: 0    }],
+  anticipation: [{ f: 'jamie-anticipation-01.png',    d: 350  },
+                 { f: 'jamie-anticipation-02-wiggle.png', d: 350 },
+                 { f: 'jamie-anticipation-04-wiggle-b.png', d: 350 },
+                 { f: 'jamie-anticipation-05-stalk.png', d: 400 }], /* loops */
+  launch:       [{ f: 'jamie-anticipation-03-launch.png', d: 180 }],
+  treat:        [{ f: 'jamie-treat-catch-01.png',     d: 250  },
+                 { f: 'jamie-treat-catch-02.png',     d: 350  },
+                 { f: 'jamie-treat-chew-01.png',      d: 250  },
+                 { f: 'jamie-treat-chew-02.png',      d: 250  },
+                 { f: 'jamie-treat-chew-01.png',      d: 200  }],
+  treatHappy:   [{ f: 'jamie-treat-happy.png',        d: 400  }],
+  fetch:        [{ f: 'jamie-fetch-ready.png',        d: 250  },
+                 { f: 'jamie-fetch-leap.png',         d: 400  },
+                 { f: 'jamie-fetch-catch.png',        d: 450  }],
+  fetchHold:    [{ f: 'jamie-ball-hold.png',          d: 450  },
+                 { f: 'jamie-fetch-shake.png',        d: 400  },
+                 { f: 'jamie-ball-hold.png',          d: 350  }],
+  premium:      [{ f: 'jamie-premium-ready.png',      d: 300  },
+                 { f: 'jamie-premium-catch.png',      d: 500  }],
+  premiumEnd:   [{ f: 'jamie-premium-celebrate.png',  d: 700  },
+                 { f: 'jamie-premium-celebrate-02.png', d: 500 },
+                 { f: 'jamie-premium-hold.png',       d: 700  }],
+  toy:          [{ f: 'jamie-toy-pounce.png',         d: 300  },
+                 { f: 'jamie-toy-paw.png',            d: 400  },
+                 { f: 'jamie-toy-surprised.png',      d: 400  }],
+  toyEnd:       [{ f: 'jamie-toy-shake.png',          d: 400  },
+                 { f: 'jamie-toy-happy.png',          d: 500  }],
+  duck:         [{ f: 'jamie-duck-head-tilt.png',     d: 400  },
+                 { f: 'jamie-duck-tilt-02.png',       d: 350  },
+                 { f: 'jamie-duck-paw.png',           d: 400  },
+                 { f: 'jamie-duck-boop.png',          d: 350  }],
+  duckEnd:      [{ f: 'jamie-duck-happy.png',         d: 500  }],
+  sock:         [{ f: 'jamie-sock-grab.png',          d: 400  },
+                 { f: 'jamie-sock-tug.png',           d: 450  },
+                 { f: 'jamie-sock-tug-02.png',        d: 450  }],
+  sockEnd:      [{ f: 'jamie-sock-shake.png',         d: 450  },
+                 { f: 'jamie-sock-victory.png',       d: 550  }],
+  bubble:       [{ f: 'jamie-bubble-watch.png',       d: 350  },
+                 { f: 'jamie-bubble-track.png',       d: 350  },
+                 { f: 'jamie-bubble-pop.png',         d: 350  }],
+  bubbleEnd:    [{ f: 'jamie-bubble-surprised.png',   d: 400  },
+                 { f: 'jamie-bubble-sneeze.png',      d: 450  }],
+  heartMe:      [{ f: 'jamie-heart-celebrate-01.png', d: 450  },
+                 { f: 'jamie-heart-celebrate-02.png', d: 450  },
+                 { f: 'jamie-heart-celebrate-03.png', d: 700  },
+                 { f: 'jamie-heart-spin.png',         d: 500  }],
+  heartMeEnd:   [{ f: 'jamie-heart-land.png',         d: 600  }],
+  miss:         [{ f: 'jamie-miss.png',               d: 700  }],
+  confused:     [{ f: 'jamie-confused.png',           d: 800  }],
+  look:         [{ f: 'jamie-comment-look.png',       d: 900  }],
+  sleep:        [{ f: 'jamie-sleep.png',              d: 3000 }],
+  wake:         [{ f: 'jamie-wake.png',               d: 400  }]
+};
+/* reaction -> payoff/celebrate sequence names; targetFrame = the frame whose
+   mouth/paw target the captured item flies to */
+const REACTION_SEQ = {
+  treat:   { payoff: 'treat',   celebrate: 'treatHappy',  captureMs: 300, targetFrame: 'jamie-treat-catch-02.png' },
+  fetch:   { payoff: 'fetch',   celebrate: 'fetchHold',   captureMs: 320, targetFrame: 'jamie-fetch-leap.png' },
+  premium: { payoff: 'premium', celebrate: 'premiumEnd',  captureMs: 320, targetFrame: 'jamie-premium-catch.png' },
+  toy:     { payoff: 'toy',     celebrate: 'toyEnd',      captureMs: 300, targetFrame: 'jamie-toy-paw.png' },
+  duck:    { payoff: 'duck',    celebrate: 'duckEnd',     captureMs: 320, targetFrame: 'jamie-duck-paw.png' },
+  sock:    { payoff: 'sock',    celebrate: 'sockEnd',     captureMs: 300, targetFrame: 'jamie-sock-grab.png' },
+  bubble:  { payoff: 'bubble',  celebrate: 'bubbleEnd',   captureMs: 260, targetFrame: 'jamie-bubble-pop.png' }
+};
+/* per-frame fallback: exact -> state fallback -> idle -> placeholder SVG */
+const FRAME_FALLBACK = {
+  'jamie-idle-02-blink.png':          'jamie-idle-01.png',
+  'jamie-idle-03-breathe.png':        'jamie-idle-01.png',
+  'jamie-idle-04-ear-twitch.png':     'jamie-idle-01.png',
+  'jamie-idle-05-tail-wag.png':       'jamie-idle-01.png',
+  'jamie-anticipation-04-wiggle-b.png': 'jamie-anticipation-02-wiggle.png',
+  'jamie-anticipation-05-stalk.png':  'jamie-anticipation-01.png',
+  'jamie-fetch-shake.png':            'jamie-ball-hold.png',
+  'jamie-premium-celebrate-02.png':   'jamie-premium-celebrate.png',
+  'jamie-premium-hold.png':           'jamie-premium-celebrate.png',
+  'jamie-toy-pounce.png':             'jamie-anticipation-01.png',
+  'jamie-toy-shake.png':              'jamie-toy-happy.png',
+  'jamie-duck-tilt-02.png':           'jamie-duck-head-tilt.png',
+  'jamie-duck-boop.png':              'jamie-duck-paw.png',
+  'jamie-duck-happy.png':             'jamie-treat-happy.png',
+  'jamie-sock-tug-02.png':            'jamie-sock-tug.png',
+  'jamie-sock-shake.png':             'jamie-sock-tug.png',
+  'jamie-sock-victory.png':           'jamie-treat-happy.png',
+  'jamie-bubble-track.png':           'jamie-bubble-watch.png',
+  'jamie-bubble-sneeze.png':          'jamie-bubble-surprised.png',
+  'jamie-heart-spin.png':             'jamie-heart-celebrate-02.png',
+  'jamie-confused.png':               'jamie-duck-head-tilt.png',
+  'jamie-track-left.png':             'jamie-idle-01.png',
+  'jamie-track-center.png':           'jamie-idle-01.png',
+  'jamie-track-right.png':            'jamie-idle-01.png',
+  'jamie-track-high.png':             'jamie-track-center.png',
+  'jamie-anticipation-02-wiggle.png': 'jamie-anticipation-01.png',
+  'jamie-anticipation-03-launch.png': 'jamie-anticipation-01.png',
+  'jamie-treat-catch-02.png':         'jamie-treat-catch-01.png',
+  'jamie-treat-chew-02.png':          'jamie-treat-chew-01.png',
+  'jamie-treat-chew-01.png':          'jamie-treat-catch-01.png',
+  'jamie-treat-happy.png':            'jamie-idle-01.png',
+  'jamie-treat-catch-01.png':         'jamie-anticipation-01.png',
+  'jamie-fetch-ready.png':            'jamie-anticipation-01.png',
+  'jamie-fetch-leap.png':             'jamie-fetch-ready.png',
+  'jamie-fetch-catch.png':            'jamie-treat-catch-01.png',
+  'jamie-ball-hold.png':              'jamie-treat-happy.png',
+  'jamie-premium-ready.png':          'jamie-fetch-ready.png',
+  'jamie-premium-catch.png':          'jamie-fetch-catch.png',
+  'jamie-premium-celebrate.png':      'jamie-heart-celebrate-01.png',
+  'jamie-toy-paw.png':                'jamie-anticipation-01.png',
+  'jamie-toy-surprised.png':          'jamie-toy-paw.png',
+  'jamie-toy-happy.png':              'jamie-treat-happy.png',
+  'jamie-duck-head-tilt.png':         'jamie-track-center.png',
+  'jamie-duck-paw.png':               'jamie-toy-paw.png',
+  'jamie-sock-grab.png':              'jamie-treat-catch-01.png',
+  'jamie-sock-tug.png':               'jamie-sock-grab.png',
+  'jamie-bubble-watch.png':           'jamie-track-high.png',
+  'jamie-bubble-pop.png':             'jamie-toy-paw.png',
+  'jamie-bubble-surprised.png':       'jamie-toy-surprised.png',
+  'jamie-heart-celebrate-01.png':     'jamie-treat-happy.png',
+  'jamie-heart-celebrate-02.png':     'jamie-heart-celebrate-01.png',
+  'jamie-heart-celebrate-03.png':     'jamie-heart-celebrate-01.png',
+  'jamie-heart-land.png':             'jamie-treat-happy.png',
+  'jamie-miss.png':                   'jamie-track-center.png',
+  'jamie-comment-look.png':           'jamie-idle-01.png',
+  'jamie-sleep.png':                  'jamie-idle-02-blink.png',
+  'jamie-wake.png':                   'jamie-idle-01.png'
+};
+
+/* ── 4. ASSET MANIFEST + AVAILABILITY ──────────────────────────── */
+/* Safe built-in default: normalized 1200x1400 art canvas. All Jamie
+   frames share the primary floor anchor + targets unless the loaded
+   manifest overrides them per frame. */
+const DEFAULT_FRAME_META = {
+  anchor:         { x: 588, y: 1172 },
+  mouthTarget:    { x: 560, y: 680 },
+  leftPawTarget:  { x: 435, y: 1130 },
+  rightPawTarget: { x: 726, y: 1130 },
+  facing: 'center'
+};
+let MANIFEST = { version: 2, canvas: { width: 1161, height: 1355, floorAnchor: { x: 588, y: 1172 } }, states: {}, items: {}, effects: {}, audio: {} };
+const assetAvailable = {};   /* filename -> true/false (probed) */
+const assetWarnings  = [];
+let assetOverrides   = {};   /* filename -> dataURL (from control panel uploads) */
+try { assetOverrides = JSON.parse(localStorage.getItem(FJ_LS_ASSETS) || '{}'); } catch (e) {}
+
+function fjAssetUrl(file) {
+  if (assetOverrides[file]) return assetOverrides[file];
+  return CFG.assets.basePath + file;
+}
+function fjProbe(file) {
+  return new Promise(resolve => {
+    if (assetOverrides[file]) { assetAvailable[file] = true; return resolve(true); }
+    const img = new Image();
+    img.onload  = () => { assetAvailable[file] = true;  resolve(true);  };
+    img.onerror = () => { assetAvailable[file] = false; resolve(false); };
+    img.src = CFG.assets.basePath + file;
+  });
+}
+function fjFrameMeta(file) {
+  for (const st of Object.values(MANIFEST.states || {})) {
+    for (const fr of (st.frames || [])) {
+      if (fr.file === file) return fjDeepMerge(fjClone(DEFAULT_FRAME_META), fr);
+    }
+  }
+  return fjClone(DEFAULT_FRAME_META);
+}
+/* resolve a Jamie frame file through the fallback chain; null = use placeholder SVG */
+function fjResolveFrame(file) {
+  let f = file, hops = 0;
+  while (f && hops < 6) {
+    if (assetAvailable[f]) return f;
+    f = FRAME_FALLBACK[f] || (f === 'jamie-idle-01.png' ? null : 'jamie-idle-01.png');
+    hops++;
+  }
+  return null;
+}
+async function fjLoadAssets() {
+  try {
+    const res = await fetch(CFG.assets.basePath + CFG.assets.manifestFile, { cache: 'no-cache' });
+    if (res.ok) {
+      const m = await res.json();
+      if (m && m.states) MANIFEST = m;
+    }
+  } catch (e) { assetWarnings.push('manifest missing — using built-in defaults'); }
+  const files = new Set();
+  Object.values(SEQ).forEach(seq => seq.forEach(fr => files.add(fr.f)));
+  Object.values(ITEM_DEFS).forEach(d => files.add(d.file));
+  await Promise.all([...files].map(fjProbe));
+  for (const f of files) if (!assetAvailable[f]) assetWarnings.push('missing: ' + f);
+  jamieRender(true);
+  publishStatus();
+}
+
+/* ── 5. PLACEHOLDER ART (inline SVG, style-matched) ────────────── */
+/* Chibi charcoal-gray dog: big triangular ears, glossy black eyes,
+   blush, white sticker border, cobalt edge highlights. Used whenever
+   a real sprite PNG is missing. */
+function jamiePlaceholderSVG() {
+  return `
+<svg viewBox="0 0 1200 1400" xmlns="http://www.w3.org/2000/svg">
+  <g stroke-linejoin="round" stroke-linecap="round">
+    <!-- white sticker border via fat stroke behind everything -->
+    <g stroke="#FFFFFF" stroke-width="70" fill="#FFFFFF">
+      <path d="M330 470 L240 170 L470 320 Z"/><path d="M870 470 L960 170 L730 320 Z"/>
+      <ellipse cx="600" cy="560" rx="300" ry="260"/>
+      <ellipse cx="600" cy="1050" rx="260" ry="280"/>
+      <ellipse cx="450" cy="1280" rx="95" ry="55"/><ellipse cx="750" cy="1280" rx="95" ry="55"/>
+      <path d="M860 1150 Q1010 1090 970 950 Q1030 1120 880 1210 Z"/>
+    </g>
+    <!-- body -->
+    <g stroke="#1A1A1E" stroke-width="16">
+      <path d="M860 1150 Q1010 1090 970 950 Q1030 1120 880 1210 Z" fill="#4A4A52"/>
+      <ellipse cx="600" cy="1050" rx="260" ry="280" fill="#3A3A40"/>
+      <ellipse cx="600" cy="1140" rx="150" ry="160" fill="#4E4E56"/>
+      <path d="M330 470 L240 170 L470 320 Z" fill="#3A3A40"/>
+      <path d="M870 470 L960 170 L730 320 Z" fill="#3A3A40"/>
+      <path d="M320 420 L280 230 L430 330 Z" fill="#6B7280" stroke="none"/>
+      <path d="M880 420 L920 230 L770 330 Z" fill="#6B7280" stroke="none"/>
+      <ellipse cx="600" cy="560" rx="300" ry="260" fill="#3A3A40"/>
+      <ellipse cx="450" cy="1280" rx="95" ry="55" fill="#4A4A52"/>
+      <ellipse cx="750" cy="1280" rx="95" ry="55" fill="#4A4A52"/>
+    </g>
+    <!-- cobalt edge highlight -->
+    <path d="M340 430 Q300 540 330 650" stroke="#3B82F6" stroke-width="14" fill="none" opacity=".7"/>
+    <path d="M370 950 Q330 1060 370 1180" stroke="#3B82F6" stroke-width="12" fill="none" opacity=".55"/>
+    <!-- muzzle -->
+    <ellipse cx="600" cy="660" rx="130" ry="95" fill="#55555E" stroke="#1A1A1E" stroke-width="14"/>
+    <!-- eyes -->
+    <g class="fj-eyes-open">
+      <circle cx="480" cy="540" r="58" fill="#0B0B0D"/><circle cx="720" cy="540" r="58" fill="#0B0B0D"/>
+      <circle cx="498" cy="518" r="20" fill="#FFFFFF"/><circle cx="738" cy="518" r="20" fill="#FFFFFF"/>
+      <circle cx="466" cy="558" r="9" fill="#FFFFFF" opacity=".7"/><circle cx="706" cy="558" r="9" fill="#FFFFFF" opacity=".7"/>
+    </g>
+    <g class="fj-eyes-closed" stroke="#0B0B0D" stroke-width="16" fill="none">
+      <path d="M430 545 Q480 585 530 545"/><path d="M670 545 Q720 585 770 545"/>
+    </g>
+    <!-- eyebrows -->
+    <path d="M430 448 Q480 428 528 446" stroke="#1A1A1E" stroke-width="13" fill="none"/>
+    <path d="M672 446 Q720 428 770 448" stroke="#1A1A1E" stroke-width="13" fill="none"/>
+    <!-- blush -->
+    <ellipse cx="392" cy="628" rx="46" ry="30" fill="#F5A26B" opacity=".85"/>
+    <ellipse cx="808" cy="628" rx="46" ry="30" fill="#F5A26B" opacity=".85"/>
+    <!-- nose + mouth -->
+    <ellipse cx="600" cy="628" rx="40" ry="30" fill="#0B0B0D"/>
+    <circle cx="588" cy="618" r="10" fill="#FFFFFF" opacity=".8"/>
+    <path class="fj-mouth-line" d="M600 660 Q600 700 560 706 M600 660 Q600 700 640 706" stroke="#1A1A1E" stroke-width="12" fill="none"/>
+    <g class="fj-tongue">
+      <path d="M560 690 Q600 780 640 690 Q640 660 600 662 Q560 660 560 690" fill="#F472B6" stroke="#1A1A1E" stroke-width="10"/>
+    </g>
+    <!-- chest fluff -->
+    <path d="M520 840 Q600 900 680 840 Q660 930 600 940 Q540 930 520 840" fill="#55555E" stroke="#1A1A1E" stroke-width="10"/>
+  </g>
+</svg>`;
+}
+const ITEM_SVGS = {
+  'treat-biscuit': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="34" width="80" height="52" rx="18" fill="#FFF" stroke="#FFF" stroke-width="18"/><rect x="20" y="34" width="80" height="52" rx="18" fill="#D9A05B" stroke="#1A1A1E" stroke-width="7"/><circle cx="45" cy="54" r="5" fill="#8A5A28"/><circle cx="66" cy="66" r="5" fill="#8A5A28"/><circle cx="82" cy="50" r="5" fill="#8A5A28"/></svg>`,
+  'treat-bone': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><g stroke="#FFF" stroke-width="16" fill="#FFF"><path d="M34 50 h52 v20 h-52 z"/><circle cx="32" cy="48" r="14"/><circle cx="32" cy="72" r="14"/><circle cx="88" cy="48" r="14"/><circle cx="88" cy="72" r="14"/></g><g stroke="#1A1A1E" stroke-width="6" fill="#E8C88F"><path d="M34 50 h52 v20 h-52 z" stroke="none"/><circle cx="32" cy="48" r="14"/><circle cx="32" cy="72" r="14"/><circle cx="88" cy="48" r="14"/><circle cx="88" cy="72" r="14"/><path d="M34 50 h52 M34 70 h52" fill="none"/></g></svg>`,
+  'treat-purple-splat': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M60 18 Q78 30 92 26 Q96 48 108 58 Q92 70 94 88 Q74 86 60 100 Q48 84 28 88 Q30 68 14 56 Q30 46 28 26 Q46 32 60 18" fill="#FFF" stroke="#FFF" stroke-width="14"/><path d="M60 18 Q78 30 92 26 Q96 48 108 58 Q92 70 94 88 Q74 86 60 100 Q48 84 28 88 Q30 68 14 56 Q30 46 28 26 Q46 32 60 18" fill="#A855F7" stroke="#1A1A1E" stroke-width="6"/><circle cx="52" cy="52" r="8" fill="#C084FC"/><circle cx="74" cy="66" r="6" fill="#C084FC"/></svg>`,
+  'treat-heart': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M60 100 Q18 70 18 44 Q18 22 40 22 Q54 22 60 38 Q66 22 80 22 Q102 22 102 44 Q102 70 60 100" fill="#FFF" stroke="#FFF" stroke-width="14"/><path d="M60 100 Q18 70 18 44 Q18 22 40 22 Q54 22 60 38 Q66 22 80 22 Q102 22 102 44 Q102 70 60 100" fill="#E8C88F" stroke="#1A1A1E" stroke-width="6"/><path d="M38 40 Q46 32 54 38" stroke="#8A5A28" stroke-width="5" fill="none"/><circle cx="70" cy="56" r="5" fill="#8A5A28"/></svg>`,
+  'tennis-ball': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="42" fill="#FFF" stroke="#FFF" stroke-width="14"/><circle cx="60" cy="60" r="42" fill="#E8E337" stroke="#1A1A1E" stroke-width="6"/><path d="M28 34 Q60 60 28 88 M92 34 Q60 60 92 88" stroke="#FFF" stroke-width="7" fill="none"/><circle cx="46" cy="44" r="8" fill="#FFFFFF" opacity=".55"/></svg>`,
+  'golden-tennis-ball': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="42" fill="#FFF" stroke="#FFF" stroke-width="14"/><circle cx="60" cy="60" r="42" fill="#F5C518" stroke="#1A1A1E" stroke-width="6"/><path d="M28 34 Q60 60 28 88 M92 34 Q60 60 92 88" stroke="#FFF" stroke-width="7" fill="none"/><path d="M60 12 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 z" fill="#FFF7CC" stroke="#1A1A1E" stroke-width="3"/><circle cx="46" cy="44" r="8" fill="#FFFFFF" opacity=".6"/></svg>`,
+  'squeaky-toy': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="64" r="38" fill="#FFF" stroke="#FFF" stroke-width="14"/><circle cx="60" cy="64" r="38" fill="#3B82F6" stroke="#1A1A1E" stroke-width="6"/><circle cx="60" cy="30" r="12" fill="#93C5FD" stroke="#1A1A1E" stroke-width="5"/><path d="M42 58 l10 8 -10 8 M78 58 l-10 8 10 8" stroke="#FFF" stroke-width="6" fill="none"/><circle cx="48" cy="50" r="7" fill="#FFF" opacity=".5"/></svg>`,
+  'duck': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><g stroke="#FFF" stroke-width="14" fill="#FFF"><ellipse cx="58" cy="76" rx="40" ry="28"/><circle cx="44" cy="42" r="22"/></g><ellipse cx="58" cy="76" rx="40" ry="28" fill="#F2D043" stroke="#1A1A1E" stroke-width="6"/><circle cx="44" cy="42" r="22" fill="#F2D043" stroke="#1A1A1E" stroke-width="6"/><path d="M24 44 Q8 48 22 54 Q30 52 28 46 Z" fill="#F59E0B" stroke="#1A1A1E" stroke-width="4"/><circle cx="40" cy="38" r="5" fill="#0B0B0D"/><path d="M70 62 Q88 56 92 70" stroke="#1A1A1E" stroke-width="5" fill="none"/></svg>`,
+  'sock': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M44 16 h32 v46 q0 8 8 14 l10 8 q12 10 2 22 q-10 12 -24 2 l-22 -16 q-6 -5 -6 -14 z" fill="#FFF" stroke="#FFF" stroke-width="14"/><path d="M44 16 h32 v46 q0 8 8 14 l10 8 q12 10 2 22 q-10 12 -24 2 l-22 -16 q-6 -5 -6 -14 z" fill="#EDEDF2" stroke="#1A1A1E" stroke-width="6"/><rect x="44" y="16" width="32" height="14" fill="#3B82F6" stroke="#1A1A1E" stroke-width="5"/><path d="M48 52 h24 M48 42 h24" stroke="#3B82F6" stroke-width="5"/></svg>`,
+  'bubble': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="44" fill="#BFDBFE" opacity=".35" stroke="#FFF" stroke-width="6"/><circle cx="60" cy="60" r="44" fill="none" stroke="#93C5FD" stroke-width="4"/><path d="M34 44 Q42 30 58 26" stroke="#FFF" stroke-width="8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="78" cy="76" r="6" fill="#FFF" opacity=".7"/></svg>`,
+  'heart-large': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M60 104 Q12 70 12 42 Q12 18 38 18 Q54 18 60 36 Q66 18 82 18 Q108 18 108 42 Q108 70 60 104" fill="#FFF" stroke="#FFF" stroke-width="12"/><path d="M60 104 Q12 70 12 42 Q12 18 38 18 Q54 18 60 36 Q66 18 82 18 Q108 18 108 42 Q108 70 60 104" fill="#A855F7" stroke="#1A1A1E" stroke-width="6"/><path d="M32 38 Q38 26 52 26" stroke="#E9D5FF" stroke-width="8" fill="none" stroke-linecap="round"/></svg>`
+};
+
+/* ── 6. AUDIO (Web Audio placeholder synth + optional file URLs) ── */
+let audioCtx = null;
+const soundLastPlayed = {};
+const audioFileCache = {};
+function fjAudio() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+function playSound(name) {
+  if (CFG.audio.muted) return;
+  const now = performance.now();
+  if (soundLastPlayed[name] && now - soundLastPlayed[name] < CFG.audio.cooldownMs) return;
+  soundLastPlayed[name] = now;
+  const vol = (CFG.audio.volumes[name] ?? 0.6) * CFG.audio.master;
+  if (vol <= 0) return;
+  const url = CFG.audio.urls[name];
+  if (url) {
+    try {
+      let a = audioFileCache[name];
+      if (!a || a.src !== url) { a = new Audio(url); audioFileCache[name] = a; }
+      const inst = a.cloneNode();
+      inst.volume = Math.min(vol, 1);
+      inst.play().catch(() => {});
+      return;
+    } catch (e) { /* fall through to synth */ }
+  }
+  fjSynth(name, vol);
+}
+function fjSynth(name, vol) {
+  const ctx = fjAudio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = vol * 0.5;
+  master.connect(ctx.destination);
+  const tone = (freq, start, dur, type, peak) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t + start);
+    g.gain.setValueAtTime(0.0001, t + start);
+    g.gain.exponentialRampToValueAtTime(peak || 1, t + start + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + start + dur);
+    o.connect(g); g.connect(master);
+    o.start(t + start); o.stop(t + start + dur + 0.05);
+    return o;
+  };
+  switch (name) {
+    case 'bounce':     tone(320, 0, 0.08, 'sine'); break;
+    case 'ballBounce': tone(180, 0, 0.12, 'triangle'); break;
+    case 'catch':      tone(520, 0, 0.1, 'triangle'); tone(780, 0.07, 0.12, 'triangle'); break;
+    case 'crunch':     tone(150, 0, 0.06, 'square', 0.5); tone(120, 0.07, 0.06, 'square', 0.4); tone(100, 0.14, 0.08, 'square', 0.3); break;
+    case 'squeak':   { const o = tone(900, 0, 0.22, 'sawtooth', 0.5); o.frequency.exponentialRampToValueAtTime(1400, t + 0.1); o.frequency.exponentialRampToValueAtTime(700, t + 0.22); break; }
+    case 'quack':    { const o = tone(260, 0, 0.16, 'sawtooth', 0.6); o.frequency.exponentialRampToValueAtTime(180, t + 0.16); tone(240, 0.2, 0.14, 'sawtooth', 0.4); break; }
+    case 'pop':      { const o = tone(600, 0, 0.07, 'sine'); o.frequency.exponentialRampToValueAtTime(1200, t + 0.06); break; }
+    case 'jackpot':    tone(660, 0, 0.12, 'triangle'); tone(880, 0.1, 0.12, 'triangle'); tone(1320, 0.2, 0.2, 'triangle'); break;
+    case 'heartMe':    tone(523, 0, 0.18, 'triangle'); tone(659, 0.12, 0.18, 'triangle'); tone(784, 0.24, 0.22, 'triangle'); tone(1047, 0.36, 0.3, 'triangle'); break;
+    case 'subscribe':  tone(784, 0, 0.14, 'triangle'); tone(988, 0.1, 0.14, 'triangle'); tone(1175, 0.2, 0.28, 'triangle'); break;
+    case 'gift':       tone(587, 0, 0.14, 'triangle'); tone(880, 0.11, 0.2, 'triangle'); break;
+    default:           tone(440, 0, 0.1, 'sine');
+  }
+}
+
+/* ── 7. LAYOUT (Jamie + reach zone geometry) ───────────────────── */
+const $ = id => document.getElementById(id);
+const jamieEl = $('jamie'), jamieInner = $('jamie-inner');
+let jamieRect = { x: 0, y: 0, w: 260, h: 303 };  /* on-screen box */
+
+function jamieHeightFor(width) {
+  const mc = MANIFEST.canvas || { width: 1200, height: 1400 };
+  return width * (mc.height / mc.width);
+}
+function applyLayout() {
+  const j = CFG.jamie;
+  const w = j.width * j.scale;
+  const h = jamieHeightFor(j.width) * j.scale;
+  const x = j.side === 'right' ? (1080 - j.x - w) : j.x;
+  /* anchor: bottom of sprite sits at floorY + yOffset (top-positioned; never CSS bottom) */
+  const mc = MANIFEST.canvas || { width: 1200, height: 1400, floorAnchor: { y: 1320 } };
+  const anchorFrac = (mc.floorAnchor?.y ?? 1320) / mc.height;
+  const y = CFG.floor.y + j.yOffset - h * anchorFrac;
+  jamieRect = { x, y, w, h };
+  jamieEl.style.width  = w + 'px';
+  jamieEl.style.height = h + 'px';
+  jamieEl.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${j.rotation || 0}deg)` + (isFlipped() ? ' scaleX(-1)' : '');
+
+  /* floor line */
+  const fl = $('floor-line');
+  fl.style.top = CFG.floor.y + 'px';
+  fl.style.height = CFG.floor.thickness + 'px';
+  fl.style.background = CFG.floor.color;
+  const showFloor = CFG.debug.setupGuides || CFG.floor.liveVisible;
+  fl.style.opacity = showFloor ? CFG.floor.opacity : 0;
+
+  /* guides */
+  $('guide-canvas').style.display = CFG.debug.setupGuides ? 'block' : 'none';
+  $('safe-area').style.display = (CFG.debug.setupGuides && CFG.debug.showSafeArea) ? 'block' : 'none';
+  const gfl = $('guide-floor-label');
+  gfl.style.display = CFG.debug.setupGuides ? 'block' : 'none';
+  gfl.style.top = (CFG.floor.y - 34) + 'px';
+  gfl.textContent = 'floor Y = ' + CFG.floor.y;
+  const jb = $('jamie-box');
+  jb.style.display = (CFG.debug.setupGuides && CFG.debug.showJamieBox) ? 'block' : 'none';
+  jb.style.left = x + 'px'; jb.style.top = y + 'px';
+  jb.style.width = w + 'px'; jb.style.height = h + 'px';
+
+  const rz = reachZoneRect();
+  const rzv = $('reach-zone-vis');
+  rzv.style.display = (CFG.debug.setupGuides && CFG.debug.showReachZone) ? 'block' : 'none';
+  rzv.style.left = (rz.cx - rz.rx) + 'px'; rzv.style.top = (rz.cy - rz.ry) + 'px';
+  rzv.style.width = rz.rx * 2 + 'px'; rzv.style.height = rz.ry * 2 + 'px';
+  rzv.style.borderRadius = CFG.reachZone.shape === 'ellipse' ? '50%' : '18px';
+
+  /* prompt + meter positions */
+  const pp = $('prompt-pill');
+  pp.style.left = CFG.prompts.x + 'px';
+  pp.style.top = CFG.prompts.y + 'px';
+  pp.style.transform = `translateX(-50%) scale(${CFG.prompts.scale})`;
+  pp.style.background = `rgba(30, 8, 56, ${CFG.prompts.bgOpacity})`;
+  const lm = $('like-meter');
+  const meterX = j.side === 'right' ? x - 30 : x + w + 14;
+  lm.style.left = Math.min(Math.max(meterX, 10), 880) + 'px';
+  lm.style.top = (CFG.floor.y - 60) + 'px';
+  $('event-label').style.top = Math.max(CFG.floor.y - jamieRect.h - 90, 40) + 'px';
+}
+function isFlipped() {
+  /* default art faces right when Jamie sits on the left */
+  const base = CFG.jamie.side === 'right';
+  return CFG.jamie.flip ? !base : base ? true : false;
+}
+/* map normalized manifest coords (art canvas) to overlay px */
+function mapArtPoint(pt) {
+  const mc = MANIFEST.canvas || { width: 1200, height: 1400 };
+  let nx = pt.x / mc.width;
+  if (isFlipped()) nx = 1 - nx;
+  return {
+    x: jamieRect.x + nx * jamieRect.w,
+    y: jamieRect.y + (pt.y / mc.height) * jamieRect.h
+  };
+}
+function reachZoneRect() {
+  const mouth = targetPoint('mouth', 'jamie-idle-01.png'); /* anchor-aware */
+  return {
+    cx: mouth.x + (isFlipped() ? -CFG.reachZone.xOffset : CFG.reachZone.xOffset),
+    cy: mouth.y + CFG.reachZone.yOffset,
+    rx: CFG.reachZone.width / 2,
+    ry: CFG.reachZone.height / 2
+  };
+}
+function targetPoint(kind, frameFile) {
+  const meta = fjFrameMeta(frameFile || currentFrameFile || 'jamie-idle-01.png');
+  const p = kind === 'paw'
+    ? (meta.rightPawTarget || meta.leftPawTarget || meta.mouthTarget)
+    : meta.mouthTarget;
+  const pt = mapArtPoint(p);
+  /* apply the same per-frame floor-alignment shift used by showFrame */
+  const mc = MANIFEST.canvas || { height: 1355, floorAnchor: { y: 1172 } };
+  const aY = (meta.anchor && meta.anchor.y) || (mc.floorAnchor && mc.floorAnchor.y);
+  if (aY && mc.floorAnchor) pt.y += ((mc.floorAnchor.y - aY) / mc.height) * jamieRect.h;
+  return pt;
+}
+
+/* ── 8. JAMIE STATE MACHINE ────────────────────────────────────── */
+const J = {
+  state: 'IDLE',
+  stateSince: 0,
+  watchdog: null,
+  animTimer: null,
+  blinkTimer: null,
+  twitchTimer: null,
+  currentSeq: null,
+  seqIndex: 0,
+  anticipating: false,
+  paused: false,
+  hidden: false
+};
+let currentFrameFile = 'jamie-idle-01.png';
+/* timeout protection: no state may outlive its budget */
+const STATE_MAX_MS = { IDLE: 0, TRACKING: 0, ANTICIPATION: 12000, PAYOFF: 4000, CELEBRATE: 4000, RESET: 1500, SLEEPING: 0, PAUSED: 0, HIDDEN: 0 };
+
+function setJamieState(next, opts = {}) {
+  clearTimeout(J.watchdog);
+  clearTimeout(J.animTimer);
+  J.state = next;
+  J.stateSince = performance.now();
+  jamieEl.className = jamieEl.className.replace(/\bpose-\S+/g, '').trim();
+  const budget = STATE_MAX_MS[next];
+  if (budget) J.watchdog = setTimeout(() => { forceReset('watchdog:' + next); }, budget);
+
+  switch (next) {
+    case 'IDLE':
+      jamieEl.classList.add('breathe');
+      playSeq('idle', { loop: true });
+      scheduleBlink(); scheduleTwitch();
+      break;
+    case 'TRACKING':
+      jamieEl.classList.add('breathe');
+      scheduleBlink();
+      break;
+    case 'ANTICIPATION':
+      jamieEl.classList.remove('breathe');
+      jamieEl.classList.add('pose-anticipation');
+      playSeq('anticipation', { loop: true });
+      break;
+    case 'PAYOFF': {
+      jamieEl.classList.remove('breathe');
+      jamieEl.classList.add('pose-payoff');
+      const seqName = opts.seq || 'treat';
+      playSeq(seqName, {
+        loop: false,
+        onDone: () => setJamieState('CELEBRATE', { seq: opts.celebrateSeq, happy: true })
+      });
+      break;
+    }
+    case 'CELEBRATE': {
+      jamieEl.classList.add('pose-celebrate');
+      if (opts.happy) jamieEl.classList.add('ph-happy');
+      playSeq(opts.seq || 'treatHappy', { loop: false, onDone: () => setJamieState('RESET') });
+      break;
+    }
+    case 'RESET':
+      jamieEl.classList.remove('ph-happy');
+      setTimeout(() => {
+        if (J.state === 'RESET') setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+      }, 250);
+      break;
+    case 'SLEEPING':
+      jamieEl.classList.add('pose-sleep');
+      playSeq('sleep', { loop: true });
+      break;
+    case 'PAUSED':
+    case 'HIDDEN':
+      break;
+  }
+  publishStatus();
+}
+function forceReset(why) {
+  if (CFG.debug.showWarnings) console.warn('[feed-jamie] force reset:', why);
+  jamieEl.classList.remove('ph-happy', 'ph-blink');
+  setJamieState('RESET');
+}
+/* frame sequence player with fallback chain. Frame hold times scale with
+   visuals.frameDurationScale (>1 = slower/calmer, <1 = snappier). */
+function playSeq(name, opts = {}) {
+  const seq = SEQ[name];
+  if (!seq || !seq.length) { if (opts.onDone) opts.onDone(); return; }
+  J.currentSeq = name; J.seqIndex = 0;
+  const step = () => {
+    if (J.currentSeq !== name) return;
+    const fr = seq[J.seqIndex];
+    showFrame(fr.f);
+    if (fr.d === 0) return; /* static frame (tracking) */
+    const dur = Math.max(50, Math.round((fr.d || 400) * (CFG.visuals.frameDurationScale || 1)));
+    J.animTimer = setTimeout(() => {
+      if (J.currentSeq !== name) return;
+      J.seqIndex++;
+      if (J.seqIndex >= seq.length) {
+        if (opts.loop) { J.seqIndex = 0; step(); }
+        else if (opts.onDone) opts.onDone();
+      } else step();
+    }, dur);
+  };
+  step();
+}
+/* crossfade-capable layer swap: fades the new frame in over the old one instead
+   of popping, and eases the per-frame floor-anchor offset instead of snapping.
+   opts.instant bypasses the fade for quick reflexive motions (blink/ear-twitch). */
+let jamieImgLayers = [];
+let lastShownUrl = null;
+function setJamieImage(url, dyPct, instant) {
+  const fadeMs = instant ? 0 : Math.max(0, Math.round(CFG.visuals.frameCrossfadeMs ?? 0));
+  if (url === lastShownUrl && jamieImgLayers.length) {
+    const top = jamieImgLayers[jamieImgLayers.length - 1];
+    top.style.transition = fadeMs > 0 ? `transform ${fadeMs}ms ease-out` : 'none';
+    top.style.transform = dyPct ? `translateY(${dyPct}%)` : '';
+    return;
+  }
+  lastShownUrl = url;
+  const img = document.createElement('img');
+  img.className = 'fj-jamie-layer';
+  img.style.opacity = fadeMs > 0 ? '0' : '1';
+  img.style.transform = dyPct ? `translateY(${dyPct}%)` : '';
+  img.style.transition = fadeMs > 0
+    ? `opacity ${fadeMs}ms ease-in-out, transform ${fadeMs}ms ease-out`
+    : 'none';
+  img.src = url;
+  jamieInner.appendChild(img);
+  const prevLayers = jamieImgLayers;
+  jamieImgLayers = [img];
+  if (fadeMs > 0) {
+    requestAnimationFrame(() => requestAnimationFrame(() => { img.style.opacity = '1'; }));
+    setTimeout(() => prevLayers.forEach(el => el.remove()), fadeMs + 60);
+  } else {
+    prevLayers.forEach(el => el.remove());
+  }
+  /* safety cap: never let stray layers accumulate under rapid frame changes */
+  const layers = jamieInner.querySelectorAll('.fj-jamie-layer');
+  if (layers.length > 4) for (let i = 0; i < layers.length - 2; i++) layers[i].remove();
+}
+function showFrame(file, opts = {}) {
+  currentFrameFile = file;
+  const resolved = fjResolveFrame(file);
+  if (resolved) {
+    jamieEl.classList.remove('no-real-art');
+    if (jamieInner.querySelector('svg')) { jamieInner.innerHTML = ''; jamieImgLayers = []; lastShownUrl = null; }
+    /* per-frame floor alignment: shift the frame so its own feet anchor
+       lands on the global floor anchor (frames are drawn at varying heights) */
+    const mc = MANIFEST.canvas || { height: 1355, floorAnchor: { y: 1172 } };
+    const meta = fjFrameMeta(resolved);
+    const aY = (meta.anchor && meta.anchor.y) || (mc.floorAnchor && mc.floorAnchor.y) || mc.height;
+    const dy = (((mc.floorAnchor?.y ?? aY) - aY) / mc.height) * 100;
+    setJamieImage(fjAssetUrl(resolved), Math.abs(dy) > 0.05 ? dy : 0, opts.instant);
+  } else {
+    /* placeholder SVG — pose conveyed via container classes */
+    jamieEl.classList.add('no-real-art');
+    if (!jamieInner.querySelector('svg')) { jamieInner.innerHTML = jamiePlaceholderSVG(); jamieImgLayers = []; lastShownUrl = null; }
+  }
+}
+function jamieRender(force) {
+  if (force) { jamieInner.innerHTML = ''; jamieImgLayers = []; lastShownUrl = null; showFrame(currentFrameFile, { instant: true }); }
+  applyLayout();
+}
+/* blink: real sprite swap when blink frame exists, CSS class for placeholder.
+   Always instant — a blink is a quick reflex, not a smoothed transition. */
+function scheduleBlink() {
+  clearTimeout(J.blinkTimer);
+  J.blinkTimer = setTimeout(() => {
+    if (J.state === 'IDLE' || J.state === 'TRACKING') {
+      const before = currentFrameFile;
+      if (assetAvailable['jamie-idle-02-blink.png'] && J.state === 'IDLE') {
+        showFrame('jamie-idle-02-blink.png', { instant: true });
+        setTimeout(() => { if (J.state === 'IDLE') showFrame(before, { instant: true }); }, 160);
+      } else {
+        jamieEl.classList.add('ph-blink');
+        setTimeout(() => jamieEl.classList.remove('ph-blink'), 160);
+      }
+    }
+    scheduleBlink();
+  }, 4000 + Math.random() * 5000);
+}
+function scheduleTwitch() {
+  clearTimeout(J.twitchTimer);
+  J.twitchTimer = setTimeout(() => {
+    if (J.state === 'IDLE') {
+      const micro = ['jamie-idle-04-ear-twitch.png', 'jamie-idle-05-tail-wag.png'].filter(f => assetAvailable[f]);
+      if (micro.length) {
+        const pick = micro[Math.floor(Math.random() * micro.length)];
+        const before = currentFrameFile;
+        showFrame(pick);
+        setTimeout(() => { if (J.state === 'IDLE') showFrame(before); }, 300);
+      }
+    }
+    scheduleTwitch();
+  }, 10000 + Math.random() * 15000);
+}
+/* directional tracking */
+function updateTracking(obj) {
+  if (J.state !== 'TRACKING') return;
+  const rz = reachZoneRect();
+  const dx = (obj.x + obj.w / 2) - rz.cx;
+  const dy = (obj.y + obj.h / 2) - rz.cy;
+  let dir = 'trackCenter', pose = '';
+  if (dy < -260 && assetAvailable['jamie-track-high.png']) dir = 'trackHigh';
+  else if (dx < -90) { dir = 'trackLeft'; pose = 'pose-track-left'; }
+  else if (dx > 90)  { dir = 'trackRight'; pose = 'pose-track-right'; }
+  if (isFlipped()) {
+    if (dir === 'trackLeft')  { dir = 'trackRight'; }
+    else if (dir === 'trackRight') { dir = 'trackLeft'; }
+  }
+  const frame = SEQ[dir][0].f;
+  if (currentFrameFile !== frame) showFrame(frame);
+  /* placeholder fallback: subtle rotation only */
+  jamieEl.classList.remove('pose-track-left', 'pose-track-right');
+  if (!fjResolveFrame(frame) && pose) jamieEl.classList.add(pose);
+}
+
+/* one-shot look/miss interrupts (only from calm states) */
+function jamieOneShot(seqName, ms) {
+  if (!['IDLE', 'TRACKING'].includes(J.state)) return;
+  const back = J.state;
+  J.currentSeq = null;
+  clearTimeout(J.animTimer);
+  playSeq(seqName, { loop: false, onDone: () => { if (!['PAYOFF', 'CELEBRATE'].includes(J.state)) setJamieState(objects.length ? 'TRACKING' : 'IDLE'); } });
+  setTimeout(() => { if (J.currentSeq === seqName) setJamieState(objects.length ? 'TRACKING' : 'IDLE'); }, ms || 1000);
+}
+
+/* ── 9. OBJECT SYSTEM (DVD bounce physics) ─────────────────────── */
+const objectsLayer = $('stage');
+let objects = [];
+let objectSeq = 0;
+let lastMissAt = 0;
+
+function rand(min, max) { return min + Math.random() * (max - min); }
+
+function spawnObject(itemType, opts = {}) {
+  const def = ITEM_DEFS[itemType];
+  if (!def) return null;
+  const premium = opts.premium ?? def.premium;
+  const speedMin = premium ? CFG.movement.premiumSpeedMin : CFG.movement.normalSpeedMin;
+  const speedMax = premium ? CFG.movement.premiumSpeedMax : CFG.movement.normalSpeedMax;
+  const speed = rand(speedMin, speedMax) * (def.speedFactor || 1);
+  const w = def.width * CFG.movement.objectScale;
+  const h = w;
+  /* direction: enforce min normalized components (never near-flat) */
+  let nx = rand(0.35, 0.85) * (Math.random() < 0.5 ? -1 : 1);
+  let ny = Math.sqrt(1 - nx * nx) * (Math.random() < 0.6 ? 1 : -1);
+  let x, y;
+  if (opts.entry === 'throw') {
+    const fromLeft = CFG.jamie.side === 'right';
+    x = fromLeft ? -w * 0.5 : 1080 - w * 0.5;
+    y = rand(40, Math.max(80, CFG.floor.y * 0.35));
+    nx = Math.abs(nx) * (fromLeft ? 1 : -1);
+    ny = Math.abs(ny);
+  } else {
+    x = rand(40, 1080 - w - 40);
+    y = rand(30, Math.max(60, CFG.floor.y - h - 60));
+  }
+  const el = document.createElement('div');
+  el.className = 'fj-object';
+  el.style.width = w + 'px'; el.style.height = h + 'px';
+  const url = assetOverrides[def.file] ? assetOverrides[def.file] : CFG.assets.basePath + def.file;
+  if (assetAvailable[def.file]) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.onerror = () => { el.innerHTML = ITEM_SVGS[itemType] || ITEM_SVGS['treat-biscuit']; };
+    el.appendChild(img);
+  } else {
+    el.innerHTML = ITEM_SVGS[itemType] || ITEM_SVGS['treat-biscuit'];
+  }
+  if (def.glow === 'gold') el.classList.add('premium-glow');
+  if (def.glow === 'purple') el.classList.add('splat-glow');
+  if (opts.username && CFG.visuals.usernameLabels && opts.showName) {
+    const tag = document.createElement('div');
+    tag.className = 'fj-obj-tag';
+    tag.textContent = '@' + sanitizeName(opts.username);
+    el.appendChild(tag);
+    setTimeout(() => tag.remove(), (opts.nameSeconds || 1.5) * 1000);
+  }
+  objectsLayer.appendChild(el);
+  const obj = {
+    id: 'obj' + (++objectSeq), itemType, def,
+    sourceEvent: opts.sourceEvent || 'manual',
+    username: opts.username || null, message: opts.message || '',
+    value: opts.value || 0,
+    x, y, vx: nx * speed, vy: ny * speed, speed,
+    w, h, radius: w * 0.42,
+    rotation: rand(0, 360), angularVelocity: rand(-1, 1) * CFG.movement.spin,
+    priority: opts.priority || 0,
+    createdAt: performance.now(), age: 0,
+    maxLifetime: (premium ? CFG.movement.maxLifetimePremium : CFG.movement.maxLifetimeNormal) * 1000,
+    captured: false, paused: false,
+    cornerHitCount: 0, rewardLevel: premium ? 1 : 0,
+    premium,
+    lastHBounce: -9999, lastVBounce: -9999, lastBounceAt: 0,
+    anticipated: false, nearMissArmed: true,
+    squash: 0, el,
+    assetPath: def.file
+  };
+  objects.push(obj);
+  if (['IDLE', 'SLEEPING'].includes(J.state)) {
+    if (J.state === 'SLEEPING') { playSeq('wake', { loop: false }); setTimeout(() => setJamieState('TRACKING'), 420); }
+    else setJamieState('TRACKING');
+  }
+  publishStatus();
+  return obj;
+}
+function removeObject(obj) {
+  obj.el.remove();
+  objects = objects.filter(o => o !== obj);
+  publishStatus();
+}
+function clearAllObjects() {
+  objects.forEach(o => o.el.remove());
+  objects = [];
+  drainQueue();
+  if (['TRACKING', 'ANTICIPATION'].includes(J.state)) setJamieState('IDLE');
+  publishStatus();
+}
+
+function enforceMinDirection(obj) {
+  const sp = Math.hypot(obj.vx, obj.vy) || 1;
+  let nx = obj.vx / sp, ny = obj.vy / sp;
+  const MIN = 0.3;
+  if (Math.abs(nx) < MIN) nx = MIN * (nx < 0 ? -1 : 1);
+  if (Math.abs(ny) < MIN) ny = MIN * (ny < 0 ? -1 : 1);
+  const len = Math.hypot(nx, ny);
+  obj.vx = (nx / len) * sp; obj.vy = (ny / len) * sp;
+}
+
+function stepObject(obj, dt, now) {
+  if (obj.captured || obj.paused) return;
+  obj.age = now - obj.createdAt;
+
+  /* final-seconds guidance: bias trajectory toward the reach zone */
+  if (CFG.movement.guidanceEnabled && obj.maxLifetime - obj.age < 5000 && !obj.captured) {
+    const rz = reachZoneRect();
+    const tx = rz.cx - (obj.x + obj.w / 2), ty = rz.cy - (obj.y + obj.h / 2);
+    const tlen = Math.hypot(tx, ty) || 1;
+    const sp = Math.hypot(obj.vx, obj.vy);
+    const k = CFG.movement.guidanceStrength * dt * 1.6;
+    obj.vx += (tx / tlen) * sp * k;
+    obj.vy += (ty / tlen) * sp * k;
+    const nsp = Math.hypot(obj.vx, obj.vy) || 1;
+    obj.vx = obj.vx / nsp * sp; obj.vy = obj.vy / nsp * sp;
+  }
+
+  obj.x += obj.vx * dt;
+  obj.y += obj.vy * dt;
+  obj.rotation += obj.angularVelocity * dt;
+
+  const floorY = CFG.floor.y;
+  let hBounce = false, vBounce = false;
+  if (obj.x <= 0)              { obj.x = 0;              obj.vx = Math.abs(obj.vx);  hBounce = true; }
+  else if (obj.x + obj.w >= 1080) { obj.x = 1080 - obj.w; obj.vx = -Math.abs(obj.vx); hBounce = true; }
+  if (obj.y <= 0)              { obj.y = 0;              obj.vy = Math.abs(obj.vy);  vBounce = true; }
+  else if (obj.y + obj.h >= floorY) { obj.y = floorY - obj.h; obj.vy = -Math.abs(obj.vy); vBounce = true; }
+
+  if (hBounce || vBounce) {
+    /* debounce double-trigger jitter */
+    if (now - obj.lastBounceAt > 80) {
+      obj.lastBounceAt = now;
+      enforceMinDirection(obj);
+      if (CFG.movement.squashStretch) { obj.squash = 1; }
+      playSound(obj.def.bounceSound || 'bounce');
+      if (hBounce) obj.lastHBounce = now;
+      if (vBounce) obj.lastVBounce = now;
+      /* corner jackpot */
+      if (CFG.movement.cornerJackpot &&
+          Math.abs(obj.lastHBounce - obj.lastVBounce) <= CFG.movement.cornerWindowMs) {
+        const tol = CFG.movement.cornerTolerance;
+        const nearX = obj.x <= tol || obj.x + obj.w >= 1080 - tol;
+        const nearY = obj.y <= tol || obj.y + obj.h >= floorY - tol;
+        if (nearX && nearY && now - (obj.lastJackpotAt || 0) > 1200) {
+          obj.lastJackpotAt = now;
+          cornerJackpot(obj);
+        }
+      }
+    } else {
+      if (hBounce) obj.lastHBounce = now;
+      if (vBounce) obj.lastVBounce = now;
+    }
+  }
+
+  /* lifetime: fade out if guidance disabled and never reached Jamie */
+  if (obj.age > obj.maxLifetime) {
+    obj.el.style.transition = 'opacity .6s';
+    obj.el.style.opacity = '0';
+    obj.captured = true; /* stop physics */
+    setTimeout(() => { removeObject(obj); if (!objects.length && ['TRACKING', 'ANTICIPATION'].includes(J.state)) setJamieState('IDLE'); drainQueue(); }, 650);
+    return;
+  }
+
+  /* collisions with Jamie */
+  checkReachZone(obj, now);
+  renderObject(obj, dt);
+}
+function renderObject(obj, dt) {
+  if (obj.squash > 0) obj.squash = Math.max(0, obj.squash - dt * 6);
+  const s = obj.squash;
+  const sx = 1 + s * 0.14, sy = 1 - s * 0.14;
+  obj.el.style.transform =
+    `translate3d(${obj.x}px, ${obj.y}px, 0) rotate(${obj.rotation}deg) scale(${sx}, ${sy})`;
+}
+function cornerJackpot(obj) {
+  obj.cornerHitCount++;
+  obj.rewardLevel += CFG.movement.cornerRewardMultiplier;
+  obj.el.classList.add('jackpot-glow');
+  playSound('jackpot');
+  const cx = obj.x < 540 ? obj.x + 10 : obj.x + obj.w - 10;
+  const cy = obj.y < CFG.floor.y / 2 ? obj.y + 10 : obj.y + obj.h - 10;
+  spawnFx('star', cx, cy, 4 + Math.round(3 * CFG.visuals.cornerGlow));
+}
+
+/* reach zone collision (ellipse or rounded-rect), single trigger */
+function checkReachZone(obj, now) {
+  if (obj.captured || J.paused) return;
+  if (!['TRACKING', 'ANTICIPATION', 'IDLE'].includes(J.state)) return;
+  const rz = reachZoneRect();
+  const cx = obj.x + obj.w / 2, cy = obj.y + obj.h / 2;
+  const dx = cx - rz.cx, dy = cy - rz.cy;
+  let inside, dist;
+  if (CFG.reachZone.shape === 'ellipse') {
+    const ex = dx / (rz.rx + obj.radius), ey = dy / (rz.ry + obj.radius);
+    dist = Math.sqrt(ex * ex + ey * ey);
+    inside = dist <= 1;
+  } else {
+    inside = Math.abs(dx) <= rz.rx + obj.radius && Math.abs(dy) <= rz.ry + obj.radius;
+    dist = Math.max(Math.abs(dx) / (rz.rx + obj.radius), Math.abs(dy) / (rz.ry + obj.radius));
+  }
+  const edgeDist = Math.hypot(dx, dy) - Math.max(rz.rx, rz.ry) - obj.radius;
+
+  /* anticipation (once per object) */
+  if (!inside && !obj.anticipated && edgeDist < CFG.reachZone.anticipationDistance &&
+      ['TRACKING', 'IDLE'].includes(J.state)) {
+    obj.anticipated = true;
+    if (obj.def.reaction === 'bubble' && (assetAvailable['jamie-bubble-watch.png'])) {
+      setJamieState('ANTICIPATION'); playSeq('bubble', { loop: false });
+    } else if (obj.premium && assetAvailable['jamie-premium-ready.png']) {
+      setJamieState('ANTICIPATION'); playSeq('premium', { loop: false });
+    } else {
+      setJamieState('ANTICIPATION');
+    }
+  }
+  /* near miss: passed close but is now leaving */
+  if (!inside && obj.anticipated && obj.nearMissArmed && edgeDist > 0 &&
+      edgeDist < CFG.reachZone.nearMissDistance &&
+      (dx * obj.vx + dy * obj.vy) > 0 && now - lastMissAt > 8000) {
+    obj.nearMissArmed = false;
+    lastMissAt = now;
+    if (['TRACKING', 'ANTICIPATION'].includes(J.state)) {
+      const seq = (assetAvailable['jamie-confused.png'] && Math.random() < 0.4) ? 'confused' : 'miss';
+      jamieOneShot(seq, seq === 'confused' ? 900 : 800);
+    }
+  }
+  if (inside) captureObject(obj);
+}
+function captureObject(obj) {
+  if (obj.captured) return;
+  obj.captured = true;
+  obj.el.classList.remove('jackpot-glow');
+  const r = REACTION_SEQ[obj.def.reaction] || REACTION_SEQ.treat;
+  const seqName = r.payoff, celebrateSeq = r.celebrate;
+  setJamieState('PAYOFF', { seq: seqName, celebrateSeq });
+  /* animate item to the reaction's designated mouth/paw target frame */
+  const tp = targetPoint(obj.def.target, r.targetFrame || SEQ[seqName][0].f);
+  const fromX = obj.x, fromY = obj.y;
+  const toX = tp.x - obj.w / 2, toY = tp.y - obj.h / 2;
+  const dur = r.captureMs;
+  const start = performance.now();
+  playSound(obj.def.catchSound);
+  /* safety: if rAF stalls (hidden/throttled tab), force-finish so the object never hangs */
+  setTimeout(() => { if (!obj.finished) finishCapture(obj, tp); }, dur + 1500);
+  const ease = t => 1 - Math.pow(1 - t, 2.2);
+  function animCapture(nowT) {
+    const t = Math.min(1, (nowT - start) / dur);
+    const e = ease(t);
+    obj.x = fromX + (toX - fromX) * e;
+    obj.y = fromY + (toY - fromY) * e;
+    obj.rotation *= (1 - e * 0.6);
+    obj.el.style.transform = `translate3d(${obj.x}px, ${obj.y}px, 0) rotate(${obj.rotation}deg) scale(${1 - e * 0.35})`;
+    if (t < 1) requestAnimationFrame(animCapture);
+    else finishCapture(obj, tp);
+  }
+  requestAnimationFrame(animCapture);
+}
+function finishCapture(obj, tp) {
+  if (obj.finished) return;
+  obj.finished = true;
+  const rx = obj.def.reaction;
+  if (rx === 'treat') { spawnFx('crumb', tp.x, tp.y, 5); setTimeout(() => playSound('crunch'), 150); }
+  if (rx === 'bubble') { spawnFx('pop', tp.x, tp.y, 6); }
+  if (obj.def.splat) { spawnFx('splat', tp.x, tp.y, 5); }
+  if (rx === 'premium') { spawnFx('sparkleGold', tp.x, tp.y, 8); }
+  if (obj.rewardLevel > (obj.premium ? 1 : 0)) { spawnFx('sparkle', tp.x, tp.y, 6); }
+  if (rx === 'toy') { obj.el.style.transition = 'transform .12s'; }
+  obj.el.style.opacity = '0';
+  obj.el.style.transition = 'opacity .25s';
+  setTimeout(() => { removeObject(obj); drainQueue(); }, 300);
+}
+
+/* ── 10. EVENT QUEUE ───────────────────────────────────────────── */
+/* priorities: subscribe 100 > heartMe 95 > giftHigh 90 > giftMed 80 >
+   giftLow 70 > follow 60 > keyword 50 > generic 40 > like treats 30 */
+let spawnQueue = [];
+function queueSpawn(itemType, opts) {
+  const pr = opts.priority || 0;
+  if (pr <= 30) {
+    const treatsQueued = spawnQueue.filter(q => q.priority <= 30).length;
+    if (treatsQueued >= CFG.events.likeQueueCap) return; /* treat queue cap */
+  }
+  if (spawnQueue.length > 20) spawnQueue.length = 20; /* hard cap: never flood */
+  spawnQueue.push({ itemType, opts, priority: pr });
+  spawnQueue.sort((a, b) => b.priority - a.priority);
+  drainQueue();
+}
+function drainQueue() {
+  while (spawnQueue.length && objects.filter(o => !o.captured).length < CFG.movement.maxObjects) {
+    const q = spawnQueue.shift();
+    spawnObject(q.itemType, q.opts);
+  }
+  publishStatus();
+}
+
+/* ── 11. VIEWER EVENTS ─────────────────────────────────────────── */
+let likeAccumulator = 0;
+let lastCommentAt = 0;
+const userCommentAt = {};
+let lastEventInfo = '—';
+
+function sanitizeName(name) {
+  const s = String(name || '').replace(/[<>&"'`]/g, '').trim();
+  return s.length > 16 ? s.slice(0, 15) + '…' : s;
+}
+function pickTreat() {
+  const w = CFG.events.treatWeights;
+  const entries = Object.entries(w).filter(([k, v]) => ITEM_DEFS[k] && v > 0);
+  const total = entries.reduce((s, [, v]) => s + v, 0) || 1;
+  let r = Math.random() * total;
+  for (const [k, v] of entries) { r -= v; if (r <= 0) return k; }
+  return 'treat-biscuit';
+}
+function handleEvent(evt) {
+  if (!evt || typeof evt !== 'object') return;
+  const type = String(evt.type || '').toLowerCase();
+  const username = evt.username || null;
+  lastEventInfo = type + (username ? ' @' + sanitizeName(username) : '');
+  switch (type) {
+    case 'like': {
+      likeAccumulator += Math.max(1, Math.round(+evt.count || 1));
+      while (likeAccumulator >= CFG.events.likesPerTreat) {
+        likeAccumulator -= CFG.events.likesPerTreat;
+        queueSpawn(pickTreat(), { sourceEvent: 'like', priority: 30 });
+      }
+      updateLikeMeter();
+      break;
+    }
+    case 'comment': handleComment(username, evt.message || ''); break;
+    case 'follow': {
+      queueSpawn('tennis-ball', {
+        sourceEvent: 'follow', username, priority: 60, entry: 'throw',
+        showName: CFG.events.followShowUsername, nameSeconds: CFG.events.followNameSeconds
+      });
+      if (username && CFG.events.followShowUsername)
+        showEventLabel(`@${sanitizeName(username)} threw Jamie a ball! 🎾`, CFG.events.followNameSeconds, false);
+      break;
+    }
+    case 'heartme': triggerHeartMe(username); break;
+    case 'subscribe': triggerSubscribe(username); break;
+    case 'gift': handleGift(evt); break;
+    case 'share':
+      /* treat a share like a keyword comment reward */
+      queueSpawn(pickTreat(), { sourceEvent: 'share', username, priority: 45 });
+      break;
+  }
+  publishStatus();
+}
+function handleComment(username, message) {
+  const now = performance.now();
+  if (now - lastCommentAt < CFG.events.commentCooldown * 1000) return;
+  const ukey = String(username || 'anon').toLowerCase();
+  if (userCommentAt[ukey] && now - userCommentAt[ukey] < CFG.events.perUserCooldown * 1000) return;
+
+  const clean = String(message || '').toLowerCase().replace(/[^\w\s]/g, ' ');
+  const words = clean.split(/\s+/);
+  let matched = null;
+  for (const [kw, action] of Object.entries(CFG.events.keywords)) {
+    if (words.includes(kw.toLowerCase())) { matched = action; break; }
+  }
+  if (matched) {
+    lastCommentAt = now; userCommentAt[ukey] = now;
+    if (matched === 'look') { jamieOneShot('look', 900); return; }
+    const itemType = matched === 'random-treat' ? pickTreat() : matched;
+    if (!ITEM_DEFS[itemType]) return;
+    queueSpawn(itemType, {
+      sourceEvent: 'comment', username, priority: 50,
+      showName: CFG.events.keywordShowUsername, nameSeconds: 1.5
+    });
+  } else if (!CFG.events.keywordOnly) {
+    if (objects.length >= CFG.movement.maxObjects) return; /* queue full: generic comments do nothing */
+    if (Math.random() < CFG.events.genericSpawnChance) {
+      lastCommentAt = now; userCommentAt[ukey] = now;
+      const pool = ['squeaky-toy', 'duck', 'tennis-ball'];
+      queueSpawn(pool[Math.floor(Math.random() * pool.length)], { sourceEvent: 'comment', priority: 40 });
+    } else if (Math.random() < 0.25) {
+      jamieOneShot('look', 700);
+    }
+  }
+}
+let heartMeActive = false;
+function triggerHeartMe(username) {
+  if (heartMeActive) return;
+  heartMeActive = true;
+  /* 1-2: dim normal objects, clear minor distractions */
+  objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
+  $('like-meter').style.opacity = 0;
+  /* 3-5: celebration sprite, slight enlarge, purple hearts + sparkles */
+  clearTimeout(J.watchdog); clearTimeout(J.animTimer);
+  J.currentSeq = null;
+  jamieEl.classList.remove('breathe');
+  jamieEl.classList.add('pose-celebrate', 'ph-happy');
+  jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  const j = CFG.jamie;
+  jamieEl.style.transform += ' scale(1.12)';
+  J.state = 'CELEBRATE'; J.stateSince = performance.now();
+  playSeq('heartMe', { loop: false, onDone: () => playSeq('heartMeEnd', { loop: false }) });
+  $('heartme-veil').style.opacity = 1;
+  const rz = reachZoneRect();
+  spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, 10);
+  spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, 8);
+  playSound('heartMe');
+  if (username) showEventLabel(`@${sanitizeName(username)} gave Jamie a Heart Me! 💜`, CFG.events.heartMeNameSeconds, false);
+  const durMs = CFG.events.heartMeDurationSec * 1000;
+  setTimeout(() => {
+    $('heartme-veil').style.opacity = 0;
+    jamieEl.classList.remove('pose-celebrate', 'ph-happy');
+    objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
+    applyLayout(); /* restores clean transform */
+    heartMeActive = false;
+    if (CFG.events.heartMeSpawnHeart) {
+      queueSpawn('heart-large', { sourceEvent: 'heartMe', username, priority: 95, premium: true });
+    }
+    setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  }, durMs);
+  publishStatus();
+}
+function triggerSubscribe(username) {
+  queueSpawn('golden-tennis-ball', {
+    sourceEvent: 'subscribe', username, priority: 100, premium: true, entry: 'throw',
+    showName: true, nameSeconds: CFG.events.subscribeNameSeconds
+  });
+  playSound('subscribe');
+  spawnFx('sparkleGold', 540, CFG.floor.y * 0.4, 8);
+  if (username) showEventLabel(`@${sanitizeName(username)} unlocked Jamie's golden ball! ⭐`, CFG.events.subscribeNameSeconds, true);
+}
+function handleGift(evt) {
+  const value = +evt.value || 0;
+  const giftName = String(evt.giftName || '').toLowerCase();
+  const username = evt.username;
+  /* custom mappings first */
+  for (const m of (CFG.events.giftMappings || [])) {
+    const nameOk = !m.giftName || giftName === String(m.giftName).toLowerCase();
+    const minOk = m.minValue == null || value >= m.minValue;
+    const maxOk = m.maxValue == null || value <= m.maxValue;
+    if (nameOk && minOk && maxOk && ITEM_DEFS[m.itemType]) {
+      queueSpawn(m.itemType, {
+        sourceEvent: 'gift', username, priority: m.priority || 80,
+        premium: true, showName: m.showUsername !== false, nameSeconds: 2
+      });
+      playSound('gift');
+      return;
+    }
+  }
+  /* fallback tiers */
+  if (value > CFG.events.giftMediumMax) {
+    triggerHeartMe(username);            /* high-value: mega payoff */
+  } else if (value > CFG.events.giftLowMax) {
+    const pool = ['squeaky-toy', 'duck', 'tennis-ball'];
+    queueSpawn(pool[Math.floor(Math.random() * pool.length)], {
+      sourceEvent: 'gift', username, priority: 80, premium: true, showName: true, nameSeconds: 2
+    });
+    playSound('gift');
+  } else {
+    queueSpawn('treat-heart', { sourceEvent: 'gift', username, priority: 70, premium: true, showName: true, nameSeconds: 1.5 });
+    playSound('gift');
+  }
+}
+
+/* ── 12. UI: prompt pill, like meter, event label ──────────────── */
+let promptIndex = 0, promptTimer = null;
+function promptLoop() {
+  clearTimeout(promptTimer);
+  const pp = $('prompt-pill');
+  if (!CFG.prompts.enabled || !CFG.prompts.list.length || J.hidden) {
+    pp.style.opacity = 0;
+    promptTimer = setTimeout(promptLoop, 2000);
+    return;
+  }
+  pp.textContent = CFG.prompts.list[promptIndex % CFG.prompts.list.length];
+  pp.style.opacity = CFG.prompts.opacity;
+  promptIndex++;
+  promptTimer = setTimeout(() => {
+    pp.style.opacity = 0;
+    promptTimer = setTimeout(promptLoop, 600);
+  }, CFG.prompts.intervalSec * 1000 - 600);
+}
+let meterTimer = null;
+function updateLikeMeter() {
+  if (!CFG.visuals.likeMeter) return;
+  const lm = $('like-meter');
+  lm.textContent = `🦴 ${likeAccumulator}/${CFG.events.likesPerTreat}`;
+  lm.style.opacity = 1;
+  clearTimeout(meterTimer);
+  meterTimer = setTimeout(() => { lm.style.opacity = 0; }, 2500);
+}
+let labelTimer = null;
+function showEventLabel(text, seconds, gold) {
+  const el = $('event-label');
+  el.textContent = text;              /* textContent only — never HTML */
+  el.classList.toggle('gold', !!gold);
+  el.style.opacity = 1;
+  clearTimeout(labelTimer);
+  labelTimer = setTimeout(() => { el.style.opacity = 0; }, (seconds || 1.5) * 1000);
+}
+
+/* ── 13. EFFECTS (pooled DOM particles, hard-capped) ───────────── */
+const FX_CAP = { off: 0, low: 40, medium: 80 };
+let fxCount = 0;
+const FX_GLYPHS = {
+  heart:      { glyphs: ['💜'], size: [26, 44], rise: -1 },
+  sparkle:    { glyphs: ['✦', '✧'], size: [20, 34], rise: -1, color: '#C084FC' },
+  sparkleGold:{ glyphs: ['✦', '★'], size: [20, 36], rise: -1, color: '#F5C518' },
+  star:       { glyphs: ['★'], size: [22, 38], rise: -1, color: '#C084FC' },
+  crumb:      { glyphs: ['•'], size: [12, 20], rise: 1, color: '#D9A05B' },
+  splat:      { glyphs: ['●'], size: [10, 22], rise: 1, color: '#A855F7' },
+  pop:        { glyphs: ['○'], size: [12, 24], rise: -0.4, color: '#93C5FD' }
+};
+function spawnFx(kind, x, y, count) {
+  const cap = FX_CAP[CFG.visuals.particleLevel] ?? 40;
+  if (cap === 0) return;
+  const def = FX_GLYPHS[kind] || FX_GLYPHS.sparkle;
+  const n = Math.min(count, cap - fxCount);
+  for (let i = 0; i < n; i++) {
+    fxCount++;
+    const el = document.createElement('div');
+    el.className = 'fj-fx';
+    el.textContent = def.glyphs[Math.floor(Math.random() * def.glyphs.length)];
+    if (def.color) el.style.color = def.color;
+    el.style.fontSize = rand(def.size[0], def.size[1]) + 'px';
+    $('effects').appendChild(el);
+    const dx = rand(-70, 70), dy = def.rise < 0 ? rand(-140, -60) : rand(30, 90);
+    const dur = rand(600, 1100);
+    el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    el.style.opacity = '1';
+    el.style.transition = `transform ${dur}ms ease-out, opacity ${dur}ms ease-in`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.transform = `translate3d(${x + dx}px, ${y + dy * Math.abs(def.rise)}px, 0) rotate(${rand(-40, 40)}deg)`;
+      el.style.opacity = '0';
+    }));
+    setTimeout(() => { el.remove(); fxCount--; }, dur + 80);
+  }
+}
+
+/* ── 14. MAIN LOOP ─────────────────────────────────────────────── */
+let lastFrame = performance.now();
+let rafId = null;
+function tick(now) {
+  rafId = requestAnimationFrame(tick);
+  let dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  if (dt > 0.05) dt = 0.05;  /* clamp after tab-hidden gaps */
+  if (J.paused || J.hidden) return;
+  const active = objects.filter(o => !o.captured);
+  for (const o of objects) stepObject(o, dt, now);
+  if (J.state === 'TRACKING' && active.length) {
+    const focus = active.reduce((a, b) => (b.priority > a.priority ? b : a), active[0]);
+    updateTracking(focus);
+  }
+  if (CFG.debug.setupGuides && CFG.debug.showState) {
+    $('debug-hud').style.display = 'block';
+    $('debug-hud').textContent =
+      `state: ${J.state}\nobjects: ${active.length}  queue: ${spawnQueue.length}\nlikes: ${likeAccumulator}/${CFG.events.likesPerTreat}\nwarnings: ${assetWarnings.length}`;
+  } else {
+    $('debug-hud').style.display = 'none';
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (rafId) cancelAnimationFrame(rafId); rafId = null; }
+  else { lastFrame = performance.now(); if (!rafId) rafId = requestAnimationFrame(tick); }
+});
+
+/* ── 15. COMMS: Ably + BroadcastChannel + localStorage ─────────── */
+let bc = null, ablyChannel = null;
+function processMessage(msg) {
+  if (!msg || !msg.cmd) return;
+  switch (msg.cmd) {
+    case 'CONFIG_UPDATE':
+      CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), msg.data || {});
+      fjValidateConfig();
+      applyLayout(); promptLoop(); applyMotionVar();
+      break;
+    case 'SPAWN_ITEM':
+      if (msg.data && ITEM_DEFS[msg.data.itemType]) spawnObject(msg.data.itemType, msg.data.options || {});
+      break;
+    case 'TRIGGER_EVENT': handleEvent(msg.data || {}); break;
+    case 'CLEAR_ALL': clearAllObjects(); break;
+    case 'PAUSE':  setPaused(true);  break;
+    case 'RESUME': setPaused(false); break;
+    case 'HIDE':   setHidden(true);  break;
+    case 'SHOW':   setHidden(false); break;
+    case 'RESET_STATE': forceReset('control'); break;
+    case 'SETUP_GUIDES':
+      CFG.debug = fjDeepMerge(CFG.debug, msg.data || {});
+      applyLayout();
+      break;
+    case 'ASSET_UPDATE':
+      if (msg.data && msg.data.file) {
+        if (msg.data.dataURL) assetOverrides[msg.data.file] = msg.data.dataURL;
+        else delete assetOverrides[msg.data.file];
+        try { localStorage.setItem(FJ_LS_ASSETS, JSON.stringify(assetOverrides)); } catch (e) {}
+        assetAvailable[msg.data.file] = !!msg.data.dataURL || assetAvailable[msg.data.file];
+        fjLoadAssets();
+      }
+      break;
+    case 'RELOAD_ASSETS':
+      try { assetOverrides = JSON.parse(localStorage.getItem(FJ_LS_ASSETS) || '{}'); } catch (e) {}
+      fjLoadAssets();
+      break;
+    case 'REQUEST_STATUS': publishStatus(true); break;
+    case 'PLAY_SOUND': if (msg.data && msg.data.sound) playSound(msg.data.sound); break;
+    case 'FORCE_CATCH': { const o = objects.find(x => !x.captured); if (o) captureObject(o); break; }
+    case 'FORCE_MISS': jamieOneShot('miss', 800); break;
+    case 'FORCE_TIMEOUT': { const o = objects.find(x => !x.captured); if (o) o.createdAt = performance.now() - o.maxLifetime - 1; break; }
+    case 'FORCE_JACKPOT': { const o = objects.find(x => !x.captured); if (o) cornerJackpot(o); break; }
+    case 'SLEEP': if (['IDLE', 'TRACKING'].includes(J.state)) setJamieState('SLEEPING'); break;
+    case 'WAKE': if (J.state === 'SLEEPING') { playSeq('wake', { loop: false }); setTimeout(() => setJamieState(objects.length ? 'TRACKING' : 'IDLE'), 420); } break;
+  }
+}
+let statusTimer = null, statusDirty = false;
+function publishStatus(immediate) {
+  statusDirty = true;
+  if (statusTimer && !immediate) return;
+  const send = () => {
+    statusTimer = null;
+    if (!statusDirty) return;
+    statusDirty = false;
+    const status = {
+      cmd: 'STATUS_UPDATE',
+      data: {
+        state: J.state, paused: J.paused, hidden: J.hidden,
+        objectCount: objects.filter(o => !o.captured).length,
+        objectTypes: objects.filter(o => !o.captured).map(o => o.itemType),
+        queued: spawnQueue.length,
+        likeProgress: likeAccumulator, likesPerTreat: CFG.events.likesPerTreat,
+        lastEvent: lastEventInfo,
+        warnings: assetWarnings.slice(0, 40),
+        assetAvailable: Object.fromEntries(Object.entries(assetAvailable)),
+        ts: Date.now()
+      }
+    };
+    try { if (bc) bc.postMessage(status); } catch (e) {}
+    try { if (ablyChannel) ablyChannel.publish(FJ_ABLY_MSG_OUT, status).catch(() => {}); } catch (e) {}
+    try { localStorage.setItem(FJ_LS_STATUS, JSON.stringify({ n: Math.random(), s: status })); } catch (e) {}
+  };
+  if (immediate) send();
+  else statusTimer = setTimeout(send, 1000);
+}
+function initComms() {
+  try {
+    bc = new BroadcastChannel(FJ_BC_NAME);
+    bc.onmessage = e => { if (e.data && e.data.cmd !== 'STATUS_UPDATE') processMessage(e.data); };
+  } catch (e) {}
+  window.addEventListener('storage', e => {
+    if (e.key === FJ_LS_MSG && e.newValue) {
+      try { const wrap = JSON.parse(e.newValue); processMessage(wrap.p); } catch (err) {}
+    }
+    if (e.key === FJ_LS_CONFIG && e.newValue) {
+      try { CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), JSON.parse(e.newValue)); fjValidateConfig(); applyLayout(); promptLoop(); applyMotionVar(); } catch (err) {}
+    }
+  });
+  if (window.Ably) {
+    try {
+      const ably = new Ably.Realtime({ key: FJ_ABLY_KEY });
+      ablyChannel = ably.channels.get(FJ_ABLY_CH);
+      ablyChannel.subscribe(FJ_ABLY_MSG_IN, m => processMessage(m.data));
+      ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
+      ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
+      ably.connection.on('suspended',    () => $('conn-dot').classList.remove('connected'));
+    } catch (e) {}
+  }
+}
+function setPaused(v) {
+  J.paused = v;
+  if (v) { J.state === 'PAUSED' || setJamieState('PAUSED'); }
+  else setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  publishStatus(true);
+}
+function setHidden(v) {
+  J.hidden = v;
+  jamieEl.classList.toggle('hidden-state', v);
+  $('stage').style.opacity = v ? 0 : 1;
+  if (v) setJamieState('HIDDEN');
+  else setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  publishStatus(true);
+}
+
+/* ── 16. PUBLIC API ────────────────────────────────────────────── */
+window.feedJamie = {
+  handleEvent,
+  spawnItem: (type, options) => spawnObject(type, options || {}),
+  triggerHeartMe,
+  triggerSubscribe,
+  setFloorY: v => { CFG.floor.y = Math.min(Math.max(+v || 500, CFG.floor.min), CFG.floor.max); applyLayout(); },
+  setJamiePosition: opts => { CFG.jamie = fjDeepMerge(CFG.jamie, opts || {}); applyLayout(); },
+  setPaused,
+  clearAll: clearAllObjects,
+  hide: () => setHidden(true),
+  show: () => setHidden(false),
+  testEvent: type => {
+    const t = String(type || '').toLowerCase();
+    if (t === 'like') handleEvent({ type: 'like', count: CFG.events.likesPerTreat });
+    else if (t === 'comment') handleEvent({ type: 'comment', username: 'test_viewer', message: 'ball' });
+    else handleEvent({ type: t, username: 'test_viewer', value: t === 'gift' ? 500 : 0, giftName: 'Test' });
+  },
+  getState: () => ({
+    state: J.state, paused: J.paused, hidden: J.hidden,
+    objects: objects.map(o => ({ id: o.id, itemType: o.itemType, x: o.x, y: o.y, captured: o.captured })),
+    queued: spawnQueue.length, likeAccumulator, warnings: assetWarnings.slice(),
+    config: fjClone(CFG)
+  }),
+  reloadAssets: fjLoadAssets,
+  getConfig: () => fjClone(CFG)
+};
+
+/* ── 17. BOOT ──────────────────────────────────────────────────── */
+applyLayout();
+applyMotionVar();
+showFrame('jamie-idle-01.png', { instant: true });
+setJamieState('IDLE');
+promptLoop();
+initComms();
+fjLoadAssets();
+rafId = requestAnimationFrame(tick);
+</script>
+</body>
+</html>

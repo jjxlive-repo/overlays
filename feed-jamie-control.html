@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FEED JAMIE CONTROL</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --deep: #17062b; --panel: #241040; --panel2: #2e1650;
+    --purple: #A855F7; --light: #C084FC; --accent: #E879F9;
+    --txt: #FAF5FF; --txt-dim: #B8A6D9;
+    --blue: #3B82F6; --gold: #F5C518; --warn: #F59E0B;
+    --ok: #3B82F6; --bad: #F59E0B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--deep);
+    color: var(--txt); font-family: 'DM Sans', sans-serif; font-size: 14px;
+  }
+  h1 { font-family: 'Boogaloo'; font-size: 34px; margin: 0 0 4px; color: var(--light); letter-spacing: 1px; }
+  h1 .paw { color: var(--accent); }
+  .sub { color: var(--txt-dim); margin: 0 0 14px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+  details.section {
+    background: var(--panel); border: 1px solid #3d2266; border-radius: 12px;
+    padding: 0; overflow: hidden;
+  }
+  details.section > summary {
+    cursor: pointer; padding: 12px 16px; font-family: 'Boogaloo'; font-size: 20px;
+    color: var(--light); letter-spacing: .5px; list-style: none; user-select: none;
+  }
+  details.section > summary::before { content: '▸ '; color: var(--accent); }
+  details.section[open] > summary::before { content: '▾ '; }
+  details.section > summary:focus-visible { outline: 3px solid var(--blue); outline-offset: -3px; }
+  .body { padding: 4px 16px 16px; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  .row label { flex: 0 0 170px; color: var(--txt-dim); font-weight: 500; }
+  .row input[type=range] { flex: 1; min-width: 100px; accent-color: var(--purple); }
+  .row .val { flex: 0 0 64px; text-align: right; font-weight: 700; color: var(--txt); font-variant-numeric: tabular-nums; }
+  input[type=number], input[type=text], input[type=url], select, textarea {
+    background: var(--panel2); color: var(--txt); border: 1px solid #4a2b78;
+    border-radius: 8px; padding: 6px 9px; font: inherit;
+  }
+  input[type=number] { width: 84px; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 3px solid var(--blue); outline-offset: 1px;
+  }
+  input[type=checkbox] { width: 19px; height: 19px; accent-color: var(--purple); }
+  input[type=color] { width: 44px; height: 30px; border: none; background: none; padding: 0; }
+  textarea { width: 100%; min-height: 74px; resize: vertical; }
+  button {
+    background: var(--panel2); color: var(--txt); border: 1px solid #5b3790;
+    border-radius: 10px; padding: 9px 14px; font: 700 14px 'DM Sans';
+    cursor: pointer; transition: background .15s, transform .05s;
+  }
+  button:hover { background: #3a1d63; }
+  button:active { transform: scale(.97); }
+  button.primary { background: var(--purple); border-color: var(--purple); color: #fff; }
+  button.primary:hover { background: #9333ea; }
+  button.warn { border-color: var(--warn); color: var(--warn); }
+  button.gold { border-color: var(--gold); color: var(--gold); }
+  button.big { font-size: 16px; padding: 12px 18px; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .status-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; margin-bottom: 10px; }
+  .status-grid .k { color: var(--txt-dim); }
+  .status-grid .v { font-weight: 700; }
+  .dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; border: 3px solid var(--bad); vertical-align: -2px; margin-right: 6px; }
+  .dot.on { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 6px #3B82F688; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--panel2); font-weight: 700; }
+  .asset-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #33195c; font-size: 12.5px; }
+  .asset-row .name { flex: 1; font-family: monospace; }
+  .asset-row .st { flex: 0 0 76px; font-weight: 700; }
+  .asset-row .st.ok { color: var(--blue); }
+  .asset-row .st.miss { color: var(--warn); }
+  .asset-row img.thumb { width: 34px; height: 34px; object-fit: contain; background: #ffffff14; border-radius: 6px; }
+  .note { font-size: 12px; color: var(--txt-dim); margin: 6px 0; line-height: 1.45; }
+  .note b { color: var(--light); }
+  #preview-wrap { position: relative; width: 302px; height: 538px; overflow: hidden; border: 1px solid #4a2b78; border-radius: 10px;
+    background: repeating-conic-gradient(#1d0d33 0% 25%, #241040 0% 50%) 0 0/24px 24px; }
+  #preview-frame { width: 1080px; height: 1920px; transform: scale(0.28); transform-origin: top left; border: 0; }
+  .topbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+  .conn-block { font-size: 13px; color: var(--txt-dim); }
+</style>
+</head>
+<body>
+<h1>FEED JAMIE <span class="paw">🐾</span> CONTROL</h1>
+<p class="sub">Overlay: <code>feed-jamie-overlay.html</code> (1080×1920 browser source). This panel runs locally in Chrome and drives the overlay via Ably (live) or BroadcastChannel/localStorage (local test).</p>
+
+<div class="topbar">
+  <span class="conn-block"><span class="dot" id="dot-ably"></span>Ably <b id="txt-ably">connecting…</b></span>
+  <span class="conn-block"><span class="dot" id="dot-overlay"></span>Overlay <b id="txt-overlay">no status yet</b></span>
+  <span class="conn-block"><span class="dot" id="dot-tf"></span>Tikfinity <b id="txt-tf">off</b>
+    <button id="tf-toggle" style="margin-left:6px;padding:4px 10px;">Connect</button></span>
+</div>
+
+<div class="grid">
+
+  <!-- A. LIVE STATUS -->
+  <details class="section" open>
+    <summary>A · Live Status</summary>
+    <div class="body">
+      <div class="status-grid">
+        <span class="k">Jamie state</span><span class="v" id="st-state">—</span>
+        <span class="k">Objects</span><span class="v" id="st-objects">—</span>
+        <span class="k">Object types</span><span class="v" id="st-types">—</span>
+        <span class="k">Queued</span><span class="v" id="st-queued">—</span>
+        <span class="k">Like progress</span><span class="v" id="st-likes">—</span>
+        <span class="k">Paused</span><span class="v" id="st-paused">—</span>
+        <span class="k">Hidden</span><span class="v" id="st-hidden">—</span>
+        <span class="k">Last event</span><span class="v" id="st-last">—</span>
+      </div>
+      <div class="btnrow">
+        <button onclick="send({cmd:'PAUSE'})">⏸ Pause</button>
+        <button onclick="send({cmd:'RESUME'})">▶ Resume</button>
+        <button onclick="send({cmd:'CLEAR_ALL'})">🧹 Clear objects</button>
+        <button class="warn" onclick="send({cmd:'HIDE'})">🚫 Emergency hide</button>
+        <button onclick="send({cmd:'SHOW'})">👁 Show overlay</button>
+        <button onclick="send({cmd:'RESET_STATE'})">🔄 Reset Jamie state</button>
+        <button onclick="reconnectAbly()">📡 Reconnect</button>
+        <button onclick="send({cmd:'RELOAD_ASSETS'})">🖼 Reload assets</button>
+        <button onclick="send({cmd:'SLEEP'})">😴 Sleep</button>
+        <button onclick="send({cmd:'WAKE'})">⏰ Wake</button>
+      </div>
+      <div class="row"><label>Local preview</label><input type="checkbox" id="preview-toggle"></div>
+      <div id="preview-wrap" style="display:none;"></div>
+      <div class="note" id="warnings-note"></div>
+    </div>
+  </details>
+
+  <!-- B. LAYOUT -->
+  <details class="section" open>
+    <summary>B · Layout</summary>
+    <div class="body" id="sec-layout"></div>
+  </details>
+
+  <!-- C. REACH ZONE -->
+  <details class="section">
+    <summary>C · Reach Zone</summary>
+    <div class="body" id="sec-reach"></div>
+  </details>
+
+  <!-- D. MOVEMENT -->
+  <details class="section">
+    <summary>D · Movement</summary>
+    <div class="body" id="sec-movement"></div>
+  </details>
+
+  <!-- E. EVENT RULES -->
+  <details class="section">
+    <summary>E · Event Rules</summary>
+    <div class="body" id="sec-events">
+      <div id="events-controls"></div>
+      <div class="row" style="align-items:flex-start;"><label>Keyword mappings<br><span style="font-weight:400;font-size:11px;">one per line:<br>keyword = item</span></label>
+        <textarea id="kw-editor" spellcheck="false"></textarea></div>
+      <div class="note">Items: treat-biscuit, treat-bone, treat-purple-splat, treat-heart, tennis-ball, golden-tennis-ball, squeaky-toy, duck, sock, bubble, heart-large — or <b>random-treat</b> / <b>look</b> (Jamie looks at camera).</div>
+      <div class="btnrow"><button onclick="applyKeywords()">Apply keywords</button></div>
+      <div class="row" style="align-items:flex-start;"><label>Gift mappings (JSON)</label>
+        <textarea id="gift-editor" spellcheck="false" placeholder='[{"giftName":"Rose","minValue":0,"maxValue":10,"itemType":"treat-heart","priority":70,"showUsername":true}]'></textarea></div>
+      <div class="btnrow"><button onclick="applyGiftMappings()">Apply gift mappings</button></div>
+    </div>
+  </details>
+
+  <!-- F. VISUALS -->
+  <details class="section">
+    <summary>F · Visuals &amp; Prompts</summary>
+    <div class="body" id="sec-visuals">
+      <div id="visuals-controls"></div>
+      <div class="row" style="align-items:flex-start;"><label>Prompt list<br><span style="font-weight:400;font-size:11px;">one per line</span></label>
+        <textarea id="prompt-editor" spellcheck="false"></textarea></div>
+      <div class="btnrow"><button onclick="applyPrompts()">Apply prompts</button></div>
+    </div>
+  </details>
+
+  <!-- G. ASSETS -->
+  <details class="section">
+    <summary>G · Assets</summary>
+    <div class="body">
+      <div class="note"><b>Live use:</b> upload real PNGs to the GitHub repo at <code>assets/feed-jamie/…</code> with these exact filenames — TikTok Studio loads them from GitHub Pages.<br>
+      <b>Local test:</b> the “replace” buttons below store the image in this browser only (localStorage) and push it to a locally-open overlay. They do <b>not</b> reach TikTok Studio.</div>
+      <div class="btnrow">
+        <button onclick="send({cmd:'RELOAD_ASSETS'})">🖼 Reload assets in overlay</button>
+        <button class="warn" onclick="clearAssetOverrides()">Reset all local replacements</button>
+      </div>
+      <div id="asset-list"></div>
+    </div>
+  </details>
+
+  <!-- H. AUDIO -->
+  <details class="section">
+    <summary>H · Audio</summary>
+    <div class="body" id="sec-audio">
+      <div id="audio-controls"></div>
+      <div class="note">Leave a sound URL empty to use the built-in Web Audio placeholder synth. Real files: upload MP3s to GitHub Pages and paste the https URL. A broken URL silently falls back — it never breaks the overlay.</div>
+      <div id="sound-rows"></div>
+    </div>
+  </details>
+
+  <!-- I. TEST EVENTS -->
+  <details class="section" open>
+    <summary>I · Test Events</summary>
+    <div class="body">
+      <div class="row"><label>Test username</label><input type="text" id="test-user" value="test_viewer" maxlength="30"></div>
+      <div class="btnrow">
+        <button onclick="testLike(10)">+10 likes</button>
+        <button onclick="testLike(50)">+50 likes</button>
+        <button onclick="testLike(100)">+100 likes</button>
+      </div>
+      <div class="btnrow">
+        <button onclick="testComment('treat')">💬 treat</button>
+        <button onclick="testComment('ball')">💬 ball</button>
+        <button onclick="testComment('toy')">💬 toy</button>
+        <button onclick="testComment('duck')">💬 duck</button>
+        <button onclick="testComment('sock')">💬 sock</button>
+        <button onclick="testComment('bubble')">💬 bubble</button>
+        <button onclick="testComment('jamie')">💬 jamie</button>
+      </div>
+      <div class="btnrow">
+        <button class="primary" onclick="testEvt('follow')">➕ Follow</button>
+        <button class="primary" onclick="testEvt('heartMe')">💜 Heart Me</button>
+        <button class="gold" onclick="testEvt('subscribe')">⭐ Subscribe</button>
+      </div>
+      <div class="btnrow">
+        <button onclick="testGift(10)">🎁 Low gift (10)</button>
+        <button onclick="testGift(500)">🎁 Medium gift (500)</button>
+        <button onclick="testGift(5000)">🎁 High gift (5000)</button>
+      </div>
+      <div class="btnrow">
+        <button onclick="send({cmd:'FORCE_JACKPOT'})">★ Force corner jackpot</button>
+        <button onclick="send({cmd:'FORCE_CATCH'})">🎯 Force Jamie catch</button>
+        <button onclick="send({cmd:'FORCE_MISS'})">↪ Force near miss</button>
+        <button onclick="send({cmd:'FORCE_TIMEOUT'})">⏲ Force object timeout</button>
+        <button class="warn" onclick="send({cmd:'CLEAR_ALL'})">🧹 Clear all</button>
+      </div>
+    </div>
+  </details>
+
+  <!-- J. SAVE / LOAD -->
+  <details class="section">
+    <summary>J · Save &amp; Load</summary>
+    <div class="body">
+      <div class="note">All settings auto-save to this browser (localStorage) and sync to the overlay live.</div>
+      <div class="btnrow">
+        <button onclick="exportConfig()">⬇ Export JSON</button>
+        <button onclick="document.getElementById('import-file').click()">⬆ Import JSON</button>
+        <input type="file" id="import-file" accept=".json,application/json" style="display:none;">
+        <button class="warn" onclick="resetDefaults()">Reset defaults</button>
+      </div>
+      <div class="row"><label>Preset name</label><input type="text" id="preset-name" maxlength="30" placeholder="my-layout">
+        <button onclick="savePreset()">💾 Save preset</button></div>
+      <div class="row"><label>Load preset</label><select id="preset-select"></select>
+        <button onclick="loadPreset()">Load</button>
+        <button class="warn" onclick="deletePreset()">Delete</button></div>
+    </div>
+  </details>
+
+</div>
+
+<script>
+'use strict';
+/* ════════════════════════════════════════════════════════════════
+   FEED JAMIE CONTROL — companion panel for feed-jamie-overlay.html
+════════════════════════════════════════════════════════════════ */
+
+/* keep in sync with the overlay's FJ_DEFAULT_CONFIG */
+const FJ_DEFAULT_CONFIG = {
+  canvas: { width: 1080, height: 1920 },
+  floor: { y: 500, min: 180, max: 1500, liveVisible: false, color: '#A855F7', opacity: 0.35, thickness: 3 },
+  jamie: { x: 130, width: 260, yOffset: 0, side: 'left', flip: false, scale: 1, rotation: 0 },
+  reachZone: { xOffset: 0, yOffset: 0, width: 135, height: 150, shape: 'ellipse', anticipationDistance: 180, nearMissDistance: 70 },
+  movement: {
+    normalSpeedMin: 150, normalSpeedMax: 220, premiumSpeedMin: 190, premiumSpeedMax: 280,
+    objectScale: 1, maxObjects: 1, spin: 40, maxLifetimeNormal: 25, maxLifetimePremium: 35,
+    guidanceEnabled: true, guidanceStrength: 0.6,
+    cornerJackpot: true, cornerTolerance: 30, cornerWindowMs: 150, cornerRewardMultiplier: 1, squashStretch: true
+  },
+  events: {
+    likesPerTreat: 50, likeQueueCap: 2, commentCooldown: 4, perUserCooldown: 10,
+    genericSpawnChance: 0.05, keywordOnly: false,
+    keywords: { ball: 'tennis-ball', treat: 'random-treat', toy: 'squeaky-toy', duck: 'duck', sock: 'sock', bubble: 'bubble', jamie: 'look' },
+    keywordShowUsername: false,
+    treatWeights: { 'treat-biscuit': 45, 'treat-bone': 30, 'treat-purple-splat': 20, 'treat-heart': 5 },
+    followShowUsername: true, followNameSeconds: 1.5,
+    heartMeDurationSec: 3, heartMeSpawnHeart: true, heartMeNameSeconds: 2,
+    subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
+    giftLowMax: 99, giftMediumMax: 999, giftMappings: []
+  },
+  prompts: {
+    enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
+    list: ['LIKES = TREATS 🦴', 'COMMENT BALL, TREAT, OR TOY', 'FOLLOW TO THROW THE BALL 🎾', 'HEART ME = BIG JAMIE REACTION 💜']
+  },
+  visuals: { usernameLabels: true, likeMeter: true, particleLevel: 'low', blueAccent: true, stickerBorder: true, highContrast: false, intensity: 1, cornerGlow: 1, frameCrossfadeMs: 120, frameDurationScale: 1 },
+  audio: {
+    muted: false, master: 0.7, cooldownMs: 140,
+    volumes: { bounce: 0.25, catch: 0.7, crunch: 0.6, ballBounce: 0.5, squeak: 0.7, quack: 0.7, pop: 0.6, jackpot: 0.7, heartMe: 0.85, subscribe: 0.8, gift: 0.7 },
+    urls: {}
+  },
+  assets: { basePath: 'assets/feed-jamie/', manifestFile: 'asset-manifest.json' },
+  debug: { setupGuides: false, showReachZone: false, showJamieBox: false, showSafeArea: false, showState: false, showWarnings: false }
+};
+const FJ_LS_CONFIG = 'feedJamie.config.v1';
+const FJ_LS_MSG    = 'feedJamie.msg';
+const FJ_LS_STATUS = 'feedJamie.status';
+const FJ_LS_ASSETS = 'feedJamie.assetOverrides.v1';
+const FJ_LS_PRESETS = 'feedJamie.presets.v1';
+const FJ_BC_NAME   = 'feed-jamie-control';
+const FJ_ABLY_KEY  = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const FJ_ABLY_CH   = 'splat-overlay';
+const FJ_ABLY_MSG_OUT = 'feed-jamie';
+const FJ_ABLY_MSG_IN  = 'feed-jamie-status';
+const TIKFINITY_URL   = 'ws://localhost:21213/';
+
+function fjDeepMerge(base, extra) {
+  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
+  const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k of Object.keys(extra)) {
+    const bv = out[k], ev = extra[k];
+    if (bv && ev && typeof bv === 'object' && typeof ev === 'object' && !Array.isArray(bv) && !Array.isArray(ev)) out[k] = fjDeepMerge(bv, ev);
+    else if (ev !== undefined) out[k] = ev;
+  }
+  return out;
+}
+const fjClone = o => JSON.parse(JSON.stringify(o));
+
+let CFG = fjClone(FJ_DEFAULT_CONFIG);
+try { const s = JSON.parse(localStorage.getItem(FJ_LS_CONFIG) || 'null'); if (s) CFG = fjDeepMerge(CFG, s); } catch (e) {}
+
+/* ── COMMS ─────────────────────────────────────────────────────── */
+let bc = null, ably = null, ablyChannel = null;
+try {
+  bc = new BroadcastChannel(FJ_BC_NAME);
+  bc.onmessage = e => { if (e.data && e.data.cmd === 'STATUS_UPDATE') renderStatus(e.data.data); };
+} catch (e) {}
+function connectAbly() {
+  if (!window.Ably) { setDot('ably', false, 'CDN blocked'); return; }
+  try {
+    ably = new Ably.Realtime({ key: FJ_ABLY_KEY });
+    ablyChannel = ably.channels.get(FJ_ABLY_CH);
+    ablyChannel.subscribe(FJ_ABLY_MSG_IN, m => { if (m.data && m.data.data) renderStatus(m.data.data); });
+    ably.connection.on('connected',    () => setDot('ably', true,  'connected'));
+    ably.connection.on('disconnected', () => setDot('ably', false, 'disconnected'));
+    ably.connection.on('suspended',    () => setDot('ably', false, 'suspended'));
+  } catch (e) { setDot('ably', false, 'error'); }
+}
+function reconnectAbly() {
+  try { if (ably) ably.close(); } catch (e) {}
+  setDot('ably', false, 'reconnecting…');
+  setTimeout(connectAbly, 400);
+  send({ cmd: 'REQUEST_STATUS' });
+}
+function send(msg, opts = {}) {
+  try { if (bc) bc.postMessage(msg); } catch (e) {}
+  if (!opts.skipAbly) { try { if (ablyChannel) ablyChannel.publish(FJ_ABLY_MSG_OUT, msg).catch(() => {}); } catch (e) {} }
+  try { localStorage.setItem(FJ_LS_MSG, JSON.stringify({ n: Math.random(), p: msg })); } catch (e) {}
+}
+let cfgTimer = null;
+function pushConfig() {
+  try { localStorage.setItem(FJ_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+  clearTimeout(cfgTimer);
+  cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: CFG }), 120);
+}
+function setDot(which, on, text) {
+  const d = document.getElementById('dot-' + which), t = document.getElementById('txt-' + which);
+  if (d) d.classList.toggle('on', !!on);
+  if (t) t.textContent = text;
+}
+
+/* ── STATUS ────────────────────────────────────────────────────── */
+let lastStatusAt = 0, lastAssetMap = {};
+function renderStatus(s) {
+  lastStatusAt = Date.now();
+  setDot('overlay', true, 'live');
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  set('st-state', s.state || '—');
+  set('st-objects', s.objectCount ?? '—');
+  set('st-types', (s.objectTypes || []).join(', ') || 'none');
+  set('st-queued', s.queued ?? 0);
+  set('st-likes', `${s.likeProgress ?? 0} / ${s.likesPerTreat ?? '?'}`);
+  set('st-paused', s.paused ? 'YES ⏸' : 'no');
+  set('st-hidden', s.hidden ? 'YES 🚫' : 'no');
+  set('st-last', s.lastEvent || '—');
+  const wn = document.getElementById('warnings-note');
+  if (s.warnings && s.warnings.length) {
+    wn.textContent = `⚠ ${s.warnings.length} asset warning(s) — placeholder art in use. See section G.`;
+  } else wn.textContent = '';
+  if (s.assetAvailable) { lastAssetMap = s.assetAvailable; refreshAssetStatuses(); }
+}
+setInterval(() => {
+  if (Date.now() - lastStatusAt > 6000) setDot('overlay', false, 'no status');
+  send({ cmd: 'REQUEST_STATUS' }, { skipAbly: Date.now() - lastStatusAt < 6000 });
+}, 5000);
+window.addEventListener('storage', e => {
+  if (e.key === FJ_LS_STATUS && e.newValue) {
+    try { const w = JSON.parse(e.newValue); if (w.s && w.s.data) renderStatus(w.s.data); } catch (err) {}
+  }
+});
+
+/* ── CONTROL BUILDER ───────────────────────────────────────────── */
+function getPath(path) { return path.split('.').reduce((o, k) => o?.[k], CFG); }
+function setPath(path, v) {
+  const keys = path.split('.'); const last = keys.pop();
+  let o = CFG; for (const k of keys) o = o[k];
+  o[last] = v; pushConfig();
+}
+function slider(parent, label, path, min, max, step, fmt) {
+  const row = document.createElement('div'); row.className = 'row';
+  const id = 'c-' + path.replace(/\./g, '-');
+  row.innerHTML = `<label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}"><span class="val"></span>`;
+  const inp = row.querySelector('input'), val = row.querySelector('.val');
+  const show = v => val.textContent = fmt ? fmt(v) : v;
+  inp.value = getPath(path); show(inp.value);
+  inp.oninput = () => { setPath(path, +inp.value); show(inp.value); };
+  parent.appendChild(row);
+  return inp;
+}
+function numberInput(parent, label, path, min, max, step) {
+  const row = document.createElement('div'); row.className = 'row';
+  const id = 'c-' + path.replace(/\./g, '-') + '-n';
+  row.innerHTML = `<label for="${id}">${label}</label><input type="number" id="${id}" min="${min}" max="${max}" step="${step || 1}">`;
+  const inp = row.querySelector('input');
+  inp.value = getPath(path);
+  inp.onchange = () => { setPath(path, +inp.value); };
+  parent.appendChild(row);
+  return inp;
+}
+function toggle(parent, label, path) {
+  const row = document.createElement('div'); row.className = 'row';
+  const id = 'c-' + path.replace(/\./g, '-');
+  row.innerHTML = `<label for="${id}">${label}</label><input type="checkbox" id="${id}">`;
+  const inp = row.querySelector('input');
+  inp.checked = !!getPath(path);
+  inp.onchange = () => setPath(path, inp.checked);
+  parent.appendChild(row);
+  return inp;
+}
+function selectInput(parent, label, path, options) {
+  const row = document.createElement('div'); row.className = 'row';
+  const id = 'c-' + path.replace(/\./g, '-');
+  row.innerHTML = `<label for="${id}">${label}</label><select id="${id}">${options.map(o => `<option value="${o}">${o}</option>`).join('')}</select>`;
+  const inp = row.querySelector('select');
+  inp.value = getPath(path);
+  inp.onchange = () => setPath(path, inp.value);
+  parent.appendChild(row);
+}
+function colorInput(parent, label, path) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label>${label}</label><input type="color">`;
+  const inp = row.querySelector('input');
+  inp.value = getPath(path);
+  inp.oninput = () => setPath(path, inp.value);
+  parent.appendChild(row);
+}
+
+/* B. LAYOUT */
+(function () {
+  const p = document.getElementById('sec-layout');
+  const fy = slider(p, 'Floor Y', 'floor.y', 180, 1500, 2);
+  const fyNum = numberInput(p, 'Floor Y (exact)', 'floor.y', 180, 1500);
+  fy.addEventListener('input', () => fyNum.value = fy.value);
+  fyNum.addEventListener('change', () => fy.value = fyNum.value);
+  toggle(p, 'Floor line visible (live)', 'floor.liveVisible');
+  colorInput(p, 'Floor line color', 'floor.color');
+  slider(p, 'Floor line opacity', 'floor.opacity', 0, 1, 0.05);
+  slider(p, 'Floor line thickness', 'floor.thickness', 1, 12, 1);
+  slider(p, 'Jamie X', 'jamie.x', 0, 820, 2);
+  slider(p, 'Jamie width', 'jamie.width', 120, 500, 2);
+  slider(p, 'Jamie Y offset', 'jamie.yOffset', -120, 120, 1);
+  selectInput(p, 'Placement side', 'jamie.side', ['left', 'right']);
+  toggle(p, 'Horizontal flip', 'jamie.flip');
+  slider(p, 'Jamie scale', 'jamie.scale', 0.5, 1.6, 0.02, v => (+v).toFixed(2));
+  slider(p, 'Rotation correction', 'jamie.rotation', -12, 12, 0.5, v => v + '°');
+  slider(p, 'Prompt X', 'prompts.x', 60, 1020, 5);
+  slider(p, 'Prompt Y', 'prompts.y', 20, 1880, 5);
+  slider(p, 'Prompt scale', 'prompts.scale', 0.5, 1.8, 0.05, v => (+v).toFixed(2));
+  toggle(p, 'Setup guides', 'debug.setupGuides');
+  toggle(p, 'Safe-area guide', 'debug.showSafeArea');
+  toggle(p, 'Jamie bounding box', 'debug.showJamieBox');
+  toggle(p, 'State debug HUD', 'debug.showState');
+})();
+
+/* C. REACH ZONE */
+(function () {
+  const p = document.getElementById('sec-reach');
+  slider(p, 'X offset', 'reachZone.xOffset', -300, 300, 2);
+  slider(p, 'Y offset', 'reachZone.yOffset', -300, 300, 2);
+  slider(p, 'Width', 'reachZone.width', 60, 400, 2);
+  slider(p, 'Height', 'reachZone.height', 60, 400, 2);
+  selectInput(p, 'Shape', 'reachZone.shape', ['ellipse', 'rect']);
+  toggle(p, 'Show zone (setup)', 'debug.showReachZone');
+  slider(p, 'Anticipation distance', 'reachZone.anticipationDistance', 60, 400, 5);
+  slider(p, 'Near-miss distance', 'reachZone.nearMissDistance', 20, 200, 5);
+})();
+
+/* D. MOVEMENT */
+(function () {
+  const p = document.getElementById('sec-movement');
+  slider(p, 'Normal speed min', 'movement.normalSpeedMin', 60, 400, 5);
+  slider(p, 'Normal speed max', 'movement.normalSpeedMax', 80, 500, 5);
+  slider(p, 'Premium speed min', 'movement.premiumSpeedMin', 80, 450, 5);
+  slider(p, 'Premium speed max', 'movement.premiumSpeedMax', 100, 550, 5);
+  slider(p, 'Object scale', 'movement.objectScale', 0.5, 2, 0.05, v => (+v).toFixed(2));
+  slider(p, 'Max simultaneous objects', 'movement.maxObjects', 1, 3, 1);
+  slider(p, 'Spin amount', 'movement.spin', 0, 180, 5, v => v + '°/s');
+  slider(p, 'Normal lifetime', 'movement.maxLifetimeNormal', 8, 60, 1, v => v + 's');
+  slider(p, 'Premium lifetime', 'movement.maxLifetimePremium', 8, 90, 1, v => v + 's');
+  toggle(p, 'Final-seconds guidance', 'movement.guidanceEnabled');
+  slider(p, 'Guidance strength', 'movement.guidanceStrength', 0.1, 2, 0.05, v => (+v).toFixed(2));
+  toggle(p, 'Corner jackpot', 'movement.cornerJackpot');
+  slider(p, 'Corner tolerance', 'movement.cornerTolerance', 5, 90, 1, v => v + 'px');
+  slider(p, 'Corner reward multiplier', 'movement.cornerRewardMultiplier', 0, 3, 0.5);
+  toggle(p, 'Squash/stretch', 'movement.squashStretch');
+})();
+
+/* E. EVENT RULES */
+(function () {
+  const p = document.getElementById('events-controls');
+  slider(p, 'Likes per treat', 'events.likesPerTreat', 10, 1000, 5);
+  slider(p, 'Like queue cap', 'events.likeQueueCap', 1, 5, 1);
+  slider(p, 'Comment cooldown', 'events.commentCooldown', 0, 30, 0.5, v => v + 's');
+  slider(p, 'Per-user cooldown', 'events.perUserCooldown', 0, 60, 1, v => v + 's');
+  slider(p, 'Generic spawn chance', 'events.genericSpawnChance', 0, 0.5, 0.01, v => Math.round(v * 100) + '%');
+  toggle(p, 'Keyword-only mode', 'events.keywordOnly');
+  toggle(p, 'Keyword username labels', 'events.keywordShowUsername');
+  toggle(p, 'Follow username label', 'events.followShowUsername');
+  slider(p, 'Heart Me duration', 'events.heartMeDurationSec', 1.5, 6, 0.25, v => v + 's');
+  toggle(p, 'Heart Me spawns big heart', 'events.heartMeSpawnHeart');
+  slider(p, 'Subscribe reaction', 'events.subscribeDurationSec', 1, 6, 0.25, v => v + 's');
+  numberInput(p, 'Gift: low tier max (coins)', 'events.giftLowMax', 1, 100000);
+  numberInput(p, 'Gift: medium tier max', 'events.giftMediumMax', 1, 1000000);
+  document.getElementById('kw-editor').value =
+    Object.entries(CFG.events.keywords).map(([k, v]) => `${k} = ${v}`).join('\n');
+  document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings || [], null, 1);
+})();
+function applyKeywords() {
+  const lines = document.getElementById('kw-editor').value.split('\n');
+  const map = {};
+  for (const ln of lines) {
+    const m = ln.split('=');
+    if (m.length === 2) {
+      const k = m[0].trim().toLowerCase(), v = m[1].trim();
+      if (k && v) map[k] = v;
+    }
+  }
+  CFG.events.keywords = map; pushConfig();
+}
+function applyGiftMappings() {
+  try {
+    const arr = JSON.parse(document.getElementById('gift-editor').value || '[]');
+    if (Array.isArray(arr)) { CFG.events.giftMappings = arr; pushConfig(); }
+  } catch (e) { alert('Gift mappings: invalid JSON'); }
+}
+
+/* F. VISUALS */
+(function () {
+  const p = document.getElementById('visuals-controls');
+  toggle(p, 'Prompts enabled', 'prompts.enabled');
+  slider(p, 'Prompt rotation', 'prompts.intervalSec', 3, 30, 1, v => v + 's');
+  slider(p, 'Prompt opacity', 'prompts.opacity', 0.2, 1, 0.05);
+  slider(p, 'Prompt bg opacity', 'prompts.bgOpacity', 0, 1, 0.05);
+  toggle(p, 'Username labels', 'visuals.usernameLabels');
+  toggle(p, 'Like meter', 'visuals.likeMeter');
+  selectInput(p, 'Particle level', 'visuals.particleLevel', ['off', 'low', 'medium']);
+  toggle(p, 'Blue accent', 'visuals.blueAccent');
+  toggle(p, 'High contrast', 'visuals.highContrast');
+  const motionNote = document.createElement('div');
+  motionNote.className = 'note';
+  motionNote.innerHTML = '<b>Jamie animation smoothing</b> — these control how Jamie moves between poses now that real artwork exists for nearly every state.';
+  p.appendChild(motionNote);
+  slider(p, 'Frame crossfade', 'visuals.frameCrossfadeMs', 0, 350, 10, v => v + 'ms');
+  const crossfadeNote = document.createElement('div');
+  crossfadeNote.className = 'note';
+  crossfadeNote.textContent = 'How long Jamie dissolves from one drawn pose to the next. 0 = instant hard cut (choppy). Higher = smoother, more fluid — 350ms is very soft. Blinks always stay instant.';
+  p.appendChild(crossfadeNote);
+  slider(p, 'Animation pace', 'visuals.frameDurationScale', 0.5, 2, 0.05, v => (+v).toFixed(2) + '×');
+  const paceNote = document.createElement('div');
+  paceNote.className = 'note';
+  paceNote.textContent = 'How long each frame holds before advancing. 1.00× = normal speed. Higher = calmer, slower-paced animation (less distracting). Lower = snappier, more energetic.';
+  p.appendChild(paceNote);
+  slider(p, 'Fallback wobble intensity', 'visuals.intensity', 0, 1.5, 0.05, v => (+v).toFixed(2));
+  const intensityNote = document.createElement('div');
+  intensityNote.className = 'note';
+  intensityNote.textContent = 'Only affects the built-in placeholder character (used when a real sprite PNG is missing) — squash, hop, and tilt amplitude. 0 = perfectly still, 1 = normal. Has no effect once real artwork is supplied for a pose.';
+  p.appendChild(intensityNote);
+  slider(p, 'Corner glow intensity', 'visuals.cornerGlow', 0, 2, 0.1, v => (+v).toFixed(1));
+  document.getElementById('prompt-editor').value = CFG.prompts.list.join('\n');
+})();
+function applyPrompts() {
+  CFG.prompts.list = document.getElementById('prompt-editor').value.split('\n').map(s => s.trim()).filter(Boolean);
+  pushConfig();
+}
+
+/* G. ASSETS */
+const JAMIE_FILES = [
+  'jamie-idle-01.png', 'jamie-idle-02-blink.png', 'jamie-idle-03-breathe.png', 'jamie-idle-04-ear-twitch.png', 'jamie-idle-05-tail-wag.png',
+  'jamie-track-left.png', 'jamie-track-center.png', 'jamie-track-right.png', 'jamie-track-high.png',
+  'jamie-anticipation-01.png', 'jamie-anticipation-02-wiggle.png', 'jamie-anticipation-03-launch.png',
+  'jamie-anticipation-04-wiggle-b.png', 'jamie-anticipation-05-stalk.png',
+  'jamie-treat-catch-01.png', 'jamie-treat-catch-02.png', 'jamie-treat-chew-01.png', 'jamie-treat-chew-02.png', 'jamie-treat-happy.png',
+  'jamie-fetch-ready.png', 'jamie-fetch-leap.png', 'jamie-fetch-catch.png', 'jamie-ball-hold.png', 'jamie-fetch-shake.png',
+  'jamie-premium-ready.png', 'jamie-premium-catch.png', 'jamie-premium-celebrate.png', 'jamie-premium-celebrate-02.png', 'jamie-premium-hold.png',
+  'jamie-toy-pounce.png', 'jamie-toy-paw.png', 'jamie-toy-surprised.png', 'jamie-toy-shake.png', 'jamie-toy-happy.png',
+  'jamie-duck-head-tilt.png', 'jamie-duck-tilt-02.png', 'jamie-duck-paw.png', 'jamie-duck-boop.png', 'jamie-duck-happy.png',
+  'jamie-sock-grab.png', 'jamie-sock-tug.png', 'jamie-sock-tug-02.png', 'jamie-sock-shake.png', 'jamie-sock-victory.png',
+  'jamie-bubble-watch.png', 'jamie-bubble-track.png', 'jamie-bubble-pop.png', 'jamie-bubble-surprised.png', 'jamie-bubble-sneeze.png',
+  'jamie-heart-celebrate-01.png', 'jamie-heart-celebrate-02.png', 'jamie-heart-celebrate-03.png', 'jamie-heart-spin.png', 'jamie-heart-land.png',
+  'jamie-comment-look.png', 'jamie-miss.png', 'jamie-confused.png', 'jamie-sleep.png', 'jamie-wake.png'
+];
+const ITEM_FILES = [
+  'items/treat-biscuit.png', 'items/treat-bone.png', 'items/treat-purple-splat.png', 'items/treat-heart.png',
+  'items/tennis-ball.png', 'items/golden-tennis-ball.png', 'items/squeaky-toy.png', 'items/duck.png',
+  'items/sock.png', 'items/bubble.png', 'items/heart-large.png'
+];
+let assetOverrides = {};
+try { assetOverrides = JSON.parse(localStorage.getItem(FJ_LS_ASSETS) || '{}'); } catch (e) {}
+
+function buildAssetList() {
+  const wrap = document.getElementById('asset-list');
+  wrap.innerHTML = '';
+  const mk = (file, group) => {
+    const row = document.createElement('div');
+    row.className = 'asset-row';
+    row.dataset.file = file;
+    const short = file.replace('items/', '');
+    row.innerHTML = `
+      <img class="thumb" alt="" src="assets/feed-jamie/${file}" onerror="this.style.opacity=.15">
+      <span class="name">${short}${group === 'item' ? ' <span style="color:#B8A6D9">(item)</span>' : ''}</span>
+      <span class="st">…</span>
+      <button style="padding:4px 8px;font-size:11px;">replace</button>
+      <button class="warn reset-btn" style="padding:4px 8px;font-size:11px;display:none;">reset</button>`;
+    const [replaceBtn, resetBtn] = row.querySelectorAll('button');
+    const picker = document.createElement('input');
+    picker.type = 'file'; picker.accept = 'image/png,image/webp'; picker.style.display = 'none';
+    row.appendChild(picker);
+    replaceBtn.onclick = () => picker.click();
+    picker.onchange = () => {
+      const f = picker.files[0]; if (!f) return;
+      if (f.size > 800 * 1024) { alert('Keep local test images under 800 KB.'); return; }
+      const r = new FileReader();
+      r.onload = () => {
+        assetOverrides[file] = r.result;
+        try { localStorage.setItem(FJ_LS_ASSETS, JSON.stringify(assetOverrides)); }
+        catch (e) { alert('localStorage full — remove some replacements.'); return; }
+        send({ cmd: 'ASSET_UPDATE', data: { file, dataURL: r.result } }, { skipAbly: true });
+        refreshAssetStatuses();
+      };
+      r.readAsDataURL(f);
+    };
+    resetBtn.onclick = () => {
+      delete assetOverrides[file];
+      try { localStorage.setItem(FJ_LS_ASSETS, JSON.stringify(assetOverrides)); } catch (e) {}
+      send({ cmd: 'ASSET_UPDATE', data: { file, dataURL: null } }, { skipAbly: true });
+      refreshAssetStatuses();
+    };
+    wrap.appendChild(row);
+  };
+  const h1 = document.createElement('div'); h1.className = 'note'; h1.innerHTML = '<b>Jamie sprites</b>'; wrap.appendChild(h1);
+  JAMIE_FILES.forEach(f => mk(f, 'jamie'));
+  const h2 = document.createElement('div'); h2.className = 'note'; h2.innerHTML = '<b>Items</b>'; wrap.appendChild(h2);
+  ITEM_FILES.forEach(f => mk(f, 'item'));
+  refreshAssetStatuses();
+}
+function refreshAssetStatuses() {
+  document.querySelectorAll('.asset-row').forEach(row => {
+    const file = row.dataset.file;
+    const st = row.querySelector('.st');
+    const resetBtn = row.querySelector('.reset-btn');
+    const overridden = !!assetOverrides[file];
+    const avail = lastAssetMap[file];
+    if (overridden) { st.textContent = 'local ⬆'; st.className = 'st ok'; }
+    else if (avail === true)  { st.textContent = 'present ✓'; st.className = 'st ok'; }
+    else if (avail === false) { st.textContent = 'missing ◌'; st.className = 'st miss'; }
+    else { st.textContent = '…'; st.className = 'st'; }
+    resetBtn.style.display = overridden ? '' : 'none';
+    if (overridden) row.querySelector('.thumb').src = assetOverrides[file];
+  });
+}
+function clearAssetOverrides() {
+  if (!confirm('Remove ALL local image replacements?')) return;
+  assetOverrides = {};
+  try { localStorage.setItem(FJ_LS_ASSETS, '{}'); } catch (e) {}
+  send({ cmd: 'RELOAD_ASSETS' });
+  buildAssetList();
+}
+buildAssetList();
+
+/* H. AUDIO */
+const SOUND_NAMES = ['bounce', 'ballBounce', 'catch', 'crunch', 'squeak', 'quack', 'pop', 'jackpot', 'heartMe', 'subscribe', 'gift'];
+(function () {
+  const p = document.getElementById('audio-controls');
+  toggle(p, 'Global mute', 'audio.muted');
+  slider(p, 'Master volume', 'audio.master', 0, 1, 0.05, v => Math.round(v * 100) + '%');
+  slider(p, 'Sound cooldown', 'audio.cooldownMs', 50, 800, 10, v => v + 'ms');
+  const rows = document.getElementById('sound-rows');
+  for (const s of SOUND_NAMES) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label>${s}</label><input type="range" min="0" max="1" step="0.05"><span class="val"></span>
+      <input type="url" placeholder="https:// sound URL (optional)" style="flex:1;min-width:150px;font-size:11px;">
+      <button style="padding:4px 10px;">▶</button>`;
+    const [vol, url] = row.querySelectorAll('input');
+    const val = row.querySelector('.val');
+    const test = row.querySelector('button');
+    vol.value = CFG.audio.volumes[s] ?? 0.6; val.textContent = Math.round(vol.value * 100) + '%';
+    url.value = CFG.audio.urls[s] || '';
+    vol.oninput = () => { CFG.audio.volumes[s] = +vol.value; val.textContent = Math.round(vol.value * 100) + '%'; pushConfig(); };
+    url.onchange = () => { if (url.value) CFG.audio.urls[s] = url.value.trim(); else delete CFG.audio.urls[s]; pushConfig(); };
+    test.onclick = () => { send({ cmd: 'PLAY_SOUND', data: { sound: s } }); testSoundLocal(s); };
+    rows.appendChild(row);
+  }
+})();
+/* local audition using same synth recipes as the overlay */
+let actx = null;
+function testSoundLocal(name) {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  if (actx.state === 'suspended') actx.resume().catch(() => {});
+  const t = actx.currentTime, master = actx.createGain();
+  master.gain.value = (CFG.audio.volumes[name] ?? 0.6) * CFG.audio.master * 0.5;
+  master.connect(actx.destination);
+  const tone = (f, st, d, ty, pk) => {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = ty || 'sine'; o.frequency.setValueAtTime(f, t + st);
+    g.gain.setValueAtTime(0.0001, t + st);
+    g.gain.exponentialRampToValueAtTime(pk || 1, t + st + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + st + d);
+    o.connect(g); g.connect(master); o.start(t + st); o.stop(t + st + d + 0.05);
+    return o;
+  };
+  const url = CFG.audio.urls[name];
+  if (url) { try { const a = new Audio(url); a.volume = Math.min(1, (CFG.audio.volumes[name] ?? .6) * CFG.audio.master); a.play().catch(() => {}); return; } catch (e) {} }
+  switch (name) {
+    case 'bounce': tone(320, 0, .08); break;
+    case 'ballBounce': tone(180, 0, .12, 'triangle'); break;
+    case 'catch': tone(520, 0, .1, 'triangle'); tone(780, .07, .12, 'triangle'); break;
+    case 'crunch': tone(150, 0, .06, 'square', .5); tone(120, .07, .06, 'square', .4); tone(100, .14, .08, 'square', .3); break;
+    case 'squeak': { const o = tone(900, 0, .22, 'sawtooth', .5); o.frequency.exponentialRampToValueAtTime(1400, t + .1); o.frequency.exponentialRampToValueAtTime(700, t + .22); break; }
+    case 'quack': { const o = tone(260, 0, .16, 'sawtooth', .6); o.frequency.exponentialRampToValueAtTime(180, t + .16); tone(240, .2, .14, 'sawtooth', .4); break; }
+    case 'pop': { const o = tone(600, 0, .07); o.frequency.exponentialRampToValueAtTime(1200, t + .06); break; }
+    case 'jackpot': tone(660, 0, .12, 'triangle'); tone(880, .1, .12, 'triangle'); tone(1320, .2, .2, 'triangle'); break;
+    case 'heartMe': tone(523, 0, .18, 'triangle'); tone(659, .12, .18, 'triangle'); tone(784, .24, .22, 'triangle'); tone(1047, .36, .3, 'triangle'); break;
+    case 'subscribe': tone(784, 0, .14, 'triangle'); tone(988, .1, .14, 'triangle'); tone(1175, .2, .28, 'triangle'); break;
+    case 'gift': tone(587, 0, .14, 'triangle'); tone(880, .11, .2, 'triangle'); break;
+  }
+}
+
+/* I. TEST EVENTS */
+const testUser = () => document.getElementById('test-user').value.trim() || 'test_viewer';
+function testLike(n)      { send({ cmd: 'TRIGGER_EVENT', data: { type: 'like', count: n, username: testUser() } }); }
+function testComment(msg) { send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', message: msg, username: testUser() } }); }
+function testEvt(type)    { send({ cmd: 'TRIGGER_EVENT', data: { type, username: testUser() } }); }
+function testGift(coins)  { send({ cmd: 'TRIGGER_EVENT', data: { type: 'gift', value: coins, giftName: 'TestGift', username: testUser() } }); }
+
+/* J. SAVE / LOAD */
+function exportConfig() {
+  const blob = new Blob([JSON.stringify(CFG, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'feed-jamie-config.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+document.getElementById('import-file').onchange = function () {
+  const f = this.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const parsed = JSON.parse(r.result);
+      if (!parsed || typeof parsed !== 'object') throw new Error('bad');
+      CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), parsed);
+      pushConfig();
+      location.reload();
+    } catch (e) { alert('Invalid config JSON.'); }
+  };
+  r.readAsText(f);
+  this.value = '';
+};
+function resetDefaults() {
+  if (!confirm('Reset ALL Feed Jamie settings to defaults?')) return;
+  CFG = fjClone(FJ_DEFAULT_CONFIG);
+  pushConfig();
+  location.reload();
+}
+function loadPresets() {
+  try { return JSON.parse(localStorage.getItem(FJ_LS_PRESETS) || '{}'); } catch (e) { return {}; }
+}
+function renderPresets() {
+  const sel = document.getElementById('preset-select');
+  const p = loadPresets();
+  sel.innerHTML = Object.keys(p).map(n => `<option>${n.replace(/[<>&"]/g, '')}</option>`).join('') || '<option value="">(none)</option>';
+}
+function savePreset() {
+  const name = document.getElementById('preset-name').value.trim().slice(0, 30);
+  if (!name) { alert('Enter a preset name.'); return; }
+  const p = loadPresets(); p[name] = fjClone(CFG);
+  localStorage.setItem(FJ_LS_PRESETS, JSON.stringify(p));
+  renderPresets();
+}
+function loadPreset() {
+  const name = document.getElementById('preset-select').value;
+  const p = loadPresets();
+  if (!p[name]) return;
+  CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), p[name]);
+  pushConfig();
+  location.reload();
+}
+function deletePreset() {
+  const name = document.getElementById('preset-select').value;
+  const p = loadPresets();
+  if (!p[name] || !confirm(`Delete preset "${name}"?`)) return;
+  delete p[name];
+  localStorage.setItem(FJ_LS_PRESETS, JSON.stringify(p));
+  renderPresets();
+}
+renderPresets();
+
+/* ── TIKFINITY BRIDGE (same event shapes as stream-dock.html) ──── */
+let tfWs = null, tfTimer = null, tfWanted = false, tfCount = 0;
+document.getElementById('tf-toggle').onclick = () => {
+  tfWanted = !tfWanted;
+  document.getElementById('tf-toggle').textContent = tfWanted ? 'Disconnect' : 'Connect';
+  if (tfWanted) tfConnect();
+  else { clearTimeout(tfTimer); try { if (tfWs) tfWs.close(); } catch (e) {} setDot('tf', false, 'off'); }
+};
+function tfConnect() {
+  if (!tfWanted) return;
+  try { if (tfWs) tfWs.close(); } catch (e) {}
+  setDot('tf', false, 'connecting…');
+  try { tfWs = new WebSocket(TIKFINITY_URL); }
+  catch (e) { tfRetry(); return; }
+  tfWs.onopen = () => { tfCount = 0; setDot('tf', true, 'connected (0)'); };
+  tfWs.onclose = () => { setDot('tf', false, 'disconnected'); tfRetry(); };
+  tfWs.onerror = () => { try { tfWs.close(); } catch (e) {} };
+  tfWs.onmessage = e => {
+    let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+    tfCount++; setDot('tf', true, `connected (${tfCount})`);
+    const evt = (msg.event || '').toLowerCase();
+    const d = msg.data || {};
+    switch (evt) {
+      case 'like':
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'like', count: parseInt(d.likeCount) || 1, username: d.uniqueId || null } });
+        break;
+      case 'chat':
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: d.uniqueId || d.nickname || null, message: String(d.comment || '') } });
+        break;
+      case 'follow':
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'follow', username: d.uniqueId || d.nickname || null } });
+        break;
+      case 'subscribe':
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'subscribe', username: d.uniqueId || null } });
+        break;
+      case 'share':
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'share', username: d.uniqueId || null } });
+        break;
+      case 'gift':
+        /* only finalized gifts (same rule as stream-dock) */
+        if (d.repeatEnd === true || d.giftType !== 1) {
+          const coins = (d.diamondCount || 0) * (d.repeatCount || 1);
+          if (coins > 0) send({ cmd: 'TRIGGER_EVENT', data: { type: 'gift', value: coins, giftName: d.giftName || 'Gift', username: d.uniqueId || null } });
+        }
+        break;
+    }
+  };
+}
+function tfRetry() { clearTimeout(tfTimer); if (tfWanted) tfTimer = setTimeout(tfConnect, 4000); }
+
+/* ── LOCAL PREVIEW ─────────────────────────────────────────────── */
+document.getElementById('preview-toggle').onchange = function () {
+  const wrap = document.getElementById('preview-wrap');
+  if (this.checked) {
+    wrap.style.display = 'block';
+    if (!wrap.querySelector('iframe')) {
+      const f = document.createElement('iframe');
+      f.id = 'preview-frame';
+      f.src = 'feed-jamie-overlay.html';
+      wrap.appendChild(f);
+    }
+  } else {
+    wrap.style.display = 'none';
+    const f = wrap.querySelector('iframe');
+    if (f) f.remove();
+  }
+};
+
+/* boot */
+connectAbly();
+pushConfig();
+send({ cmd: 'REQUEST_STATUS' });
+</script>
+</body>
+</html>
