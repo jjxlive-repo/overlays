@@ -139,11 +139,10 @@
 
   /* event label (follow / heart me / sub / gift) */
   #event-label {
-    position: absolute; left: 50%; transform: translateX(-50%);
-    z-index: 61; padding: 8px 22px; border-radius: 999px;
+    position: absolute; z-index: 61; padding: 8px 22px; border-radius: 999px;
     background: rgba(59, 7, 100, 0.55); border: 2px solid var(--fj-accent);
     font: 400 32px 'Boogaloo'; color: #fff; white-space: nowrap;
-    opacity: 0; transition: opacity .3s; text-shadow: 0 2px 4px #000;
+    opacity: 0; transition: opacity .3s, left .25s ease-out, top .25s ease-out; text-shadow: 0 2px 4px #000;
   }
   #event-label.gold { border-color: var(--fj-gold); background: rgba(80, 60, 4, 0.55); }
 
@@ -152,7 +151,7 @@
     position: absolute; z-index: 55; padding: 5px 14px; border-radius: 999px;
     background: rgba(30, 8, 56, 0.5); border: 2px solid #C084FC66;
     font: 700 22px 'DM Sans'; color: #fff; white-space: nowrap;
-    opacity: 0; transition: opacity .4s; text-shadow: 0 1px 3px #000;
+    opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
   }
 
   /* effects layer */
@@ -235,7 +234,7 @@ const FJ_DEFAULT_CONFIG = {
     followShowUsername: true, followNameSeconds: 1.5,
     heartMeDurationSec: 3, heartMeSpawnHeart: true, heartMeNameSeconds: 2,
     subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
-    giftLowMax: 99, giftMediumMax: 999,
+    giftLowMax: 99, giftMediumMax: 4999, giftHighMin: 5000,
     giftMappings: []   /* [{giftName, minValue, maxValue, itemType, showUsername}] */
   },
   prompts: {
@@ -253,7 +252,9 @@ const FJ_DEFAULT_CONFIG = {
     blueAccent: true, stickerBorder: true, highContrast: false,
     intensity: 1, cornerGlow: 1,
     frameCrossfadeMs: 120,   /* dissolve duration between Jamie sprite frames — smoothness */
-    frameDurationScale: 1    /* multiplies every animation frame's hold time — pacing/calmness */
+    frameDurationScale: 1,   /* multiplies every animation frame's hold time — pacing/calmness */
+    eventLabelX: 540, eventLabelY: 110, eventLabelScale: 1,  /* follow/heart-me/sub/gift username text */
+    likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1
   },
   audio: {
     muted: false, master: 0.7, cooldownMs: 140,
@@ -310,6 +311,12 @@ function fjValidateConfig() {
   c.visuals.intensity = Math.min(Math.max(+c.visuals.intensity ?? 1, 0), 2);
   c.visuals.frameCrossfadeMs = Math.min(Math.max(Math.round(+c.visuals.frameCrossfadeMs || 0), 0), 500);
   c.visuals.frameDurationScale = Math.min(Math.max(+c.visuals.frameDurationScale || 1, 0.4), 3);
+  c.visuals.eventLabelX = Math.min(Math.max(+c.visuals.eventLabelX || 540, 0), 1080);
+  c.visuals.eventLabelY = Math.min(Math.max(+c.visuals.eventLabelY || 110, 0), 1920);
+  c.visuals.eventLabelScale = Math.min(Math.max(+c.visuals.eventLabelScale || 1, 0.4), 2.5);
+  c.visuals.likeMeterX = Math.min(Math.max(+c.visuals.likeMeterX || 404, 0), 1080);
+  c.visuals.likeMeterY = Math.min(Math.max(+c.visuals.likeMeterY || 440, 0), 1920);
+  c.visuals.likeMeterScale = Math.min(Math.max(+c.visuals.likeMeterScale || 1, 0.4), 2.5);
 }
 fjValidateConfig();
 function applyMotionVar() {
@@ -718,17 +725,22 @@ function applyLayout() {
   rzv.style.width = rz.rx * 2 + 'px'; rzv.style.height = rz.ry * 2 + 'px';
   rzv.style.borderRadius = CFG.reachZone.shape === 'ellipse' ? '50%' : '18px';
 
-  /* prompt + meter positions */
+  /* prompt + meter + event-label positions — all independently configurable
+     (not auto-computed from Jamie's position) so they can be placed anywhere. */
   const pp = $('prompt-pill');
   pp.style.left = CFG.prompts.x + 'px';
   pp.style.top = CFG.prompts.y + 'px';
   pp.style.transform = `translateX(-50%) scale(${CFG.prompts.scale})`;
   pp.style.background = `rgba(30, 8, 56, ${CFG.prompts.bgOpacity})`;
   const lm = $('like-meter');
-  const meterX = j.side === 'right' ? x - 30 : x + w + 14;
-  lm.style.left = Math.min(Math.max(meterX, 10), 880) + 'px';
-  lm.style.top = (CFG.floor.y - 60) + 'px';
-  $('event-label').style.top = Math.max(CFG.floor.y - jamieRect.h - 90, 40) + 'px';
+  lm.style.left = CFG.visuals.likeMeterX + 'px';
+  lm.style.top = CFG.visuals.likeMeterY + 'px';
+  lm.style.transform = `scale(${CFG.visuals.likeMeterScale})`;
+  lm.style.transformOrigin = '0 50%';
+  const el = $('event-label');
+  el.style.left = CFG.visuals.eventLabelX + 'px';
+  el.style.top = CFG.visuals.eventLabelY + 'px';
+  el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
 }
 function isFlipped() {
   /* default art faces right when Jamie sits on the left */
@@ -1374,7 +1386,7 @@ function handleComment(username, message) {
   }
 }
 let heartMeActive = false;
-function triggerHeartMe(username) {
+function triggerHeartMe(username, highGiftName = '') {
   if (heartMeActive) return;
   heartMeActive = true;
   /* 1-2: dim normal objects, clear minor distractions */
@@ -1395,7 +1407,16 @@ function triggerHeartMe(username) {
   spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, 10);
   spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, 8);
   playSound('heartMe');
-  if (username) showEventLabel(`@${sanitizeName(username)} gave Jamie a Heart Me! 💜`, CFG.events.heartMeNameSeconds, false);
+  if (username) {
+    const giftLabel = sanitizeName(highGiftName);
+    showEventLabel(
+      giftLabel
+        ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
+        : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
+      CFG.events.heartMeNameSeconds,
+      !!giftLabel
+    );
+  }
   const durMs = CFG.events.heartMeDurationSec * 1000;
   setTimeout(() => {
     $('heartme-veil').style.opacity = 0;
@@ -1421,7 +1442,8 @@ function triggerSubscribe(username) {
 }
 function handleGift(evt) {
   const value = +evt.value || 0;
-  const giftName = String(evt.giftName || '').toLowerCase();
+  const rawGiftName = String(evt.giftName || 'Gift').trim() || 'Gift';
+  const giftName = rawGiftName.toLowerCase();
   const username = evt.username;
   /* custom mappings first */
   for (const m of (CFG.events.giftMappings || [])) {
@@ -1438,8 +1460,9 @@ function handleGift(evt) {
     }
   }
   /* fallback tiers */
-  if (value > CFG.events.giftMediumMax) {
-    triggerHeartMe(username);            /* high-value: mega payoff */
+  const highGiftMin = Number(CFG.events.giftHighMin) || 5000;
+  if (value >= highGiftMin) {
+    triggerHeartMe(username, rawGiftName); /* high-value: mega payoff, actual gift label */
   } else if (value > CFG.events.giftLowMax) {
     const pool = ['squeaky-toy', 'duck', 'tennis-ball'];
     queueSpawn(pool[Math.floor(Math.random() * pool.length)], {
