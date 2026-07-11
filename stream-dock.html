@@ -1535,50 +1535,6 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
   color: #dbeafe !important;
 }
 
-/* ── STREAM DOCK REDESIGN: persistent organizer ── */
-.dock-organizer { display:flex; flex-direction:column; gap:7px; min-height:0; }
-.dock-group {
-  background:rgba(18,18,26,.94); border:1px solid rgba(255,255,255,.07);
-  border-radius:10px; overflow:hidden; flex-shrink:0;
-}
-.dock-group.is-empty { display:none; }
-.dock-group-hd {
-  display:flex; align-items:center; gap:7px; padding:9px 11px;
-  background:linear-gradient(90deg,rgba(168,85,247,.10),rgba(255,255,255,.025));
-  border-bottom:1px solid rgba(255,255,255,.07); cursor:pointer; user-select:none;
-}
-.dock-group-title { flex:1; color:#c084fc; font-size:11px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
-.dock-group-count,.dock-pinned-badge { font:500 9px var(--mono); color:var(--txt-dim); background:rgba(255,255,255,.06); padding:2px 7px; border-radius:9px; }
-.dock-pinned-badge { color:#e879f9; border:1px solid rgba(232,121,249,.25); }
-.dock-group-arrow { color:var(--txt-dim); font-size:9px; transition:transform .18s; }
-.dock-group.closed .dock-group-arrow { transform:rotate(-90deg); }
-.dock-group.closed .dock-group-body { display:none; }
-.dock-group-body { display:flex; flex-direction:column; gap:5px; padding:7px; min-height:8px; }
-.dock-group[data-group="pinned"] .dock-group-body { max-height:220px; overflow-y:auto; }
-.dock-search { width:100%; box-sizing:border-box; background:#12121a; border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:9px 11px; color:var(--txt); font:500 11px var(--font); outline:none; }
-.dock-search:focus { border-color:rgba(168,85,247,.58); box-shadow:0 0 0 2px rgba(168,85,247,.10); }
-.dock-overlay-row {
-  display:flex; align-items:center; gap:7px; padding:7px 8px; border:1px solid rgba(255,255,255,.07);
-  border-radius:8px; background:rgba(255,255,255,.035); transition:opacity .12s,background .12s;
-}
-.dock-overlay-row:hover { background:rgba(255,255,255,.06); }
-.dock-overlay-row.dragging,.ctrl-card.dragging,.ctrl-section.dragging { opacity:.35; }
-.dock-overlay-row.drag-over,.ctrl-card.drag-over,.ctrl-section.drag-over { outline:2px dashed #c084fc; outline-offset:-2px; }
-.dock-drag { color:var(--txt-dim); cursor:grab; font-size:11px; flex-shrink:0; }
-.dock-overlay-name { flex:1; min-width:0; font-size:11px; font-weight:650; color:rgba(255,255,255,.86); }
-.dock-vis-btn,.dock-archive-btn {
-  border-radius:20px; padding:4px 8px; font:800 9px var(--font); letter-spacing:.07em;
-  text-transform:uppercase; cursor:pointer; white-space:nowrap;
-}
-.dock-vis-btn.showing { border:1px solid rgba(244,63,94,.45); background:rgba(244,63,94,.14); color:#fb7185; }
-.dock-vis-btn.hidden { border:1px solid rgba(59,130,246,.50); background:rgba(59,130,246,.18); color:#60a5fa; }
-.dock-vis-btn::before { content:'•'; margin-right:5px; font-size:13px; line-height:0; }
-.dock-archive-btn { border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); color:var(--txt-dim); border-radius:6px; text-transform:none; letter-spacing:0; }
-.dock-archive-btn.restore { border-color:rgba(168,85,247,.4); background:rgba(168,85,247,.14); color:#c084fc; }
-.dock-card-tools { display:flex; align-items:center; gap:5px; padding:5px 7px; border-bottom:1px solid var(--border); background:rgba(168,85,247,.055); }
-.dock-card-tools .dock-card-name { flex:1; font-size:9px; color:var(--txt-dim); }
-.dock-card-tools + .ctrl-hd { border-top:0; }
-.dock-archive-note { padding:9px; color:var(--txt-dim); font-size:9px; line-height:1.45; }
 
 /* Readability pass for the streamer's config panels. Panel headers should read
    like section titles; labels/buttons/inputs should stay secondary but legible. */
@@ -4246,7 +4202,7 @@ function dockSetChatCols(cols) {
   container.classList.toggle('chat-two-col', cols === 2);
   document.getElementById('chat-col-1')?.classList.toggle('active', cols === 1);
   document.getElementById('chat-col-2')?.classList.toggle('active', cols === 2);
-  if (typeof _dockLayout !== 'undefined') { _dockLayout.chatCols = cols; dockSaveLayout(); }
+  localStorage.setItem('streamDockChatCols', String(cols));
   dockRebalanceChat();
 }
 function dockRebalanceChat() {
@@ -8024,39 +7980,27 @@ function organizeDockControls() {
   dockRemoveFunFromPromoCard();
   dockAddBaitRescueButtons();
 
+  const quick = dockBuildQuickToggles();
   const chatTesting = dockBuildChatTestCard();
   const funDrawer = dockBuildFunDrawerCard();
-  const frequentIds = new Set(['lt','ep','stg','splatcards','testfire','chat-testing']);
-  const cards = [dockCardByCtrl('layout'),dockCardByCtrl('cloud-sync'),dockCardByCtrl('testfire'),chatTesting,
-    dockCardByCtrl('lt'),dockCardByCtrl('ep'),dockCardByCtrl('psc'),dockCardByCtrl('tgo'),dockCardByCtrl('gb'),
-    dockCardByCtrl('stg'),funDrawer,dockCardByCtrl('gifttiers'),dockCardByCtrl('peek'),dockCardByCtrl('splatcards'),
-    dockCardByCtrl('bait'),dockCardByCtrl('newhere'),dockCardByCtrl('ttb'),dockCardByCtrl('cg'),dockCardByCtrl('kw'),
-    dockCardByCtrl('mm'),dockCardByCtrl('msc')].filter(Boolean);
+  const groups = [
+    ['Config Toggles', [quick, dockCardByCtrl('layout'), dockCardByCtrl('cloud-sync')]],
+    ['Testing', [dockCardByCtrl('testfire'), chatTesting]],
+    ['Promo', [dockCardByCtrl('lt'), dockCardByCtrl('ep'), dockCardByCtrl('psc'), dockCardByCtrl('tgo'), dockCardByCtrl('gb')]],
+    ['Events', [dockCardByCtrl('stg'), funDrawer, dockCardByCtrl('gifttiers'), dockCardByCtrl('peek')]],
+    ['Chat Games', [dockCardByCtrl('splatcards'), dockCardByCtrl('bait'), dockCardByCtrl('newhere'), dockCardByCtrl('ttb'), dockCardByCtrl('cg'), dockCardByCtrl('kw')]],
+    ['Milk Bar', [dockCardByCtrl('mm'), dockCardByCtrl('msc')]]
+  ];
   col.innerHTML = '';
-  const organizer=document.createElement('div'); organizer.className='dock-organizer';
-  organizer.appendChild(dockMakeGroup('frequent','Frequently Used',{icon:'★',collapsible:false}));
-  organizer.appendChild(dockMakeGroup('pinned','Overlay Toggles',{icon:'🎛',pinned:true,collapsible:false}));
-  const search=document.createElement('input'); search.id='dock-search'; search.className='dock-search'; search.placeholder='🔍 Filter setup categories (e.g. milk, boss, stinger)…'; search.oninput=dockApplySearch; organizer.appendChild(search);
-  organizer.appendChild(dockMakeGroup('advanced','Advanced / Setup',{icon:'⚙',closed:!_dockLayout.advancedOpen}));
-  organizer.appendChild(dockMakeGroup('archive','Archive',{icon:'📦',closed:!_dockLayout.archiveOpen}));
-  col.appendChild(organizer);
-  cards.forEach(card => {
-    const id=dockCardId(card), group=frequentIds.has(id)?'frequent':'advanced';
-    card.dataset.defaultGroup=group;
-    dockDecorateCard(card,id,group);
-    /* Keep the real card in the document while the persisted organizer places it.
-       Detached cards cannot be discovered by dockPlaceCards(). */
-    document.getElementById(`dock-${group}-body`).appendChild(card);
+  groups.forEach(([label, cards]) => {
+    col.appendChild(dockMakeSection(label));
+    cards.filter(Boolean).forEach(card => col.appendChild(card));
   });
-  dockEnableGroupDrop(document.getElementById('dock-frequent-body'),'frequent');
-  dockEnableGroupDrop(document.getElementById('dock-advanced-body'),'advanced');
-  const note=document.createElement('div'); note.className='dock-archive-note'; note.textContent='Archived overlays are hidden and inactive. Unarchived overlays stay hidden until you press Show.'; document.getElementById('dock-archive-body').appendChild(note);
-  _dockLayout.archivedOverlays.forEach(dockSetOverlayHidden);
   dockRename('gb', 'Gifter Highlight');
   dockRename('ttb', 'Team Timing');
   dockMoveFunConfig();
-  dockPlaceCards();
-  dockSetChatCols(_dockLayout.chatCols);
+  dockSyncQuickToggles();
+  dockSetChatCols(parseInt(localStorage.getItem('streamDockChatCols') || '1', 10));
   col.dataset.organized = 'true';
 }
 
