@@ -156,23 +156,60 @@
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
   }
 
-  /* gift showcase — small square cycling through configured gift → item mappings.
-     Text wraps instead of clipping; height grows to fit. */
+  /* wooden gift sign — illustrated prop planted at the floor line beside Jamie,
+     rotating through gift → item mappings. Live text/images sit over the blank
+     regions of the sign artwork (positions from SIGN-LAYOUT-MAP). */
   #gift-showcase {
-    position: absolute; z-index: 55; width: 150px; box-sizing: border-box;
-    padding: 10px 10px 8px; border-radius: 16px; text-align: center;
-    background: rgba(30, 8, 56, 0.5); border: 2px solid #C084FC66;
-    opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out;
-    transform-origin: top left;
+    position: absolute; z-index: 28; opacity: 0; pointer-events: none;
+    transform-origin: 50% 100%;
+    transition: opacity .35s ease, left .3s ease-out, top .3s ease-out;
   }
-  #gift-showcase img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 2px; }
-  #gift-showcase .gs-gift {
-    font: 700 16px 'DM Sans'; color: var(--fj-gold); margin-top: 2px; line-height: 1.2;
-    white-space: normal; overflow-wrap: break-word; text-shadow: 0 1px 3px #000;
+  #gift-showcase .gs-sign-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #gift-showcase .gs-gift-img { position: absolute; z-index: 2; object-fit: contain; transform: translate(-50%, -50%); }
+  #gift-showcase .gs-gift-name {
+    position: absolute; z-index: 2; transform: translate(-50%, -50%);
+    font: 700 15px 'DM Sans'; text-transform: uppercase; letter-spacing: .5px; color: #7B2FBE;
+    text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  #gift-showcase .gs-item {
-    font: 400 20px 'Boogaloo'; color: var(--fj-white); margin-top: 2px; letter-spacing: .5px; line-height: 1.15;
-    white-space: normal; overflow-wrap: break-word; text-shadow: 0 1px 3px #000;
+  #gift-showcase .gs-action {
+    position: absolute; z-index: 2; transform: translate(-50%, -50%);
+    font: 700 22px 'DM Sans'; color: #3A2A1A; line-height: 1.12;
+    text-align: center; overflow: hidden;
+  }
+  #gift-showcase .gs-detail {
+    position: absolute; z-index: 2; transform: translate(-50%, -50%);
+    font: 500 14px 'DM Sans'; color: #6B5A45;
+    text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* floating video-game trigger text above Jamie when a mapped gift lands */
+  #gift-float-layer { position: absolute; inset: 0; z-index: 64; overflow: visible; pointer-events: none; }
+  .fj-gift-float {
+    position: absolute; transform: translate(-50%, -50%);
+    text-align: center; white-space: nowrap;
+    animation: fjGiftFloat var(--float-duration, 1500ms) ease-out forwards;
+  }
+  .fj-gift-float-main {
+    font: 700 32px 'DM Sans', sans-serif; color: #fff;
+    text-shadow: -3px -3px 0 #3B0764, 3px -3px 0 #3B0764, -3px 3px 0 #3B0764, 3px 3px 0 #3B0764, 0 5px 8px #000a;
+  }
+  .fj-gift-float-sub {
+    margin-top: 3px; font: 700 17px 'DM Sans', sans-serif; color: #F4D8FF;
+    text-shadow: 0 2px 4px #000, 0 0 5px #3B0764;
+  }
+  @keyframes fjGiftFloat {
+    0%   { opacity: 0; transform: translate(-50%, -40%) scale(.82); }
+    16%  { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+    75%  { opacity: 1; transform: translate(-50%, calc(-50% - var(--float-rise, 26px))) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, calc(-50% - var(--float-rise, 26px))) scale(.96); }
+  }
+
+  /* growth flash: golden glow pulse whenever eating makes Jamie bigger */
+  #jamie.growing .fj-jamie-layer, #jamie.growing svg { animation: fjGrowGlow .9s ease-out; }
+  @keyframes fjGrowGlow {
+    0%   { filter: none; }
+    30%  { filter: drop-shadow(0 0 16px #F5C518E0) drop-shadow(0 0 34px #A855F790) brightness(1.18); }
+    100% { filter: none; }
   }
 
   /* effects layer */
@@ -189,11 +226,18 @@
     background: radial-gradient(ellipse at 50% 40%, #A855F72E 0%, transparent 65%);
     transition: opacity .35s;
   }
+  /* jackpot flash (big gift / big superchat, gold instead of heart-me purple) */
+  #jackpot-veil {
+    position: absolute; inset: 0; z-index: 45; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at 50% 40%, #FFD34E33 0%, transparent 65%);
+    transition: opacity .35s;
+  }
 </style>
 </head>
 <body>
 <div id="stage">
   <div id="heartme-veil"></div>
+  <div id="jackpot-veil"></div>
   <div id="floor-line"></div>
   <div id="guide-canvas"></div>
   <div id="safe-area"></div>
@@ -205,11 +249,14 @@
   <div id="prompt-pill"></div>
   <div id="event-label"></div>
   <div id="like-meter"></div>
-  <div id="gift-showcase">
-    <img alt="">
-    <div class="gs-gift"></div>
-    <div class="gs-item"></div>
+  <div id="gift-showcase" aria-label="TikTok gift actions">
+    <img class="gs-sign-art" alt="">
+    <img class="gs-gift-img" alt="">
+    <div class="gs-gift-name"></div>
+    <div class="gs-action"></div>
+    <div class="gs-detail"></div>
   </div>
+  <div id="gift-float-layer" aria-live="polite"></div>
   <div id="debug-hud"></div>
   <div id="conn-dot" title="Ably connection"></div>
 </div>
@@ -267,7 +314,20 @@ const FJ_DEFAULT_CONFIG = {
       maxScale: 2,       /* size multiplier at/above coinsForMax (1-coin gifts stay 1x) */
       coinsForMax: 5000  /* coin value that reaches full size (log curve between) */
     },
-    giftMappings: []   /* [{giftName, itemType ('heartme' = mega reaction), minValue, maxValue, showUsername}] */
+    /* intensity ladder: how big a reaction scales with coin value.
+       L1 normal catch · L2 +sparkle & size · L3 premium (fast/glow/2x growth)
+       · L4 MEGA (Heart-Me style) · L5 MEGA + item shower.
+       A mapping can pin itself to a level, or leave 'auto' to use these breakpoints. */
+    intensityThresholds: { l2: 100, l3: 1000, l4: 5000, l5: 30000 },
+    giftMappings: [],   /* [{giftName, itemType ('heartme' = mega reaction), minValue, maxValue, showUsername, intensity: 'auto'|1-5}] */
+    /* YouTube Super Chats — same 5-level ladder, dollar thresholds. Fed via
+       stream-dock's existing 'gift-alert' Ably broadcast; no direct YouTube
+       connection here. */
+    superchat: {
+      enabled: true,
+      thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 },
+      sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 }
+    }
   },
   prompts: {
     enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1,
@@ -287,8 +347,17 @@ const FJ_DEFAULT_CONFIG = {
     frameDurationScale: 1,   /* multiplies every animation frame's hold time — pacing/calmness */
     eventLabelX: 540, eventLabelY: 110, eventLabelScale: 1,  /* follow/heart-me/sub/gift username text */
     likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1,
-    giftShowcase: {   /* small square cycling through gift → item mappings */
-      enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5
+    usernameSeconds: 2.5,   /* how long username tags/labels stay visible */
+    usernameEvents: {       /* which events display the viewer's username */
+      follow: true, keyword: false, gift: true, subscribe: true, heartMe: true
+    },
+    giftShowcase: {   /* illustrated wooden sign rotating through gift → item mappings */
+      enabled: true, anchorToJamie: true, gap: 15, x: 420, floorOffset: 4,
+      width: 365, intervalSec: 7, transitionMs: 350
+    },
+    giftFloatText: {  /* video-game floating text above Jamie when a mapped gift lands */
+      enabled: true, xOffset: 0, yOffset: -45, durationMs: 1500, risePx: 26,
+      maxVisible: 3, aggregateWindowMs: 700, showSender: true
     }
   },
   audio: {
@@ -303,7 +372,8 @@ const FJ_DEFAULT_CONFIG = {
     enabled: true,       /* Jamie grows a little with every item he catches */
     maxScale: 2,         /* size cap (1 = no growth possible, 2 = double size) */
     perCatch: 0.05,      /* size gained per catch (premium items count double) */
-    decayPerMinute: 0.05 /* how fast he shrinks back toward 1x (0 = never) */
+    decayPerMinute: 0.05,/* how fast he shrinks back toward 1x (0 = never) */
+    fx: true             /* golden glow + sparkles whenever he grows */
   },
   assets: { basePath: 'assets/feed-jamie/', manifestFile: 'asset-manifest.json' },
   debug: { setupGuides: false, showReachZone: false, showJamieBox: false, showSafeArea: false, showState: false, showWarnings: false }
@@ -353,7 +423,7 @@ function fjValidateConfig() {
   c.jamie.width = Math.min(Math.max(+c.jamie.width || 260, 80), 600);
   if (!['ellipse', 'rect'].includes(c.reachZone.shape)) c.reachZone.shape = 'ellipse';
   if (!['off', 'low', 'medium'].includes(c.visuals.particleLevel)) c.visuals.particleLevel = 'low';
-  c.visuals.intensity = Math.min(Math.max(+c.visuals.intensity ?? 1, 0), 2);
+  c.visuals.intensity = Math.min(Math.max(Number.isFinite(+c.visuals.intensity) ? +c.visuals.intensity : 1, 0), 2);
   c.visuals.frameCrossfadeMs = Math.min(Math.max(Math.round(+c.visuals.frameCrossfadeMs || 0), 0), 500);
   c.visuals.frameDurationScale = Math.min(Math.max(+c.visuals.frameDurationScale || 1, 0.4), 3);
   c.visuals.eventLabelX = Math.min(Math.max(+c.visuals.eventLabelX || 540, 0), 1080);
@@ -365,21 +435,66 @@ function fjValidateConfig() {
   if (!c.events.giftSizeScaling || typeof c.events.giftSizeScaling !== 'object') {
     c.events.giftSizeScaling = { enabled: true, maxScale: 2, coinsForMax: 5000 };
   }
-  if (!c.visuals.giftShowcase || typeof c.visuals.giftShowcase !== 'object') {
-    c.visuals.giftShowcase = { enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5 };
+  /* wooden gift sign (migrates the old floating-card giftShowcase config:
+     x is kept as the manual fallback; old y/scale are ignored safely) */
+  const num = (v, d) => { const n = +v; return Number.isFinite(n) ? n : d; };
+  if (!c.visuals.giftShowcase || typeof c.visuals.giftShowcase !== 'object') c.visuals.giftShowcase = {};
+  const gsc = c.visuals.giftShowcase;
+  gsc.enabled = gsc.enabled !== false;
+  gsc.anchorToJamie = gsc.anchorToJamie !== false;
+  gsc.gap = Math.min(Math.max(num(gsc.gap, 15), 0), 100);
+  gsc.x = Math.min(Math.max(num(gsc.x, 420), 0), 1080);
+  gsc.floorOffset = Math.min(Math.max(num(gsc.floorOffset, 4), -50), 80);
+  gsc.width = Math.min(Math.max(num(gsc.width, 365), 220), 520);
+  gsc.intervalSec = Math.min(Math.max(num(gsc.intervalSec, 7), 2), 30);
+  gsc.transitionMs = Math.min(Math.max(num(gsc.transitionMs, 350), 0), 1000);
+  if (!c.visuals.giftFloatText || typeof c.visuals.giftFloatText !== 'object') c.visuals.giftFloatText = {};
+  const gft = c.visuals.giftFloatText;
+  gft.enabled = gft.enabled !== false;
+  gft.xOffset = Math.min(Math.max(num(gft.xOffset, 0), -400), 400);
+  gft.yOffset = Math.min(Math.max(num(gft.yOffset, -45), -500), 300);
+  gft.durationMs = Math.min(Math.max(num(gft.durationMs, 1500), 500), 5000);
+  gft.risePx = Math.min(Math.max(num(gft.risePx, 26), 0), 150);
+  gft.maxVisible = Math.min(Math.max(Math.round(num(gft.maxVisible, 3)), 1), 6);
+  gft.aggregateWindowMs = Math.min(Math.max(num(gft.aggregateWindowMs, 700), 0), 3000);
+  gft.showSender = gft.showSender !== false;
+  c.visuals.usernameSeconds = Math.min(Math.max(num(c.visuals.usernameSeconds, 2.5), 0.5), 10);
+  if (!c.visuals.usernameEvents || typeof c.visuals.usernameEvents !== 'object') {
+    c.visuals.usernameEvents = { follow: true, keyword: false, gift: true, subscribe: true, heartMe: true };
   }
-  c.visuals.giftShowcase.x = Math.min(Math.max(+c.visuals.giftShowcase.x || 930, 0), 1080);
-  c.visuals.giftShowcase.y = Math.min(Math.max(+c.visuals.giftShowcase.y || 240, 0), 1920);
-  c.visuals.giftShowcase.scale = Math.min(Math.max(+c.visuals.giftShowcase.scale || 1, 0.4), 2.5);
-  c.visuals.giftShowcase.intervalSec = Math.min(Math.max(+c.visuals.giftShowcase.intervalSec || 5, 2), 30);
   if (!c.growth || typeof c.growth !== 'object') {
     c.growth = { enabled: true, maxScale: 2, perCatch: 0.05, decayPerMinute: 0.05 };
   }
   c.growth.maxScale = Math.min(Math.max(+c.growth.maxScale || 2, 1), 3);
   c.growth.perCatch = Math.min(Math.max(+c.growth.perCatch || 0.05, 0.01), 0.5);
-  c.growth.decayPerMinute = Math.min(Math.max(+c.growth.decayPerMinute ?? 0.05, 0), 1);
+  c.growth.decayPerMinute = Math.min(Math.max(Number.isFinite(+c.growth.decayPerMinute) ? +c.growth.decayPerMinute : 0.05, 0), 1);
+  c.growth.fx = c.growth.fx !== false;
   c.events.giftSizeScaling.maxScale = Math.min(Math.max(+c.events.giftSizeScaling.maxScale || 2, 1), 3);
   c.events.giftSizeScaling.coinsForMax = Math.min(Math.max(Math.round(+c.events.giftSizeScaling.coinsForMax || 5000), 10), 100000);
+  if (!c.events.intensityThresholds || typeof c.events.intensityThresholds !== 'object') {
+    /* first load of an older config: seed L4 from the old giftHighMin so the
+       ladder starts in roughly the same place the old high-tier cutoff was */
+    c.events.intensityThresholds = { l2: 100, l3: 1000, l4: Math.round(num(c.events.giftHighMin, 5000)), l5: 30000 };
+  }
+  const it = c.events.intensityThresholds;
+  it.l2 = Math.min(Math.max(Math.round(num(it.l2, 100)), 1), 1000000);
+  it.l3 = Math.min(Math.max(Math.round(num(it.l3, 1000)), 1), 1000000);
+  it.l4 = Math.min(Math.max(Math.round(num(it.l4, 5000)), 1), 1000000);
+  it.l5 = Math.min(Math.max(Math.round(num(it.l5, 30000)), 1), 1000000);
+  if (!c.events.superchat || typeof c.events.superchat !== 'object') {
+    c.events.superchat = { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } };
+  }
+  const sc = c.events.superchat;
+  sc.enabled = sc.enabled !== false;
+  if (!sc.thresholds || typeof sc.thresholds !== 'object') sc.thresholds = {};
+  sc.thresholds.l2 = Math.min(Math.max(num(sc.thresholds.l2, 2), 0.01), 100000);
+  sc.thresholds.l3 = Math.min(Math.max(num(sc.thresholds.l3, 5), 0.01), 100000);
+  sc.thresholds.l4 = Math.min(Math.max(num(sc.thresholds.l4, 20), 0.01), 100000);
+  sc.thresholds.l5 = Math.min(Math.max(num(sc.thresholds.l5, 100), 0.01), 100000);
+  if (!sc.sizeScaling || typeof sc.sizeScaling !== 'object') sc.sizeScaling = {};
+  sc.sizeScaling.enabled = sc.sizeScaling.enabled !== false;
+  sc.sizeScaling.maxScale = Math.min(Math.max(num(sc.sizeScaling.maxScale, 2), 1), 3);
+  sc.sizeScaling.dollarsForMax = Math.min(Math.max(num(sc.sizeScaling.dollarsForMax, 50), 0.5), 100000);
 }
 /* size multiplier for a gift-spawned item: log curve from 1x (1 coin) up to
    maxScale (at coinsForMax coins) — big gifts read big without a 30k-coin
@@ -389,6 +504,105 @@ function giftSizeScale(coins) {
   if (!g || !g.enabled) return 1;
   const t = Math.min(1, Math.log(1 + Math.max(0, +coins || 0)) / Math.log(1 + g.coinsForMax));
   return 1 + (g.maxScale - 1) * t;
+}
+/* ── intensity ladder: how big Jamie's reaction is, 1 (normal) to 5 (MEGA + shower) ── */
+function intensityForValue(value) {
+  const t = CFG.events.intensityThresholds;
+  const v = +value || 0;
+  if (v >= t.l5) return 5;
+  if (v >= t.l4) return 4;
+  if (v >= t.l3) return 3;
+  if (v >= t.l2) return 2;
+  return 1;
+}
+function resolveIntensity(mapping, value) {
+  if (mapping && mapping.intensity && mapping.intensity !== 'auto') {
+    const n = Math.round(+mapping.intensity);
+    if (n >= 1 && n <= 5) return n;
+  }
+  return intensityForValue(value);
+}
+/* L5: a rapid-fire burst of small treats on top of the MEGA celebration.
+   All pending timers are tracked so clearAllObjects()/Emergency Clear can
+   cancel an in-flight shower instead of it leaking items in afterward. */
+let showerTimers = [];
+function spawnItemShower(itemType, username) {
+  const count = 5 + Math.floor(Math.random() * 4); /* 5-8 */
+  for (let i = 0; i < count; i++) {
+    const t = setTimeout(() => {
+      showerTimers = showerTimers.filter(x => x !== t);
+      queueSpawn(itemType, { sourceEvent: 'gift-shower', username, priority: 65, showName: false, sizeScale: 0.85 });
+    }, i * 260);
+    showerTimers.push(t);
+  }
+}
+/* core executor: run the escalation ladder at an ALREADY-RESOLVED level.
+   sizeScale is passed in (not recomputed) so callers can use a currency-
+   appropriate curve — coins for TikTok gifts, dollars for superchats. */
+function reactAtLevel(itemType, level, sizeScale, username, rawGiftName, mapping, showName, sourceEvent) {
+  const wantsHeartMe = itemType === 'heartme';
+  const wantsJackpot = !wantsHeartMe && level >= 4;
+  if (wantsHeartMe || wantsJackpot) {
+    showGiftFloat(mapping || { itemType: wantsHeartMe ? 'heartme' : 'jackpot' }, username, rawGiftName);
+    if (wantsHeartMe) triggerHeartMe(username, rawGiftName);
+    else triggerJackpot(username, rawGiftName);
+    if (level >= 5) {
+      const showerItem = (mapping && ITEM_DEFS[mapping.itemType]) ? mapping.itemType : 'treat-biscuit';
+      const t = setTimeout(() => {
+        showerTimers = showerTimers.filter(x => x !== t);
+        spawnItemShower(showerItem, username);
+      }, 900);
+      showerTimers.push(t);
+    }
+    return;
+  }
+  if (!ITEM_DEFS[itemType]) return;
+  showGiftFloat(mapping || { itemType }, username, rawGiftName);
+  queueSpawn(itemType, {
+    sourceEvent: sourceEvent || 'gift', username, priority: 70 + level * 5,
+    premium: level >= 3,
+    showName: showName && !!CFG.visuals.usernameEvents.gift,
+    nameSeconds: CFG.visuals.usernameSeconds,
+    sizeScale: sizeScale * (1 + (level - 1) * 0.08),
+    intensityLevel: level
+  });
+  playSound('gift');
+}
+/* TikTok gift entry point — mapped or fallback — resolves level from coins. */
+function reactToGift(itemType, value, username, rawGiftName, mapping, showName) {
+  reactAtLevel(itemType, resolveIntensity(mapping, value), giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift');
+}
+/* YouTube Super Chat ladder — separate dollar thresholds + size curve,
+   fed via stream-dock's existing 'gift-alert' Ably broadcast (no new
+   YouTube connection needed; Feed Jamie just listens on the same channel). */
+function superchatSizeScale(dollars) {
+  const g = CFG.events.superchat.sizeScaling;
+  if (!g || !g.enabled) return 1;
+  const t = Math.min(1, Math.log(1 + Math.max(0, +dollars || 0)) / Math.log(1 + g.dollarsForMax));
+  return 1 + (g.maxScale - 1) * t;
+}
+function resolveSuperchatIntensity(dollars) {
+  const t = CFG.events.superchat.thresholds;
+  const v = +dollars || 0;
+  if (v >= t.l5) return 5;
+  if (v >= t.l4) return 4;
+  if (v >= t.l3) return 3;
+  if (v >= t.l2) return 2;
+  return 1;
+}
+function superchatItemForLevel(level) {
+  if (level >= 3) return 'golden-tennis-ball';
+  if (level === 2) return ['squeaky-toy', 'duck', 'tennis-ball'][Math.floor(Math.random() * 3)];
+  return 'treat-heart';
+}
+function handleSuperchat(evt) {
+  if (!CFG.events.superchat.enabled) return;
+  const dollars = +evt.amount || 0;
+  if (dollars <= 0) return;
+  const username = evt.name || evt.username || null;
+  const level = resolveSuperchatIntensity(dollars);
+  const itemType = superchatItemForLevel(level);
+  reactAtLevel(itemType, level, superchatSizeScale(dollars), username, 'Super Chat', null, true, 'superchat');
 }
 fjValidateConfig();
 function applyMotionVar() {
@@ -411,12 +625,35 @@ function growthScale() { return CFG.growth.enabled ? growth : 1; }
 function saveGrowth() {
   try { localStorage.setItem(FJ_LS_GROWTH, JSON.stringify({ g: growth, t: Date.now() })); } catch (e) {}
 }
+let growGlowTimer = null;
+let pendingGrownProud = false;
+function growthFlash(hitMax) {
+  if (CFG.growth.fx === false) return;
+  /* golden glow pulse on the sprite */
+  jamieEl.classList.remove('growing');
+  void jamieEl.offsetWidth;  /* restart the animation */
+  jamieEl.classList.add('growing');
+  clearTimeout(growGlowTimer);
+  growGlowTimer = setTimeout(() => jamieEl.classList.remove('growing'), 950);
+  /* sparkle burst around Jamie (bigger celebration when he hits max size) */
+  const cx = jamieRect.x + jamieRect.w / 2;
+  const cy = jamieRect.y + jamieRect.h * 0.45;
+  spawnFx('sparkleGold', cx, cy, hitMax ? 10 : 5);
+  spawnFx('sparkle', cx, cy, hitMax ? 8 : 3);
+  if (hitMax) {
+    spawnFx('star', cx, jamieRect.y + jamieRect.h * 0.2, 4);
+    /* queue the proud/puffed pose to play as soon as the current catch's
+       payoff/celebrate sequence finishes and Jamie settles back down */
+    pendingGrownProud = true;
+  }
+}
 function applyGrowthCatch(obj) {
   const g = CFG.growth;
   if (!g.enabled || growth >= g.maxScale) return;
   growth = Math.min(g.maxScale, growth + g.perCatch * (obj.premium ? 2 : 1));
   saveGrowth();
   applyLayout();
+  growthFlash(growth >= g.maxScale);
   publishStatus();
 }
 function resetGrowth() {
@@ -498,6 +735,13 @@ const SEQ = {
                  { f: 'jamie-heart-celebrate-03.png', d: 700  },
                  { f: 'jamie-heart-spin.png',         d: 500  }],
   heartMeEnd:   [{ f: 'jamie-heart-land.png',         d: 600  }],
+  /* jackpot: L4/L5 MEGA gift/superchat — gold, deliberately distinct from
+     the purple heartMe sequence above so a big spender reads differently
+     from an actual Heart Me. */
+  jackpot:      [{ f: 'jamie-jackpot-catch.png',      d: 900  }],
+  jackpotEnd:   [{ f: 'jamie-heart-land.png',         d: 600  }],
+  grownProud:   [{ f: 'jamie-grown-proud.png',        d: 1200 }],
+  showerNom:    [{ f: 'jamie-shower-nom.png',         d: 450  }],
   miss:         [{ f: 'jamie-miss.png',               d: 700  }],
   confused:     [{ f: 'jamie-confused.png',           d: 800  }],
   look:         [{ f: 'jamie-comment-look.png',       d: 900  }],
@@ -517,6 +761,9 @@ const REACTION_SEQ = {
 };
 /* per-frame fallback: exact -> state fallback -> idle -> placeholder SVG */
 const FRAME_FALLBACK = {
+  'jamie-jackpot-catch.png':          'jamie-heart-celebrate-01.png',
+  'jamie-grown-proud.png':            'jamie-idle-01.png',
+  'jamie-shower-nom.png':             'jamie-treat-happy.png',
   'jamie-idle-02-blink.png':          'jamie-idle-01.png',
   'jamie-idle-03-breathe.png':        'jamie-idle-01.png',
   'jamie-idle-04-ear-twitch.png':     'jamie-idle-01.png',
@@ -844,10 +1091,67 @@ function applyLayout() {
   el.style.left = CFG.visuals.eventLabelX + 'px';
   el.style.top = CFG.visuals.eventLabelY + 'px';
   el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
+  applyGiftShowcaseLayout();
+}
+
+/* ── wooden gift sign layout (SIGN-LAYOUT-MAP.json values baked in) ── */
+const SIGN_ASPECT_W = 1127, SIGN_ASPECT_H = 957;
+const SIGN_REGIONS = {
+  giftImage:  { cx: 0.285, cy: 0.365, d: 0.155 },
+  giftName:   { cx: 0.655, cy: 0.255, w: 0.43 },
+  actionText: { cx: 0.655, cy: 0.365, w: 0.43, h: 0.18 },
+  detailText: { cx: 0.655, cy: 0.495, w: 0.43 }
+};
+let signArtOk = false;
+function applyGiftShowcaseLayout() {
   const gs = $('gift-showcase');
-  gs.style.left = CFG.visuals.giftShowcase.x + 'px';
-  gs.style.top = CFG.visuals.giftShowcase.y + 'px';
-  gs.style.transform = `scale(${CFG.visuals.giftShowcase.scale})`;
+  const sc = CFG.visuals.giftShowcase;
+  const width = sc.width;
+  const height = width * SIGN_ASPECT_H / SIGN_ASPECT_W;
+  let x = sc.x;
+  if (sc.anchorToJamie) {
+    const rightX = jamieRect.x + jamieRect.w + sc.gap;
+    const leftX = jamieRect.x - sc.gap - width;
+    x = CFG.jamie.side === 'right' ? leftX : rightX;
+    if (x < 8) x = rightX;
+    if (x + width > 1072) x = leftX;
+  }
+  x = Math.max(8, Math.min(1080 - width - 8, x));
+  const y = CFG.floor.y + sc.floorOffset - height;
+  gs.style.left = x + 'px';
+  gs.style.top = y + 'px';
+  gs.style.width = width + 'px';
+  gs.style.height = height + 'px';
+  gs.style.transition = `opacity ${sc.transitionMs}ms ease, left .3s ease-out, top .3s ease-out`;
+  /* live content regions over the blank areas of the artwork */
+  const px = (n, base) => Math.round(n * base) + 'px';
+  const gi = gs.querySelector('.gs-gift-img');
+  gi.style.left = px(SIGN_REGIONS.giftImage.cx, width);
+  gi.style.top = px(SIGN_REGIONS.giftImage.cy, height);
+  gi.style.width = gi.style.height = px(SIGN_REGIONS.giftImage.d, width);
+  const gn = gs.querySelector('.gs-gift-name');
+  gn.style.left = px(SIGN_REGIONS.giftName.cx, width);
+  gn.style.top = px(SIGN_REGIONS.giftName.cy, height);
+  gn.style.width = px(SIGN_REGIONS.giftName.w, width);
+  const ga = gs.querySelector('.gs-action');
+  ga.style.left = px(SIGN_REGIONS.actionText.cx, width);
+  ga.style.top = px(SIGN_REGIONS.actionText.cy, height);
+  ga.style.width = px(SIGN_REGIONS.actionText.w, width);
+  ga.style.maxHeight = px(SIGN_REGIONS.actionText.h, height);
+  const gd = gs.querySelector('.gs-detail');
+  gd.style.left = px(SIGN_REGIONS.detailText.cx, width);
+  gd.style.top = px(SIGN_REGIONS.detailText.cy, height);
+  gd.style.width = px(SIGN_REGIONS.detailText.w, width);
+}
+function loadSignArt() {
+  const art = $('gift-showcase').querySelector('.gs-sign-art');
+  art.onload = () => { signArtOk = true; };
+  art.onerror = () => {
+    signArtOk = false;
+    assetWarnings.push('missing: ui/jamie-gift-wood-sign.png (gift sign hidden)');
+    if (CFG.debug.showWarnings) console.warn('[feed-jamie] wooden sign art missing');
+  };
+  art.src = fjAssetUrl('ui/jamie-gift-wood-sign.png');
 }
 function isFlipped() {
   /* default art faces right when Jamie sits on the left */
@@ -947,7 +1251,12 @@ function setJamieState(next, opts = {}) {
     case 'RESET':
       jamieEl.classList.remove('ph-happy');
       setTimeout(() => {
-        if (J.state === 'RESET') setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+        if (J.state !== 'RESET') return;
+        setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+        if (pendingGrownProud) {
+          pendingGrownProud = false;
+          jamieOneShot('grownProud', 1200);
+        }
       }, 250);
       break;
     case 'SLEEPING':
@@ -1176,7 +1485,7 @@ function spawnObject(itemType, opts = {}) {
     maxLifetime: (premium ? CFG.movement.maxLifetimePremium : CFG.movement.maxLifetimeNormal) * 1000,
     captured: false, paused: false,
     cornerHitCount: 0, rewardLevel: premium ? 1 : 0,
-    premium,
+    premium, intensityLevel: opts.intensityLevel || 0,
     lastHBounce: -9999, lastVBounce: -9999, lastBounceAt: 0,
     anticipated: false, nearMissArmed: true,
     squash: 0, el,
@@ -1196,6 +1505,9 @@ function removeObject(obj) {
   publishStatus();
 }
 function clearAllObjects() {
+  showerTimers.forEach(t => clearTimeout(t));
+  showerTimers = [];
+  spawnQueue = [];
   objects.forEach(o => o.el.remove());
   objects = [];
   drainQueue();
@@ -1345,7 +1657,13 @@ function captureObject(obj) {
   obj.captured = true;
   obj.el.classList.remove('jackpot-glow');
   const r = REACTION_SEQ[obj.def.reaction] || REACTION_SEQ.treat;
-  const seqName = r.payoff, celebrateSeq = r.celebrate;
+  const seqName = r.payoff;
+  /* during an L5 item shower, occasionally swap in the "still hungry" nom pose
+     as the celebrate beat so the rapid-fire catches don't feel identical */
+  let celebrateSeq = r.celebrate;
+  if (obj.sourceEvent === 'gift-shower' && assetAvailable['jamie-shower-nom.png'] && Math.random() < 0.5) {
+    celebrateSeq = 'showerNom';
+  }
   setJamieState('PAYOFF', { seq: seqName, celebrateSeq });
   /* animate item to the reaction's designated mouth/paw target frame */
   const tp = targetPoint(obj.def.target, r.targetFrame || SEQ[seqName][0].f);
@@ -1379,6 +1697,8 @@ function finishCapture(obj, tp) {
   if (obj.def.splat) { spawnFx('splat', tp.x, tp.y, 5); }
   if (rx === 'premium') { spawnFx('sparkleGold', tp.x, tp.y, 8); }
   if (obj.rewardLevel > (obj.premium ? 1 : 0)) { spawnFx('sparkle', tp.x, tp.y, 6); }
+  if (obj.intensityLevel >= 2) spawnFx('sparkle', tp.x, tp.y, obj.intensityLevel >= 3 ? 8 : 4);
+  if (obj.intensityLevel >= 3) spawnFx('sparkleGold', tp.x, tp.y, 6);
   if (rx === 'toy') { obj.el.style.transition = 'transform .12s'; }
   obj.el.style.opacity = '0';
   obj.el.style.transition = 'opacity .25s';
@@ -1443,12 +1763,13 @@ function handleEvent(evt) {
     }
     case 'comment': handleComment(username, evt.message || ''); break;
     case 'follow': {
+      const showFollowName = !!CFG.visuals.usernameEvents.follow;
       queueSpawn('tennis-ball', {
         sourceEvent: 'follow', username, priority: 60, entry: 'throw',
-        showName: CFG.events.followShowUsername, nameSeconds: CFG.events.followNameSeconds
+        showName: showFollowName, nameSeconds: CFG.visuals.usernameSeconds
       });
-      if (username && CFG.events.followShowUsername)
-        showEventLabel(`@${sanitizeName(username)} threw Jamie a ball! 🎾`, CFG.events.followNameSeconds, false);
+      if (username && showFollowName)
+        showEventLabel(`@${sanitizeName(username)} threw Jamie a ball! 🎾`, CFG.visuals.usernameSeconds, false);
       break;
     }
     case 'heartme': triggerHeartMe(username); break;
@@ -1480,7 +1801,7 @@ function handleComment(username, message) {
     if (!ITEM_DEFS[itemType]) return;
     queueSpawn(itemType, {
       sourceEvent: 'comment', username, priority: 50,
-      showName: CFG.events.keywordShowUsername, nameSeconds: 1.5
+      showName: !!CFG.visuals.usernameEvents.keyword, nameSeconds: CFG.visuals.usernameSeconds
     });
   } else if (!CFG.events.keywordOnly) {
     if (objects.length >= CFG.movement.maxObjects) return; /* queue full: generic comments do nothing */
@@ -1515,13 +1836,13 @@ function triggerHeartMe(username, highGiftName = '') {
   spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, 10);
   spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, 8);
   playSound('heartMe');
-  if (username) {
+  if (username && CFG.visuals.usernameEvents.heartMe) {
     const giftLabel = sanitizeName(highGiftName);
     showEventLabel(
       giftLabel
         ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
         : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
-      CFG.events.heartMeNameSeconds,
+      CFG.visuals.usernameSeconds,
       !!giftLabel
     );
   }
@@ -1539,14 +1860,54 @@ function triggerHeartMe(username, highGiftName = '') {
   }, durMs);
   publishStatus();
 }
+let jackpotActive = false;
+function triggerJackpot(username, rawGiftName = '') {
+  if (jackpotActive) return;
+  jackpotActive = true;
+  objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
+  $('like-meter').style.opacity = 0;
+  clearTimeout(J.watchdog); clearTimeout(J.animTimer);
+  J.currentSeq = null;
+  jamieEl.classList.remove('breathe');
+  jamieEl.classList.add('pose-celebrate', 'ph-happy');
+  jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  jamieEl.style.transform += ' scale(1.16)';
+  J.state = 'CELEBRATE'; J.stateSince = performance.now();
+  playSeq('jackpot', { loop: false, onDone: () => playSeq('jackpotEnd', { loop: false }) });
+  $('jackpot-veil').style.opacity = 1;
+  spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, 14);
+  spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, 10);
+  playSound('jackpot');
+  if (username && CFG.visuals.usernameEvents.gift) {
+    const giftLabel = sanitizeName(rawGiftName);
+    showEventLabel(
+      giftLabel
+        ? `@${sanitizeName(username)} triggered a JACKPOT with ${giftLabel}! 🌟`
+        : `@${sanitizeName(username)} triggered a Jamie JACKPOT! 🌟`,
+      CFG.visuals.usernameSeconds,
+      true
+    );
+  }
+  const durMs = CFG.events.heartMeDurationSec * 1000;
+  setTimeout(() => {
+    $('jackpot-veil').style.opacity = 0;
+    jamieEl.classList.remove('pose-celebrate', 'ph-happy');
+    objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
+    applyLayout();
+    jackpotActive = false;
+    setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  }, durMs);
+  publishStatus();
+}
 function triggerSubscribe(username) {
+  const showSubName = !!CFG.visuals.usernameEvents.subscribe;
   queueSpawn('golden-tennis-ball', {
     sourceEvent: 'subscribe', username, priority: 100, premium: true, entry: 'throw',
-    showName: true, nameSeconds: CFG.events.subscribeNameSeconds
+    showName: showSubName, nameSeconds: CFG.visuals.usernameSeconds
   });
   playSound('subscribe');
   spawnFx('sparkleGold', 540, CFG.floor.y * 0.4, 8);
-  if (username) showEventLabel(`@${sanitizeName(username)} unlocked Jamie's golden ball! ⭐`, CFG.events.subscribeNameSeconds, true);
+  if (username && showSubName) showEventLabel(`@${sanitizeName(username)} unlocked Jamie's golden ball! ⭐`, CFG.visuals.usernameSeconds, true);
 }
 function handleGift(evt) {
   const value = +evt.value || 0;
@@ -1554,43 +1915,29 @@ function handleGift(evt) {
   const giftName = rawGiftName.toLowerCase();
   const username = evt.username;
   /* custom mappings first (giftName match from the control panel's gift picker,
-     optionally coin-range constrained via the advanced JSON editor) */
+     optionally coin-range constrained via the advanced JSON editor). Reaction
+     size/flair still escalates with coin value via the intensity ladder,
+     unless the mapping pins an explicit level. */
   for (const m of (CFG.events.giftMappings || [])) {
     const nameOk = !m.giftName || giftName === String(m.giftName).toLowerCase();
     const minOk = m.minValue == null || value >= m.minValue;
     const maxOk = m.maxValue == null || value <= m.maxValue;
     if (nameOk && minOk && maxOk) {
-      if (m.itemType === 'heartme') { triggerHeartMe(username, rawGiftName); return; }
-      if (ITEM_DEFS[m.itemType]) {
-        queueSpawn(m.itemType, {
-          sourceEvent: 'gift', username, priority: m.priority || 80,
-          premium: true, showName: m.showUsername !== false, nameSeconds: 2,
-          sizeScale: giftSizeScale(value)
-        });
-        playSound('gift');
+      if (m.itemType === 'heartme' || ITEM_DEFS[m.itemType]) {
+        reactToGift(m.itemType, value, username, rawGiftName, m, m.showUsername !== false);
         return;
       }
     }
   }
-  /* fallback tiers — can be disabled so ONLY explicitly mapped gifts react */
+  /* fallback tiers — can be disabled so ONLY explicitly mapped gifts react.
+     giftLowMax still decides which item POOL an unmapped gift picks from;
+     how big/flashy that reaction gets is the intensity ladder's job. */
   if (CFG.events.giftFallbackEnabled === false) return;
-  const highGiftMin = Number(CFG.events.giftHighMin) || 5000;
-  if (value >= highGiftMin) {
-    triggerHeartMe(username, rawGiftName); /* high-value: mega payoff, actual gift label */
-  } else if (value > CFG.events.giftLowMax) {
-    const pool = ['squeaky-toy', 'duck', 'tennis-ball'];
-    queueSpawn(pool[Math.floor(Math.random() * pool.length)], {
-      sourceEvent: 'gift', username, priority: 80, premium: true, showName: true, nameSeconds: 2,
-      sizeScale: giftSizeScale(value)
-    });
-    playSound('gift');
-  } else {
-    queueSpawn('treat-heart', {
-      sourceEvent: 'gift', username, priority: 70, premium: true, showName: true, nameSeconds: 1.5,
-      sizeScale: giftSizeScale(value)
-    });
-    playSound('gift');
-  }
+  const showGiftName = !!CFG.visuals.usernameEvents.gift;
+  const itemType = value > CFG.events.giftLowMax
+    ? ['squeaky-toy', 'duck', 'tennis-ball'][Math.floor(Math.random() * 3)]
+    : 'treat-heart';
+  reactToGift(itemType, value, username, rawGiftName, null, showGiftName);
 }
 
 /* ── 12. UI: prompt pill, like meter, event label ──────────────── */
@@ -1611,14 +1958,29 @@ function promptLoop() {
     promptTimer = setTimeout(promptLoop, 600);
   }, CFG.prompts.intervalSec * 1000 - 600);
 }
-/* gift showcase: cycles through configured gift → item mappings so viewers
-   can see what each gift triggers. Hidden when disabled or nothing is mapped.
-   No icon available = name-only card (no emoji placeholder). */
+/* wooden gift sign: rotates through configured gift → item mappings so viewers
+   can see what each gift triggers. Hidden when disabled, nothing mapped, or
+   the sign artwork is unavailable. */
 const GIFT_ITEM_LABELS = {
   'treat-biscuit': 'Biscuit', 'treat-bone': 'Bone Treat', 'treat-purple-splat': 'Splat Treat',
   'treat-heart': 'Heart Cookie', 'tennis-ball': 'Tennis Ball', 'golden-tennis-ball': 'Golden Ball',
   'squeaky-toy': 'Squeaky Toy', 'duck': 'Duck', 'sock': 'Sock', 'bubble': 'Bubble',
-  'heart-large': 'Big Heart', 'heartme': 'MEGA Party'
+  'heart-large': 'Big Heart', 'heartme': 'MEGA Party', 'jackpot': 'JACKPOT'
+};
+const GIFT_ACTION_DEFAULTS = {
+  'treat-biscuit':      { signAction: 'JAMIE GETS A TREAT',    signDetail: 'One crunchy snack',       floatText: '+ TREAT TIME!' },
+  'treat-bone':         { signAction: 'JAMIE GETS A BONE',     signDetail: 'Bone treat incoming',     floatText: '+ BONE TREAT!' },
+  'treat-purple-splat': { signAction: 'THROW A SPLAT TREAT',   signDetail: 'Jamie tries to catch it', floatText: '+ SPLAT TREAT!' },
+  'treat-heart':        { signAction: 'THROW A HEART COOKIE',  signDetail: 'Jamie tries to catch it', floatText: '+ HEART COOKIE!' },
+  'tennis-ball':        { signAction: 'THROW THE TENNIS BALL', signDetail: 'One fetch attempt',       floatText: '+ BALL THROW!' },
+  'golden-tennis-ball': { signAction: 'THROW THE GOLDEN BALL', signDetail: 'Premium fetch attempt',   floatText: '+ GOLDEN BALL!' },
+  'squeaky-toy':        { signAction: 'THROW A SQUEAKY TOY',   signDetail: 'Jamie pounces on it',     floatText: '+ SQUEAKY TOY!' },
+  'duck':               { signAction: 'THROW THE DUCK',        signDetail: 'Jamie investigates',      floatText: '+ DUCK!' },
+  'sock':               { signAction: 'THROW A SOCK',          signDetail: 'Jamie grabs it',          floatText: '+ SOCK!' },
+  'bubble':             { signAction: 'SEND A BUBBLE',         signDetail: 'Jamie tries to pop it',   floatText: '+ BUBBLE!' },
+  'heart-large':        { signAction: 'SEND A BIG HEART',      signDetail: 'Big Jamie reaction',      floatText: '+ BIG HEART!' },
+  'heartme':            { signAction: 'START A JAMIE PARTY',   signDetail: 'Mega reaction',           floatText: '+ JAMIE PARTY!' },
+  'jackpot':            { signAction: 'BIG GIFT JACKPOT',      signDetail: 'Huge reaction',            floatText: '+ JACKPOT!' }
 };
 /* self-heal: mappings saved before icon-embedding lack giftImg — look the
    icons up from the catalog once and fill them in-memory. */
@@ -1644,21 +2006,10 @@ async function healGiftImages() {
     fillGiftImgs();
   } catch (e) { /* catalog unavailable — name-only cards */ }
 }
-let showcaseIdx = 0, showcaseTimer = null;
-function giftShowcaseLoop() {
-  clearTimeout(showcaseTimer);
-  healGiftImages();
+function setSignContent(m) {
   const gs = $('gift-showcase');
-  const sc = CFG.visuals.giftShowcase;
-  const maps = (CFG.events.giftMappings || []).filter(m => m.giftName && GIFT_ITEM_LABELS[m.itemType]);
-  if (!sc.enabled || !maps.length || J.hidden) {
-    gs.style.opacity = 0;
-    showcaseTimer = setTimeout(giftShowcaseLoop, 2000);
-    return;
-  }
-  const m = maps[showcaseIdx % maps.length];
-  showcaseIdx++;
-  const img = gs.querySelector('img');
+  const defaults = GIFT_ACTION_DEFAULTS[m.itemType] || {};
+  const img = gs.querySelector('.gs-gift-img');
   if (m.giftImg) {
     img.style.display = 'block';
     img.onerror = () => { img.style.display = 'none'; };
@@ -1666,15 +2017,83 @@ function giftShowcaseLoop() {
   } else {
     img.style.display = 'none';
   }
-  gs.querySelector('.gs-gift').textContent = m.giftName;   /* textContent only — never HTML */
-  gs.querySelector('.gs-item').textContent = '→ ' + GIFT_ITEM_LABELS[m.itemType];
+  gs.querySelector('.gs-gift-name').textContent = m.giftName;   /* textContent only — never HTML */
+  const action = gs.querySelector('.gs-action');
+  action.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
+  gs.querySelector('.gs-detail').textContent = (m.signDetail !== undefined && m.signDetail !== '') ? m.signDetail : (defaults.signDetail || '');
+  /* auto-fit the action line: shrink until it fits its region (never below 15px) */
+  const regionH = SIGN_REGIONS.actionText.h * (CFG.visuals.giftShowcase.width * SIGN_ASPECT_H / SIGN_ASPECT_W);
+  for (let size = 22; size >= 15; size--) {
+    action.style.fontSize = size + 'px';
+    if (action.scrollHeight <= regionH + 2) break;
+  }
+}
+let showcaseIdx = 0, showcaseTimer = null;
+function giftShowcaseLoop() {
+  clearTimeout(showcaseTimer);
+  healGiftImages();
+  const gs = $('gift-showcase');
+  const sc = CFG.visuals.giftShowcase;
+  const maps = (CFG.events.giftMappings || []).filter(m => m.giftName && (GIFT_ACTION_DEFAULTS[m.itemType] || GIFT_ITEM_LABELS[m.itemType]));
+  if (!sc.enabled || !maps.length || J.hidden || !signArtOk) {
+    gs.style.opacity = 0;
+    showcaseTimer = setTimeout(giftShowcaseLoop, 2000);
+    return;
+  }
+  const m = maps[showcaseIdx % maps.length];
+  showcaseIdx++;
+  setSignContent(m);
   gs.style.opacity = 1;
-  const iv = sc.intervalSec * 1000;
+  const iv = sc.intervalSec * 1000, tr = Math.max(50, sc.transitionMs);
   if (maps.length <= 1) { showcaseTimer = setTimeout(giftShowcaseLoop, iv); return; } /* single mapping: hold steady */
   showcaseTimer = setTimeout(() => {
     gs.style.opacity = 0;
-    showcaseTimer = setTimeout(giftShowcaseLoop, 450);
-  }, Math.max(1000, iv - 450));
+    showcaseTimer = setTimeout(giftShowcaseLoop, tr);
+  }, Math.max(1000, iv - tr));
+}
+
+/* ── floating trigger text above Jamie's head (damage-number style) ── */
+let floatActive = [];
+function showGiftFloat(mapping, username, rawGiftName) {
+  const cfgF = CFG.visuals.giftFloatText;
+  if (!cfgF.enabled) return;
+  const defaults = GIFT_ACTION_DEFAULTS[mapping.itemType] || {};
+  const mainText = mapping.floatText || defaults.floatText || ('+ ' + (GIFT_ITEM_LABELS[mapping.itemType] || 'GIFT') + '!').toUpperCase();
+  const key = (username || '') + '|' + (rawGiftName || '');
+  const now = performance.now();
+  floatActive = floatActive.filter(f => f.el.isConnected);
+  const existing = floatActive.find(f => f.key === key && now - f.t <= cfgF.aggregateWindowMs);
+  if (existing) {  /* same gift + sender in quick succession: bump to ×N */
+    existing.count++; existing.t = now;
+    existing.el.querySelector('.fj-gift-float-main').textContent = mainText + ' ×' + existing.count;
+    return;
+  }
+  if (floatActive.length >= cfgF.maxVisible) {
+    const oldest = floatActive.shift();
+    oldest.el.remove();
+  }
+  const el = document.createElement('div');
+  el.className = 'fj-gift-float';
+  const main = document.createElement('div');
+  main.className = 'fj-gift-float-main';
+  main.textContent = mainText;
+  const sub = document.createElement('div');
+  sub.className = 'fj-gift-float-sub';
+  const withSender = cfgF.showSender && username && CFG.visuals.usernameEvents.gift;
+  sub.textContent = withSender ? '@' + sanitizeName(username) + ' • ' + (rawGiftName || '') : (rawGiftName || '');
+  el.appendChild(main); el.appendChild(sub);
+  const x = jamieRect.x + jamieRect.w / 2 + cfgF.xOffset;
+  const y = jamieRect.y + cfgF.yOffset - floatActive.length * 46;  /* stack concurrent popups upward */
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.style.setProperty('--float-duration', cfgF.durationMs + 'ms');
+  el.style.setProperty('--float-rise', cfgF.risePx + 'px');
+  $('gift-float-layer').appendChild(el);
+  const rec = { el, key, count: 1, t: now };
+  floatActive.push(rec);
+  const cleanup = () => { el.remove(); floatActive = floatActive.filter(f => f !== rec); };
+  el.addEventListener('animationend', cleanup);
+  setTimeout(cleanup, cfgF.durationMs + 600);  /* safety if animation events stall */
 }
 let meterTimer = null;
 function updateLikeMeter() {
@@ -1789,6 +2208,22 @@ function processMessage(msg) {
     case 'SHOW':   setHidden(false); break;
     case 'RESET_STATE': forceReset('control'); break;
     case 'RESET_GROWTH': resetGrowth(); break;
+    case 'GIFT_SIGN_NEXT': giftShowcaseLoop(); break;   /* advance the wooden sign immediately */
+    case 'TEST_GIFT_FLOAT': {
+      const d = msg.data || {};
+      const n = Math.min(Math.max(Math.round(+d.count || 1), 1), 8);
+      for (let i = 0; i < n; i++) {
+        setTimeout(() => showGiftFloat(
+          { itemType: d.itemType || 'treat-biscuit' },
+          d.username || 'test_viewer',
+          d.giftName || 'Rose'
+        ), i * 150);
+      }
+      break;
+    }
+    case 'TEST_SUPERCHAT':
+      handleSuperchat({ amount: (msg.data && msg.data.amount) || 5, name: (msg.data && msg.data.username) || 'yt_viewer' });
+      break;
     case 'SETUP_GUIDES':
       CFG.debug = fjDeepMerge(CFG.debug, msg.data || {});
       applyLayout();
@@ -1864,6 +2299,13 @@ function initComms() {
       const ably = new Ably.Realtime({ key: FJ_ABLY_KEY });
       ablyChannel = ably.channels.get(FJ_ABLY_CH);
       ablyChannel.subscribe(FJ_ABLY_MSG_IN, m => processMessage(m.data));
+      /* stream-dock already publishes YouTube Super Chats here (name/amount
+         in USD/type). Feed Jamie piggybacks on this existing broadcast
+         instead of opening its own YouTube connection. */
+      ablyChannel.subscribe('gift-alert', m => {
+        const d = m.data || {};
+        if (d.type === 'youtube_superchat' && (+d.amount || 0) > 0) handleSuperchat(d);
+      });
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
       ably.connection.on('suspended',    () => $('conn-dot').classList.remove('connected'));
@@ -1920,6 +2362,7 @@ applyMotionVar();
 showFrame('jamie-idle-01.png', { instant: true });
 setJamieState('IDLE');
 promptLoop();
+loadSignArt();
 giftShowcaseLoop();
 initComms();
 fjLoadAssets();
