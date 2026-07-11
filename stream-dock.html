@@ -7935,6 +7935,7 @@ function dockRenderOverlayRows() {
   const live = DOCK_OVERLAYS.filter(([key]) => !_dockLayout.archivedOverlays.includes(key) && dockOverlayIsOn(key)).length;
   const liveEl = document.getElementById('dock-live-count'); if (liveEl) liveEl.textContent = `${live} live`;
   const arcEl = document.getElementById('dock-archive-count'); if (arcEl) arcEl.textContent = String(_dockLayout.archivedOverlays.length + _dockLayout.archivedCards.length);
+  dockRefreshGroups();
 }
 
 function dockMakeGroup(id, title, options={}) {
@@ -8039,7 +8040,14 @@ function organizeDockControls() {
   organizer.appendChild(dockMakeGroup('advanced','Advanced / Setup',{icon:'⚙',closed:!_dockLayout.advancedOpen}));
   organizer.appendChild(dockMakeGroup('archive','Archive',{icon:'📦',closed:!_dockLayout.archiveOpen}));
   col.appendChild(organizer);
-  cards.forEach(card => { const id=dockCardId(card); const group=frequentIds.has(id)?'frequent':'advanced'; card.dataset.defaultGroup=group; dockDecorateCard(card,id,group); });
+  cards.forEach(card => {
+    const id=dockCardId(card), group=frequentIds.has(id)?'frequent':'advanced';
+    card.dataset.defaultGroup=group;
+    dockDecorateCard(card,id,group);
+    /* Keep the real card in the document while the persisted organizer places it.
+       Detached cards cannot be discovered by dockPlaceCards(). */
+    document.getElementById(`dock-${group}-body`).appendChild(card);
+  });
   dockEnableGroupDrop(document.getElementById('dock-frequent-body'),'frequent');
   dockEnableGroupDrop(document.getElementById('dock-advanced-body'),'advanced');
   const note=document.createElement('div'); note.className='dock-archive-note'; note.textContent='Archived overlays are hidden and inactive. Unarchived overlays stay hidden until you press Show.'; document.getElementById('dock-archive-body').appendChild(note);
