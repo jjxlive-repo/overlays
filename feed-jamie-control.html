@@ -254,9 +254,18 @@
         <button class="gold" onclick="testEvt('subscribe')">⭐ Subscribe</button>
       </div>
       <div class="btnrow">
-        <button onclick="testGift(10)">🎁 Low gift (10)</button>
-        <button onclick="testGift(500)">🎁 Medium gift (500)</button>
-        <button onclick="testGift(5000)">🎁 High gift (5000)</button>
+        <button onclick="testGift(10)">🎁 L1 (10)</button>
+        <button onclick="testGift(250)">🎁 L2 (250)</button>
+        <button onclick="testGift(2000)">🎁 L3 (2,000)</button>
+        <button onclick="testGift(8000)">🎁 L4 MEGA (8,000)</button>
+        <button class="gold" onclick="testGift(50000)">🎁 L5 MEGA+Shower (50,000)</button>
+      </div>
+      <div class="btnrow">
+        <button onclick="testSuperchat(1)">💛 SC L1 ($1)</button>
+        <button onclick="testSuperchat(3)">💛 SC L2 ($3)</button>
+        <button onclick="testSuperchat(10)">💛 SC L3 ($10)</button>
+        <button onclick="testSuperchat(30)">💛 SC L4 MEGA ($30)</button>
+        <button class="gold" onclick="testSuperchat(150)">💛 SC L5 MEGA+Shower ($150)</button>
       </div>
       <div class="btnrow">
         <button onclick="send({cmd:'FORCE_JACKPOT'})">★ Force corner jackpot</button>
@@ -318,7 +327,9 @@ const FJ_DEFAULT_CONFIG = {
     subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
     giftLowMax: 99, giftMediumMax: 4999, giftHighMin: 5000, giftFallbackEnabled: true,
     giftSizeScaling: { enabled: true, maxScale: 2, coinsForMax: 5000 },
-    giftMappings: []
+    intensityThresholds: { l2: 100, l3: 1000, l4: 5000, l5: 30000 },
+    giftMappings: [],
+    superchat: { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } }
   },
   prompts: {
     enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
@@ -329,9 +340,12 @@ const FJ_DEFAULT_CONFIG = {
     intensity: 1, cornerGlow: 1, frameCrossfadeMs: 120, frameDurationScale: 1,
     eventLabelX: 540, eventLabelY: 110, eventLabelScale: 1,
     likeMeterX: 404, likeMeterY: 440, likeMeterScale: 1,
-    giftShowcase: { enabled: true, x: 930, y: 240, scale: 1, intervalSec: 5 }
+    usernameSeconds: 2.5,
+    usernameEvents: { follow: true, keyword: false, gift: true, subscribe: true, heartMe: true },
+    giftShowcase: { enabled: true, anchorToJamie: true, gap: 15, x: 420, floorOffset: 4, width: 365, intervalSec: 7, transitionMs: 350 },
+    giftFloatText: { enabled: true, xOffset: 0, yOffset: -45, durationMs: 1500, risePx: 26, maxVisible: 3, aggregateWindowMs: 700, showSender: true }
   },
-  growth: { enabled: true, maxScale: 2, perCatch: 0.05, decayPerMinute: 0.05 },
+  growth: { enabled: true, maxScale: 2, perCatch: 0.05, decayPerMinute: 0.05, fx: true },
   audio: {
     muted: false, master: 0.7, cooldownMs: 140,
     volumes: { bounce: 0.25, catch: 0.7, crunch: 0.6, ballBounce: 0.5, squeak: 0.7, quack: 0.7, pop: 0.6, jackpot: 0.7, heartMe: 0.85, subscribe: 0.8, gift: 0.7 },
@@ -539,13 +553,34 @@ function colorInput(parent, label, path) {
   slider(p, 'Like meter scale', 'visuals.likeMeterScale', 0.5, 2, 0.05, v => (+v).toFixed(2));
   const showcaseNote = document.createElement('div');
   showcaseNote.className = 'note';
-  showcaseNote.innerHTML = '<b>Gift showcase</b> (small square cycling through your gift → item mappings; hidden when nothing is mapped)';
+  showcaseNote.innerHTML = '<b>Wooden gift sign</b> — illustrated sign planted at the floor line beside Jamie, rotating through your gift → item mappings. Hidden when nothing is mapped.';
   p.appendChild(showcaseNote);
-  toggle(p, 'Gift showcase enabled', 'visuals.giftShowcase.enabled');
-  slider(p, 'Gift showcase X', 'visuals.giftShowcase.x', 0, 1080, 5);
-  slider(p, 'Gift showcase Y', 'visuals.giftShowcase.y', 0, 1920, 5);
-  slider(p, 'Gift showcase scale', 'visuals.giftShowcase.scale', 0.5, 2, 0.05, v => (+v).toFixed(2));
-  slider(p, 'Gift showcase cycle', 'visuals.giftShowcase.intervalSec', 2, 20, 0.5, v => v + 's');
+  toggle(p, 'Sign enabled', 'visuals.giftShowcase.enabled');
+  toggle(p, 'Anchor beside Jamie', 'visuals.giftShowcase.anchorToJamie');
+  slider(p, 'Gap from Jamie', 'visuals.giftShowcase.gap', 0, 100, 1, v => v + 'px');
+  slider(p, 'Manual X (unanchored)', 'visuals.giftShowcase.x', 0, 1080, 5);
+  slider(p, 'Floor offset', 'visuals.giftShowcase.floorOffset', -50, 80, 1, v => v + 'px');
+  slider(p, 'Sign width', 'visuals.giftShowcase.width', 220, 520, 5, v => v + 'px');
+  slider(p, 'Rotation interval', 'visuals.giftShowcase.intervalSec', 2, 30, 0.5, v => v + 's');
+  slider(p, 'Fade transition', 'visuals.giftShowcase.transitionMs', 0, 1000, 25, v => v + 'ms');
+  const floatNote = document.createElement('div');
+  floatNote.className = 'note';
+  floatNote.innerHTML = '<b>Trigger text</b> — video-game style floating text above Jamie when a mapped gift is sent (e.g. "+ TREAT TIME!").';
+  p.appendChild(floatNote);
+  toggle(p, 'Trigger text enabled', 'visuals.giftFloatText.enabled');
+  slider(p, 'Trigger X offset', 'visuals.giftFloatText.xOffset', -400, 400, 5);
+  slider(p, 'Trigger Y offset', 'visuals.giftFloatText.yOffset', -500, 300, 5);
+  slider(p, 'Trigger duration', 'visuals.giftFloatText.durationMs', 500, 5000, 50, v => v + 'ms');
+  slider(p, 'Trigger rise distance', 'visuals.giftFloatText.risePx', 0, 150, 2, v => v + 'px');
+  slider(p, 'Max visible triggers', 'visuals.giftFloatText.maxVisible', 1, 6, 1);
+  toggle(p, 'Show sender name', 'visuals.giftFloatText.showSender');
+  const signBtns = document.createElement('div');
+  signBtns.className = 'btnrow';
+  const mkBtn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; signBtns.appendChild(b); };
+  mkBtn('🪧 Next sign', () => send({ cmd: 'GIFT_SIGN_NEXT' }));
+  mkBtn('💬 Test trigger text', () => send({ cmd: 'TEST_GIFT_FLOAT', data: { username: testUser(), giftName: 'Rose', itemType: 'treat-biscuit', count: 1 } }));
+  mkBtn('💬 Test ×5', () => send({ cmd: 'TEST_GIFT_FLOAT', data: { username: testUser(), giftName: 'Rose', itemType: 'tennis-ball', count: 5 } }));
+  p.appendChild(signBtns);
   toggle(p, 'Setup guides', 'debug.setupGuides');
   toggle(p, 'Safe-area guide', 'debug.showSafeArea');
   toggle(p, 'Jamie bounding box', 'debug.showJamieBox');
@@ -588,6 +623,7 @@ function colorInput(parent, label, path) {
   growthNote.innerHTML = '<b>Jamie growth</b> — every catch makes Jamie a little bigger (premium items count double), and he slowly shrinks back so viewers keep feeding him. His reach zone grows too, so a fed Jamie catches easier.';
   p.appendChild(growthNote);
   toggle(p, 'Growth enabled', 'growth.enabled');
+  toggle(p, 'Growth glow + sparkles', 'growth.fx');
   slider(p, 'Max size', 'growth.maxScale', 1, 3, 0.05, v => (+v).toFixed(2) + '×');
   slider(p, 'Growth per catch', 'growth.perCatch', 0.01, 0.25, 0.01, v => '+' + Math.round(v * 100) + '%');
   slider(p, 'Shrink per minute', 'growth.decayPerMinute', 0, 0.5, 0.01, v => '−' + Math.round(v * 100) + '%/min');
@@ -610,14 +646,11 @@ function colorInput(parent, label, path) {
   slider(p, 'Per-user cooldown', 'events.perUserCooldown', 0, 60, 1, v => v + 's');
   slider(p, 'Generic spawn chance', 'events.genericSpawnChance', 0, 0.5, 0.01, v => Math.round(v * 100) + '%');
   toggle(p, 'Keyword-only mode', 'events.keywordOnly');
-  toggle(p, 'Keyword username labels', 'events.keywordShowUsername');
-  toggle(p, 'Follow username label', 'events.followShowUsername');
+  /* per-event username toggles moved to section F (Show usernames for:) */
   slider(p, 'Heart Me duration', 'events.heartMeDurationSec', 1.5, 6, 0.25, v => v + 's');
   toggle(p, 'Heart Me spawns big heart', 'events.heartMeSpawnHeart');
   slider(p, 'Subscribe reaction', 'events.subscribeDurationSec', 1, 6, 0.25, v => v + 's');
-  numberInput(p, 'Gift: low tier max (coins)', 'events.giftLowMax', 1, 100000);
-  numberInput(p, 'Gift: medium tier max', 'events.giftMediumMax', 1, 1000000);
-  numberInput(p, 'Gift: high tier starts (coins)', 'events.giftHighMin', 1, 1000000);
+  numberInput(p, 'Fallback: toy tier starts at (coins)', 'events.giftLowMax', 1, 100000);
   const sizeNote = document.createElement('div');
   sizeNote.className = 'note';
   sizeNote.innerHTML = '<b>Gift size scaling</b> — pricier gifts throw bigger items. Grows on a log curve from 1× (a 1-coin Rose) up to the max multiplier.';
@@ -625,6 +658,26 @@ function colorInput(parent, label, path) {
   toggle(p, 'Scale item size with gift value', 'events.giftSizeScaling.enabled');
   slider(p, 'Max size multiplier', 'events.giftSizeScaling.maxScale', 1, 3, 0.05, v => (+v).toFixed(2) + '×');
   slider(p, 'Coins for max size', 'events.giftSizeScaling.coinsForMax', 100, 50000, 100, v => (+v).toLocaleString() + ' 🪙');
+  const ladderNote = document.createElement('div');
+  ladderNote.className = 'note';
+  ladderNote.innerHTML = '<b>Reaction intensity ladder</b> — how big Jamie\'s reaction gets as gift value climbs. L1 normal catch → L2 sparkle & bigger item → L3 premium (fast, glowing, 2× growth) → L4 MEGA celebration → L5 MEGA + item shower. Each gift mapping can pin its own level, or leave "Auto" to follow these coin breakpoints.';
+  p.appendChild(ladderNote);
+  numberInput(p, 'L2 starts at (coins)', 'events.intensityThresholds.l2', 1, 1000000);
+  numberInput(p, 'L3 starts at (coins)', 'events.intensityThresholds.l3', 1, 1000000);
+  numberInput(p, 'L4 starts at (coins) — MEGA', 'events.intensityThresholds.l4', 1, 1000000);
+  numberInput(p, 'L5 starts at (coins) — MEGA + shower', 'events.intensityThresholds.l5', 1, 1000000);
+  const scNote = document.createElement('div');
+  scNote.className = 'note';
+  scNote.innerHTML = '<b>YouTube Super Chats</b> — same 5-level ladder, in dollars. Rides stream-dock\'s existing YouTube connection (its gift-alert broadcast) — no separate YouTube login needed here, just keep stream-dock open and connected.';
+  p.appendChild(scNote);
+  toggle(p, 'Super Chats enabled', 'events.superchat.enabled');
+  numberInput(p, 'L2 starts at ($)', 'events.superchat.thresholds.l2', 0.01, 100000);
+  numberInput(p, 'L3 starts at ($)', 'events.superchat.thresholds.l3', 0.01, 100000);
+  numberInput(p, 'L4 starts at ($) — MEGA', 'events.superchat.thresholds.l4', 0.01, 100000);
+  numberInput(p, 'L5 starts at ($) — MEGA + shower', 'events.superchat.thresholds.l5', 0.01, 100000);
+  toggle(p, 'Scale item size with $ amount', 'events.superchat.sizeScaling.enabled');
+  slider(p, 'Super Chat max size', 'events.superchat.sizeScaling.maxScale', 1, 3, 0.05, v => (+v).toFixed(2) + '×');
+  slider(p, '$ for max size', 'events.superchat.sizeScaling.dollarsForMax', 1, 500, 1, v => '$' + v);
   document.getElementById('kw-editor').value =
     Object.entries(CFG.events.keywords).map(([k, v]) => `${k} = ${v}`).join('\n');
   document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings || [], null, 1);
@@ -675,15 +728,23 @@ function saveGiftMappingsFromUI() {
   const rows = [...document.querySelectorAll('.gift-map-row')];
   CFG.events.giftMappings = rows.map(r => {
     const g = giftByName(r.dataset.gift);
+    const txt = cls => { const v = (r.querySelector('.' + cls)?.value || '').trim(); return v || undefined; };
     return {
+      /* start from the original mapping so advanced fields
+         (minValue/maxValue etc. from the JSON editor) survive UI edits */
+      ...(r._orig || {}),
       giftName: r.dataset.gift || '',
       itemType: r.querySelector('.item-pick').value,
+      intensity: r.querySelector('.intensity-pick').value,
       showUsername: r.querySelector('.show-user').checked,
-      priority: 80,
-      /* embedded so the overlay's gift showcase can display the icon
+      priority: (r._orig && r._orig.priority) || 80,
+      /* embedded so the overlay's wooden sign can display the icon
          without fetching the full catalog */
-      giftImg: g ? g.img : undefined,
-      coins: g ? g.coins : undefined
+      giftImg: g ? g.img : (r._orig && r._orig.giftImg) || undefined,
+      coins: g ? g.coins : (r._orig && r._orig.coins) || undefined,
+      signAction: txt('sign-action'),
+      signDetail: txt('sign-detail'),
+      floatText: txt('float-text')
     };
   }).filter(m => m.giftName);
   document.getElementById('gift-editor').value = JSON.stringify(CFG.events.giftMappings, null, 1);
@@ -744,6 +805,7 @@ function makeGiftPicker(row, initialName) {
 function buildGiftMapRow(mapping) {
   const row = document.createElement('div');
   row.className = 'gift-map-row';
+  row._orig = mapping;   /* preserve advanced fields through UI round-trips */
   row.dataset.gift = mapping.giftName || '';
   const thumb = document.createElement('img');
   thumb.className = 'gift-thumb';
@@ -767,6 +829,15 @@ function buildGiftMapRow(mapping) {
   sel.value = GIFT_ITEM_CHOICES.some(([v]) => v === mapping.itemType) ? mapping.itemType : 'treat-heart';
   sel.addEventListener('change', saveGiftMappingsFromUI);
   row.appendChild(sel);
+  const intSel = document.createElement('select');
+  intSel.className = 'intensity-pick';
+  intSel.title = 'Reaction intensity — Auto follows the coin thresholds below, or pin a fixed level';
+  intSel.style.cssText = 'min-width:96px;';
+  [['auto', 'Auto (by value)'], ['1', 'L1 · Normal'], ['2', 'L2 · Sparkle'], ['3', 'L3 · Premium'], ['4', 'L4 · MEGA'], ['5', 'L5 · MEGA+Shower']]
+    .forEach(([val, label]) => { const o = document.createElement('option'); o.value = val; o.textContent = label; intSel.appendChild(o); });
+  intSel.value = mapping.intensity || 'auto';
+  intSel.addEventListener('change', saveGiftMappingsFromUI);
+  row.appendChild(intSel);
   const userLbl = document.createElement('label');
   userLbl.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;color:var(--txt-dim);flex:0 0 auto;';
   const cb = document.createElement('input');
@@ -783,6 +854,24 @@ function buildGiftMapRow(mapping) {
   del.title = 'Remove mapping';
   del.addEventListener('click', () => { row.remove(); saveGiftMappingsFromUI(); });
   row.appendChild(del);
+  /* sub-row: custom wooden-sign text + floating trigger text (blank = defaults) */
+  const sub = document.createElement('div');
+  sub.style.cssText = 'flex-basis:100%;display:flex;gap:6px;margin-top:4px;';
+  const mkTxt = (cls, placeholder, value, title) => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = cls;
+    inp.placeholder = placeholder;
+    inp.title = title;
+    inp.value = value || '';
+    inp.style.cssText = 'flex:1;min-width:60px;font-size:11px;padding:4px 7px;';
+    inp.addEventListener('change', saveGiftMappingsFromUI);
+    sub.appendChild(inp);
+  };
+  mkTxt('sign-action', 'Sign action (e.g. JAMIE GETS A TREAT)', mapping.signAction, 'Main line on the wooden sign');
+  mkTxt('sign-detail', 'Sign detail (e.g. One crunchy snack)', mapping.signDetail, 'Small line under the action');
+  mkTxt('float-text', 'Float text (e.g. + TREAT TIME!)', mapping.floatText, 'Floating text above Jamie when this gift lands');
+  row.appendChild(sub);
   return row;
 }
 function renderGiftMappings() {
@@ -806,6 +895,16 @@ loadGiftCatalog();
   slider(p, 'Prompt opacity', 'prompts.opacity', 0.2, 1, 0.05);
   slider(p, 'Prompt bg opacity', 'prompts.bgOpacity', 0, 1, 0.05);
   toggle(p, 'Username labels', 'visuals.usernameLabels');
+  slider(p, 'Username duration', 'visuals.usernameSeconds', 0.5, 10, 0.25, v => v + 's');
+  const unNote = document.createElement('div');
+  unNote.className = 'note';
+  unNote.innerHTML = '<b>Show usernames for:</b>';
+  p.appendChild(unNote);
+  toggle(p, '· Follows', 'visuals.usernameEvents.follow');
+  toggle(p, '· Keyword comments', 'visuals.usernameEvents.keyword');
+  toggle(p, '· Gifts', 'visuals.usernameEvents.gift');
+  toggle(p, '· Subscriptions', 'visuals.usernameEvents.subscribe');
+  toggle(p, '· Heart Me', 'visuals.usernameEvents.heartMe');
   toggle(p, 'Like meter', 'visuals.likeMeter');
   selectInput(p, 'Particle level', 'visuals.particleLevel', ['off', 'low', 'medium']);
   toggle(p, 'Blue accent', 'visuals.blueAccent');
@@ -995,6 +1094,7 @@ function testLike(n)      { send({ cmd: 'TRIGGER_EVENT', data: { type: 'like', c
 function testComment(msg) { send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', message: msg, username: testUser() } }); }
 function testEvt(type)    { send({ cmd: 'TRIGGER_EVENT', data: { type, username: testUser() } }); }
 function testGift(coins)  { send({ cmd: 'TRIGGER_EVENT', data: { type: 'gift', value: coins, giftName: 'TestGift', username: testUser() } }); }
+function testSuperchat(dollars) { send({ cmd: 'TEST_SUPERCHAT', data: { amount: dollars, username: testUser() } }); }
 
 /* J. SAVE / LOAD */
 function exportConfig() {
