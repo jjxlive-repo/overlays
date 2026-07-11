@@ -449,7 +449,7 @@ function fjValidateConfig() {
   gsc.gap = Math.min(Math.max(num(gsc.gap, 15), 0), 100);
   gsc.x = Math.min(Math.max(num(gsc.x, 420), 0), 1080);
   gsc.floorOffset = Math.min(Math.max(num(gsc.floorOffset, 4), -50), 80);
-  gsc.width = Math.min(Math.max(num(gsc.width, 365), 220), 520);
+  gsc.width = Math.min(Math.max(num(gsc.width, 365), 100), 520);
   gsc.intervalSec = Math.min(Math.max(num(gsc.intervalSec, 7), 2), 30);
   gsc.transitionMs = Math.min(Math.max(num(gsc.transitionMs, 350), 0), 1000);
   if (!c.visuals.giftFloatText || typeof c.visuals.giftFloatText !== 'object') c.visuals.giftFloatText = {};
@@ -1154,13 +1154,21 @@ function applyLayout() {
 }
 
 /* ── wooden gift sign layout (SIGN-LAYOUT-MAP.json values baked in) ── */
-const SIGN_ASPECT_W = 1127, SIGN_ASPECT_H = 957;
+/* art was cropped 2026-07-11 to drop the signpost stick and excess wood
+   margin (was 1127x957 with the parchment using ~42% of the canvas height;
+   now 1095x520 with the parchment using ~78%) so content reads at small
+   sizes instead of getting lost in a tall, mostly-empty sign. */
+const SIGN_ASPECT_W = 1095, SIGN_ASPECT_H = 520;
 const SIGN_REGIONS = {
-  giftImage:  { cx: 0.285, cy: 0.365, d: 0.155 },
-  giftName:   { cx: 0.655, cy: 0.255, w: 0.43 },
-  actionText: { cx: 0.655, cy: 0.365, w: 0.43, h: 0.18 },
-  detailText: { cx: 0.655, cy: 0.495, w: 0.43 }
+  giftImage:  { cx: 0.300, cy: 0.529, d: 0.268 },
+  giftName:   { cx: 0.648, cy: 0.288, w: 0.402 },
+  actionText: { cx: 0.648, cy: 0.529, w: 0.402, h: 0.288 },
+  detailText: { cx: 0.648, cy: 0.769, w: 0.402 }
 };
+/* font sizes below were tuned at this reference width; they scale linearly
+   with the configured sign width so shrinking the sign shrinks text with it
+   instead of leaving fixed-px text to overflow a shrunken region. */
+const SIGN_FONT_REF_WIDTH = 365;
 let signArtOk = false;
 function applyGiftShowcaseLayout() {
   const gs = $('gift-showcase');
@@ -1201,6 +1209,13 @@ function applyGiftShowcaseLayout() {
   gd.style.left = px(SIGN_REGIONS.detailText.cx, width);
   gd.style.top = px(SIGN_REGIONS.detailText.cy, height);
   gd.style.width = px(SIGN_REGIONS.detailText.w, width);
+  /* text scales with sign width instead of staying fixed-px, so a shrunk
+     sign shrinks its text proportionally rather than overflowing. */
+  const fs = width / SIGN_FONT_REF_WIDTH;
+  gn.style.fontSize = Math.max(6, Math.round(15 * fs)) + 'px';
+  gd.style.fontSize = Math.max(6, Math.round(14 * fs)) + 'px';
+  ga.dataset.baseFontPx = Math.max(7, Math.round(22 * fs));
+  ga.style.fontSize = ga.dataset.baseFontPx + 'px';
 }
 function loadSignArt() {
   const art = $('gift-showcase').querySelector('.gs-sign-art');
@@ -2096,9 +2111,12 @@ function setSignContent(m) {
   const action = gs.querySelector('.gs-action');
   action.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
   gs.querySelector('.gs-detail').textContent = (m.signDetail !== undefined && m.signDetail !== '') ? m.signDetail : (defaults.signDetail || '');
-  /* auto-fit the action line: shrink until it fits its region (never below 15px) */
+  /* auto-fit the action line: shrink from its width-scaled base font until
+     it fits its region (never below ~65% of that base). */
   const regionH = SIGN_REGIONS.actionText.h * (CFG.visuals.giftShowcase.width * SIGN_ASPECT_H / SIGN_ASPECT_W);
-  for (let size = 22; size >= 15; size--) {
+  const baseSize = +action.dataset.baseFontPx || Math.round(22 * CFG.visuals.giftShowcase.width / SIGN_FONT_REF_WIDTH);
+  const minSize = Math.max(6, Math.round(baseSize * 0.65));
+  for (let size = baseSize; size >= minSize; size--) {
     action.style.fontSize = size + 'px';
     if (action.scrollHeight <= regionH + 2) break;
   }
