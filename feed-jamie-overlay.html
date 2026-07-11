@@ -164,7 +164,10 @@
     transform-origin: 50% 100%;
     transition: opacity .35s ease, left .3s ease-out, top .3s ease-out;
   }
-  #gift-showcase .gs-sign-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  /* fill (not contain): lets the sign box be stretched taller than the art's
+     natural aspect ratio (heightScale) for more text room, without letterboxing
+     gaps that would throw off the fraction-based content region positions. */
+  #gift-showcase .gs-sign-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
   #gift-showcase .gs-gift-img { position: absolute; z-index: 2; object-fit: contain; transform: translate(-50%, -50%); }
   #gift-showcase .gs-gift-name {
     position: absolute; z-index: 2; transform: translate(-50%, -50%);
@@ -357,7 +360,9 @@ const FJ_DEFAULT_CONFIG = {
     },
     giftShowcase: {   /* illustrated wooden sign rotating through gift → item mappings */
       enabled: true, anchorToJamie: true, gap: 15, x: 420, floorOffset: 4,
-      width: 365, intervalSec: 7, transitionMs: 350
+      width: 365, intervalSec: 7, transitionMs: 350,
+      heightScale: 1, /* stretch the sign taller than its natural aspect for more text room */
+      fontScale: 1    /* independent text-size multiplier, on top of width-based scaling */
     },
     giftFloatText: {  /* video-game floating text above Jamie when a mapped gift lands */
       enabled: true, xOffset: 0, yOffset: -45, durationMs: 1500, risePx: 26,
@@ -450,6 +455,8 @@ function fjValidateConfig() {
   gsc.x = Math.min(Math.max(num(gsc.x, 420), 0), 1080);
   gsc.floorOffset = Math.min(Math.max(num(gsc.floorOffset, 4), -50), 80);
   gsc.width = Math.min(Math.max(num(gsc.width, 365), 100), 520);
+  gsc.heightScale = Math.min(Math.max(num(gsc.heightScale, 1), 0.6), 3);
+  gsc.fontScale = Math.min(Math.max(num(gsc.fontScale, 1), 0.5), 3);
   gsc.intervalSec = Math.min(Math.max(num(gsc.intervalSec, 7), 2), 30);
   gsc.transitionMs = Math.min(Math.max(num(gsc.transitionMs, 350), 0), 1000);
   if (!c.visuals.giftFloatText || typeof c.visuals.giftFloatText !== 'object') c.visuals.giftFloatText = {};
@@ -1174,7 +1181,10 @@ function applyGiftShowcaseLayout() {
   const gs = $('gift-showcase');
   const sc = CFG.visuals.giftShowcase;
   const width = sc.width;
-  const height = width * SIGN_ASPECT_H / SIGN_ASPECT_W;
+  /* heightScale stretches the sign (and its art, via object-fit:fill) taller
+     than its natural aspect ratio for more text room — content region
+     fractions still line up since both the art and the regions scale together. */
+  const height = width * SIGN_ASPECT_H / SIGN_ASPECT_W * (sc.heightScale || 1);
   let x = sc.x;
   if (sc.anchorToJamie) {
     const rightX = jamieRect.x + jamieRect.w + sc.gap;
@@ -1209,9 +1219,9 @@ function applyGiftShowcaseLayout() {
   gd.style.left = px(SIGN_REGIONS.detailText.cx, width);
   gd.style.top = px(SIGN_REGIONS.detailText.cy, height);
   gd.style.width = px(SIGN_REGIONS.detailText.w, width);
-  /* text scales with sign width instead of staying fixed-px, so a shrunk
-     sign shrinks its text proportionally rather than overflowing. */
-  const fs = width / SIGN_FONT_REF_WIDTH;
+  /* text scales with sign width (so a shrunk sign shrinks its text instead
+     of overflowing) times the independent fontScale knob for direct control. */
+  const fs = (width / SIGN_FONT_REF_WIDTH) * (sc.fontScale || 1);
   gn.style.fontSize = Math.max(6, Math.round(15 * fs)) + 'px';
   gd.style.fontSize = Math.max(6, Math.round(14 * fs)) + 'px';
   ga.dataset.baseFontPx = Math.max(7, Math.round(22 * fs));
@@ -2111,10 +2121,11 @@ function setSignContent(m) {
   const action = gs.querySelector('.gs-action');
   action.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
   gs.querySelector('.gs-detail').textContent = (m.signDetail !== undefined && m.signDetail !== '') ? m.signDetail : (defaults.signDetail || '');
-  /* auto-fit the action line: shrink from its width-scaled base font until
-     it fits its region (never below ~65% of that base). */
-  const regionH = SIGN_REGIONS.actionText.h * (CFG.visuals.giftShowcase.width * SIGN_ASPECT_H / SIGN_ASPECT_W);
-  const baseSize = +action.dataset.baseFontPx || Math.round(22 * CFG.visuals.giftShowcase.width / SIGN_FONT_REF_WIDTH);
+  /* auto-fit the action line: shrink from its width/height/font-scaled base
+     font until it fits its region (never below ~65% of that base). */
+  const scw = CFG.visuals.giftShowcase;
+  const regionH = SIGN_REGIONS.actionText.h * (scw.width * SIGN_ASPECT_H / SIGN_ASPECT_W * (scw.heightScale || 1));
+  const baseSize = +action.dataset.baseFontPx || Math.round(22 * (scw.width / SIGN_FONT_REF_WIDTH) * (scw.fontScale || 1));
   const minSize = Math.max(6, Math.round(baseSize * 0.65));
   for (let size = baseSize; size >= minSize; size--) {
     action.style.fontSize = size + 'px';
