@@ -23,7 +23,6 @@
   --gold:      #f59e0b;
   --tiktok:    #ee1d52;
   --youtube:   #ff0000;
-  --twitch:    #9146ff;
   --direct:    #3b82f6;
 }
 
@@ -382,7 +381,6 @@ td {
 }
 .plat-tiktok   { background: rgba(238,29,82,.2);  color: #ff6b8a; }
 .plat-youtube  { background: rgba(255,0,0,.2);    color: #ff6060; }
-.plat-twitch   { background: rgba(145,70,255,.2); color: #b97fff; }
 .plat-direct   { background: rgba(34,197,94,.2);  color: #4ade80; }
 .plat-unknown  { background: rgba(120,120,160,.2);color: var(--muted); }
 
@@ -771,7 +769,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         <option value="tiktok_coins">TikTok Coins</option>
         <option value="youtube_jewels">YouTube Jewels</option>
         <option value="youtube_superchat">YouTube SuperChat</option>
-        <option value="twitch_bits">Twitch Bits</option>
         <option value="direct_donation">Direct Donation</option>
       </select>
     </div>
@@ -902,12 +899,28 @@ function loadData() {
   } catch(e) { return emptyStore(); }
 }
 
+let _leaderboardPublishTimer = null;
 function saveData(data) {
   data.lastUpdated = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    // Most likely QuotaExceededError from years of unpruned gift history — every gift
+    // event from here on would otherwise fail to persist with zero visible indication.
+    console.error('[tracker] saveData failed — data is NOT being persisted:', e);
+    const gs = document.getElementById('gist-status');
+    if (gs) gs.textContent = '⚠ Save failed — storage full? Export/reset old data.';
+  }
   renderLastUpdated(data.lastUpdated);
-  // Publish giftr leaderboard after data change (deferred so DB is current)
-  setTimeout(publishGiftrLeaderboard, 80);
+  // Publish giftr leaderboard after data change (deferred so DB is current). Coalesced —
+  // saveData() runs on every single gift event, and each one used to schedule its own
+  // independent timer, so a burst fired several redundant full-history publishes at once.
+  if (!_leaderboardPublishTimer) {
+    _leaderboardPublishTimer = setTimeout(() => {
+      _leaderboardPublishTimer = null;
+      publishGiftrLeaderboard();
+    }, 80);
+  }
   // Auto-sync to GitHub Gist (debounced)
   scheduleGistSync();
 }
@@ -935,7 +948,7 @@ function computeValue(amount, type, mode, iosPercent) {
   if (mode === 'creator_earnings') {
     switch(type) {
       case 'tiktok_coins':      return amount * 0.0048;      // 1 coin = 1 diamond @ $0.0048 creator earnings
-      case 'youtube_jewels':    return (amount / 2) * 0.01; // 2 jewels = 1 ruby @ $0.01 creator earnings
+      case 'youtube_jewels':    return (amount / 2) * 0.01 * blend; // 2 jewels = 1 ruby @ $0.01, same YouTube/iOS revenue split as Super Chat — was previously 100% pass-through with no platform cut at all
       case 'youtube_superchat': return amount * blend;      // YouTube keeps 30%, blended for iOS split
       case 'direct_donation':   return amount;
       default:                  return amount;
@@ -1111,6 +1124,23 @@ let sortDir = -1; // -1 = desc, 1 = asc
 let searchQuery = '';
 
 /* ───────────────────────────── TABLE RENDER ──── */
+// Live gift ingestion (Tikfinity/SSN) can fire many events per second during a raid or
+// gift combo; each one used to force a full table rebuild + leaderboard recompute
+// immediately. Coalesce those into one render per short window instead. Manual UI
+// actions (edit/reset/etc.) still call renderTable() directly for instant feedback.
+let _renderTableDebounceTimer = null;
+let _pendingFlashKeys = [];
+function renderTableDebounced(flashKey) {
+  if (flashKey) _pendingFlashKeys.push(flashKey);
+  if (_renderTableDebounceTimer) return;
+  _renderTableDebounceTimer = setTimeout(() => {
+    _renderTableDebounceTimer = null;
+    renderTable();
+    const keys = _pendingFlashKeys; _pendingFlashKeys = [];
+    keys.forEach(k => flashRow(k));
+  }, 150);
+}
+
 function renderTable() {
   const iosPct  = DB.settings.iosPercent;
   const tbody   = document.getElementById('gifter-tbody');
@@ -1571,7 +1601,7 @@ function handleTikfinityGift(data) {
   addLogEntry(name, coins, 'tiktok_coins', 'tiktok', ts, false, null);
   if (coins > 0) {
     const key = upsertGift(name, coins, 'tiktok_coins', 'tiktok', '', userId);
-    if (key) { renderTable(); flashRow(key); }
+    if (key) renderTableDebounced(key);
     // Publish gift-alert so gift-bar.html shows the explosion animation
     if (ablyChannel) {
       ablyChannel.publish('gift-alert', {
@@ -1686,8 +1716,12 @@ function parseHasDonation(str, knownType) {
 
 // ── SSN dedup cache — prevents double-fires within SSN itself (same name+amount+type within 3 s) ──
 const _ssnSeen = new Map();
-function ssnIsDupe(name, amount, type) {
-  const key = name + '|' + amount + '|' + type;
+function ssnIsDupe(name, amount, type, data) {
+  // Prefer a stable per-message id from SSN if one is present — the name+amount+type
+  // fallback below can misclassify two legitimate rapid identical donations from the
+  // same viewer (same name/amount/type within 3s) as a duplicate and drop the second one.
+  const msgId = data?.chatMessageId || data?.msgId || data?.messageId || data?.eventId || null;
+  const key = msgId ? ('id:' + msgId) : (name + '|' + amount + '|' + type);
   const now = Date.now();
   const last = _ssnSeen.get(key) || 0;
   if (now - last < 3000) return true;
@@ -1825,10 +1859,9 @@ function handleSSNEvent(payload) {
   const giftTitle  = data.gifttitle  || null;
 
   addLogEntry(name, amount || '—', type, platform, ts, debugAll && !isRelevant, null);
-  if (isRelevant && amount > 0 && !ssnIsDupe(name, amount, type)) {
+  if (isRelevant && amount > 0 && !ssnIsDupe(name, amount, type, data)) {
     const key = upsertGift(name, amount, type, platform, '', userId);
-    renderTable();
-    flashRow(key);
+    renderTableDebounced(key);
     if (ablyChannel) {
       ablyChannel.publish('gift-alert', {
         name, amount, type, platform,
@@ -2042,7 +2075,6 @@ function renderEditEntriesList() {
         <option value="tiktok_coins"      ${g.type === 'tiktok_coins'      ? 'selected' : ''}>TikTok Coins</option>
         <option value="youtube_jewels"    ${g.type === 'youtube_jewels'    ? 'selected' : ''}>YouTube Jewels</option>
         <option value="youtube_superchat" ${g.type === 'youtube_superchat' ? 'selected' : ''}>YouTube SuperChat</option>
-        <option value="twitch_bits"       ${g.type === 'twitch_bits'       ? 'selected' : ''}>Twitch Bits</option>
         <option value="direct_donation"   ${g.type === 'direct_donation'   ? 'selected' : ''}>Direct Donation</option>
       </select>
       <input type="text" class="ee-note" value="${esc(g.note || '')}" placeholder="Note" style="flex:1;min-width:0">

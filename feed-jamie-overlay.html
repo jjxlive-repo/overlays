@@ -28,8 +28,9 @@
   }
   #stage { position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; overflow: hidden; }
 
-  /* connection dot — blue filled = Ably connected, hollow orange = not (colorblind-safe) */
+  /* connection dot — hidden on the broadcast overlay; check feed-jamie-control.html for status */
   #conn-dot {
+    display: none;
     position: absolute; top: 10px; right: 10px; width: 13px; height: 13px;
     border-radius: 50%; background: transparent; border: 3px solid #F59E0B;
     box-sizing: border-box; opacity: .8; z-index: 90;
@@ -305,12 +306,10 @@ const FJ_DEFAULT_CONFIG = {
       ball: 'tennis-ball', treat: 'random-treat', toy: 'squeaky-toy',
       duck: 'duck', sock: 'sock', bubble: 'bubble', jamie: 'look'
     },
-    keywordShowUsername: false,
     treatWeights: { 'treat-biscuit': 45, 'treat-bone': 30, 'treat-purple-splat': 20, 'treat-heart': 5 },
-    followShowUsername: true, followNameSeconds: 1.5,
-    heartMeDurationSec: 3, heartMeSpawnHeart: true, heartMeNameSeconds: 2,
-    subscribeDurationSec: 2.5, subscribeNameSeconds: 2,
-    giftLowMax: 99, giftMediumMax: 4999, giftHighMin: 5000,
+    heartMeDurationSec: 3, heartMeSpawnHeart: true,
+    subscribeDurationSec: 2.5,
+    giftLowMax: 99, giftHighMin: 5000,
     giftFallbackEnabled: true,  /* false = only explicitly mapped gifts react */
     giftSizeScaling: {
       enabled: true,     /* bigger gifts spawn bigger items */
@@ -513,6 +512,11 @@ function fjValidateConfig() {
   sc.sizeScaling.enabled = sc.sizeScaling.enabled !== false;
   sc.sizeScaling.maxScale = Math.min(Math.max(num(sc.sizeScaling.maxScale, 2), 1), 3);
   sc.sizeScaling.dollarsForMax = Math.min(Math.max(num(sc.sizeScaling.dollarsForMax, 50), 0.5), 100000);
+  // Matches the control panel's slider bounds (1.5-6s / 1-6s). Without this, a hand-edited
+  // or imported config could set 0 or negative and cut the celebration veil/dim reset
+  // short almost instantly.
+  c.events.heartMeDurationSec = Math.min(Math.max(num(c.events.heartMeDurationSec, 3), 1.5), 6);
+  c.events.subscribeDurationSec = Math.min(Math.max(num(c.events.subscribeDurationSec, 2.5), 1), 6);
 }
 /* size multiplier for a gift-spawned item: log curve from 1x (1 coin) up to
    maxScale (at coinsForMax coins) — big gifts read big without a 30k-coin
@@ -1238,11 +1242,14 @@ function mapArtPoint(pt) {
 }
 function reachZoneRect() {
   const mouth = targetPoint('mouth', 'jamie-idle-01.png'); /* anchor-aware */
+  // Scales with growth to match the control panel's own copy ("his reach zone grows
+  // too, so a fed Jamie catches easier") — previously this was fixed regardless of growth.
+  const gs = growthScale();
   return {
     cx: mouth.x + (isFlipped() ? -CFG.reachZone.xOffset : CFG.reachZone.xOffset),
     cy: mouth.y + CFG.reachZone.yOffset,
-    rx: CFG.reachZone.width / 2,
-    ry: CFG.reachZone.height / 2
+    rx: (CFG.reachZone.width / 2) * gs,
+    ry: (CFG.reachZone.height / 2) * gs
   };
 }
 function targetPoint(kind, frameFile) {
@@ -1900,7 +1907,10 @@ function handleComment(username, message) {
 }
 let heartMeActive = false;
 function triggerHeartMe(username, highGiftName = '') {
-  if (heartMeActive) return;
+  // Guard on both flags — Heart Me and Jackpot share jamieEl's transform and the
+  // dim/veil state, so letting one interrupt the other mid-celebration used to
+  // compound the scale transform and could prematurely reset shared state.
+  if (heartMeActive || jackpotActive) return;
   heartMeActive = true;
   /* 1-2: dim normal objects, clear minor distractions */
   objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
@@ -1912,6 +1922,7 @@ function triggerHeartMe(username, highGiftName = '') {
   jamieEl.classList.add('pose-celebrate', 'ph-happy');
   jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
   const j = CFG.jamie;
+  applyLayout(); // reset to a clean base transform before appending the celebration scale
   jamieEl.style.transform += ' scale(1.12)';
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
   playSeq('heartMe', { loop: false, onDone: () => playSeq('heartMeEnd', { loop: false }) });
@@ -1946,7 +1957,7 @@ function triggerHeartMe(username, highGiftName = '') {
 }
 let jackpotActive = false;
 function triggerJackpot(username, rawGiftName = '') {
-  if (jackpotActive) return;
+  if (jackpotActive || heartMeActive) return;
   jackpotActive = true;
   objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
   $('like-meter').style.opacity = 0;
@@ -1955,6 +1966,7 @@ function triggerJackpot(username, rawGiftName = '') {
   jamieEl.classList.remove('breathe');
   jamieEl.classList.add('pose-celebrate', 'ph-happy');
   jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  applyLayout(); // reset to a clean base transform before appending the celebration scale
   jamieEl.style.transform += ' scale(1.16)';
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
   playSeq('jackpot', { loop: false, onDone: () => playSeq('jackpotEnd', { loop: false }) });
