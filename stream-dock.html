@@ -3334,6 +3334,9 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
       </div>
       <input type="file" id="stg-audio-file" accept="audio/*" style="display:none" onchange="stgAudioPicked(this)">
       <p class="stg-hint" id="stg-audio-hint"></p>
+      <label>Duration (seconds)</label>
+      <input type="number" id="stg-duration-sec" min="1" max="300" step="1" placeholder="25">
+      <p class="stg-hint">How long the overlay stays up before auto-hiding — match your video/audio length.</p>
       <div class="stg-modal-btns">
         <button class="stg-btn-cancel" id="stg-cancel-btn" type="button" onclick="stgModalClose()">Cancel</button>
         <button class="stg-btn-save"   id="stg-save-btn"   type="button" onclick="stgModalSave()">Save</button>
@@ -3493,6 +3496,10 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
 /* ═══════════════════════════════════════════
    CONFIG
 ═══════════════════════════════════════════ */
+// Must match the SESSION constant in featured-splat.html — that overlay connects to
+// Social Stream Ninja directly on its own destination number (/2) instead of through
+// this dock's Ably relay, so rotating this session ID here without updating it there
+// will silently disconnect featured-splat.html with no visible error on either page.
 const SESSION   = "usNkSpEutq";
 const MAX_MSGS  = 80;
 const ABLY_KEY  = "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0";
@@ -4000,6 +4007,7 @@ function handleMsg(data) {
         name: data.chatname || 'Anonymous', amount: alertAmount,
         type: alertType, platform: alertPlat, contentImg, giftTitle,
         giftLabel: data.hasDonation || giftTitle || null,
+        message: data.chatmessage || null,
         _src: 'dock',
       }).catch(() => {});
     }
@@ -4107,6 +4115,31 @@ function ttFanInfo(data) {
   };
 }
 
+// Chat messages come from anonymous viewers via Social Stream Ninja/Tikfinity and may
+// contain inline <img> emotes, so they can't just be text-escaped — but they also can't be
+// trusted as raw HTML. Walk the parsed DOM and keep only a tiny safe allowlist.
+function sanitizeChatHtml(html) {
+  const allowedTags = new Set(['IMG', 'B', 'I', 'EM', 'STRONG', 'SPAN', 'BR']);
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(html ?? '');
+  (function clean(node) {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if (!allowedTags.has(child.tagName)) {
+          child.replaceWith(document.createTextNode(child.textContent || ''));
+          continue;
+        }
+        for (const attr of Array.from(child.attributes)) {
+          if (child.tagName === 'IMG' && attr.name === 'src' && /^https:\/\//i.test(attr.value)) continue;
+          child.removeAttribute(attr.name);
+        }
+        clean(child);
+      }
+    }
+  })(tpl.content);
+  return tpl.innerHTML;
+}
+
 function addMsg(data, key) {
   const container = document.getElementById('msgs-' + key);
   document.getElementById('emp-' + key)?.remove();
@@ -4177,7 +4210,7 @@ function addMsg(data, key) {
 
   const text = document.createElement('div');
   text.className = 'msg-text';
-  text.innerHTML = data.chatmessage || '';
+  text.innerHTML = sanitizeChatHtml(data.chatmessage || '');
   body.appendChild(nameLine);
   body.appendChild(text);
   row.appendChild(body);
@@ -4287,7 +4320,7 @@ function addUnified(data, platform, isTT, isYT, isGift) {
 
   const text = document.createElement('div');
   text.className = 'msg-text';
-  text.innerHTML = data.chatmessage || data.gifttitle || '';
+  text.innerHTML = sanitizeChatHtml(data.chatmessage || data.gifttitle || '');
 
   body.appendChild(name);
   body.appendChild(text);
@@ -5201,19 +5234,6 @@ function _peekMarkLive() {
 }
 ablyChannel.subscribe('peek-alive', () => { _peekMarkLive(); peekPublishConfig(); });
 
-/* ═══════════════════════════════════════════
-   OVERLAY TEST — Giftr Bar
-   Publishes a 'giftr' event to Ably so you
-   can preview the giftr-overlay bar animations
-   without real stream data.
-═══════════════════════════════════════════ */
-function toggleTestBar() {
-  const bar = document.getElementById('test-bar');
-  const btn = document.getElementById('btn-test-toggle');
-  const open = bar.classList.toggle('open');
-  btn.classList.toggle('active', open);
-}
-
 /* ══ EVENT PROMO SYSTEM ══ */
 const EVENT_PROMO_STORAGE_KEY = 'jj_event_promo_config_v1';
 const EVENT_PROMO_DEFAULT_CONFIG = {
@@ -5544,103 +5564,13 @@ function eventPromoFileToAvatarDataUrl(file) {
   eventPromoPopulateFields(getEventPromoConfigFromStorage());
   document.getElementById('ep-fun-file')?.addEventListener('change', eventPromoLoadFunImageFile);
   document.querySelectorAll('#event-promo-bar input').forEach(input => {
-    input.addEventListener('change', eventPromoSaveLocal);
     input.addEventListener('input', eventPromoSaveLocal);
   });
 })();
 
-/* Build a rawDisplay string matching what the overlay expects */
-function testRawDisplay(type, amount) {
-  switch(type) {
-    case 'tiktok_coins':      return Number(amount).toLocaleString() + ' coins';
-    case 'youtube_jewels':    return Number(amount).toLocaleString() + ' jewels';
-    case 'youtube_superchat':
-    case 'direct_donation':   return '$' + parseFloat(amount).toFixed(2);
-    default:                  return String(amount);
-  }
-}
-
-function testTypeToPlatform(type) {
-  switch(type) {
-    case 'tiktok_coins':      return 'tiktok';
-    case 'youtube_jewels':
-    case 'youtube_superchat': return 'youtube';
-    case 'direct_donation':   return 'direct';
-    default:                  return 'unknown';
-  }
-}
-
-/* Build a giftr payload so all 5 slots show test data:
-   - Primary slot matches the gift type (tiktok → tiktok slot, youtube → youtube slot)
-   - Other slots show the same name at scaled amounts so you can preview every card */
-function buildTestGiftr(name, type, amount) {
-  const platform = testTypeToPlatform(type);
-  const entry    = { name, amount, type, platform, profilePic: null };
-  const mk = (mult) => ({ name, amount: Math.round(amount * mult), type, platform, profilePic: null });
-
-  return {
-    daily:        mk(1),
-    weekly:       mk(3.5),
-    monthly:      mk(12),
-    youtube:      platform === 'youtube' ? entry : { name: 'YTViewer', amount: Math.round(amount * 0.7), type: 'youtube_jewels',  platform: 'youtube', profilePic: null },
-    tiktok:       platform === 'tiktok'  ? entry : { name: 'TTViewer', amount: Math.round(amount * 0.8), type: 'tiktok_coins',    platform: 'tiktok',  profilePic: null },
-    enabledSlots: ['daily','weekly','monthly','youtube','tiktok'],
-  };
-}
-
-function fireOverlayTest() {
-  const name   = (document.getElementById('test-name').value.trim()) || 'TestViewer';
-  const type   = document.getElementById('test-type').value;
-  const amount = parseFloat(document.getElementById('test-amount').value) || 500;
-
-  // Update leaderboard bar
-  ablyChannel.publish('giftr', buildTestGiftr(name, type, amount));
-
-  // Trigger tier animation on giftr-overlay
-  ablyChannel.publish('gift-alert', {
-    name,
-    amount,
-    type,
-    platform: testTypeToPlatform(type),
-    note: type === 'youtube_superchat' ? 'Test SuperChat message from the stream!' : null,
-    userId: null,
-  });
-
-  doFlash('green');
-}
-
-function quickTest(type, amount) {
-  document.getElementById('test-type').value   = type;
-  document.getElementById('test-amount').value = amount;
-  fireOverlayTest();
-}
-
-/* Clear the overlay by sending empty slots */
-function clearOverlayTest() {
-  ablyChannel.publish('giftr', {
-    daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
-    enabledSlots: [],
-  });
-  doFlash('red');
-}
-
 /* ═══════════════════════════════════════════
-   SPLAT POSITION + BAIT CONTROL
+   SPLAT POSITION
 ═══════════════════════════════════════════ */
-function setSplatBait() {
-  const img  = document.getElementById('bait-img-url').value.trim();
-  const top  = document.getElementById('bait-top-txt').value.trim();
-  const main = document.getElementById('bait-main-txt').value.trim();
-  const payload = {};
-  if (img)  payload.img  = img;
-  if (top)  payload.top  = top;
-  if (main) payload.main = main;
-  if (Object.keys(payload).length) {
-    ablyChannel.publish('splat-bait', payload).catch(() => {});
-    doFlash('green');
-  }
-}
-
 function setSplatPos(pos) {
   ablyChannel.publish('splat-pos', pos).catch(() => {});
   document.querySelectorAll('[data-pos]').forEach(b => {
@@ -5650,7 +5580,9 @@ function setSplatPos(pos) {
 }
 
 /* ── Notification pill position controls ── */
-let _dockNotifPos = JSON.parse(localStorage.getItem('notifPos') || '{"x":50,"y":-38}');
+let _dockNotifPos;
+try { _dockNotifPos = JSON.parse(localStorage.getItem('notifPos') || '{"x":50,"y":-38}'); }
+catch(e) { _dockNotifPos = {x:50,y:-38}; }
 function nudgeNotif(dx, dy) {
   _dockNotifPos.x = Math.max(5, Math.min(95, _dockNotifPos.x + dx));
   _dockNotifPos.y = Math.min(-6, _dockNotifPos.y + dy);
@@ -5965,43 +5897,10 @@ function layoutNudgeSelected(field, delta) {
 
 
 /* ═══════════════════════════════════════════
-   BAIT VISIBLE TOGGLE
-═══════════════════════════════════════════ */
-let baitVisible = true;
-function toggleBaitVisible() {
-  baitVisible = !baitVisible;
-  ablyChannel.publish('splat-bait', { enabled: baitVisible }).catch(() => {});
-  const btn = document.getElementById('btn-bait-visible');
-  btn.textContent = baitVisible ? '👁 Bait' : '🙈 Bait';
-  btn.style.background    = baitVisible ? 'rgba(59,130,246,0.18)' : 'rgba(244,63,94,0.18)';
-  btn.style.borderColor   = baitVisible ? 'rgba(34,197,94,0.40)' : 'rgba(244,63,94,0.40)';
-  btn.style.color         = baitVisible ? '#60a5fa' : '#fb7185';
-  doFlash(baitVisible ? 'green' : 'red');
-}
-
-/* ═══════════════════════════════════════════
    ANNOUNCE / LIVE TEXT BOX
 ═══════════════════════════════════════════ */
 let announceVisible = false;
 let announceX = 'center', announceY = 'top', announceSize = 'md';
-
-function toggleAnnounceBar() {
-  const bar = document.getElementById('announce-bar');
-  const btn = document.getElementById('btn-announce-toggle');
-  const open = bar.classList.toggle('open');
-  btn.classList.toggle('active', open);
-}
-
-function toggleAnnounceVisible() {
-  announceVisible = !announceVisible;
-  ablyChannel.publish('announce', { visible: announceVisible }).catch(() => {});
-  const btn = document.getElementById('btn-ann-visible');
-  btn.textContent       = announceVisible ? 'Hide' : 'Show';
-  btn.style.background  = announceVisible ? 'rgba(244,63,94,0.20)' : '';
-  btn.style.borderColor = announceVisible ? 'rgba(244,63,94,0.50)' : '';
-  btn.style.color       = announceVisible ? '#fb7185' : '';
-  doFlash(announceVisible ? 'green' : 'red');
-}
 
 function sendAnnounce() {
   ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
@@ -6036,43 +5935,6 @@ function setAnnounceY(y) {
   announceY = y;
   document.querySelectorAll('[data-ay]').forEach(b => b.classList.toggle('c-act', b.dataset.ay === y));
   ablyChannel.publish('announce', buildAnnouncePayload()).catch(() => {});
-}
-
-/* ═══════════════════════════════════════════
-   COMMENT PROMPT
-═══════════════════════════════════════════ */
-let cpVisible = false;
-let cpX = 'center', cpY = 'bottom', cpSize = 'md';
-let cpPresets = JSON.parse(localStorage.getItem('cp-presets') || '[]');
-
-function toggleCPBar() {
-  const bar = document.getElementById('cp-bar');
-  const btn = document.getElementById('btn-cp-toggle');
-  const open = bar.classList.toggle('open');
-  btn.classList.toggle('active', open);
-  if (open) cpRenderPresetList();
-}
-
-function toggleCPVisible() {
-  cpVisible = !cpVisible;
-  ablyChannel.publish('comment-prompt', { visible: cpVisible }).catch(() => {});
-  const btn = document.getElementById('btn-cp-visible');
-  btn.textContent       = cpVisible ? 'Hide' : 'Show';
-  btn.style.background  = cpVisible ? 'rgba(244,63,94,0.20)' : '';
-  btn.style.borderColor = cpVisible ? 'rgba(244,63,94,0.50)' : '';
-  btn.style.color       = cpVisible ? '#fb7185' : '';
-  doFlash(cpVisible ? 'green' : 'red');
-}
-
-function sendCP() {
-  const text     = document.getElementById('cp-main').value.trim();
-  const sub      = document.getElementById('cp-sub-in').value.trim();
-  const patsRaw  = document.getElementById('cp-patterns').value;
-  const patterns = patsRaw.split(',').map(p => p.trim()).filter(Boolean);
-  const payload  = { sub, patterns };
-  if (text) payload.text = text;
-  ablyChannel.publish('comment-prompt', payload).catch(() => {});
-  doFlash('green');
 }
 
 /* ── Milk Meter dock mirror — DISABLED ── */
@@ -7311,50 +7173,6 @@ function lsToggleGeyser() {
   scheduleGistSave();
 }
 
-function setCPSize(size) {
-  cpSize = size;
-  document.querySelectorAll('[data-cpsize]').forEach(b => b.classList.toggle('active', b.dataset.cpsize === size));
-  ablyChannel.publish('comment-prompt', { size }).catch(() => {});
-}
-
-function setCPX(x) {
-  cpX = x;
-  document.querySelectorAll('[data-cpx]').forEach(b => b.classList.toggle('active', b.dataset.cpx === x));
-  ablyChannel.publish('comment-prompt', { x }).catch(() => {});
-}
-
-function setCPY(y) {
-  cpY = y;
-  document.querySelectorAll('[data-cpy]').forEach(b => b.classList.toggle('active', b.dataset.cpy === y));
-  ablyChannel.publish('comment-prompt', { y }).catch(() => {});
-}
-
-/* ── CP preset list ── */
-function cpRenderPresetList() {
-  const list = document.getElementById('cp-preset-list');
-  if (!list) return;
-  if (!cpPresets.length) {
-    list.innerHTML = '<span style="font-size:10px;color:var(--txt-dim);font-style:italic;">No presets yet.</span>';
-    return;
-  }
-  list.innerHTML = cpPresets.map((p, i) => `
-    <div class="preset-item">
-      <span class="preset-item-txt">${p.text}${p.sub ? ' <span style="opacity:.5">/ '+p.sub+'</span>' : ''}</span>
-      <button class="ctrl-btn" style="padding:2px 6px;" onclick="cpSendPreset(${i})">▶</button>
-      <button class="ctrl-btn c-off" style="padding:2px 6px;" onclick="cpRemovePreset(${i})">✕</button>
-    </div>`).join('');
-}
-function cpSendPreset(i) {
-  const p = cpPresets[i]; if (!p) return;
-  ablyChannel.publish('comment-prompt', { text: p.text, sub: p.sub || '' }).catch(() => {});
-  doFlash('green');
-}
-function cpRemovePreset(i) {
-  cpPresets.splice(i, 1);
-  localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
-  cpRenderPresetList();
-}
-
 /* ════════════════════════════════════════
    QUICK CONTROLS
 ════════════════════════════════════════ */
@@ -7366,10 +7184,6 @@ function qcLTVisible(v) {
   doFlash(v ? 'green' : 'red');
 }
 
-function qcCPVisible(v) {
-  ablyChannel.publish('comment-prompt', { visible: v }).catch(() => {});
-  doFlash(v ? 'green' : 'red');
-}
 
 function qcEP(mode) {
   eventPromoShow(mode);
@@ -7790,188 +7604,6 @@ function dockTestChatCommand() {
   doFlash('purple');
 }
 
-const DOCK_LAYOUT_KEY = 'streamDockLayoutV2';
-const DOCK_OVERLAYS = [
-  ['stream-bar','Stream Bar'], ['live-text','Live Text'], ['mission-strip','Mission Strip'],
-  ['geyser','Geyser'], ['milk','Milk Bar'], ['splat','Splat Cards'],
-  ['splat-explainer','Splat Explainers'], ['gift-anim','Gift Animations'],
-  ['crowd-glass','Crowd Glass'], ['new-here','New Here Pile'],
-  ['gifter-highlight','Gifter Highlight'], ['gift-bar','Top Camera Gifter Panel'],
-  ['top-gifters','Top Gifters'], ['bait','Bait Card'], ['team-timing','Team Timing']
-];
-let _dockDrag = null;
-
-function dockDefaultLayout() {
-  return {
-    overlayOrder: DOCK_OVERLAYS.map(x => x[0]), archivedOverlays: [], archivedCards: [],
-    cardGroups: {}, cardOrder: [], advancedOpen: false, archiveOpen: false, chatCols: 1
-  };
-}
-function dockLoadLayout() {
-  try { return Object.assign(dockDefaultLayout(), JSON.parse(localStorage.getItem(DOCK_LAYOUT_KEY) || '{}')); }
-  catch (_) { return dockDefaultLayout(); }
-}
-let _dockLayout = dockLoadLayout();
-function dockSaveLayout() { localStorage.setItem(DOCK_LAYOUT_KEY, JSON.stringify(_dockLayout)); }
-
-function dockOverlayIsOn(key) {
-  switch (key) {
-    case 'stream-bar': return !!_streamBarEnabled;
-    case 'live-text': return !!announceVisible;
-    case 'mission-strip': return !!_missionStripVisible;
-    case 'geyser': return !!_geyserEnabled;
-    case 'milk': return !_milkUiDisabled;
-    case 'splat': return !!_dockSplatVisible;
-    case 'splat-explainer': return !!_lsExplainerEnabled;
-    case 'gift-anim': return !!_dockGiftAnimVisible;
-    case 'crowd-glass': return !!_dockCrowdGlassVisible;
-    case 'new-here': return !!_dockNewHereVisible;
-    case 'gifter-highlight': return !!_dockGifterHighlightVisible;
-    case 'gift-bar': return !!_dockGiftBarVisible;
-    case 'top-gifters': return !!_dockTopGiftersVisible;
-    case 'bait': return !!_baitVisible;
-    case 'team-timing': return !!_ttbConfig?.enabled;
-    default: return false;
-  }
-}
-function dockSetOverlayHidden(key) {
-  if (dockOverlayIsOn(key)) dockQuickToggle(key);
-}
-function dockToggleOverlayAction(key) {
-  if (_dockLayout.archivedOverlays.includes(key)) return;
-  dockQuickToggle(key);
-  dockRenderOverlayRows();
-}
-function dockArchiveOverlay(key) {
-  dockSetOverlayHidden(key);
-  if (!_dockLayout.archivedOverlays.includes(key)) _dockLayout.archivedOverlays.push(key);
-  dockSaveLayout(); dockRenderOverlayRows(); dockRefreshGroups();
-}
-function dockRestoreOverlay(key) {
-  _dockLayout.archivedOverlays = _dockLayout.archivedOverlays.filter(x => x !== key);
-  dockSaveLayout(); dockRenderOverlayRows(); dockRefreshGroups();
-}
-function dockOverlayRow(key, label, archived) {
-  const on = dockOverlayIsOn(key) && !archived;
-  const row = document.createElement('div');
-  row.className = 'dock-overlay-row'; row.draggable = !archived; row.dataset.overlayKey = key;
-  row.innerHTML = `${archived ? '' : '<span class="dock-drag" title="Drag to reorder">⠿⠿</span>'}
-    <button class="dock-vis-btn ${on ? 'showing' : 'hidden'}" ${archived ? 'disabled' : ''}
-      title="${on ? 'Currently showing — click to hide' : 'Currently hidden — click to show'}">${on ? 'Hide' : 'Show'}</button>
-    <span class="dock-overlay-name">${label}</span>
-    <button class="dock-archive-btn ${archived ? 'restore' : ''}">${archived ? 'Unarchive' : 'Archive'}</button>`;
-  const vis = row.querySelector('.dock-vis-btn');
-  if (!archived) vis.onclick = () => dockToggleOverlayAction(key);
-  row.querySelector('.dock-archive-btn').onclick = () => archived ? dockRestoreOverlay(key) : dockArchiveOverlay(key);
-  row.ondragstart = () => { _dockDrag = { type:'overlay', key }; row.classList.add('dragging'); };
-  row.ondragend = () => { _dockDrag = null; row.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over')); };
-  row.ondragover = e => { if (_dockDrag?.type === 'overlay') { e.preventDefault(); e.stopPropagation(); row.classList.add('drag-over'); } };
-  row.ondragleave = () => row.classList.remove('drag-over');
-  row.ondrop = e => {
-    e.preventDefault(); e.stopPropagation(); row.classList.remove('drag-over');
-    if (_dockDrag?.type !== 'overlay' || _dockDrag.key === key) return;
-    const order = _dockLayout.overlayOrder.filter(x => x !== _dockDrag.key);
-    order.splice(Math.max(0, order.indexOf(key)), 0, _dockDrag.key); _dockLayout.overlayOrder = order;
-    dockSaveLayout(); dockRenderOverlayRows();
-  };
-  return row;
-}
-function dockRenderOverlayRows() {
-  const active = document.getElementById('dock-pinned-body');
-  const archive = document.getElementById('dock-archive-body');
-  if (!active || !archive) return;
-  const labels = Object.fromEntries(DOCK_OVERLAYS);
-  const known = new Set(_dockLayout.overlayOrder);
-  DOCK_OVERLAYS.forEach(([key]) => { if (!known.has(key)) _dockLayout.overlayOrder.push(key); });
-  active.innerHTML = ''; archive.querySelectorAll('.dock-overlay-row').forEach(x => x.remove());
-  _dockLayout.overlayOrder.forEach(key => {
-    const archived = _dockLayout.archivedOverlays.includes(key);
-    (archived ? archive : active).appendChild(dockOverlayRow(key, labels[key] || key, archived));
-  });
-  const live = DOCK_OVERLAYS.filter(([key]) => !_dockLayout.archivedOverlays.includes(key) && dockOverlayIsOn(key)).length;
-  const liveEl = document.getElementById('dock-live-count'); if (liveEl) liveEl.textContent = `${live} live`;
-  const arcEl = document.getElementById('dock-archive-count'); if (arcEl) arcEl.textContent = String(_dockLayout.archivedOverlays.length + _dockLayout.archivedCards.length);
-  dockRefreshGroups();
-}
-
-function dockMakeGroup(id, title, options={}) {
-  const section = document.createElement('section');
-  section.className = 'dock-group' + (options.closed ? ' closed' : ''); section.dataset.group = id;
-  section.innerHTML = `<div class="dock-group-hd"><span>${options.icon || '◆'}</span><span class="dock-group-title">${title}</span>
-    ${options.pinned ? '<span class="dock-pinned-badge">Pinned</span>' : ''}<span class="dock-group-count" id="dock-${id}-count">0</span>
-    ${options.collapsible === false ? '' : '<span class="dock-group-arrow">▼</span>'}</div><div class="dock-group-body" id="dock-${id}-body"></div>`;
-  if (options.collapsible !== false) section.querySelector('.dock-group-hd').onclick = () => {
-    section.classList.toggle('closed');
-    if (id === 'advanced') _dockLayout.advancedOpen = !section.classList.contains('closed');
-    if (id === 'archive') _dockLayout.archiveOpen = !section.classList.contains('closed');
-    dockSaveLayout();
-  };
-  return section;
-}
-function dockCardId(card) { return card.querySelector('.ctrl-bd')?.id?.replace(/^ctrl-/, '') || card.id || ''; }
-function dockDecorateCard(card, id, group) {
-  card.dataset.dockCard = id; card.dataset.dockGroup = group; card.draggable = true;
-  const title = card.querySelector('.ctrl-hd-title')?.textContent?.trim() || id;
-  const tools = document.createElement('div'); tools.className = 'dock-card-tools';
-  tools.innerHTML = `<span class="dock-drag">⠿⠿</span><span class="dock-card-name">Move category</span><button class="dock-archive-btn">Archive</button>`;
-  tools.querySelector('button').onclick = e => { e.stopPropagation(); dockArchiveCard(id); };
-  card.insertBefore(tools, card.firstChild);
-  card.ondragstart = e => { if (e.target.closest('input,button,select,textarea')) { e.preventDefault(); return; } _dockDrag={type:'card',id}; card.classList.add('dragging'); };
-  card.ondragend = () => { _dockDrag=null; card.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over')); };
-  card.title = title;
-}
-function dockArchiveCard(id) {
-  if (!_dockLayout.archivedCards.includes(id)) _dockLayout.archivedCards.push(id);
-  dockSaveLayout(); dockPlaceCards();
-}
-function dockRestoreCard(id) {
-  _dockLayout.archivedCards = _dockLayout.archivedCards.filter(x => x !== id);
-  dockSaveLayout(); dockPlaceCards();
-}
-function dockEnableGroupDrop(body, group) {
-  body.ondragover = e => { if (_dockDrag?.type === 'card') e.preventDefault(); };
-  body.ondrop = e => {
-    if (_dockDrag?.type !== 'card') return; e.preventDefault(); e.stopPropagation();
-    _dockLayout.cardGroups[_dockDrag.id] = group;
-    _dockLayout.cardOrder = _dockLayout.cardOrder.filter(x=>x!==_dockDrag.id).concat(_dockDrag.id);
-    dockSaveLayout(); dockPlaceCards();
-  };
-}
-function dockPlaceCards() {
-  const frequent = document.getElementById('dock-frequent-body'), advanced = document.getElementById('dock-advanced-body'), archive = document.getElementById('dock-archive-body');
-  if (!frequent || !advanced || !archive) return;
-  const cards = Array.from(document.querySelectorAll('[data-dock-card]'));
-  cards.sort((a,b) => _dockLayout.cardOrder.indexOf(a.dataset.dockCard) - _dockLayout.cardOrder.indexOf(b.dataset.dockCard));
-  cards.forEach(card => {
-    const id=card.dataset.dockCard, archived=_dockLayout.archivedCards.includes(id);
-    if (archived) {
-      archive.appendChild(card); card.querySelector('.dock-card-tools button').textContent='Unarchive';
-      card.querySelector('.dock-card-tools button').classList.add('restore');
-      card.querySelector('.dock-card-tools button').onclick=e=>{e.stopPropagation();dockRestoreCard(id);};
-    } else {
-      const group=_dockLayout.cardGroups[id] || card.dataset.defaultGroup || 'advanced';
-      (group === 'frequent' ? frequent : advanced).appendChild(card);
-      const btn=card.querySelector('.dock-card-tools button'); btn.textContent='Archive'; btn.classList.remove('restore'); btn.onclick=e=>{e.stopPropagation();dockArchiveCard(id);};
-    }
-  });
-  dockApplySearch(); dockRefreshGroups(); dockRenderOverlayRows();
-}
-function dockApplySearch() {
-  const q=(document.getElementById('dock-search')?.value || '').trim().toLowerCase();
-  document.querySelectorAll('#dock-frequent-body [data-dock-card],#dock-advanced-body [data-dock-card]').forEach(card => card.style.display = !q || card.title.toLowerCase().includes(q) ? '' : 'none');
-  const adv=document.querySelector('[data-group="advanced"]'); if (adv && q) adv.classList.remove('closed');
-  dockRefreshGroups();
-}
-function dockRefreshGroups() {
-  ['frequent','pinned','advanced','archive'].forEach(id => {
-    const group=document.querySelector(`[data-group="${id}"]`), body=document.getElementById(`dock-${id}-body`), count=document.getElementById(`dock-${id}-count`);
-    if (!group || !body) return;
-    const visible=Array.from(body.children).filter(x=>x.style.display!=='none').length;
-    if (count && id!=='pinned' && id!=='archive') count.textContent=String(visible);
-    group.classList.toggle('is-empty', visible===0 && id!=='archive');
-  });
-}
-
 function organizeDockControls() {
   const col = document.getElementById('col-controls');
   if (!col || col.dataset.organized === 'true') return;
@@ -8073,31 +7705,6 @@ function buildSplatCardSubsections() {
     });
   });
   root.dataset.subsectionsBuilt = '1';
-}
-
-/* ════════════════════════════════════════
-   COMMENT PROMPT PRESETS (full)
-════════════════════════════════════════ */
-function cpAddPreset() {
-  const text = (document.getElementById('cp-add-text')?.value || '').trim();
-  const sub  = (document.getElementById('cp-add-sub')?.value  || '').trim();
-  if (!text) return;
-  cpPresets.push({ text, sub });
-  localStorage.setItem('cp-presets', JSON.stringify(cpPresets));
-  document.getElementById('cp-add-text').value = '';
-  document.getElementById('cp-add-sub').value  = '';
-  cpRenderPresetList();
-}
-
-function cpSendAll() {
-  if (!cpPresets.length) return;
-  const patterns = (document.getElementById('cp-patterns')?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
-  const rotateMs = 30000;
-  ablyChannel.publish('comment-prompt', {
-    presets: cpPresets, rotateMs, patterns,
-    text: cpPresets[0].text, sub: cpPresets[0].sub || ''
-  }).catch(() => {});
-  doFlash('green');
 }
 
 /* ════════════════════════════════════════
@@ -8308,6 +7915,7 @@ let _gistSaveTimer = null;
 let _gistDirty = localStorage.getItem('jjx-gist-dirty') === '1';
 let _gistApplyingRemote = false;
 let _gistSaveInFlight = false;
+let _gistLoadInFlight = false;
 let _gistLastLocalStatusAt = 0;
 
 function scheduleGistSave() {
@@ -8442,13 +8050,6 @@ function applyGistConfig(cfg) {
       if (saved?.ranges && saved.ranges[0]?.minD != null) _msc.ranges = saved.ranges;
     } catch(e) {}
     _mscRenderEngage(); _mscRenderGifts(); _mscRenderCmds(); _mscRenderRanges();
-  }
-
-  // --- comment-prompt presets ---
-  if (cfg['cp-presets'] != null) {
-    localStorage.setItem('cp-presets', cfg['cp-presets']);
-    try { cpPresets = JSON.parse(cfg['cp-presets']); } catch(e) { cpPresets = []; }
-    cpRenderPresetList();
   }
 
   // --- instant save / milk target ---
@@ -8771,14 +8372,14 @@ async function doGistSave() {
   let   id    = document.getElementById('gist-id')?.value.trim();
   if (!token) { _gistStatus('⚠ Enter GitHub token', false); return; }
   if (_gistSaveInFlight) { _gistStatus('Sync already running - wait a moment', null); return; }
-  clearTimeout(_gistSaveTimer);
-  _gistSaveTimer = null;
-  localStorage.setItem('jjx-gist-token', token);
-  // Auto-create if no ID yet, but only when the user explicitly clicks Save & Sync Now.
-  if (!id) { await gistCreate(); return; }
   _gistSaveInFlight = true;
-  _gistStatus('Syncing to Gist...', null);
   try {
+    clearTimeout(_gistSaveTimer);
+    _gistSaveTimer = null;
+    localStorage.setItem('jjx-gist-token', token);
+    // Auto-create if no ID yet, but only when the user explicitly clicks Save & Sync Now.
+    if (!id) { await gistCreate(); return; }
+    _gistStatus('Syncing to Gist...', null);
     const content = JSON.stringify(gistGetConfig(), null, 2);
     const res = await fetch(`https://api.github.com/gists/${id}`, {
       method: 'PATCH',
@@ -8814,8 +8415,10 @@ async function doGistLoad() {
   const token = document.getElementById('gist-token')?.value.trim();
   const id    = document.getElementById('gist-id')?.value.trim();
   if (!token) { _gistStatus('⚠ Enter GitHub token', false); return; }
+  if (_gistLoadInFlight) { _gistStatus('Pull already running - wait a moment', null); return; }
   localStorage.setItem('jjx-gist-token', token);
   if (!id)    { _gistStatus('⚠ Enter a Gist ID', false); return; }
+  _gistLoadInFlight = true;
   _gistStatus('Pulling…', null);
   try {
     const res = await fetch(`https://api.github.com/gists/${id}`, {
@@ -8836,6 +8439,7 @@ async function doGistLoad() {
     localStorage.removeItem('jjx-gist-dirty');
     _gistStatus('✓ In sync (' + new Date().toLocaleTimeString() + ')', true);
   } catch(e) { _gistStatus('✗ ' + e.message, false); }
+  finally { _gistLoadInFlight = false; }
 }
 
 function _gistStatus(msg, synced) {
@@ -8936,6 +8540,9 @@ function gcPush(data, tier) {
     const key = (data.name || '') + '|' + (data.giftTitle || data.type || '');
     const now = Date.now();
     if (now - (_gcState._t0guard.get(key) || 0) < 4000) return;
+    // Opportunistic prune — this map otherwise grows one entry per unique gifter+gift
+    // for the life of the tab, since entries are only ever added, never expired.
+    for (const [k, ts] of _gcState._t0guard) { if (now - ts > 4000) _gcState._t0guard.delete(k); }
     _gcState._t0guard.set(key, now);
     _gcEnqueue(data, tier);
     return;
@@ -11190,7 +10797,6 @@ function mmCmdClear() {
    BOOT
 ════════════════════════════════════════ */
 gbInit();
-cpRenderPresetList();
 
 /* ════════════════════════════════════════
    TIKFINITY — local WebSocket for TikTok events
@@ -11298,6 +10904,7 @@ function _stgLoad() {
       videoUrl: 'https://jjxlive-repo.github.io/overlays/Splatties-LevelUp-Overlay.html',
       audioUrl: '',
       localAudio: null,
+      durationMs: 45000, // the embedded anthem runs well past the old 25s fallback — adjust to match your track
     }];
     localStorage.setItem(_STG_KEY, JSON.stringify(_stingers));
   }
@@ -11323,9 +10930,10 @@ function stgFire(id) {
   if (!s) return;
   if (ablyChannel) {
     ablyChannel.publish('stinger', {
-      name:     s.name,
-      videoUrl: s.videoUrl || null,
-      audioUrl: s.audioUrl || null,
+      name:       s.name,
+      videoUrl:   s.videoUrl || null,
+      audioUrl:   s.audioUrl || null,
+      durationMs: s.durationMs || null,
     }).catch(() => {});
   }
   const src = s.localAudio || s.audioUrl;
@@ -11347,9 +10955,10 @@ function _stgOpenModal(editId) {
   _stgLocalAudio = null;
   const s = editId ? _stingers.find(x => x.id === editId) : null;
   document.getElementById('stg-modal-title').textContent = s ? 'Edit Stinger' : 'New Stinger';
-  document.getElementById('stg-name').value      = s?.name     || '';
-  document.getElementById('stg-video-url').value = s?.videoUrl || '';
-  document.getElementById('stg-audio-url').value = s?.audioUrl || '';
+  document.getElementById('stg-name').value        = s?.name     || '';
+  document.getElementById('stg-video-url').value   = s?.videoUrl || '';
+  document.getElementById('stg-audio-url').value   = s?.audioUrl || '';
+  document.getElementById('stg-duration-sec').value = s?.durationMs ? Math.round(s.durationMs / 1000) : 25;
   document.getElementById('stg-audio-hint').textContent =
     s?.localAudio ? '📁 Local audio stored — plays in dock' : '';
   if (s?.localAudio) _stgLocalAudio = s.localAudio;
@@ -11375,20 +10984,21 @@ function stgAudioPicked(input) {
 }
 
 function stgModalSave() {
-  const name     = document.getElementById('stg-name').value.trim();
-  const videoUrl = document.getElementById('stg-video-url').value.trim();
-  const audioUrl = document.getElementById('stg-audio-url').value.trim();
+  const name       = document.getElementById('stg-name').value.trim();
+  const videoUrl   = document.getElementById('stg-video-url').value.trim();
+  const audioUrl   = document.getElementById('stg-audio-url').value.trim();
+  const durationMs = (parseFloat(document.getElementById('stg-duration-sec').value) || 25) * 1000;
   if (!name) { document.getElementById('stg-name').focus(); return; }
   if (_stgEditId) {
     const s = _stingers.find(x => x.id === _stgEditId);
     if (s) {
-      s.name = name; s.videoUrl = videoUrl; s.audioUrl = audioUrl;
+      s.name = name; s.videoUrl = videoUrl; s.audioUrl = audioUrl; s.durationMs = durationMs;
       if (_stgLocalAudio) s.localAudio = _stgLocalAudio;
     }
   } else {
     _stingers.push({
       id: 'stg-' + Date.now(),
-      name, videoUrl, audioUrl,
+      name, videoUrl, audioUrl, durationMs,
       localAudio: _stgLocalAudio || null,
     });
   }
