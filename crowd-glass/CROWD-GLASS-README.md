@@ -1,4 +1,9 @@
-# Crowd Glass
+> ⚠️ **This document describes an unimplemented proposal, not the shipped overlay.**
+> Features below — the surge queue, spider-crack impact hubs, `viewer_name_reveal`,
+> integrity-only shatter — do not exist in `app.js`. For what's actually built, see
+> [`README.md`](./README.md), which matches the shipped behavior.
+
+# Crowd Glass (proposal — not implemented)
 
 Transparent 1080x1920 browser-source overlay for TikTok Live Studio / OBS.
 

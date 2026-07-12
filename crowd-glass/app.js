@@ -595,6 +595,13 @@
     state.shatterActive = false;
     state.shatterBurst = null;
     state.sweep = null;
+    // A shatter can be forced while bulletproof is active, so resetGlass must also
+    // tear that down — otherwise the badge/countdown keeps running after the glass
+    // has already visually reset.
+    state.bulletproof = false;
+    state.bulletproofEndsAt = null;
+    if (bulletproofTickHandle) { clearInterval(bulletproofTickHandle); bulletproofTickHandle = null; }
+    bulletproofBadge.classList.add("hidden");
     updateIntegrityUI();
   }
 
@@ -812,6 +819,17 @@
   // ---------------------------------------------------------------------
   // WebSocket intake
   // ---------------------------------------------------------------------
+  // Most streamers never run the optional local WS server (Ably is the documented
+  // primary path per the README), so a fixed 2s retry forever is constant background
+  // noise for the life of the browser source. Back off exponentially, capped at 30s,
+  // and reset to the base interval as soon as a connection actually succeeds.
+  let _wsReconnectAttempts = 0;
+  function _wsNextDelay() {
+    const delay = Math.min(CFG.websocketReconnectMs * Math.pow(2, _wsReconnectAttempts), 30000);
+    _wsReconnectAttempts++;
+    return delay;
+  }
+
   function connectWebSocket() {
     if (!CFG.websocketEnabled) { state.wsStatus = "disabled"; return; }
     try {
@@ -819,10 +837,10 @@
       state.ws = ws;
       state.wsStatus = "connecting";
 
-      ws.onopen = () => { state.wsStatus = "connected"; };
+      ws.onopen = () => { state.wsStatus = "connected"; _wsReconnectAttempts = 0; };
       ws.onclose = () => {
         state.wsStatus = "disconnected";
-        setTimeout(connectWebSocket, CFG.websocketReconnectMs);
+        setTimeout(connectWebSocket, _wsNextDelay());
       };
       ws.onerror = () => { state.wsStatus = "error"; };
       ws.onmessage = (msg) => {
@@ -835,7 +853,7 @@
       };
     } catch (e) {
       state.wsStatus = "error";
-      setTimeout(connectWebSocket, CFG.websocketReconnectMs);
+      setTimeout(connectWebSocket, _wsNextDelay());
     }
   }
 
@@ -859,6 +877,17 @@
     }
   }
 
+  // Manual dock buttons and local keyboard test keys are meant to produce visible
+  // feedback on demand, regardless of whether a "show" command has ever been received
+  // from stream-dock (which itself defaults the glass to hidden). Without this, pressing
+  // Break/Repair/J/G/B/M against a never-enabled overlay silently no-ops.
+  function ensureVisible() {
+    if (!state.enabled) {
+      state.enabled = true;
+      stage.style.display = "";
+    }
+  }
+
   function handleCommand(command) {
     state.lastEventLabel = `command(${command})`;
     switch (command) {
@@ -874,13 +903,13 @@
         resetGlass();
         break;
       case "reset_glass": resetGlass(); break;
-      case "force_shatter": triggerShatter(); break;
-      case "activate_bulletproof": activateBulletproof(CFG.bulletproofDurationMs); break;
+      case "force_shatter": ensureVisible(); triggerShatter(); break;
+      case "activate_bulletproof": ensureVisible(); activateBulletproof(CFG.bulletproofDurationMs); break;
       // Manual dock controls — bypass autoMode, always apply immediately.
-      case "break_small": handleViewerJoin({ type: "viewer_join", platform: "manual", username: null }); break;
-      case "break_big": simulateDelta(50, "manual"); break;
-      case "repair_small": handleGift({ type: "gift", platform: "manual", username: null, giftName: "Manual Repair", coins: 75 }); break;
-      case "repair_big": handleGift({ type: "gift", platform: "manual", username: null, giftName: "Manual Repair", coins: 6000 }); break;
+      case "break_small": ensureVisible(); handleViewerJoin({ type: "viewer_join", platform: "manual", username: null }); break;
+      case "break_big": ensureVisible(); simulateDelta(50, "manual"); break;
+      case "repair_small": ensureVisible(); handleGift({ type: "gift", platform: "manual", username: null, giftName: "Manual Repair", coins: 75 }); break;
+      case "repair_big": ensureVisible(); handleGift({ type: "gift", platform: "manual", username: null, giftName: "Manual Repair", coins: 6000 }); break;
       default: break;
     }
   }
@@ -1082,7 +1111,9 @@
 
   window.addEventListener("keydown", (e) => {
     if (e.repeat) return;
-    switch (e.key.toLowerCase()) {
+    const key = e.key.toLowerCase();
+    if ("jy1234gbmsr".includes(key)) ensureVisible();
+    switch (key) {
       case "j":
         handleViewerJoin({ type: "viewer_join", platform: "tiktok", username: nextTestUsername(), timestamp: Date.now() });
         break;
