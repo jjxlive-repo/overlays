@@ -53,6 +53,7 @@ let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
 let IDLE_TITLE    = 'Be the first!';
 let IDLE_SUB      = 'type NEW HERE';
 let FLOOR_OFFSET  = 0;   // shifts the pile floor up/down from its base position
+let SPREAD_MODE   = false; // false = pile up in a mound; true = spread out in a ground row that blinks
 let BLOB_SCALE    = 1.0; // multiplier on mascot body render size (packing geometry unaffected)
 let NAME_SCALE    = 1.0; // per-figure name pill scale
 let NAME_X_OFFSET = 0;
@@ -274,7 +275,25 @@ let popFlashAt           = -Infinity; // performance.now() of last pop, drives t
 // later joins climb toward the top of a rounded mound — newest on top, name
 // visible — rather than filling the lowest gap and getting buried.
 // ═══════════════════════════════════════════════════════════════════
+// Spread mode: figures line up along the ground across (almost) the full width
+// instead of stacking. Slots are assigned round-robin so they fill evenly; once a
+// full row is placed, extra joins tuck slightly behind (a hair higher) so nobody
+// perfectly overlaps.
+const SPREAD_LO = 80, SPREAD_HI = 1000;
+const SPREAD_SLOTS = Math.max(8, Math.floor((SPREAD_HI - SPREAD_LO) / BIN_W)); // ≈ 20
+let spreadSeq = 0;
+function getSpreadPos() {
+  const slot = spreadSeq % SPREAD_SLOTS;
+  const pass = Math.floor(spreadSeq / SPREAD_SLOTS);
+  spreadSeq++;
+  const cell = (SPREAD_HI - SPREAD_LO) / SPREAD_SLOTS;
+  const x = SPREAD_LO + (slot + 0.5) * cell + (rnd() - 0.5) * cell * 0.4;
+  const y = FLOOR_Y - pass * (LAYER_H * 0.5) + (rnd() * 8 - 4); // later rows a touch higher/behind
+  return { x: Math.max(SPREAD_LO, Math.min(SPREAD_HI, x)), y };
+}
+
 function getDepositionPos() {
+  if (SPREAD_MODE) return getSpreadPos();
   const g = (rnd() + rnd() + rnd() - 1.5) / 1.5; // approx normal(-1..1)
   const b = Math.max(0, Math.min(N_BINS - 1, Math.round((g * 0.5 + 0.5) * (N_BINS - 1))));
   const level = heights[b]++;
@@ -338,6 +357,8 @@ function spawnFigure(username, source) {
       startY,
       rot:           rnd() * 10 - 5,
       pal,
+      // Independent blink clock: first blink at a random offset so nobody is synced.
+      blinkAt:       performance.now() + 800 + rnd() * 4000,
     });
   }
 
@@ -429,7 +450,7 @@ function drawMascotCached(ctx, color) {
   ctx.drawImage(bmp.canvas, -MASCOT_CACHE_HALF_W, -MASCOT_CACHE_TOP, bmp.w, bmp.h);
 }
 
-function drawMascot(ctx, color, pal, splatPhase, splatT) {
+function drawMascot(ctx, color, pal, splatPhase, splatT, blink) {
   // Squash-and-stretch: splatPhase=true means we're in the splat animation
   // splatT goes 0→1; max squash at splatT≈0.4 then springs back
   let sx = 1, sy = 1;
@@ -495,20 +516,29 @@ function drawMascot(ctx, color, pal, splatPhase, splatT) {
     ctx.fill();
   }
 
-  // Eye whites
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(-22, -78, 16, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc( 22, -78, 16, 0, Math.PI * 2); ctx.fill();
+  if (blink) {
+    // Closed eyes — two short downward-curved lashes where the eyes were.
+    ctx.strokeStyle = '#23052e';
+    ctx.lineWidth   = 4;
+    ctx.lineCap     = 'round';
+    ctx.beginPath(); ctx.moveTo(-33, -80); ctx.quadraticCurveTo(-22, -70, -11, -80); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( 11, -80); ctx.quadraticCurveTo( 22, -70,  33, -80); ctx.stroke();
+  } else {
+    // Eye whites
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-22, -78, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc( 22, -78, 16, 0, Math.PI * 2); ctx.fill();
 
-  // Pupils
-  ctx.fillStyle = '#23052e';
-  ctx.beginPath(); ctx.arc(-19, -76, 8, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc( 25, -76, 8, 0, Math.PI * 2); ctx.fill();
+    // Pupils
+    ctx.fillStyle = '#23052e';
+    ctx.beginPath(); ctx.arc(-19, -76, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc( 25, -76, 8, 0, Math.PI * 2); ctx.fill();
 
-  // Catch-lights
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(-16, -79, 3, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc( 28, -79, 3, 0, Math.PI * 2); ctx.fill();
+    // Catch-lights
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-16, -79, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc( 28, -79, 3, 0, Math.PI * 2); ctx.fill();
+  }
 
   // Blush
   ctx.save();
@@ -1117,12 +1147,22 @@ function frame(now) {
         drawSplatBurst(ctx, fig.pal, fig.splatProgress);
       }
 
+      // Blink (spread mode only): each figure has its own clock, so they blink out of
+      // sync. Only the handful mid-blink fall back to the live draw; the rest stay cached.
+      let doBlink = false;
+      if (fig.phase === 'settled' && SPREAD_MODE) {
+        const BLINK_DUR = 130;
+        if (fig.blinkAt == null) fig.blinkAt = now + rnd() * 4000;
+        if (now >= fig.blinkAt + BLINK_DUR) fig.blinkAt = now + 2200 + rnd() * 4000; // next blink
+        doBlink = now >= fig.blinkAt && now < fig.blinkAt + BLINK_DUR;
+      }
+
       // The figure itself — settled figures (the vast majority once the pile builds up)
-      // use the cached bitmap; anything mid-animation still needs the live squash/stretch.
-      if (fig.phase === 'settled') {
+      // use the cached bitmap; anything mid-animation or mid-blink needs the live draw.
+      if (fig.phase === 'settled' && !doBlink) {
         drawMascotCached(ctx, fig.color);
       } else {
-        drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress);
+        drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress, doBlink);
       }
 
       ctx.restore();
@@ -1289,6 +1329,7 @@ function connectAbly() {
     if (d.idleTitle    != null) IDLE_TITLE    = d.idleTitle  || IDLE_TITLE;
     if (d.idleSub      != null) IDLE_SUB      = d.idleSub    || IDLE_SUB;
     if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
+    if (d.spreadMode   != null) SPREAD_MODE   = !!d.spreadMode;
     if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
     if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
     if (d.nameXOffset  != null) NAME_X_OFFSET = d.nameXOffset;
