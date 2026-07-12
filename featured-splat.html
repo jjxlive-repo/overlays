@@ -642,6 +642,9 @@ html, body { width:100%; height:100%; background:transparent; overflow:hidden; f
 </div>
 
 <script>
+// Must match the SESSION constant in stream-dock.html — this overlay connects to
+// Social Stream Ninja directly rather than through stream-dock's Ably relay, so if this
+// session ID is ever rotated, update it in both places or this overlay goes silently dark.
 const SESSION   = "usNkSpEutq";
 const SHOW_TIME = 10000;
 
@@ -688,6 +691,8 @@ function connect() {
   ws.onerror = () => { ws.close(); };
 }
 
+const MAX_QUEUED_BUBBLES = 5;
+
 function enqueue(data) {
   if (!data.chatname) return;
 
@@ -701,12 +706,21 @@ function enqueue(data) {
     return;
   }
 
+  if (transitioning) {
+    // A gift arriving mid replace/expire animation used to be silently dropped here.
+    // Queue it instead — expireBubble()/replaceWith()'s animationend handlers already
+    // call showNext() to drain this queue once the in-flight animation finishes.
+    queue.push(data);
+    while (queue.length > MAX_QUEUED_BUBBLES) queue.shift();
+    return;
+  }
+
   queue = [];
   clearTimeout(hideTimer);
   const bubble = document.getElementById('bubble');
   const visible = bubble.style.display !== 'none';
-  if (visible && !transitioning) { replaceWith(data); }
-  else if (!transitioning)       { showing = true; renderInto(data, 'showing'); }
+  if (visible) { replaceWith(data); }
+  else         { showing = true; renderInto(data, 'showing'); }
 }
 
 /* ══════════════════════════════════════
