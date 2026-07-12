@@ -58,6 +58,9 @@ let BLOB_SCALE    = 1.0; // multiplier on mascot body render size (packing geome
 let NAME_SCALE    = 1.0; // per-figure name pill scale
 let NAME_X_OFFSET = 0;
 let NAME_Y_OFFSET = 0;
+// Name persistence: 0 = auto (only the pile surface + newest show names),
+// >0 = show each name for that many seconds after joining, >=999 = always show every name.
+let NAME_PERSIST_SEC = 0;
 let IDLE_SCALE    = 1.0;
 let IDLE_X_OFFSET = 0;
 let IDLE_Y_OFFSET = 0;
@@ -359,6 +362,7 @@ function spawnFigure(username, source) {
       pal,
       // Independent blink clock: first blink at a random offset so nobody is synced.
       blinkAt:       performance.now() + 800 + rnd() * 4000,
+      joinedAt:      performance.now(), // for timed name persistence
     });
   }
 
@@ -1119,6 +1123,16 @@ function frame(now) {
     // name is guaranteed visible even if it didn't land at the very top.
     figures.filter(f => f.phase === 'settled').sort((a, b) => b.id - a.id).slice(0, 5)
       .forEach(f => nameIds.add(f.id));
+    // Name persistence override: >=999 = show every name; >0 = show each name for that
+    // many seconds after it joined. (0 leaves the auto surface+newest behavior above.)
+    if (NAME_PERSIST_SEC >= 999) {
+      for (const f of figures) if (f.phase === 'settled') nameIds.add(f.id);
+    } else if (NAME_PERSIST_SEC > 0) {
+      const cutoff = NAME_PERSIST_SEC * 1000;
+      for (const f of figures) {
+        if (f.phase === 'settled' && f.joinedAt != null && (now - f.joinedAt) < cutoff) nameIds.add(f.id);
+      }
+    }
 
     for (const fig of sorted) {
       const pos = currentPos(fig);
@@ -1330,6 +1344,7 @@ function connectAbly() {
     if (d.idleSub      != null) IDLE_SUB      = d.idleSub    || IDLE_SUB;
     if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
     if (d.spreadMode   != null) SPREAD_MODE   = !!d.spreadMode;
+    if (d.namePersistSec != null) NAME_PERSIST_SEC = d.namePersistSec;
     if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
     if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
     if (d.nameXOffset  != null) NAME_X_OFFSET = d.nameXOffset;
