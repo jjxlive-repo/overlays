@@ -172,12 +172,7 @@
   #gift-showcase .gs-action {
     position: absolute; z-index: 2; transform: translate(-50%, -50%);
     font: 700 22px 'DM Sans'; color: #3A2A1A; line-height: 1.12;
-    text-align: center; overflow: hidden;
-  }
-  #gift-showcase .gs-detail {
-    position: absolute; z-index: 2; transform: translate(-50%, -50%);
-    font: 500 14px 'DM Sans'; color: #6B5A45;
-    text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-align: center; overflow: hidden; overflow-wrap: break-word;
   }
 
   /* floating video-game trigger text above Jamie when a mapped gift lands */
@@ -251,7 +246,6 @@
     <img class="gs-sign-art" alt="">
     <img class="gs-gift-img" alt="">
     <div class="gs-action"></div>
-    <div class="gs-detail"></div>
   </div>
   <div id="gift-float-layer" aria-live="polite"></div>
   <div id="debug-hud"></div>
@@ -1160,12 +1154,11 @@ function applyLayout() {
    now 1095x520 with the parchment using ~78%) so content reads at small
    sizes instead of getting lost in a tall, mostly-empty sign. */
 const SIGN_ASPECT_W = 1095, SIGN_ASPECT_H = 520;
-/* no gift-name region: the gift image already identifies the gift, so the
-   whole text column is given to the trigger action + detail line instead. */
+/* no gift-name or detail line: the gift image already identifies the gift,
+   so the whole text column is given to the single trigger-action word. */
 const SIGN_REGIONS = {
   giftImage:  { cx: 0.300, cy: 0.529, d: 0.268 },
-  actionText: { cx: 0.648, cy: 0.45,  w: 0.402, h: 0.42 },
-  detailText: { cx: 0.648, cy: 0.80,  w: 0.402 }
+  actionText: { cx: 0.648, cy: 0.529, w: 0.402, h: 0.65 }
 };
 /* font sizes below were tuned at this reference width; they scale linearly
    with the configured sign width so shrinking the sign shrinks text with it
@@ -1206,14 +1199,9 @@ function applyGiftShowcaseLayout() {
   ga.style.top = px(SIGN_REGIONS.actionText.cy, height);
   ga.style.width = px(SIGN_REGIONS.actionText.w, width);
   ga.style.maxHeight = px(SIGN_REGIONS.actionText.h, height);
-  const gd = gs.querySelector('.gs-detail');
-  gd.style.left = px(SIGN_REGIONS.detailText.cx, width);
-  gd.style.top = px(SIGN_REGIONS.detailText.cy, height);
-  gd.style.width = px(SIGN_REGIONS.detailText.w, width);
   /* text scales with sign width (so a shrunk sign shrinks its text instead
      of overflowing) times the independent fontScale knob for direct control. */
   const fs = (width / SIGN_FONT_REF_WIDTH) * (sc.fontScale || 1);
-  gd.style.fontSize = Math.max(6, Math.round(14 * fs)) + 'px';
   ga.dataset.baseFontPx = Math.max(7, Math.round(22 * fs));
   ga.style.fontSize = ga.dataset.baseFontPx + 'px';
 }
@@ -2058,19 +2046,19 @@ const GIFT_ITEM_LABELS = {
   'heart-large': 'Big Heart', 'heartme': 'MEGA Party', 'jackpot': 'JACKPOT'
 };
 const GIFT_ACTION_DEFAULTS = {
-  'treat-biscuit':      { signAction: 'TREAT',     signDetail: 'One crunchy snack',       floatText: '+ TREAT TIME!' },
-  'treat-bone':         { signAction: 'BONE',      signDetail: 'Bone treat incoming',     floatText: '+ BONE TREAT!' },
-  'treat-purple-splat': { signAction: 'SPLAT',     signDetail: 'Jamie tries to catch it', floatText: '+ SPLAT TREAT!' },
-  'treat-heart':        { signAction: 'COOKIE',    signDetail: 'Jamie tries to catch it', floatText: '+ HEART COOKIE!' },
-  'tennis-ball':        { signAction: 'BALL',      signDetail: 'One fetch attempt',       floatText: '+ BALL THROW!' },
-  'golden-tennis-ball': { signAction: 'GOLD BALL', signDetail: 'Premium fetch attempt',   floatText: '+ GOLDEN BALL!' },
-  'squeaky-toy':        { signAction: 'SQUEAKY',   signDetail: 'Jamie pounces on it',     floatText: '+ SQUEAKY TOY!' },
-  'duck':               { signAction: 'DUCK',      signDetail: 'Jamie investigates',      floatText: '+ DUCK!' },
-  'sock':               { signAction: 'SOCK',      signDetail: 'Jamie grabs it',          floatText: '+ SOCK!' },
-  'bubble':             { signAction: 'BUBBLE',    signDetail: 'Jamie tries to pop it',   floatText: '+ BUBBLE!' },
-  'heart-large':        { signAction: 'BIG HEART', signDetail: 'Big Jamie reaction',      floatText: '+ BIG HEART!' },
-  'heartme':            { signAction: 'PARTY',     signDetail: 'Mega reaction',           floatText: '+ JAMIE PARTY!' },
-  'jackpot':            { signAction: 'JACKPOT',   signDetail: 'Huge reaction',           floatText: '+ JACKPOT!' }
+  'treat-biscuit':      { signAction: 'TREAT',     floatText: '+ TREAT TIME!' },
+  'treat-bone':         { signAction: 'BONE',      floatText: '+ BONE TREAT!' },
+  'treat-purple-splat': { signAction: 'SPLAT',     floatText: '+ SPLAT TREAT!' },
+  'treat-heart':        { signAction: 'COOKIE',    floatText: '+ HEART COOKIE!' },
+  'tennis-ball':        { signAction: 'BALL',      floatText: '+ BALL THROW!' },
+  'golden-tennis-ball': { signAction: 'GOLD BALL', floatText: '+ GOLDEN BALL!' },
+  'squeaky-toy':        { signAction: 'SQUEAKY',   floatText: '+ SQUEAKY TOY!' },
+  'duck':               { signAction: 'DUCK',      floatText: '+ DUCK!' },
+  'sock':               { signAction: 'SOCK',      floatText: '+ SOCK!' },
+  'bubble':             { signAction: 'BUBBLE',    floatText: '+ BUBBLE!' },
+  'heart-large':        { signAction: 'BIG HEART', floatText: '+ BIG HEART!' },
+  'heartme':            { signAction: 'PARTY',     floatText: '+ JAMIE PARTY!' },
+  'jackpot':            { signAction: 'JACKPOT',   floatText: '+ JACKPOT!' }
 };
 /* self-heal: mappings saved before icon-embedding lack giftImg — look the
    icons up from the catalog once and fill them in-memory. */
@@ -2109,7 +2097,6 @@ function setSignContent(m) {
   }
   const action = gs.querySelector('.gs-action');
   action.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
-  gs.querySelector('.gs-detail').textContent = (m.signDetail !== undefined && m.signDetail !== '') ? m.signDetail : (defaults.signDetail || '');
   /* auto-fit the action line: shrink from its width/height/font-scaled base
      font until it fits its region (never below ~65% of that base). */
   const scw = CFG.visuals.giftShowcase;
