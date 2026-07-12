@@ -113,6 +113,7 @@ function saveDisplayCfg() {
       idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
       floorOffset: FLOOR_OFFSET,
       mode: NH_MODE,
+      laneInset: LANE_INSET, laneWidth: LANE_WIDTH,
       blobScale: BLOB_SCALE,
       nameScale: NAME_SCALE, nameXOffset: NAME_X_OFFSET, nameYOffset: NAME_Y_OFFSET,
       idleScale: IDLE_SCALE, idleXOffset: IDLE_X_OFFSET, idleYOffset: IDLE_Y_OFFSET,
@@ -150,6 +151,8 @@ function saveDisplayCfg() {
     if (c.floorOffset  != null) FLOOR_OFFSET  = c.floorOffset;
     if (c.mode         != null) setMode(c.mode);
     else if (c.spreadMode != null) setMode(c.spreadMode ? 'spread' : 'pile');
+    if (c.laneInset    != null) LANE_INSET    = c.laneInset;
+    if (c.laneWidth    != null) LANE_WIDTH    = c.laneWidth;
     if (c.blobScale    != null) BLOB_SCALE    = c.blobScale;
     if (c.nameScale    != null) NAME_SCALE    = c.nameScale;
     if (c.nameXOffset  != null) NAME_X_OFFSET = c.nameXOffset;
@@ -226,21 +229,30 @@ const SIGN_FADE_MS = 900;  // ms it takes to fade out after the hold period
 const QUEUE_GAP  = 1000 / CONFIG.maxPerSec;
 
 // ── BALLOON MODE ─────────────────────────────────────────────────
-// A chatter's first comment drops them into one of two narrow side lanes; each
-// further comment floats them higher up that lane. Once they hit the top they
-// leave the lane and spread across the ceiling as a floating balloon, name below.
+// A chatter's first comment drops them into one of two narrow channels hugging
+// the LEFT and RIGHT edges of the overlay; each further comment floats them higher
+// up that channel. The channels are narrow lanes whose width and inset from the
+// edge are live-configurable (LANE_INSET / LANE_WIDTH). Once maxed they collect at
+// the top of their own channel — everything stays inside the two side channels.
 const BALLOON_S       = 0.55;  // fixed render scale (independent of the pile's tiny S)
-const COMMENTS_TO_TOP = 20;    // comments needed to rise from the floor to the ceiling
-const LANE_L_X        = 220;   // left lane center x
-const LANE_R_X        = 860;   // right lane center x
-const LANE_HALF_W     = 90;    // horizontal roam sway amplitude within a lane
+const COMMENTS_TO_TOP = 20;    // comments needed to rise from the floor to the top of the channel
 const BALLOON_RISE_K  = 0.055; // per-frame lerp toward target (scaled by dt) — smooth float
-const CEIL_TOP        = 210;   // y of the first ceiling row
-const CEIL_ROW_H      = 155;   // vertical gap between ceiling rows
-const CEIL_LEFT       = 120;
-const CEIL_RIGHT      = 960;
-const CEIL_COLS       = 11;    // balloons per ceiling row before wrapping to the next row down
-const LANE_TOP_Y      = CEIL_TOP + CEIL_ROW_H * 0.6; // highest a lane-climber gets before going to the ceiling
+const CEIL_TOP        = 130;   // y where the top of each channel's cluster sits
+const CEIL_ROW_H      = 95;    // vertical gap as maxed balloons stack down inside the channel
+const LANE_TOP_Y      = CEIL_TOP; // highest a climber reaches before joining the top cluster
+
+// Channel geometry (live-adjustable via 'new-here-config'). A channel runs from
+// LANE_INSET px off its edge, LANE_WIDTH px wide. Centers/roam derive from these
+// so the control can resize the channels on the fly.
+let LANE_INSET = 28;   // px from the L/R screen edge to the channel's outer wall
+let LANE_WIDTH = 150;  // px width of each channel
+function laneCenterX(lane) {
+  return lane < 0 ? (LANE_INSET + LANE_WIDTH / 2) : (W - LANE_INSET - LANE_WIDTH / 2);
+}
+function laneRoamHalf() {
+  const balloonHalf = 64 * BALLOON_S;                 // half a balloon's on-screen width
+  return Math.max(4, LANE_WIDTH / 2 - balloonHalf);   // keep the balloon inside the channel walls
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // PALETTES
@@ -298,7 +310,8 @@ let lastSpawn    = 0;
 let seenUsers    = new Set();
 let figIdSeq     = 0;
 let balloonLaneSeq = 0;    // alternates L/R lane assignment for new balloons
-let balloonCeilSeq = 0;    // next free ceiling slot index (spread order at the top)
+let balloonCeilSeqL = 0;   // next free top-cluster slot in the LEFT channel
+let balloonCeilSeqR = 0;   // next free top-cluster slot in the RIGHT channel
 let resetPending = false;  // true while the explode-and-clear animation is playing
 let resetAt      = 0;      // timestamp when the explosion finishes and hardReset() fires
 
@@ -365,21 +378,19 @@ function setFloorOffset(offset) {
 
 // ═══════════════════════════════════════════════════════════════════
 // BALLOON MODE — resting (pre-sway) target for a figure, from its comment count.
-// While climbing they sit on their lane center; once they've earned enough
-// comments they leave the lane and claim a ceiling slot, spreading across the top.
+// The figure sits on its channel's center x the whole time; comment count drives
+// how high it floats. Once maxed it collects at the top of its OWN channel,
+// stacking down as more veterans arrive — everything stays in the side channel.
 // ═══════════════════════════════════════════════════════════════════
 function balloonTarget(fig) {
   const floorY = FLOOR_Y - 40;
+  const x = laneCenterX(fig.lane);
   const p = Math.min(1, (fig.comments - 1) / COMMENTS_TO_TOP);
   if (p >= 1) {
-    if (fig.ceilSlot == null) fig.ceilSlot = balloonCeilSeq++;
-    const col = fig.ceilSlot % CEIL_COLS;
-    const row = Math.floor(fig.ceilSlot / CEIL_COLS);
-    const cw  = (CEIL_RIGHT - CEIL_LEFT) / CEIL_COLS;
-    return { x: CEIL_LEFT + (col + 0.5) * cw, y: CEIL_TOP + row * CEIL_ROW_H };
+    if (fig.ceilSlot == null) fig.ceilSlot = (fig.lane < 0 ? balloonCeilSeqL++ : balloonCeilSeqR++);
+    return { x, y: CEIL_TOP + fig.ceilSlot * CEIL_ROW_H };
   }
-  const laneX = fig.lane < 0 ? LANE_L_X : LANE_R_X;
-  return { x: laneX, y: floorY - p * (floorY - LANE_TOP_Y) };
+  return { x, y: floorY - p * (floorY - LANE_TOP_Y) };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -399,7 +410,7 @@ function spawnFigure(username, source, key) {
   if (NH_MODE === 'balloons') {
     const lane   = (balloonLaneSeq++ % 2 === 0) ? -1 : 1;
     const floorY = FLOOR_Y - 40;
-    const laneX  = lane < 0 ? LANE_L_X : LANE_R_X;
+    const laneX  = laneCenterX(lane);
     if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
       const fig = {
         id: ++figIdSeq, x: laneX, y: floorY, color, source, username,
@@ -1262,8 +1273,9 @@ function frame(now) {
       if (balloonMode && !exploding) {
         const t = now / 1000;
         const atCeil = (fig.comments - 1) >= COMMENTS_TO_TOP;
-        const swayX = atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * 12
-                             : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * LANE_HALF_W;
+        const roam = laneRoamHalf();
+        const swayX = atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * Math.min(12, roam)
+                             : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * roam;
         const bobY  = Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 10 : 6);
         pos = { x: (fig.bx ?? fig.x) + swayX, y: (fig.by ?? fig.y) + bobY };
         blobS = BALLOON_S * BLOB_SCALE;
@@ -1518,6 +1530,8 @@ function connectAbly() {
     if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
     if (d.mode         != null) setMode(d.mode);
     else if (d.spreadMode != null) setMode(d.spreadMode ? 'spread' : 'pile');
+    if (d.laneInset    != null) LANE_INSET    = Math.max(0, d.laneInset);
+    if (d.laneWidth    != null) LANE_WIDTH    = Math.max(40, d.laneWidth);
     if (d.namePersistSec != null) NAME_PERSIST_SEC = d.namePersistSec;
     if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
     if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
@@ -1698,7 +1712,8 @@ function hardReset() {
   pending       = new Map();
   spreadSeq     = 0;
   balloonLaneSeq = 0;
-  balloonCeilSeq = 0;
+  balloonCeilSeqL = 0;
+  balloonCeilSeqR = 0;
   resetPending  = false;
   PRESSURE            = 0;
   lastPressureEventAt = performance.now();
