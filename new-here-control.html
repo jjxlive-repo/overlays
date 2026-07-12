@@ -1,0 +1,429 @@
+<!--
+  NEW HERE — standalone control panel.
+
+  Split out of stream-dock.html so the crowd-pile game can be tuned independently.
+  Open this locally in Chrome during streams. It publishes to the same Ably channel
+  ("splat-overlay") that new-here-overlay.html already listens on, so no dock is needed.
+
+  stream-dock.html keeps only an on/off toggle for New Here; everything else lives here.
+  Position/scale that used to live in the dock's shared 🎯 Layout panel are exposed here
+  as direct number inputs (same config fields the overlay consumes).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEW HERE — Control</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+:root {
+  --tt:#fe2c55; --yt:#ff4444; --purple:#A855F7; --purple-dk:#7B2FBE;
+  --green:#3b82f6; --danger:#F43F5E;
+  --bg:#0d0d12; --bg-panel:rgba(18,18,26,0.94); --bg-card:rgba(255,255,255,0.035);
+  --bg-hover:rgba(255,255,255,0.06); --border:rgba(255,255,255,0.07);
+  --txt:rgba(255,255,255,0.90); --txt-dim:rgba(255,255,255,0.42);
+  --radius:10px; --font:'DM Sans',sans-serif; --mono:'DM Mono',monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--txt); font-family: var(--font);
+  padding: 18px; display: flex; justify-content: center;
+}
+.wrap { width: 100%; max-width: 460px; }
+h1 {
+  font-size: 16px; font-weight: 700; margin: 0 0 3px; display: flex;
+  align-items: center; gap: 8px;
+}
+h1 .dot { width: 9px; height: 9px; border-radius: 50%; background: #555; transition: background .3s; }
+h1 .dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.subtitle { font-size: 11px; color: var(--txt-dim); margin: 0 0 14px; line-height: 1.5; }
+.subtitle code { font-size: 10px; background: rgba(255,255,255,0.07); padding: 1px 4px; border-radius: 3px; }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px 12px; margin-bottom: 10px;
+}
+.card > h2 {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--purple);
+  margin: 0 0 8px; font-weight: 700;
+}
+.sec-label {
+  font-size: 9px; color: var(--txt-dim); margin-top: 8px; letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.ctrl-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 5px; }
+.ctrl-row label { font-size: 10px; color: var(--txt-dim); flex-shrink: 0; }
+.ctrl-in {
+  background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--txt); font-family: var(--font); font-size: 11px; padding: 4px 7px;
+}
+.ctrl-in:focus { border-color: rgba(168,85,247,.5); outline: none; }
+select.ctrl-in option { background: #12121a; color: var(--txt); }
+input[type="number"].ctrl-in { width: 60px; }
+input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
+.rng-v { font-size: 9px; color: var(--txt-dim); width: 58px; text-align: right; }
+.ctrl-btn {
+  background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.3); border-radius: 6px;
+  color: var(--txt); font-family: var(--font); font-weight: 600; font-size: 11px;
+  padding: 6px 10px; cursor: pointer; transition: background .15s;
+}
+.ctrl-btn:hover { background: rgba(168,85,247,.22); }
+.ctrl-btn:active { transform: scale(0.97); }
+.ctrl-btn.c-act { background: rgba(168,85,247,.3); border-color: rgba(216,180,254,.85); color: #f5d0fe; }
+.ctrl-btn.danger { border-color: rgba(244,63,94,0.35); color: #fb7185; background: rgba(244,63,94,0.1); }
+.chk-row { display: flex; gap: 7px; align-items: center; cursor: pointer; margin-top: 6px; }
+.chk-row input { cursor: pointer; }
+.chk-row span { font-size: 10px; color: var(--txt-dim); }
+.status { font-size: 10px; color: var(--txt-dim); min-height: 12px; margin-top: 8px; }
+.pos-grid { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 5px 6px; align-items: center; margin-top: 5px; }
+.pos-grid .plabel { font-size: 9px; color: var(--txt-dim); }
+.pos-grid .phead { font-size: 8px; color: var(--txt-dim); text-transform: uppercase; text-align: center; }
+.pos-grid input { width: 100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="dot" id="conn-dot"></span>NEW HERE — Control</h1>
+  <p class="subtitle">
+    Tunes the crowd-pile overlay independently. Add <code>new-here-overlay.html</code> as a Browser Source (1080×1920, transparent). Toggle the overlay on/off from stream-dock's New Here panel; everything else is here.<br>
+    <span style="color:#F87171;">■</span> Red = YouTube &nbsp;·&nbsp; <span style="color:#38BDF8;">■</span> Blue = TikTok.
+  </p>
+
+  <!-- COMMAND -->
+  <div class="card">
+    <h2>Trigger command</h2>
+    <div class="ctrl-row">
+      <label style="width:60px;">Command</label>
+      <input class="ctrl-in" id="nh-cmd" type="text" value="new here" placeholder="e.g. new here" style="flex:1;min-width:0;" oninput="nhSaveSettings()">
+    </div>
+    <div class="ctrl-row">
+      <label style="width:60px;">Match</label>
+      <select class="ctrl-in" id="nh-match" style="flex:1;cursor:pointer;" onchange="nhSaveSettings()">
+        <option value="exact">Exactly matches</option>
+        <option value="starts">Starts with</option>
+        <option value="contains">Contains</option>
+      </select>
+    </div>
+    <label class="chk-row">
+      <input type="checkbox" id="nh-dedupe" checked onchange="nhApplyConfig()">
+      <span>One join per viewer (uncheck to let the same viewer splat repeatedly)</span>
+    </label>
+  </div>
+
+  <!-- TEXT -->
+  <div class="card">
+    <h2>Text labels</h2>
+    <div class="ctrl-row"><label style="width:80px;">Sign label</label><input class="ctrl-in" id="nh-sign-label" type="text" value="JUST JOINED" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;">Counter label</label><input class="ctrl-in" id="nh-ctr-label" type="text" value="NEW HERE" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;">Count format</label><input class="ctrl-in" id="nh-ctr-format" type="text" value="{n} joined" title="Use {n} for the count" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;">Idle title</label><input class="ctrl-in" id="nh-idle-title" type="text" value="Be the first!" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;">Idle subtext</label><input class="ctrl-in" id="nh-idle-sub" type="text" value="type NEW HERE" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;">Timer label</label><input class="ctrl-in" id="nh-timer-label" type="text" value="STARTING SOON" style="flex:1;min-width:0;"></div>
+  </div>
+
+  <!-- PILL TOGGLES -->
+  <div class="card">
+    <h2>Pill backgrounds</h2>
+    <label class="chk-row"><input type="checkbox" id="nh-sign-pill" checked onchange="nhApplyConfig()"><span>JUST JOINED sign — pill background</span></label>
+    <label class="chk-row"><input type="checkbox" id="nh-ctr-pill" checked onchange="nhApplyConfig()"><span>Counter — pill background</span></label>
+    <label class="chk-row"><input type="checkbox" id="nh-name-pill" checked onchange="nhApplyConfig()"><span>Name tags — pill background</span></label>
+    <label class="chk-row"><input type="checkbox" id="nh-timer-pill" checked onchange="nhApplyConfig()"><span>Countdown timer — pill background</span></label>
+    <label class="chk-row"><input type="checkbox" id="nh-pressure-pill" checked onchange="nhApplyConfig()"><span>Pressure meter — pill background</span></label>
+  </div>
+
+  <!-- POSITION / SCALE -->
+  <div class="card">
+    <h2>Position &amp; scale</h2>
+    <p style="font-size:9px;color:var(--txt-dim);margin:0 0 4px;line-height:1.5;">Scale %, X/Y in px. Floor is Y-only. Blobs are scale-only.</p>
+    <div class="pos-grid">
+      <span class="plabel"></span><span class="phead">Scale%</span><span class="phead">X</span><span class="phead">Y</span>
+      <span class="plabel">Sign</span>
+      <input class="ctrl-in" id="nh-sign-scale" type="number" value="100"><input class="ctrl-in" id="nh-sign-x" type="number" value="0"><input class="ctrl-in" id="nh-sign-y" type="number" value="0">
+      <span class="plabel">Counter</span>
+      <input class="ctrl-in" id="nh-ctr-scale" type="number" value="100"><input class="ctrl-in" id="nh-ctr-x" type="number" value="0"><input class="ctrl-in" id="nh-ctr-y" type="number" value="0">
+      <span class="plabel">Name tags</span>
+      <input class="ctrl-in" id="nh-name-scale" type="number" value="100"><input class="ctrl-in" id="nh-name-x" type="number" value="0"><input class="ctrl-in" id="nh-name-y" type="number" value="0">
+      <span class="plabel">Idle state</span>
+      <input class="ctrl-in" id="nh-idle-scale" type="number" value="100"><input class="ctrl-in" id="nh-idle-x" type="number" value="0"><input class="ctrl-in" id="nh-idle-y" type="number" value="0">
+      <span class="plabel">Timer</span>
+      <input class="ctrl-in" id="nh-timer-scale" type="number" value="100"><input class="ctrl-in" id="nh-timer-x" type="number" value="0"><input class="ctrl-in" id="nh-timer-y" type="number" value="0">
+      <span class="plabel">Pressure</span>
+      <input class="ctrl-in" id="nh-pressure-scale" type="number" value="100"><input class="ctrl-in" id="nh-pressure-x" type="number" value="0"><input class="ctrl-in" id="nh-pressure-y" type="number" value="0">
+      <span class="plabel">Blobs</span>
+      <input class="ctrl-in" id="nh-blob-scale" type="number" value="100"><span></span><span></span>
+      <span class="plabel">Floor</span>
+      <span></span><span></span><input class="ctrl-in" id="nh-floor-y" type="number" value="0">
+    </div>
+  </div>
+
+  <!-- APPLY -->
+  <div class="card">
+    <button class="ctrl-btn c-act" onclick="nhApplyConfig()" style="width:100%;">Apply all settings to overlay</button>
+    <div class="status" id="nh-status">—</div>
+  </div>
+
+  <!-- COUNTDOWN -->
+  <div class="card">
+    <h2>Countdown timer</h2>
+    <div class="ctrl-row">
+      <label>Duration</label>
+      <input class="ctrl-in" id="nh-timer-min" type="number" min="0" max="180" value="5" style="width:52px;" title="minutes"><span style="font-size:9px;color:var(--txt-dim);">min</span>
+      <input class="ctrl-in" id="nh-timer-sec" type="number" min="0" max="59" value="0" style="width:48px;" title="seconds"><span style="font-size:9px;color:var(--txt-dim);">sec</span>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn c-act" onclick="nhTimerStart()" style="flex:1;">▶ Start</button>
+      <button class="ctrl-btn" onclick="nhTimerPauseResume()" style="flex:1;" id="nh-timer-pauseresume">⏸ Pause</button>
+      <button class="ctrl-btn danger" onclick="nhTimerReset()" style="flex:1;">■ Reset</button>
+    </div>
+  </div>
+
+  <!-- PRESSURE -->
+  <div class="card">
+    <h2>Pressure / inflation</h2>
+    <p style="font-size:9px;color:var(--txt-dim);margin:0 0 2px;line-height:1.5;">Pile inflates &amp; pulses with every join. Decays if chat goes quiet. Pops early once it hits threshold.</p>
+    <label class="chk-row"><input type="checkbox" id="nh-pressure-enabled" checked onchange="nhApplyConfig()"><span>Enable pressure mechanic</span></label>
+    <div class="ctrl-row"><label style="width:78px;">Per join</label><input type="range" id="nh-pressure-gain" min="2" max="15" step="1" value="6" oninput="nhFmtPressureGain();nhFmtPressureThreshold()"><span class="rng-v" id="nh-pressure-gain-v">6</span></div>
+    <div class="ctrl-row"><label style="width:78px;">Pop threshold</label><input type="range" id="nh-pressure-threshold" min="30" max="300" step="10" value="100" oninput="nhFmtPressureThreshold()"><span class="rng-v" id="nh-pressure-threshold-v">100 (~17)</span></div>
+    <div class="ctrl-row"><label style="width:78px;">Decay rate</label><input type="range" id="nh-pressure-decay" min="0" max="3" step="0.1" value="0.4" oninput="document.getElementById('nh-pressure-decay-v').textContent=this.value+'/s'"><span class="rng-v" id="nh-pressure-decay-v">0.4/s</span></div>
+    <div class="ctrl-row"><label style="width:78px;">Decay grace</label><input type="range" id="nh-pressure-grace" min="1" max="15" step="1" value="4" oninput="document.getElementById('nh-pressure-grace-v').textContent=this.value+'s'"><span class="rng-v" id="nh-pressure-grace-v">4s</span></div>
+    <div class="ctrl-row"><label style="width:78px;">Warn zone</label><input type="range" id="nh-pressure-warn" min="30" max="90" step="5" value="60" oninput="document.getElementById('nh-pressure-warn-v').textContent=this.value+'%'"><span class="rng-v" id="nh-pressure-warn-v">60%</span></div>
+    <div class="ctrl-row"><label style="width:78px;">Danger zone</label><input type="range" id="nh-pressure-danger" min="50" max="95" step="5" value="85" oninput="document.getElementById('nh-pressure-danger-v').textContent=this.value+'%'"><span class="rng-v" id="nh-pressure-danger-v">85%</span></div>
+    <div class="ctrl-row"><label style="width:78px;">Meter label</label><input class="ctrl-in" id="nh-pressure-label" type="text" value="PRESSURE" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:78px;">Pop text</label><input class="ctrl-in" id="nh-pop-label" type="text" value="PRESSURE POPPED! 🎉" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhPressureAdd(20)" style="flex:1;">+20 pressure</button>
+      <button class="ctrl-btn" onclick="nhPressureSet(0)" style="flex:1;">Deflate to 0</button>
+      <button class="ctrl-btn danger" onclick="nhForcePop()" style="flex:1;">💥 Force Pop</button>
+    </div>
+  </div>
+
+  <!-- TEST -->
+  <div class="card">
+    <h2>Test</h2>
+    <div class="ctrl-row">
+      <input class="ctrl-in" id="nh-test-name" type="text" placeholder="username" style="flex:1;min-width:0;">
+      <select class="ctrl-in" id="nh-test-src" style="cursor:pointer;">
+        <option value="youtube">YouTube</option>
+        <option value="tiktok">TikTok</option>
+      </select>
+      <button class="ctrl-btn c-act" onclick="nhTestJoin()" title="Simulate a single NEW HERE join">Join</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhBurst(5)" style="flex:1;">Burst ×5</button>
+      <button class="ctrl-btn" onclick="nhBurst(20)" style="flex:1;">Burst ×20</button>
+      <button class="ctrl-btn danger" onclick="nhReset()" style="flex:1;">Reset Pile</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Ably ──────────────────────────────────────────────────────── */
+const ABLY_KEY = "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0";
+const ABLY_CH  = "splat-overlay";
+let ably = null, ablyChannel = null;
+(function initAbly() {
+  try {
+    ably = new Ably.Realtime({ key: ABLY_KEY });
+    ablyChannel = ably.channels.get(ABLY_CH);
+    const dot = document.getElementById('conn-dot');
+    ably.connection.on('connected',    () => dot.classList.add('connected'));
+    ably.connection.on('disconnected', () => dot.classList.remove('connected'));
+    ably.connection.on('failed',       () => dot.classList.remove('connected'));
+  } catch (e) {}
+})();
+
+/* ── Apply / persist display config ────────────────────────────── */
+function nhApplyConfig() {
+  const signScale   = parseInt(document.getElementById('nh-sign-scale').value) / 100;
+  const signXOffset = parseInt(document.getElementById('nh-sign-x').value);
+  const signYOffset = parseInt(document.getElementById('nh-sign-y').value);
+  const ctrScale    = parseInt(document.getElementById('nh-ctr-scale').value) / 100;
+  const ctrXOffset  = parseInt(document.getElementById('nh-ctr-x').value);
+  const ctrYOffset  = parseInt(document.getElementById('nh-ctr-y').value);
+  const signLabel   = document.getElementById('nh-sign-label').value.trim()  || 'JUST JOINED';
+  const ctrLabel    = document.getElementById('nh-ctr-label').value.trim()   || 'NEW HERE';
+  const ctrFormat   = document.getElementById('nh-ctr-format').value.trim()  || '{n} joined';
+  const idleTitle   = document.getElementById('nh-idle-title').value.trim() || 'Be the first!';
+  const idleSub     = document.getElementById('nh-idle-sub').value.trim()   || 'type NEW HERE';
+  const floorOffset = parseInt(document.getElementById('nh-floor-y').value);
+  const blobScale   = parseInt(document.getElementById('nh-blob-scale').value) / 100;
+  const nameScale   = parseInt(document.getElementById('nh-name-scale').value) / 100;
+  const nameXOffset = parseInt(document.getElementById('nh-name-x').value);
+  const nameYOffset = parseInt(document.getElementById('nh-name-y').value);
+  const idleScale   = parseInt(document.getElementById('nh-idle-scale').value) / 100;
+  const idleXOffset = parseInt(document.getElementById('nh-idle-x').value);
+  const idleYOffset = parseInt(document.getElementById('nh-idle-y').value);
+  const timerLabel   = document.getElementById('nh-timer-label').value.trim() || 'STARTING SOON';
+  const timerScale   = parseInt(document.getElementById('nh-timer-scale').value) / 100;
+  const timerXOffset = parseInt(document.getElementById('nh-timer-x').value);
+  const timerYOffset = parseInt(document.getElementById('nh-timer-y').value);
+  const signPillOn  = document.getElementById('nh-sign-pill').checked;
+  const ctrPillOn   = document.getElementById('nh-ctr-pill').checked;
+  const timerPillOn = document.getElementById('nh-timer-pill').checked;
+  const namePillOn  = document.getElementById('nh-name-pill').checked;
+  const dedupeOn    = document.getElementById('nh-dedupe').checked;
+  const pressureEnabled      = document.getElementById('nh-pressure-enabled').checked;
+  const pressureGainPerJoin  = parseFloat(document.getElementById('nh-pressure-gain').value);
+  const pressurePopThreshold = parseFloat(document.getElementById('nh-pressure-threshold').value);
+  const pressureDecayPerSec  = parseFloat(document.getElementById('nh-pressure-decay').value);
+  const pressureDecayGraceMs = parseFloat(document.getElementById('nh-pressure-grace').value) * 1000;
+  const pressureWarnPct      = parseFloat(document.getElementById('nh-pressure-warn').value) / 100;
+  const pressureDangerPct    = parseFloat(document.getElementById('nh-pressure-danger').value) / 100;
+  const pressurePillOn       = document.getElementById('nh-pressure-pill').checked;
+  const pressureScale        = parseInt(document.getElementById('nh-pressure-scale').value) / 100;
+  const pressureXOffset      = parseInt(document.getElementById('nh-pressure-x').value);
+  const pressureYOffset      = parseInt(document.getElementById('nh-pressure-y').value);
+  const pressureLabel        = document.getElementById('nh-pressure-label').value.trim() || 'PRESSURE';
+  const popLabel             = document.getElementById('nh-pop-label').value.trim() || 'PRESSURE POPPED! 🎉';
+  const cfg = {
+    signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
+    signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
+    blobScale, nameScale, nameXOffset, nameYOffset,
+    idleScale, idleXOffset, idleYOffset,
+    timerLabel, timerScale, timerXOffset, timerYOffset,
+    signPillOn, ctrPillOn, timerPillOn, namePillOn, dedupeOn,
+    pressureEnabled, pressureGainPerJoin, pressurePopThreshold,
+    pressureDecayPerSec, pressureDecayGraceMs, pressureWarnPct, pressureDangerPct,
+    pressurePillOn, pressureScale, pressureXOffset, pressureYOffset,
+    pressureLabel, popLabel,
+  };
+  if (ablyChannel) ablyChannel.publish('new-here-config', cfg).catch(() => {});
+  try { localStorage.setItem('nh_display_cfg', JSON.stringify(cfg)); } catch {}
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = '↑ config applied'; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
+function nhLoadDisplayConfig() {
+  try {
+    const c = JSON.parse(localStorage.getItem('nh_display_cfg') || '{}');
+    const setPct = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = Math.round(v * 100); };
+    const setNum = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const setChk = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.checked = v; };
+    setPct('nh-sign-scale', c.signScale); setNum('nh-sign-x', c.signXOffset); setNum('nh-sign-y', c.signYOffset);
+    setPct('nh-ctr-scale', c.ctrScale);   setNum('nh-ctr-x', c.ctrXOffset);   setNum('nh-ctr-y', c.ctrYOffset);
+    setPct('nh-name-scale', c.nameScale); setNum('nh-name-x', c.nameXOffset); setNum('nh-name-y', c.nameYOffset);
+    setPct('nh-idle-scale', c.idleScale); setNum('nh-idle-x', c.idleXOffset); setNum('nh-idle-y', c.idleYOffset);
+    setPct('nh-timer-scale', c.timerScale); setNum('nh-timer-x', c.timerXOffset); setNum('nh-timer-y', c.timerYOffset);
+    setPct('nh-pressure-scale', c.pressureScale); setNum('nh-pressure-x', c.pressureXOffset); setNum('nh-pressure-y', c.pressureYOffset);
+    setPct('nh-blob-scale', c.blobScale); setNum('nh-floor-y', c.floorOffset);
+    setTxt('nh-sign-label', c.signLabel); setTxt('nh-ctr-label', c.ctrLabel); setTxt('nh-ctr-format', c.ctrFormat);
+    setTxt('nh-idle-title', c.idleTitle); setTxt('nh-idle-sub', c.idleSub); setTxt('nh-timer-label', c.timerLabel);
+    setTxt('nh-pressure-label', c.pressureLabel); setTxt('nh-pop-label', c.popLabel);
+    setChk('nh-sign-pill', c.signPillOn); setChk('nh-ctr-pill', c.ctrPillOn); setChk('nh-timer-pill', c.timerPillOn);
+    setChk('nh-name-pill', c.namePillOn); setChk('nh-dedupe', c.dedupeOn); setChk('nh-pressure-pill', c.pressurePillOn);
+    setChk('nh-pressure-enabled', c.pressureEnabled);
+    if (c.pressureGainPerJoin != null) { document.getElementById('nh-pressure-gain').value = c.pressureGainPerJoin; }
+    if (c.pressurePopThreshold != null) { document.getElementById('nh-pressure-threshold').value = c.pressurePopThreshold; }
+    if (c.pressureDecayPerSec != null) { document.getElementById('nh-pressure-decay').value = c.pressureDecayPerSec; document.getElementById('nh-pressure-decay-v').textContent = c.pressureDecayPerSec + '/s'; }
+    if (c.pressureDecayGraceMs != null) { const s = Math.round(c.pressureDecayGraceMs / 1000); document.getElementById('nh-pressure-grace').value = s; document.getElementById('nh-pressure-grace-v').textContent = s + 's'; }
+    if (c.pressureWarnPct != null) { const p = Math.round(c.pressureWarnPct * 100); document.getElementById('nh-pressure-warn').value = p; document.getElementById('nh-pressure-warn-v').textContent = p + '%'; }
+    if (c.pressureDangerPct != null) { const p = Math.round(c.pressureDangerPct * 100); document.getElementById('nh-pressure-danger').value = p; document.getElementById('nh-pressure-danger-v').textContent = p + '%'; }
+    nhFmtPressureGain(); nhFmtPressureThreshold();
+  } catch {}
+}
+
+function nhFmtPressureGain() {
+  document.getElementById('nh-pressure-gain-v').textContent = document.getElementById('nh-pressure-gain').value;
+}
+function nhFmtPressureThreshold() {
+  const t = parseFloat(document.getElementById('nh-pressure-threshold').value);
+  const g = parseFloat(document.getElementById('nh-pressure-gain')?.value || 6);
+  const joins = g > 0 ? Math.round(t / g) : 0;
+  document.getElementById('nh-pressure-threshold-v').textContent = `${t} (~${joins})`;
+}
+
+/* ── Countdown ─────────────────────────────────────────────────── */
+function nhTimerStart() {
+  const min = parseInt(document.getElementById('nh-timer-min').value) || 0;
+  const sec = parseInt(document.getElementById('nh-timer-sec').value) || 0;
+  const seconds = Math.max(1, min * 60 + sec);
+  if (ablyChannel) ablyChannel.publish('new-here-timer-cmd', { action: 'start', seconds }).catch(() => {});
+  _nhTimerPaused = false;
+  const btn = document.getElementById('nh-timer-pauseresume'); if (btn) btn.textContent = '⏸ Pause';
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ timer started (${min}m ${sec}s)`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+let _nhTimerPaused = false;
+function nhTimerPauseResume() {
+  _nhTimerPaused = !_nhTimerPaused;
+  const action = _nhTimerPaused ? 'pause' : 'resume';
+  if (ablyChannel) ablyChannel.publish('new-here-timer-cmd', { action }).catch(() => {});
+  const btn = document.getElementById('nh-timer-pauseresume');
+  if (btn) btn.textContent = _nhTimerPaused ? '▶ Resume' : '⏸ Pause';
+}
+function nhTimerReset() {
+  if (ablyChannel) ablyChannel.publish('new-here-timer-cmd', { action: 'reset' }).catch(() => {});
+  _nhTimerPaused = false;
+  const btn = document.getElementById('nh-timer-pauseresume'); if (btn) btn.textContent = '⏸ Pause';
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = 'timer reset'; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
+/* ── Command persistence ───────────────────────────────────────── */
+function nhSaveSettings() {
+  try {
+    localStorage.setItem('nh_cmd',   document.getElementById('nh-cmd')?.value   ?? 'new here');
+    localStorage.setItem('nh_match', document.getElementById('nh-match')?.value ?? 'exact');
+  } catch {}
+}
+function nhLoadSettings() {
+  try {
+    const cmd   = localStorage.getItem('nh_cmd');
+    const match = localStorage.getItem('nh_match');
+    if (cmd   != null) { const el = document.getElementById('nh-cmd');   if (el) el.value = cmd; }
+    if (match != null) { const el = document.getElementById('nh-match'); if (el) el.value = match; }
+  } catch {}
+}
+
+/* ── Test fires ────────────────────────────────────────────────── */
+const _nhNames = ['PixelPanda','vortex_xX','luna92','GG_Mango','sleepydino','bunnyhopz',
+  'toastykat','vibeLord','mochi_','crimsonFox','zephyr_','jellybean','novaaa','pochi',
+  'sunnyD','kiwibyte','grumpcat','m0onpie','flux','dazzleq','snackman','tofu_','blip',
+  'wandr','echo7','peachy','goblin','riptide','cozyfox','muffn','zappy','larkz'];
+
+function nhTestJoin() {
+  const name = document.getElementById('nh-test-name').value.trim()
+    || _nhNames[Math.floor(Math.random() * _nhNames.length)] + Math.floor(Math.random() * 99);
+  const source = document.getElementById('nh-test-src').value;
+  if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ sent: ${name} (${source})`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+function nhBurst(n) {
+  for (let i = 0; i < n; i++) {
+    const name = _nhNames[Math.floor(Math.random() * _nhNames.length)] + Math.floor(Math.random() * 99);
+    const source = Math.random() < 0.5 ? 'youtube' : 'tiktok';
+    if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+  }
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ burst ×${n} sent`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+function nhReset() {
+  if (ablyChannel) ablyChannel.publish('new-here-reset', {}).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = 'Pile reset'; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+function nhPressureAdd(amount) {
+  if (ablyChannel) ablyChannel.publish('new-here-pressure-cmd', { action: 'add', amount }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ +${amount} pressure`; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+function nhPressureSet(amount) {
+  if (ablyChannel) ablyChannel.publish('new-here-pressure-cmd', { action: 'set', amount }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ pressure set to ${amount}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+function nhForcePop() {
+  if (ablyChannel) ablyChannel.publish('new-here-pressure-cmd', { action: 'forcePop' }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = '💥 forced pop'; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
+/* ── Boot ──────────────────────────────────────────────────────── */
+nhLoadSettings();
+nhLoadDisplayConfig();
+</script>
+</body>
+</html>
