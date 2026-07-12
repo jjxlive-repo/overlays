@@ -169,11 +169,6 @@
      gaps that would throw off the fraction-based content region positions. */
   #gift-showcase .gs-sign-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
   #gift-showcase .gs-gift-img { position: absolute; z-index: 2; object-fit: contain; transform: translate(-50%, -50%); }
-  #gift-showcase .gs-gift-name {
-    position: absolute; z-index: 2; transform: translate(-50%, -50%);
-    font: 700 15px 'DM Sans'; text-transform: uppercase; letter-spacing: .5px; color: #7B2FBE;
-    text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
   #gift-showcase .gs-action {
     position: absolute; z-index: 2; transform: translate(-50%, -50%);
     font: 700 22px 'DM Sans'; color: #3A2A1A; line-height: 1.12;
@@ -255,7 +250,6 @@
   <div id="gift-showcase" aria-label="TikTok gift actions">
     <img class="gs-sign-art" alt="">
     <img class="gs-gift-img" alt="">
-    <div class="gs-gift-name"></div>
     <div class="gs-action"></div>
     <div class="gs-detail"></div>
   </div>
@@ -1166,11 +1160,12 @@ function applyLayout() {
    now 1095x520 with the parchment using ~78%) so content reads at small
    sizes instead of getting lost in a tall, mostly-empty sign. */
 const SIGN_ASPECT_W = 1095, SIGN_ASPECT_H = 520;
+/* no gift-name region: the gift image already identifies the gift, so the
+   whole text column is given to the trigger action + detail line instead. */
 const SIGN_REGIONS = {
   giftImage:  { cx: 0.300, cy: 0.529, d: 0.268 },
-  giftName:   { cx: 0.648, cy: 0.288, w: 0.402 },
-  actionText: { cx: 0.648, cy: 0.529, w: 0.402, h: 0.288 },
-  detailText: { cx: 0.648, cy: 0.769, w: 0.402 }
+  actionText: { cx: 0.648, cy: 0.45,  w: 0.402, h: 0.42 },
+  detailText: { cx: 0.648, cy: 0.80,  w: 0.402 }
 };
 /* font sizes below were tuned at this reference width; they scale linearly
    with the configured sign width so shrinking the sign shrinks text with it
@@ -1206,10 +1201,6 @@ function applyGiftShowcaseLayout() {
   gi.style.left = px(SIGN_REGIONS.giftImage.cx, width);
   gi.style.top = px(SIGN_REGIONS.giftImage.cy, height);
   gi.style.width = gi.style.height = px(SIGN_REGIONS.giftImage.d, width);
-  const gn = gs.querySelector('.gs-gift-name');
-  gn.style.left = px(SIGN_REGIONS.giftName.cx, width);
-  gn.style.top = px(SIGN_REGIONS.giftName.cy, height);
-  gn.style.width = px(SIGN_REGIONS.giftName.w, width);
   const ga = gs.querySelector('.gs-action');
   ga.style.left = px(SIGN_REGIONS.actionText.cx, width);
   ga.style.top = px(SIGN_REGIONS.actionText.cy, height);
@@ -1222,7 +1213,6 @@ function applyGiftShowcaseLayout() {
   /* text scales with sign width (so a shrunk sign shrinks its text instead
      of overflowing) times the independent fontScale knob for direct control. */
   const fs = (width / SIGN_FONT_REF_WIDTH) * (sc.fontScale || 1);
-  gn.style.fontSize = Math.max(6, Math.round(15 * fs)) + 'px';
   gd.style.fontSize = Math.max(6, Math.round(14 * fs)) + 'px';
   ga.dataset.baseFontPx = Math.max(7, Math.round(22 * fs));
   ga.style.fontSize = ga.dataset.baseFontPx + 'px';
@@ -2117,7 +2107,6 @@ function setSignContent(m) {
   } else {
     img.style.display = 'none';
   }
-  gs.querySelector('.gs-gift-name').textContent = m.giftName;   /* textContent only — never HTML */
   const action = gs.querySelector('.gs-action');
   action.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
   gs.querySelector('.gs-detail').textContent = (m.signDetail !== undefined && m.signDetail !== '') ? m.signDetail : (defaults.signDetail || '');
