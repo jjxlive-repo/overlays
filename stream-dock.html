@@ -4227,7 +4227,7 @@ function addMsg(data, key) {
 }
 
 /* ── unified chat row ── */
-const DOCK_CHAT_COL1_CAP = 6;
+let _dockChatSeq = 0;
 function dockSetChatCols(cols) {
   cols = cols === 2 ? 2 : 1;
   const container = document.getElementById('msgs-all');
@@ -4238,11 +4238,17 @@ function dockSetChatCols(cols) {
   localStorage.setItem('streamDockChatCols', String(cols));
   dockRebalanceChat();
 }
+// True left/right/left/right alternation in arrival order, not "fill column 1 then
+// overflow into column 2" — a plain DOM-order collect can't tell real arrival order
+// once messages already live in two different parents, so sort by the seq stamped on
+// each row at creation time first.
 function dockRebalanceChat() {
   const container=document.getElementById('msgs-all'), a=document.getElementById('msgs-all-a'), b=document.getElementById('msgs-all-b');
   if (!container || !a || !b) return;
-  const rows=Array.from(container.querySelectorAll(':scope > .chat-feed-col > .umsg'));
-  rows.forEach((row,i) => (container.classList.contains('chat-two-col') && i >= DOCK_CHAT_COL1_CAP ? b : a).appendChild(row));
+  const rows=Array.from(container.querySelectorAll(':scope > .chat-feed-col > .umsg'))
+    .sort((x,y) => (Number(x.dataset.seq)||0) - (Number(y.dataset.seq)||0));
+  if (!container.classList.contains('chat-two-col')) { rows.forEach(row => a.appendChild(row)); return; }
+  rows.forEach((row,i) => (i % 2 === 1 ? b : a).appendChild(row));
 }
 function addUnified(data, platform, isTT, isYT, isGift) {
   const container = document.getElementById('msgs-all');
@@ -4263,6 +4269,7 @@ function addUnified(data, platform, isTT, isYT, isGift) {
   const isYTMember  = isYT && !!(data.membership || data.subBadge || data.isSubscriber || data.isMember);
 
   const row = document.createElement('div');
+  row.dataset.seq = String(++_dockChatSeq); // true arrival order, independent of which column a row currently sits in
   const uClasses = ['umsg'];
   if (isGift)                      uClasses.push('is-gift');
   if (isTT && isTTMember)          uClasses.push('tt-member');
@@ -4338,8 +4345,9 @@ function addUnified(data, platform, isTT, isYT, isGift) {
     setTimeout(() => row.classList.remove('featuring'), 3000);
   });
 
-  const target = container.classList.contains('chat-two-col') && container.querySelectorAll('.umsg').length >= DOCK_CHAT_COL1_CAP
-    ? document.getElementById('msgs-all-b') : document.getElementById('msgs-all-a');
+  // Initial parent doesn't need to be exact — dockRebalanceChat() right below always
+  // re-sorts every row into correct left/right order by its seq stamp.
+  const target = document.getElementById('msgs-all-a');
   target.appendChild(row);
   trim(container);
   dockRebalanceChat();
@@ -8504,7 +8512,11 @@ function gcNormalize(amount, type) {
   if (!type) return amount;
   const t = type.toLowerCase();
   if (t === 'tiktok_coins') return amount;
-  if (t === 'youtube_jewels') return amount;
+  // Jewels are worth ~$0.005 each (half a TikTok coin's ~$0.01), but GC_TIERS' thresholds
+  // are calibrated in coin-equivalent units — using the raw jewel count unchanged meant a
+  // jewel gift needed only half the real dollar value of a coin gift to hit the same tier,
+  // so modest jewel gifts were firing oversized "legendary"-tier celebration cards.
+  if (t === 'youtube_jewels') return Math.round(amount * 0.5);
   return Math.round(amount * 100); // USD → coin-equivalent (100 coins = $1)
 }
 
