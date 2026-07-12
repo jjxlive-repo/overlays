@@ -831,6 +831,10 @@ const REACTION_SEQ = {
   sock:    { payoff: 'sock',    celebrate: 'sockEnd',     captureMs: 300, targetFrame: 'jamie-sock-grab.png' },
   bubble:  { payoff: 'bubble',  celebrate: 'bubbleEnd',   captureMs: 260, targetFrame: 'jamie-bubble-pop.png' }
 };
+/* fast/directional payoffs (leap, pounce) mirror toward the object's actual
+   side; slower payoffs (treat, premium, duck, sock, bubble) and every
+   celebrate frame keep Jamie's real, un-mirrored art. */
+const MIRROR_PAYOFF_REACTIONS = new Set(['fetch', 'toy']);
 /* per-frame fallback: exact -> state fallback -> idle -> placeholder SVG */
 const FRAME_FALLBACK = {
   'jamie-jackpot-catch.png':          'jamie-heart-celebrate-01.png',
@@ -1106,6 +1110,18 @@ function jamieHeightFor(width) {
   const mc = MANIFEST.canvas || { width: 1200, height: 1400 };
   return width * (mc.height / mc.width);
 }
+/* fast/directional poses (anticipation lean, fetch leap, toy pounce) can pin an
+   explicit left/right mirror toward whatever they're reacting to, overriding
+   the plain global side flip for just that pose. null = use isFlipped(). Reset
+   to null on every state change unless that change explicitly requests one
+   (see setJamieState), so slower/face-forward poses (idle, celebrate,
+   growth-proud, ...) always render Jamie's real, un-mirrored art. */
+let poseMirror = null;
+function currentMirror() { return poseMirror === null ? isFlipped() : poseMirror; }
+function applyJamieTransform() {
+  const j = CFG.jamie;
+  jamieEl.style.transform = `translate3d(${jamieRect.x}px, ${jamieRect.y}px, 0) rotate(${j.rotation || 0}deg)` + (currentMirror() ? ' scaleX(-1)' : '');
+}
 function applyLayout() {
   const j = CFG.jamie;
   const w = j.width * j.scale * growthScale();
@@ -1118,7 +1134,7 @@ function applyLayout() {
   jamieRect = { x, y, w, h };
   jamieEl.style.width  = w + 'px';
   jamieEl.style.height = h + 'px';
-  jamieEl.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${j.rotation || 0}deg)` + (isFlipped() ? ' scaleX(-1)' : '');
+  applyJamieTransform();
 
   /* floor line */
   const fl = $('floor-line');
@@ -1288,6 +1304,8 @@ function setJamieState(next, opts = {}) {
   clearTimeout(J.animTimer);
   J.state = next;
   J.stateSince = performance.now();
+  poseMirror = typeof opts.mirror === 'boolean' ? opts.mirror : null;
+  applyJamieTransform();
   jamieEl.className = jamieEl.className.replace(/\bpose-\S+/g, '').trim();
   const budget = STATE_MAX_MS[next];
   if (budget) J.watchdog = setTimeout(() => { forceReset('watchdog:' + next); }, budget);
@@ -1718,16 +1736,18 @@ function checkReachZone(obj, now) {
   }
   const edgeDist = Math.hypot(dx, dy) - Math.max(rz.rx, rz.ry) - obj.radius;
 
-  /* anticipation (once per object) */
+  /* anticipation (once per object) — leans/faces toward whichever side the
+     object is actually approaching from, mirroring the real art if needed. */
   if (!inside && !obj.anticipated && edgeDist < CFG.reachZone.anticipationDistance &&
       ['TRACKING', 'IDLE'].includes(J.state)) {
     obj.anticipated = true;
+    const mirror = cx < (jamieRect.x + jamieRect.w / 2);
     if (obj.def.reaction === 'bubble' && (assetAvailable['jamie-bubble-watch.png'])) {
-      setJamieState('ANTICIPATION'); playSeq('bubble', { loop: false });
+      setJamieState('ANTICIPATION', { mirror }); playSeq('bubble', { loop: false });
     } else if (obj.premium && assetAvailable['jamie-premium-ready.png']) {
-      setJamieState('ANTICIPATION'); playSeq('premium', { loop: false });
+      setJamieState('ANTICIPATION', { mirror }); playSeq('premium', { loop: false });
     } else {
-      setJamieState('ANTICIPATION');
+      setJamieState('ANTICIPATION', { mirror });
     }
   }
   /* near miss: passed close but is now leaving */
@@ -1755,7 +1775,10 @@ function captureObject(obj) {
   if (obj.sourceEvent === 'gift-shower' && assetAvailable['jamie-shower-nom.png'] && Math.random() < 0.5) {
     celebrateSeq = 'showerNom';
   }
-  setJamieState('PAYOFF', { seq: seqName, celebrateSeq });
+  const mirror = MIRROR_PAYOFF_REACTIONS.has(obj.def.reaction)
+    ? (obj.x + obj.w / 2) < (jamieRect.x + jamieRect.w / 2)
+    : undefined;
+  setJamieState('PAYOFF', { seq: seqName, celebrateSeq, mirror });
   /* animate item to the reaction's designated mouth/paw target frame */
   const tp = targetPoint(obj.def.target, r.targetFrame || SEQ[seqName][0].f);
   const fromX = obj.x, fromY = obj.y;
@@ -1922,6 +1945,7 @@ function triggerHeartMe(username, highGiftName = '') {
   jamieEl.classList.add('pose-celebrate', 'ph-happy');
   jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
   const j = CFG.jamie;
+  poseMirror = null; // celebrations always use Jamie's real, un-mirrored art
   applyLayout(); // reset to a clean base transform before appending the celebration scale
   jamieEl.style.transform += ' scale(1.12)';
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
@@ -1966,6 +1990,7 @@ function triggerJackpot(username, rawGiftName = '') {
   jamieEl.classList.remove('breathe');
   jamieEl.classList.add('pose-celebrate', 'ph-happy');
   jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  poseMirror = null; // celebrations always use Jamie's real, un-mirrored art
   applyLayout(); // reset to a clean base transform before appending the celebration scale
   jamieEl.style.transform += ' scale(1.16)';
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
