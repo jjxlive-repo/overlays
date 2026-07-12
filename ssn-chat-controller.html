@@ -1,16 +1,9 @@
-<!--
-  Despite the filename symmetry, this page does NOT control ssn-chat-overlay.html.
-  It publishes jjx-chat-settings/jjx-chat-test on the shared Ably channel, which only
-  jjxlive-chat-box.html listens for — that is the real overlay this controller drives.
-  ssn-chat-overlay.html has no Ably wiring at all; it connects directly to a Social
-  Stream Ninja WebSocket and is not controllable from this page.
--->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SSN Chat Visual Options (controls jjxlive-chat-box.html)</title>
+<title>SSN Chat Visual Options</title>
 <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Chewy&family=DM+Sans:wght@500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
@@ -484,7 +477,23 @@ h1 {
       </div>
       <div class="control">
         <label for="jjx-max-messages">Max Messages <span id="jjx-max-messages-label">3</span></label>
-        <input id="jjx-max-messages" type="range" min="1" max="8" step="1" value="3">
+        <input id="jjx-max-messages" type="range" min="1" max="20" step="1" value="3">
+      </div>
+      <div class="control">
+        <label for="jjx-msg-lines">Message Lines <span id="jjx-msg-lines-label">2</span></label>
+        <input id="jjx-msg-lines" type="range" min="1" max="6" step="1" value="2">
+      </div>
+      <div class="control">
+        <label for="jjx-max-chars">Max Characters <span id="jjx-max-chars-label">Off</span></label>
+        <input id="jjx-max-chars" type="range" min="0" max="400" step="10" value="0">
+      </div>
+      <div class="control">
+        <label for="jjx-pos-x">Position X — from right <span id="jjx-pos-x-label">34px</span></label>
+        <input id="jjx-pos-x" type="range" min="0" max="900" step="2" value="34">
+      </div>
+      <div class="control">
+        <label for="jjx-pos-y">Position Y — from top <span id="jjx-pos-y-label">134px</span></label>
+        <input id="jjx-pos-y" type="range" min="0" max="1700" step="2" value="134">
       </div>
     </div>
     <div class="toggle-row" aria-label="Event visibility toggles">
@@ -589,9 +598,17 @@ const showJoinsEl = document.getElementById("jjx-show-joins");
 const widthEl = document.getElementById("jjx-box-width");
 const heightEl = document.getElementById("jjx-box-height");
 const maxMessagesEl = document.getElementById("jjx-max-messages");
+const msgLinesEl = document.getElementById("jjx-msg-lines");
+const maxCharsEl = document.getElementById("jjx-max-chars");
+const posXEl = document.getElementById("jjx-pos-x");
+const posYEl = document.getElementById("jjx-pos-y");
 const widthLabel = document.getElementById("jjx-box-width-label");
 const heightLabel = document.getElementById("jjx-box-height-label");
 const maxMessagesLabel = document.getElementById("jjx-max-messages-label");
+const msgLinesLabel = document.getElementById("jjx-msg-lines-label");
+const maxCharsLabel = document.getElementById("jjx-max-chars-label");
+const posXLabel = document.getElementById("jjx-pos-x-label");
+const posYLabel = document.getElementById("jjx-pos-y-label");
 
 function setStatus(text) {
   if (statusEl) statusEl.textContent = text;
@@ -616,6 +633,10 @@ function applyControllerSettingsToForm(settings = {}) {
   if (widthEl && settings.width != null) widthEl.value = settings.width;
   if (heightEl && settings.height != null) heightEl.value = settings.height;
   if (maxMessagesEl && settings.maxMessages != null) maxMessagesEl.value = settings.maxMessages;
+  if (msgLinesEl && settings.clampLines != null) msgLinesEl.value = settings.clampLines;
+  if (maxCharsEl && settings.maxChars != null) maxCharsEl.value = settings.maxChars;
+  if (posXEl && settings.right != null) posXEl.value = settings.right;
+  if (posYEl && settings.top != null) posYEl.value = settings.top;
   updateSizeLabels();
   if (fontScaleLabel) fontScaleLabel.textContent = `${Math.round(Number(fontScaleEl?.value || 100))}%`;
   document.querySelectorAll("[data-style-button]").forEach(button => {
@@ -674,6 +695,10 @@ function publishSettings(extra = {}) {
     width: Number(widthEl?.value || 235),
     height: Number(heightEl?.value || 210),
     maxMessages: Number(maxMessagesEl?.value || 3),
+    clampLines: Number(msgLinesEl?.value || 2),
+    maxChars: Number(maxCharsEl?.value || 0),
+    right: Number(posXEl?.value ?? 34),
+    top: Number(posYEl?.value ?? 134),
     ...extra
   };
   document.querySelectorAll("[data-style-button]").forEach(button => {
@@ -683,6 +708,10 @@ function publishSettings(extra = {}) {
   if (widthLabel) widthLabel.textContent = `${payload.width}px`;
   if (heightLabel) heightLabel.textContent = `${payload.height}px`;
   if (maxMessagesLabel) maxMessagesLabel.textContent = String(payload.maxMessages);
+  if (msgLinesLabel) msgLinesLabel.textContent = String(payload.clampLines);
+  if (maxCharsLabel) maxCharsLabel.textContent = payload.maxChars > 0 ? `${payload.maxChars}` : "Off";
+  if (posXLabel) posXLabel.textContent = `${payload.right}px`;
+  if (posYLabel) posYLabel.textContent = `${payload.top}px`;
   saveControllerSettings(payload);
   sendPayload(payload);
 }
@@ -709,13 +738,25 @@ function updateSizeLabels() {
   if (widthLabel) widthLabel.textContent = `${widthEl?.value || 235}px`;
   if (heightLabel) heightLabel.textContent = `${heightEl?.value || 210}px`;
   if (maxMessagesLabel) maxMessagesLabel.textContent = String(maxMessagesEl?.value || 3);
+  if (msgLinesLabel) msgLinesLabel.textContent = String(msgLinesEl?.value || 2);
+  if (maxCharsLabel) maxCharsLabel.textContent = Number(maxCharsEl?.value || 0) > 0 ? `${maxCharsEl.value}` : "Off";
+  if (posXLabel) posXLabel.textContent = `${posXEl?.value ?? 34}px`;
+  if (posYLabel) posYLabel.textContent = `${posYEl?.value ?? 134}px`;
 }
 widthEl?.addEventListener("input", updateSizeLabels);
 heightEl?.addEventListener("input", updateSizeLabels);
 maxMessagesEl?.addEventListener("input", updateSizeLabels);
+msgLinesEl?.addEventListener("input", updateSizeLabels);
+maxCharsEl?.addEventListener("input", updateSizeLabels);
+posXEl?.addEventListener("input", updateSizeLabels);
+posYEl?.addEventListener("input", updateSizeLabels);
 widthEl?.addEventListener("change", () => publishSettings());
 heightEl?.addEventListener("change", () => publishSettings());
 maxMessagesEl?.addEventListener("change", () => publishSettings());
+msgLinesEl?.addEventListener("change", () => publishSettings());
+maxCharsEl?.addEventListener("change", () => publishSettings());
+posXEl?.addEventListener("change", () => publishSettings());
+posYEl?.addEventListener("change", () => publishSettings());
 updateSizeLabels();
 applyControllerSettingsToForm(loadSavedControllerSettings());
 
