@@ -53,7 +53,11 @@ let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
 let IDLE_TITLE    = 'Be the first!';
 let IDLE_SUB      = 'type NEW HERE';
 let FLOOR_OFFSET  = 0;   // shifts the pile floor up/down from its base position
-let SPREAD_MODE   = false; // false = pile up in a mound; true = spread out in a ground row that blinks
+// Animation model. 'pile' = mound; 'spread' = ground row that blinks;
+// 'balloons' = roam into a side lane, float higher per comment, spread across the ceiling.
+let NH_MODE       = 'pile';
+let SPREAD_MODE   = false; // derived mirror of NH_MODE==='spread' (kept for existing references)
+function setMode(m) { NH_MODE = (m === 'spread' || m === 'balloons') ? m : 'pile'; SPREAD_MODE = (NH_MODE === 'spread'); }
 let BLOB_SCALE    = 1.0; // multiplier on mascot body render size (packing geometry unaffected)
 let NAME_SCALE    = 1.0; // per-figure name pill scale
 let NAME_X_OFFSET = 0;
@@ -108,6 +112,7 @@ function saveDisplayCfg() {
       signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT,
       idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
       floorOffset: FLOOR_OFFSET,
+      mode: NH_MODE,
       blobScale: BLOB_SCALE,
       nameScale: NAME_SCALE, nameXOffset: NAME_X_OFFSET, nameYOffset: NAME_Y_OFFSET,
       idleScale: IDLE_SCALE, idleXOffset: IDLE_X_OFFSET, idleYOffset: IDLE_Y_OFFSET,
@@ -143,6 +148,8 @@ function saveDisplayCfg() {
     if (c.idleTitle    != null) IDLE_TITLE    = c.idleTitle;
     if (c.idleSub      != null) IDLE_SUB      = c.idleSub;
     if (c.floorOffset  != null) FLOOR_OFFSET  = c.floorOffset;
+    if (c.mode         != null) setMode(c.mode);
+    else if (c.spreadMode != null) setMode(c.spreadMode ? 'spread' : 'pile');
     if (c.blobScale    != null) BLOB_SCALE    = c.blobScale;
     if (c.nameScale    != null) NAME_SCALE    = c.nameScale;
     if (c.nameXOffset  != null) NAME_X_OFFSET = c.nameXOffset;
@@ -181,10 +188,18 @@ function saveDisplayCfg() {
 })();
 
 const CONFIG = {
-  maxFigures: 200,          // beyond this, count keeps rising but no new bodies render
-  maxPerSec: 5,             // throttle burst events to this rate
+  maxFigures: 1000,         // beyond this, count keeps rising but no new bodies render
+  maxPerSec: 12,            // throttle burst events to this rate (higher: everyone chats)
   persist: true,            // save crowd to localStorage so OBS refresh doesn't reset
 };
+
+// Every-chatter growth: a viewer's FIRST comment adds a tiny mascot; each further
+// comment grows it. Names shown for the most-recent chatters, plus veterans forever.
+const GROWTH_STEP = 0.10;   // render-scale added per extra comment
+const GROWTH_CAP  = 4.0;    // max growth multiplier (reached ~31 comments)
+const NAME_RECENT_CAP      = 50; // show names for the N most-recently-active chatters
+const NAME_PERSIST_COMMENTS = 10; // …and always, forever, for anyone at/above this many comments
+function growthOf(comments) { return Math.min(GROWTH_CAP, 1 + Math.max(0, (comments || 1) - 1) * GROWTH_STEP); }
 
 // ═══════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -193,14 +208,14 @@ const W = 1080, H = 1920;
 const BASE_FLOOR_Y = 1788;
 let FLOOR_Y = BASE_FLOOR_Y + FLOOR_OFFSET;  // adjustable at runtime via setFloorOffset()
 const SIGN_GAP = 170;        // vertical distance from pile peak to the JUST JOINED pill
-const S = 0.46;             // figure scale (body ≈ 90 px tall at this scale)
-const PACK_R = 55 * S;      // packing radius ≈ 25.3 px
-const BIN_W = 2 * PACK_R * 0.9;   // ≈ 45.5 px per column
-const LAYER_H = 2 * PACK_R * 0.78; // ≈ 39.5 px per row
-// Narrower footprint → the heap stacks taller/more vertically instead of spreading wide.
-const LO_X = 300 + PACK_R;
-const HI_X = 780 - PACK_R;
-const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 9 columns
+const S = 0.20;             // base figure scale — tiny so ~1000 chatters fit; they grow per comment
+const PACK_R = 55 * S;      // packing radius ≈ 11 px
+const BIN_W = 2 * PACK_R * 0.9;   // ≈ 19.8 px per column
+const LAYER_H = 2 * PACK_R * 0.78; // ≈ 17.2 px per row
+// Wide footprint so ~1000 tiny chatters fit across the ground and stack a reasonable height.
+const LO_X = 70 + PACK_R;
+const HI_X = 1010 - PACK_R;
+const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 47 columns
 
 const ENTER_DUR   = 1100;  // ms for a figure to travel to its resting position
 const ARC_LIFT    = 230;   // px the entry arc bows upward at mid-flight (parabolic toss)
@@ -209,6 +224,23 @@ const EXPLODE_DUR = 950;   // ms for the pile-clear burst animation
 const SIGN_HOLD_MS = 6000; // ms the JUST JOINED sign stays fully visible
 const SIGN_FADE_MS = 900;  // ms it takes to fade out after the hold period
 const QUEUE_GAP  = 1000 / CONFIG.maxPerSec;
+
+// ── BALLOON MODE ─────────────────────────────────────────────────
+// A chatter's first comment drops them into one of two narrow side lanes; each
+// further comment floats them higher up that lane. Once they hit the top they
+// leave the lane and spread across the ceiling as a floating balloon, name below.
+const BALLOON_S       = 0.55;  // fixed render scale (independent of the pile's tiny S)
+const COMMENTS_TO_TOP = 20;    // comments needed to rise from the floor to the ceiling
+const LANE_L_X        = 220;   // left lane center x
+const LANE_R_X        = 860;   // right lane center x
+const LANE_HALF_W     = 90;    // horizontal roam sway amplitude within a lane
+const BALLOON_RISE_K  = 0.055; // per-frame lerp toward target (scaled by dt) — smooth float
+const CEIL_TOP        = 210;   // y of the first ceiling row
+const CEIL_ROW_H      = 155;   // vertical gap between ceiling rows
+const CEIL_LEFT       = 120;
+const CEIL_RIGHT      = 960;
+const CEIL_COLS       = 11;    // balloons per ceiling row before wrapping to the next row down
+const LANE_TOP_Y      = CEIL_TOP + CEIL_ROW_H * 0.6; // highest a lane-climber gets before going to the ceiling
 
 // ═══════════════════════════════════════════════════════════════════
 // PALETTES
@@ -255,6 +287,8 @@ let figures  = [];
 let heights  = new Array(N_BINS).fill(0);
 let queue    = [];
 let count    = 0;
+let userFigs = new Map();  // userKey -> settled/entering figure (grow on repeat comments)
+let pending  = new Map();  // userKey -> comment count accrued while queued but not yet spawned
 let newestName   = '';
 let newestSource = null;
 let newestJoinAt = 0;         // timestamp the sign should hold/fade relative to
@@ -263,6 +297,8 @@ let signPeakY    = FLOOR_Y;   // tweened version of pilePeakY for smooth sign ri
 let lastSpawn    = 0;
 let seenUsers    = new Set();
 let figIdSeq     = 0;
+let balloonLaneSeq = 0;    // alternates L/R lane assignment for new balloons
+let balloonCeilSeq = 0;    // next free ceiling slot index (spread order at the top)
 let resetPending = false;  // true while the explode-and-clear animation is playing
 let resetAt      = 0;      // timestamp when the explosion finishes and hardReset() fires
 
@@ -328,11 +364,64 @@ function setFloorOffset(offset) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// BALLOON MODE — resting (pre-sway) target for a figure, from its comment count.
+// While climbing they sit on their lane center; once they've earned enough
+// comments they leave the lane and claim a ceiling slot, spreading across the top.
+// ═══════════════════════════════════════════════════════════════════
+function balloonTarget(fig) {
+  const floorY = FLOOR_Y - 40;
+  const p = Math.min(1, (fig.comments - 1) / COMMENTS_TO_TOP);
+  if (p >= 1) {
+    if (fig.ceilSlot == null) fig.ceilSlot = balloonCeilSeq++;
+    const col = fig.ceilSlot % CEIL_COLS;
+    const row = Math.floor(fig.ceilSlot / CEIL_COLS);
+    const cw  = (CEIL_RIGHT - CEIL_LEFT) / CEIL_COLS;
+    return { x: CEIL_LEFT + (col + 0.5) * cw, y: CEIL_TOP + row * CEIL_ROW_H };
+  }
+  const laneX = fig.lane < 0 ? LANE_L_X : LANE_R_X;
+  return { x: laneX, y: floorY - p * (floorY - LANE_TOP_Y) };
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SPAWN — places one figure and starts its enter animation
 // ═══════════════════════════════════════════════════════════════════
-function spawnFigure(username, source) {
+function spawnFigure(username, source, key) {
   const pal   = PALETTES[source] || YT;
   const color = pal.figs[Math.floor(rnd() * pal.figs.length)];
+  // Comments accrued while this chatter waited in the queue (>=1). Their body
+  // starts scaled by growthOf(comments), so a quick early flurry shows up.
+  const comments = key ? (pending.get(key) || 1) : 1;
+  seenUsers.add(username);
+
+  // Balloon mode: no arc toss / heightmap. Drop into an alternating side lane at
+  // the floor; float() below raises them per comment. Phase is 'settled' from the
+  // start so the pile-specific enter/splat transitions are skipped.
+  if (NH_MODE === 'balloons') {
+    const lane   = (balloonLaneSeq++ % 2 === 0) ? -1 : 1;
+    const floorY = FLOOR_Y - 40;
+    const laneX  = lane < 0 ? LANE_L_X : LANE_R_X;
+    if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
+      const fig = {
+        id: ++figIdSeq, x: laneX, y: floorY, color, source, username,
+        comments, lastCommentAt: performance.now(),
+        phase: 'settled', enterProgress: 1, splatProgress: 1,
+        useTop: false, fromLeft: false, startX: laneX, startY: floorY, rot: 0, pal,
+        blinkAt: performance.now() + 800 + rnd() * 4000, joinedAt: performance.now(),
+        lane, bx: laneX, by: floorY,
+        swayPhase: rnd() * Math.PI * 2, swaySpeed: 0.5 + rnd() * 0.6, bobPhase: rnd() * Math.PI * 2,
+        ceilSlot: null,
+      };
+      figures.push(fig);
+      if (key) userFigs.set(key, fig);
+    }
+    if (key) pending.delete(key);
+    newestName = username; newestSource = source; newestJoinAt = performance.now();
+    if (PRESSURE_ENABLED) {
+      PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
+      lastPressureEventAt = newestJoinAt;
+    }
+    return;
+  }
 
   if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
     const { x: tx, y: ty } = getDepositionPos();
@@ -344,13 +433,15 @@ function spawnFigure(username, source) {
     const startX = fromLeft ? -80 : W + 80;
     const startY = ty - 80 - rnd() * 100;
 
-    figures.push({
+    const fig = {
       id:            ++figIdSeq,
       x:             tx,
       y:             ty,
       color,
       source,
       username,
+      comments,                       // every-chatter growth: 1 on first comment, +1 each repeat
+      lastCommentAt: performance.now(), // drives "50 most-recently-active" name selection
       phase:         'entering',  // entering | splatting | settled
       enterProgress: 0,
       splatProgress: 0,
@@ -363,10 +454,12 @@ function spawnFigure(username, source) {
       // Independent blink clock: first blink at a random offset so nobody is synced.
       blinkAt:       performance.now() + 800 + rnd() * 4000,
       joinedAt:      performance.now(), // for timed name persistence
-    });
+    };
+    figures.push(fig);
+    if (key) userFigs.set(key, fig);
   }
+  if (key) pending.delete(key);
 
-  count++;
   newestName   = username;
   newestSource = source;
   newestJoinAt = performance.now();
@@ -378,25 +471,39 @@ function spawnFigure(username, source) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// QUEUE — deduplication + rate limiting
+// COMMENT INTAKE — every-chatter growth
+// A viewer's first comment queues a tiny mascot; each further comment grows
+// their existing one. `enqueue` is the entry point the Ably 'new-here' handler
+// and the test buttons call, once per comment.
 // ═══════════════════════════════════════════════════════════════════
+function userKey(username, source) { return `${source}:${String(username).toLowerCase()}`; }
+
 function enqueue(username, source) {
-  if (DEDUPE_ENABLED) {
-    const key = `${source}:${username.toLowerCase()}`;
-    if (seenUsers.has(key)) return;
-    seenUsers.add(key);
+  const key = userKey(username, source);
+  const existing = userFigs.get(key);
+  if (existing) {
+    // Already on screen → grow instead of adding a body.
+    existing.comments = (existing.comments || 1) + 1;
+    existing.lastCommentAt = performance.now();
+    newestName = username; newestSource = source; newestJoinAt = performance.now();
+    if (PRESSURE_ENABLED) { PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN * 0.5); lastPressureEventAt = performance.now(); }
+    return;
   }
-  queue.push({ username, source });
+  if (pending.has(key)) { pending.set(key, pending.get(key) + 1); return; } // queued but not spawned yet
+  // Brand-new chatter.
+  pending.set(key, 1);
+  count++;
+  queue.push({ username, source, key });
 }
 
 function processQueue(now) {
   if (!queue.length) return;
   if (now - lastSpawn < QUEUE_GAP) return;
-  // Allow at most 2 figures traveling at once (for burst feel without chaos)
-  if (figures.filter(f => f.phase === 'entering').length >= 2) return;
-  const { username, source } = queue.shift();
+  // Allow a few figures traveling at once (higher than before since everyone chats).
+  if (figures.filter(f => f.phase === 'entering').length >= 4) return;
+  const { username, source, key } = queue.shift();
   lastSpawn = now;
-  spawnFigure(username, source);
+  spawnFigure(username, source, key);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1059,6 +1166,19 @@ function tick(now) {
 
   processQueue(now);
 
+  // Balloon mode: ease each figure's base position toward its comment-driven
+  // target (lane climb → ceiling spread). Sway/bob is added at draw time.
+  if (NH_MODE === 'balloons') {
+    const k = Math.min(1, BALLOON_RISE_K * (dt / 16.7));
+    for (const fig of figures) {
+      if (fig.phase === 'exploding') continue;
+      const tgt = balloonTarget(fig);
+      if (fig.bx == null) { fig.bx = tgt.x; fig.by = FLOOR_Y - 40; }
+      fig.bx += (tgt.x - fig.bx) * k;
+      fig.by += (tgt.y - fig.by) * k;
+    }
+  }
+
   for (const fig of figures) {
     if (fig.phase === 'entering') {
       fig.enterProgress += dt / ENTER_DUR;
@@ -1105,41 +1225,69 @@ function frame(now) {
     drawIdleState(ctx, now);
     ctx.restore();
   } else {
-    // Sort back-to-front by current y so overlapping figures look correct
-    const sorted = [...figures].sort((a, b) => currentPos(a).y - currentPos(b).y);
+    // Sort back-to-front by current y so overlapping figures look correct.
+    // In balloon mode a figure's y is its floating base (bx/by), not currentPos.
+    const drawY = f => NH_MODE === 'balloons' ? (f.by ?? f.y) : currentPos(f).y;
+    const sorted = [...figures].sort((a, b) => drawY(a) - drawY(b));
 
-    // Names shown on: any figure still in flight (entering/splatting — the
-    // "just landed" ones), plus the topmost settled figures (the visible
-    // surface of the pile). Recomputed every frame so names always track
-    // who's actually on top, instead of freezing on the first 12 joiners.
-    const NAME_CAP = 12;
-    const topSettled = figures
+    // Name tags: show the NAME_RECENT_CAP (50) most-recently-active chatters,
+    // PLUS anyone who's hit NAME_PERSIST_COMMENTS (10)+ comments — those veterans
+    // keep their name forever. In-flight figures (entering/splatting) always show
+    // so a fresh landing's name is visible. Recomputed each frame so the recent-50
+    // window slides as people keep chatting.
+    const nameIds = new Set();
+    figures
       .filter(f => f.phase === 'settled')
-      .sort((a, b) => a.y - b.y)
-      .slice(0, NAME_CAP);
-    const nameIds = new Set(topSettled.map(f => f.id));
-    for (const f of figures) { if (f.phase !== 'settled' && f.phase !== 'exploding') nameIds.add(f.id); }
-    // Always show the most-recent joins by arrival (highest id), so a fresh join's
-    // name is guaranteed visible even if it didn't land at the very top.
-    figures.filter(f => f.phase === 'settled').sort((a, b) => b.id - a.id).slice(0, 5)
+      .sort((a, b) => (b.lastCommentAt || 0) - (a.lastCommentAt || 0))
+      .slice(0, NAME_RECENT_CAP)
       .forEach(f => nameIds.add(f.id));
-    // Name persistence override: >=999 = show every name; >0 = show each name for that
-    // many seconds after it joined. (0 leaves the auto surface+newest behavior above.)
+    for (const f of figures) {
+      if (f.phase === 'exploding') continue;
+      if (f.phase !== 'settled') { nameIds.add(f.id); continue; }        // in-flight
+      if ((f.comments || 1) >= NAME_PERSIST_COMMENTS) nameIds.add(f.id); // veteran — forever
+    }
+    // Optional override from the control: >=999 = show every name.
     if (NAME_PERSIST_SEC >= 999) {
       for (const f of figures) if (f.phase === 'settled') nameIds.add(f.id);
-    } else if (NAME_PERSIST_SEC > 0) {
-      const cutoff = NAME_PERSIST_SEC * 1000;
-      for (const f of figures) {
-        if (f.phase === 'settled' && f.joinedAt != null && (now - f.joinedAt) < cutoff) nameIds.add(f.id);
-      }
     }
 
+    const balloonMode = NH_MODE === 'balloons';
     for (const fig of sorted) {
-      const pos = currentPos(fig);
-      // Exploding/entering figures skip the breathing multiplier so the pop
-      // burst and mid-air travel read as clean physics, not a wobble.
-      const blobS = S * BLOB_SCALE * (fig.phase === 'settled' ? pBreath : 1);
       const exploding = fig.phase === 'exploding';
+
+      // Position + render scale differ by mode. Balloons float from bx/by with a
+      // gentle sway (lane roam) / bob (ceiling) added here; pile/spread use the
+      // pile geometry and grow with comment count.
+      let pos, blobS;
+      if (balloonMode && !exploding) {
+        const t = now / 1000;
+        const atCeil = (fig.comments - 1) >= COMMENTS_TO_TOP;
+        const swayX = atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * 12
+                             : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * LANE_HALF_W;
+        const bobY  = Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 10 : 6);
+        pos = { x: (fig.bx ?? fig.x) + swayX, y: (fig.by ?? fig.y) + bobY };
+        blobS = BALLOON_S * BLOB_SCALE;
+      } else {
+        pos = currentPos(fig);
+        // Exploding/entering figures skip the breathing multiplier so the pop
+        // burst and mid-air travel read as clean physics, not a wobble.
+        blobS = S * BLOB_SCALE * growthOf(fig.comments) * (fig.phase === 'settled' ? pBreath : 1);
+      }
+
+      // Balloon string — a short curved tether hanging below a floating balloon.
+      if (balloonMode && !exploding) {
+        ctx.save();
+        ctx.strokeStyle = fig.pal.accent;
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth   = 2;
+        ctx.lineCap     = 'round';
+        const sx = pos.x, sy = pos.y + 6 * blobS;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(sx + 8, sy + 22, sx, sy + 44);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       ctx.save();
       ctx.translate(pos.x, pos.y);
@@ -1181,11 +1329,12 @@ function frame(now) {
 
       ctx.restore();
 
-      // Name pill — independent scale/offset from the blob itself
+      // Name pill — independent scale/offset from the blob itself. In balloon
+      // mode it hangs BELOW the balloon (past the string); otherwise above the head.
       if (!exploding && nameIds.has(fig.id) && fig.username) {
-        const headY = pos.y - 172 * blobS; // sits just above the head, tracks blob size
+        const nameY = balloonMode ? pos.y + 66 : pos.y - 172 * blobS;
         ctx.save();
-        ctx.translate(pos.x + NAME_X_OFFSET, headY + NAME_Y_OFFSET);
+        ctx.translate(pos.x + NAME_X_OFFSET, nameY + NAME_Y_OFFSET);
         ctx.scale(NAME_SCALE, NAME_SCALE);
         drawNamePill(ctx, 0, 0, fig.pal, fig.username);
         ctx.restore();
@@ -1197,7 +1346,7 @@ function frame(now) {
     const signElapsed = now - newestJoinAt;
     const signAlpha = signElapsed <= SIGN_HOLD_MS ? 1
       : 1 - (signElapsed - SIGN_HOLD_MS) / SIGN_FADE_MS;
-    if (newestName && signAlpha > 0) {
+    if (newestName && signAlpha > 0 && NH_MODE !== 'balloons') {
       const clampedPeak = Math.max(600, signPeakY);
       const sCX = 540, sCY = clampedPeak - SIGN_GAP;
       ctx.save();
@@ -1267,6 +1416,8 @@ function saveState() {
       figures: figures.filter(f => f.phase === 'settled').map(f => ({
         id: f.id, x: f.x, y: f.y, color: f.color,
         source: f.source, username: f.username, rot: f.rot,
+        comments: f.comments || 1, lastCommentAt: f.lastCommentAt || 0,
+        lane: f.lane,
       })),
       seenUsers: Array.from(seenUsers),
       pressure: PRESSURE,
@@ -1287,6 +1438,8 @@ function loadState() {
     seenUsers   = new Set(s.seenUsers || []);
     figures     = (s.figures || []).map(f => ({
       ...f,
+      comments:      f.comments || 1,
+      lastCommentAt: f.lastCommentAt || 0,
       phase:         'settled',
       enterProgress: 1,
       splatProgress: 1,
@@ -1295,7 +1448,16 @@ function loadState() {
       startX:        f.x,
       startY:        f.y,
       pal:           PALETTES[f.source] || YT,
+      // Balloon-mode transients — re-derived so reloaded balloons re-float from the
+      // floor into their comment-earned height/slot (bx/by undefined ⇒ re-init in tick).
+      lane:          f.lane,
+      bx:            undefined, by: undefined, ceilSlot: null,
+      swayPhase:     rnd() * Math.PI * 2, swaySpeed: 0.5 + rnd() * 0.6, bobPhase: rnd() * Math.PI * 2,
     }));
+    // Rebuild the username→figure index so repeat comments after a reload grow
+    // the existing body instead of adding a duplicate.
+    userFigs = new Map();
+    for (const f of figures) userFigs.set(userKey(f.username, f.source), f);
     updatePilePeak();
     signPeakY = pilePeakY; // snap sign to current peak without tweening
     PRESSURE  = s.pressure || 0;
@@ -1343,7 +1505,8 @@ function connectAbly() {
     if (d.idleTitle    != null) IDLE_TITLE    = d.idleTitle  || IDLE_TITLE;
     if (d.idleSub      != null) IDLE_SUB      = d.idleSub    || IDLE_SUB;
     if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
-    if (d.spreadMode   != null) SPREAD_MODE   = !!d.spreadMode;
+    if (d.mode         != null) setMode(d.mode);
+    else if (d.spreadMode != null) setMode(d.spreadMode ? 'spread' : 'pile');
     if (d.namePersistSec != null) NAME_PERSIST_SEC = d.namePersistSec;
     if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
     if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
@@ -1520,6 +1683,11 @@ function hardReset() {
   pilePeakY     = FLOOR_Y;
   signPeakY     = FLOOR_Y;
   seenUsers     = new Set();
+  userFigs      = new Map();
+  pending       = new Map();
+  spreadSeq     = 0;
+  balloonLaneSeq = 0;
+  balloonCeilSeq = 0;
   resetPending  = false;
   PRESSURE            = 0;
   lastPressureEventAt = performance.now();
@@ -1533,6 +1701,8 @@ function explodeAndReset() {
   console.log('[NEW HERE] explodeAndReset() —', figures.length, 'figures flying apart');
   if (!figures.length) { hardReset(); return; }
   for (const f of figures) {
+    // Balloons fly apart from where they're floating, not their floor spawn coords.
+    if (NH_MODE === 'balloons' && f.bx != null) { f.x = f.bx; f.y = f.by; }
     const ang   = rnd() * Math.PI * 2;
     const speed = 320 + rnd() * 520;
     f.phase     = 'exploding';

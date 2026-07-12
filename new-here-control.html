@@ -110,7 +110,7 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
        toggle so you can show/hide it straight from here (either one works). -->
   <div class="card" style="display:flex;flex-direction:column;gap:8px;">
     <button class="ctrl-btn c-act" id="nh-enable-btn" onclick="nhToggleEnabled()" title="Show or hide the New Here overlay. It stays blank until this is ON. The dock's toggle does the same thing." style="font-size:13px;padding:9px;">◉ Overlay: OFF</button>
-    <button class="ctrl-btn" id="nh-spread-btn" onclick="nhToggleSpread()" title="Pile = mascots stack into a mound. Spread = they line up along the ground and blink at their own intervals. Applies to new joins — hit Reset Pile after switching to re-lay the crowd." style="font-size:12px;padding:8px;">🏔 Layout: Pile</button>
+    <button class="ctrl-btn" id="nh-spread-btn" onclick="nhCycleMode()" title="Tap to cycle the animation model. Pile = mascots stack into a mound (grow bigger per comment). Spread = they line up along the ground and blink. Balloons = they roam into two side lanes and float higher with every comment, then spread across the top with their name below. Switch, then hit Reset Pile to re-lay the crowd." style="font-size:12px;padding:8px;">🏔 Layout: Pile</button>
   </div>
 
   <!-- COMMAND -->
@@ -226,18 +226,25 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
 
   <!-- TEST -->
   <div class="card">
-    <h2>Test <span class="info" title="Fake joins so you can preview the overlay without waiting for real chat. The overlay must be ON (top button) for these to show.">?</span></h2>
+    <h2>Test <span class="info" title="Fake comments so you can preview the overlay without waiting for real chat. Every comment adds a mascot on that user's first, then grows it. The overlay must be ON (top button) for these to show.">?</span></h2>
     <div class="ctrl-row">
-      <input class="ctrl-in" id="nh-test-name" type="text" placeholder="username" title="Optional name for the test join. Leave blank for a random one." style="flex:1;min-width:0;">
+      <input class="ctrl-in" id="nh-test-name" type="text" placeholder="username" title="Optional name for the test comment. Leave blank for a random one." style="flex:1;min-width:0;">
       <select class="ctrl-in" id="nh-test-src" style="cursor:pointer;" title="Which platform color the test mascot uses (red = YouTube, blue = TikTok).">
         <option value="youtube">YouTube</option>
         <option value="tiktok">TikTok</option>
       </select>
-      <button class="ctrl-btn c-act" onclick="nhTestJoin()" title="Simulate one 'new here' join.">Join</button>
+      <button class="ctrl-btn c-act" onclick="nhTestJoin()" title="Send one comment from this user (adds them, or grows them if already present).">Comment</button>
     </div>
     <div class="ctrl-row">
-      <button class="ctrl-btn" onclick="nhBurst(5)" style="flex:1;" title="Simulate 5 joins at once (mixed platforms).">Burst ×5</button>
-      <button class="ctrl-btn" onclick="nhBurst(20)" style="flex:1;" title="Simulate 20 joins at once (mixed platforms).">Burst ×20</button>
+      <button class="ctrl-btn" onclick="nhTestGrow(10)" style="flex:1;" title="Send 10 comments from the name above (or a random one) so you can watch that mascot grow.">Grow ×10</button>
+      <button class="ctrl-btn" onclick="nhBurst(20)" style="flex:1;" title="Simulate 20 different chatters at once (mixed platforms).">Burst ×20</button>
+      <button class="ctrl-btn" onclick="nhBurst(100)" style="flex:1;" title="Simulate 100 different chatters to stress-test the pile.">Burst ×100</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhTestGrow(25)" style="flex:1;" title="Balloons: send 25 comments from the name above so they climb their lane all the way to the ceiling.">🎈 Float to Top</button>
+      <button class="ctrl-btn" onclick="nhChatMix(30)" style="flex:1;" title="Simulate 30 chatters each with a random number of comments (1–25), so lanes fill at varied heights and several reach the top.">🎈 Chat Mix ×30</button>
+    </div>
+    <div class="ctrl-row">
       <button class="ctrl-btn danger" onclick="nhReset()" style="flex:1;" title="Clear all mascots from the pile.">Reset Pile</button>
     </div>
   </div>
@@ -257,7 +264,7 @@ let ably = null, ablyChannel = null;
       dot.classList.add('connected');
       // Re-send enabled + layout mode on (re)connect so the overlay syncs whenever both are open.
       nhPublishEnabled();
-      nhPublishSpread();
+      nhPublishMode();
     });
     ably.connection.on('disconnected', () => dot.classList.remove('connected'));
     ably.connection.on('failed',       () => dot.classList.remove('connected'));
@@ -285,24 +292,33 @@ function nhToggleEnabled() {
   nhRenderEnableBtn();
 }
 
-/* ── Layout mode: pile vs spread ───────────────────────────────── */
-let _nhSpread = localStorage.getItem('nh_ctrl_spread') === '1';
-function nhPublishSpread() {
-  if (ablyChannel) ablyChannel.publish('new-here-config', { spreadMode: _nhSpread }).catch(() => {});
+/* ── Animation model: pile · spread · balloons ─────────────────── */
+const NH_MODES = ['pile', 'spread', 'balloons'];
+// Migrate the old two-state key so an existing "spread" preference carries over.
+let _nhMode = localStorage.getItem('nh_ctrl_mode')
+  || (localStorage.getItem('nh_ctrl_spread') === '1' ? 'spread' : 'pile');
+const NH_MODE_STYLE = {
+  pile:     { label: '🏔 Layout: Pile',     bg: 'rgba(168,85,247,.12)', bd: 'rgba(168,85,247,.3)',  fg: 'var(--txt)' },
+  spread:   { label: '↔ Layout: Spread',    bg: 'rgba(56,189,248,0.16)', bd: 'rgba(56,189,248,0.5)', fg: '#7dd3fc' },
+  balloons: { label: '🎈 Layout: Balloons', bg: 'rgba(251,113,133,0.16)', bd: 'rgba(251,113,133,0.5)', fg: '#fda4af' },
+};
+function nhPublishMode() {
+  if (ablyChannel) ablyChannel.publish('new-here-config', { mode: _nhMode }).catch(() => {});
 }
-function nhRenderSpreadBtn() {
+function nhRenderModeBtn() {
   const btn = document.getElementById('nh-spread-btn');
   if (!btn) return;
-  btn.textContent = _nhSpread ? '↔ Layout: Spread' : '🏔 Layout: Pile';
-  btn.style.background = _nhSpread ? 'rgba(56,189,248,0.16)' : 'rgba(168,85,247,.12)';
-  btn.style.borderColor = _nhSpread ? 'rgba(56,189,248,0.5)' : 'rgba(168,85,247,.3)';
-  btn.style.color = _nhSpread ? '#7dd3fc' : 'var(--txt)';
+  const s = NH_MODE_STYLE[_nhMode] || NH_MODE_STYLE.pile;
+  btn.textContent = s.label;
+  btn.style.background = s.bg;
+  btn.style.borderColor = s.bd;
+  btn.style.color = s.fg;
 }
-function nhToggleSpread() {
-  _nhSpread = !_nhSpread;
-  localStorage.setItem('nh_ctrl_spread', _nhSpread ? '1' : '0');
-  nhPublishSpread();
-  nhRenderSpreadBtn();
+function nhCycleMode() {
+  _nhMode = NH_MODES[(NH_MODES.indexOf(_nhMode) + 1) % NH_MODES.length];
+  localStorage.setItem('nh_ctrl_mode', _nhMode);
+  nhPublishMode();
+  nhRenderModeBtn();
 }
 
 /* ── Apply / persist display config ────────────────────────────── */
@@ -481,14 +497,49 @@ function nhTestJoin() {
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ sent: ${name} (${source})`; setTimeout(() => { st.textContent = '—'; }, 2500); }
 }
+// Send N comments from N DISTINCT users (unique suffix guarantees no collisions),
+// so the pile fills with that many separate mascots.
+let _nhBurstSeq = 0;
 function nhBurst(n) {
   for (let i = 0; i < n; i++) {
-    const name = _nhNames[Math.floor(Math.random() * _nhNames.length)] + Math.floor(Math.random() * 99);
+    const name = _nhNames[Math.floor(Math.random() * _nhNames.length)] + '_' + (_nhBurstSeq++);
     const source = Math.random() < 0.5 ? 'youtube' : 'tiktok';
     if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
   }
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ burst ×${n} sent`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+// Simulate N chatters, each firing a random number of comments (1..25) spaced
+// out over a couple seconds — fills the lanes at varied heights (balloon mode) or
+// the pile with varied sizes (pile mode), with a few reaching the very top.
+function nhChatMix(n) {
+  for (let i = 0; i < n; i++) {
+    const name = _nhNames[Math.floor(Math.random() * _nhNames.length)] + '_' + (_nhBurstSeq++);
+    const source = Math.random() < 0.5 ? 'youtube' : 'tiktok';
+    const comments = 1 + Math.floor(Math.random() * 25);
+    for (let c = 0; c < comments; c++) {
+      setTimeout(() => {
+        if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+      }, c * 120 + Math.random() * 200);
+    }
+  }
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ chat mix ×${n}`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+
+// Send N comments from the SAME user so you can watch one mascot grow.
+function nhTestGrow(n) {
+  const name = document.getElementById('nh-test-name').value.trim()
+    || _nhNames[Math.floor(Math.random() * _nhNames.length)];
+  const source = document.getElementById('nh-test-src').value;
+  let sent = 0;
+  const tick = () => {
+    if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+    if (++sent < n) setTimeout(tick, 350); // spaced out so the growth is visible
+  };
+  tick();
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ growing: ${name} ×${n}`; setTimeout(() => { st.textContent = '—'; }, 2500); }
 }
 function nhReset() {
   if (ablyChannel) ablyChannel.publish('new-here-reset', {}).catch(() => {});
@@ -580,7 +631,7 @@ nhLoadDisplayConfig();
 nhRefreshReadouts();
 nhFmtNamePersist();
 nhRenderEnableBtn();
-nhRenderSpreadBtn();
+nhRenderModeBtn();
 </script>
 </body>
 </html>

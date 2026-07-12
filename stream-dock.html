@@ -3771,10 +3771,12 @@ function handleMsg(data) {
       messageText: data.chatmessage,
       timestamp: Date.now()
     });
-    // NEW HERE crowd overlay — detect configured command and forward to overlay via Ably
-    if (nhMatches(msgLower)) {
+    // NEW HERE crowd overlay — every-chatter growth: EVERY comment forwards the
+    // chatter to the overlay. Their first comment drops a tiny mascot; each further
+    // comment grows it (the overlay dedupes by username). No command match needed.
+    if (data.chatname && ablyChannel) {
       const nhSource = isTT ? 'tiktok' : 'youtube';
-      if (ablyChannel) ablyChannel.publish('new-here', { username: data.chatname, source: nhSource }).catch(() => {});
+      ablyChannel.publish('new-here', { username: data.chatname, source: nhSource }).catch(() => {});
     }
     // Team Timing Bar — YouTube has no native join/like signal, so a chat
     // comment matching the configured command stands in for both (see
