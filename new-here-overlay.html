@@ -269,20 +269,16 @@ let popFlashAt           = -Infinity; // performance.now() of last pop, drives t
 
 // ═══════════════════════════════════════════════════════════════════
 // HEIGHTMAP DEPOSITION
-// Center-biased column pick, then roll to the lowest neighbor (±2 bins)
-// so the heap stays wide and rounded, never spiked.
+// Center-biased column pick with NO valley-fill roll: each mascot lands on
+// top of its own column, so the centre (hit most often) grows tallest and
+// later joins climb toward the top of a rounded mound — newest on top, name
+// visible — rather than filling the lowest gap and getting buried.
 // ═══════════════════════════════════════════════════════════════════
 function getDepositionPos() {
   const g = (rnd() + rnd() + rnd() - 1.5) / 1.5; // approx normal(-1..1)
-  let b = Math.max(0, Math.min(N_BINS - 1, Math.round((g * 0.5 + 0.5) * (N_BINS - 1))));
-  let best = b;
-  for (let dd = -2; dd <= 2; dd++) {
-    const bb = b + dd;
-    if (bb < 0 || bb >= N_BINS) continue;
-    if (heights[bb] < heights[best]) best = bb;
-  }
-  const level = heights[best]++;
-  const x = LO_X + (best + 0.5) * BIN_W + (rnd() - 0.5) * BIN_W * 0.55;
+  const b = Math.max(0, Math.min(N_BINS - 1, Math.round((g * 0.5 + 0.5) * (N_BINS - 1))));
+  const level = heights[b]++;
+  const x = LO_X + (b + 0.5) * BIN_W + (rnd() - 0.5) * BIN_W * 0.55;
   const y = FLOOR_Y - level * LAYER_H + (rnd() * 8 - 4);
   return { x: Math.max(LO_X, Math.min(HI_X, x)), y };
 }
@@ -1089,6 +1085,10 @@ function frame(now) {
       .slice(0, NAME_CAP);
     const nameIds = new Set(topSettled.map(f => f.id));
     for (const f of figures) { if (f.phase !== 'settled' && f.phase !== 'exploding') nameIds.add(f.id); }
+    // Always show the most-recent joins by arrival (highest id), so a fresh join's
+    // name is guaranteed visible even if it didn't land at the very top.
+    figures.filter(f => f.phase === 'settled').sort((a, b) => b.id - a.id).slice(0, 5)
+      .forEach(f => nameIds.add(f.id));
 
     for (const fig of sorted) {
       const pos = currentPos(fig);
