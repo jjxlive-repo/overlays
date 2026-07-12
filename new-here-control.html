@@ -76,10 +76,26 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
 .chk-row input { cursor: pointer; }
 .chk-row span { font-size: 10px; color: var(--txt-dim); }
 .status { font-size: 10px; color: var(--txt-dim); min-height: 12px; margin-top: 8px; }
-.pos-grid { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 5px 6px; align-items: center; margin-top: 5px; }
-.pos-grid .plabel { font-size: 9px; color: var(--txt-dim); }
-.pos-grid .phead { font-size: 8px; color: var(--txt-dim); text-transform: uppercase; text-align: center; }
-.pos-grid input { width: 100%; }
+.hint { font-size: 9px; color: var(--txt-dim); margin: 0 0 8px; line-height: 1.55; }
+.info { display: inline-block; width: 12px; height: 12px; line-height: 12px; text-align: center; border-radius: 50%;
+  background: rgba(255,255,255,0.1); color: var(--txt-dim); font-size: 8px; cursor: help; margin-left: 5px; }
+.nudge-el { margin-top: 9px; }
+.nudge-el:first-child { margin-top: 2px; }
+.nudge-el-hd { font-size: 10px; font-weight: 600; color: var(--txt); display: flex; align-items: center; }
+.nudge-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.nudge-row .nlabel { font-size: 9px; color: var(--txt-dim); width: 42px; flex-shrink: 0; }
+.nudge-btn {
+  background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.3); border-radius: 5px;
+  color: var(--txt); font-family: var(--mono); font-size: 11px; line-height: 1; padding: 5px 7px;
+  cursor: pointer; flex-shrink: 0; transition: background .12s;
+}
+.nudge-btn:hover { background: rgba(168,85,247,.28); }
+.nudge-btn:active { transform: scale(0.94); }
+.nudge-ro {
+  flex: 1; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--txt);
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 5px; padding: 5px 4px;
+  min-width: 52px;
+}
 </style>
 </head>
 <body>
@@ -93,25 +109,26 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
   <!-- OVERLAY ON/OFF — the overlay stays blank until enabled. This mirrors the dock's
        toggle so you can show/hide it straight from here (either one works). -->
   <div class="card" style="display:flex;align-items:center;gap:10px;">
-    <button class="ctrl-btn c-act" id="nh-enable-btn" onclick="nhToggleEnabled()" style="flex:1;font-size:13px;padding:9px;">◉ Overlay: OFF</button>
+    <button class="ctrl-btn c-act" id="nh-enable-btn" onclick="nhToggleEnabled()" title="Show or hide the New Here overlay. It stays blank until this is ON. The dock's toggle does the same thing." style="flex:1;font-size:13px;padding:9px;">◉ Overlay: OFF</button>
   </div>
 
   <!-- COMMAND -->
   <div class="card">
-    <h2>Trigger command</h2>
+    <h2>Trigger command <span class="info" title="What a chat message must say to make a mascot drop onto the pile. The dock reads these when live chat comes in.">?</span></h2>
     <div class="ctrl-row">
-      <label style="width:60px;">Command</label>
-      <input class="ctrl-in" id="nh-cmd" type="text" value="new here" placeholder="e.g. new here" style="flex:1;min-width:0;" oninput="nhSaveSettings()">
+      <label style="width:60px;" title="The phrase viewers type in chat to join the pile.">Command</label>
+      <input class="ctrl-in" id="nh-cmd" type="text" value="new here" placeholder="e.g. new here" title="The phrase viewers type in chat to join the pile, e.g. 'new here'." style="flex:1;min-width:0;" oninput="nhSaveSettings()">
     </div>
     <div class="ctrl-row">
-      <label style="width:60px;">Match</label>
-      <select class="ctrl-in" id="nh-match" style="flex:1;cursor:pointer;" onchange="nhSaveSettings()">
+      <label style="width:60px;" title="How strictly the chat message must match the command.">Match</label>
+      <select class="ctrl-in" id="nh-match" style="flex:1;cursor:pointer;" onchange="nhSaveSettings()"
+        title="Exactly = message must equal the command. Starts with = message begins with it. Contains = command appears anywhere in the message.">
         <option value="exact">Exactly matches</option>
         <option value="starts">Starts with</option>
         <option value="contains">Contains</option>
       </select>
     </div>
-    <label class="chk-row">
+    <label class="chk-row" title="On = each viewer can only splat once per session. Off = the same viewer can join repeatedly.">
       <input type="checkbox" id="nh-dedupe" checked onchange="nhApplyConfig()">
       <span>One join per viewer (uncheck to let the same viewer splat repeatedly)</span>
     </label>
@@ -119,106 +136,98 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
 
   <!-- TEXT -->
   <div class="card">
-    <h2>Text labels</h2>
-    <div class="ctrl-row"><label style="width:80px;">Sign label</label><input class="ctrl-in" id="nh-sign-label" type="text" value="JUST JOINED" style="flex:1;min-width:0;"></div>
-    <div class="ctrl-row"><label style="width:80px;">Counter label</label><input class="ctrl-in" id="nh-ctr-label" type="text" value="NEW HERE" style="flex:1;min-width:0;"></div>
-    <div class="ctrl-row"><label style="width:80px;">Count format</label><input class="ctrl-in" id="nh-ctr-format" type="text" value="{n} joined" title="Use {n} for the count" style="flex:1;min-width:0;"></div>
-    <div class="ctrl-row"><label style="width:80px;">Idle title</label><input class="ctrl-in" id="nh-idle-title" type="text" value="Be the first!" style="flex:1;min-width:0;"></div>
-    <div class="ctrl-row"><label style="width:80px;">Idle subtext</label><input class="ctrl-in" id="nh-idle-sub" type="text" value="type NEW HERE" style="flex:1;min-width:0;"></div>
-    <div class="ctrl-row"><label style="width:80px;">Timer label</label><input class="ctrl-in" id="nh-timer-label" type="text" value="STARTING SOON" style="flex:1;min-width:0;"></div>
+    <h2>Text labels <span class="info" title="Change the wording shown on each on-screen element. Edits apply when you hit 'Apply' below.">?</span></h2>
+    <div class="ctrl-row"><label style="width:80px;" title="Text on the banner above the newest mascot.">Sign label</label><input class="ctrl-in" id="nh-sign-label" type="text" value="JUST JOINED" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;" title="Heading text on the join counter.">Counter label</label><input class="ctrl-in" id="nh-ctr-label" type="text" value="NEW HERE" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;" title="How the count reads. Use {n} where the number should go, e.g. '{n} joined'.">Count format</label><input class="ctrl-in" id="nh-ctr-format" type="text" value="{n} joined" title="Use {n} for the count, e.g. '{n} joined' → '5 joined'." style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;" title="Big text shown before anyone has joined.">Idle title</label><input class="ctrl-in" id="nh-idle-title" type="text" value="Be the first!" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;" title="Smaller line under the idle title.">Idle subtext</label><input class="ctrl-in" id="nh-idle-sub" type="text" value="type NEW HERE" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:80px;" title="Text shown on the countdown timer pill.">Timer label</label><input class="ctrl-in" id="nh-timer-label" type="text" value="STARTING SOON" style="flex:1;min-width:0;"></div>
   </div>
 
   <!-- PILL TOGGLES -->
   <div class="card">
-    <h2>Pill backgrounds</h2>
-    <label class="chk-row"><input type="checkbox" id="nh-sign-pill" checked onchange="nhApplyConfig()"><span>JUST JOINED sign — pill background</span></label>
-    <label class="chk-row"><input type="checkbox" id="nh-ctr-pill" checked onchange="nhApplyConfig()"><span>Counter — pill background</span></label>
-    <label class="chk-row"><input type="checkbox" id="nh-name-pill" checked onchange="nhApplyConfig()"><span>Name tags — pill background</span></label>
-    <label class="chk-row"><input type="checkbox" id="nh-timer-pill" checked onchange="nhApplyConfig()"><span>Countdown timer — pill background</span></label>
-    <label class="chk-row"><input type="checkbox" id="nh-pressure-pill" checked onchange="nhApplyConfig()"><span>Pressure meter — pill background</span></label>
+    <h2>Pill backgrounds <span class="info" title="Each on-screen label can sit on a rounded pill background, or show as plain text with no pill. Uncheck for a cleaner text-only look.">?</span></h2>
+    <label class="chk-row" title="Show the JUST JOINED banner on a pill background."><input type="checkbox" id="nh-sign-pill" checked onchange="nhApplyConfig()"><span>JUST JOINED sign — pill background</span></label>
+    <label class="chk-row" title="Show the join counter on a pill background."><input type="checkbox" id="nh-ctr-pill" checked onchange="nhApplyConfig()"><span>Counter — pill background</span></label>
+    <label class="chk-row" title="Show each mascot's name tag on a pill background."><input type="checkbox" id="nh-name-pill" checked onchange="nhApplyConfig()"><span>Name tags — pill background</span></label>
+    <label class="chk-row" title="Show the countdown timer on a pill background."><input type="checkbox" id="nh-timer-pill" checked onchange="nhApplyConfig()"><span>Countdown timer — pill background</span></label>
+    <label class="chk-row" title="Show the pressure meter on a pill background."><input type="checkbox" id="nh-pressure-pill" checked onchange="nhApplyConfig()"><span>Pressure meter — pill background</span></label>
   </div>
 
-  <!-- POSITION / SCALE -->
+  <!-- POSITION / SCALE — nudge with arrow buttons, applies live -->
   <div class="card">
     <h2>Position &amp; scale</h2>
-    <p style="font-size:9px;color:var(--txt-dim);margin:0 0 4px;line-height:1.5;">Scale %, X/Y in px. Floor is Y-only. Blobs are scale-only.</p>
-    <div class="pos-grid">
-      <span class="plabel"></span><span class="phead">Scale%</span><span class="phead">X</span><span class="phead">Y</span>
-      <span class="plabel">Sign</span>
-      <input class="ctrl-in" id="nh-sign-scale" type="number" value="100"><input class="ctrl-in" id="nh-sign-x" type="number" value="0"><input class="ctrl-in" id="nh-sign-y" type="number" value="0">
-      <span class="plabel">Counter</span>
-      <input class="ctrl-in" id="nh-ctr-scale" type="number" value="100"><input class="ctrl-in" id="nh-ctr-x" type="number" value="0"><input class="ctrl-in" id="nh-ctr-y" type="number" value="0">
-      <span class="plabel">Name tags</span>
-      <input class="ctrl-in" id="nh-name-scale" type="number" value="100"><input class="ctrl-in" id="nh-name-x" type="number" value="0"><input class="ctrl-in" id="nh-name-y" type="number" value="0">
-      <span class="plabel">Idle state</span>
-      <input class="ctrl-in" id="nh-idle-scale" type="number" value="100"><input class="ctrl-in" id="nh-idle-x" type="number" value="0"><input class="ctrl-in" id="nh-idle-y" type="number" value="0">
-      <span class="plabel">Timer</span>
-      <input class="ctrl-in" id="nh-timer-scale" type="number" value="100"><input class="ctrl-in" id="nh-timer-x" type="number" value="0"><input class="ctrl-in" id="nh-timer-y" type="number" value="0">
-      <span class="plabel">Pressure</span>
-      <input class="ctrl-in" id="nh-pressure-scale" type="number" value="100"><input class="ctrl-in" id="nh-pressure-x" type="number" value="0"><input class="ctrl-in" id="nh-pressure-y" type="number" value="0">
-      <span class="plabel">Blobs</span>
-      <input class="ctrl-in" id="nh-blob-scale" type="number" value="100"><span></span><span></span>
-      <span class="plabel">Floor</span>
-      <span></span><span></span><input class="ctrl-in" id="nh-floor-y" type="number" value="0">
+    <p class="hint">Nudge with the arrows — single arrow = fine step, double arrow = big step. Changes apply to the overlay instantly. Hover any label for what it moves.</p>
+    <div id="pos-controls"></div>
+    <!-- hidden state holders read by nhApplyConfig() -->
+    <div style="display:none">
+      <input id="nh-sign-scale" value="100"><input id="nh-sign-x" value="0"><input id="nh-sign-y" value="0">
+      <input id="nh-ctr-scale" value="100"><input id="nh-ctr-x" value="0"><input id="nh-ctr-y" value="0">
+      <input id="nh-name-scale" value="100"><input id="nh-name-x" value="0"><input id="nh-name-y" value="0">
+      <input id="nh-idle-scale" value="100"><input id="nh-idle-x" value="0"><input id="nh-idle-y" value="0">
+      <input id="nh-timer-scale" value="100"><input id="nh-timer-x" value="0"><input id="nh-timer-y" value="0">
+      <input id="nh-pressure-scale" value="100"><input id="nh-pressure-x" value="0"><input id="nh-pressure-y" value="0">
+      <input id="nh-blob-scale" value="100"><input id="nh-floor-y" value="0">
     </div>
   </div>
 
   <!-- APPLY -->
   <div class="card">
-    <button class="ctrl-btn c-act" onclick="nhApplyConfig()" style="width:100%;">Apply all settings to overlay</button>
+    <button class="ctrl-btn c-act" onclick="nhApplyConfig()" style="width:100%;" title="Push the text labels, pill toggles and dedupe setting to the overlay. Position/scale nudges and pressure sliders already apply live.">Apply all settings to overlay</button>
     <div class="status" id="nh-status">—</div>
   </div>
 
   <!-- COUNTDOWN -->
   <div class="card">
-    <h2>Countdown timer</h2>
+    <h2>Countdown timer <span class="info" title="An on-screen countdown you start manually — e.g. 'game starts in 5:00'. Start/pause/reset fire instantly, independent of the Apply button.">?</span></h2>
     <div class="ctrl-row">
-      <label>Duration</label>
-      <input class="ctrl-in" id="nh-timer-min" type="number" min="0" max="180" value="5" style="width:52px;" title="minutes"><span style="font-size:9px;color:var(--txt-dim);">min</span>
-      <input class="ctrl-in" id="nh-timer-sec" type="number" min="0" max="59" value="0" style="width:48px;" title="seconds"><span style="font-size:9px;color:var(--txt-dim);">sec</span>
+      <label title="How long the countdown runs when you press Start.">Duration</label>
+      <input class="ctrl-in" id="nh-timer-min" type="number" min="0" max="180" value="5" style="width:52px;" title="Minutes"><span style="font-size:9px;color:var(--txt-dim);">min</span>
+      <input class="ctrl-in" id="nh-timer-sec" type="number" min="0" max="59" value="0" style="width:48px;" title="Seconds"><span style="font-size:9px;color:var(--txt-dim);">sec</span>
     </div>
     <div class="ctrl-row">
-      <button class="ctrl-btn c-act" onclick="nhTimerStart()" style="flex:1;">▶ Start</button>
-      <button class="ctrl-btn" onclick="nhTimerPauseResume()" style="flex:1;" id="nh-timer-pauseresume">⏸ Pause</button>
-      <button class="ctrl-btn danger" onclick="nhTimerReset()" style="flex:1;">■ Reset</button>
+      <button class="ctrl-btn c-act" onclick="nhTimerStart()" style="flex:1;" title="Start the countdown at the duration above.">▶ Start</button>
+      <button class="ctrl-btn" onclick="nhTimerPauseResume()" style="flex:1;" id="nh-timer-pauseresume" title="Freeze / unfreeze the countdown.">⏸ Pause</button>
+      <button class="ctrl-btn danger" onclick="nhTimerReset()" style="flex:1;" title="Stop and clear the countdown.">■ Reset</button>
     </div>
   </div>
 
   <!-- PRESSURE -->
   <div class="card">
-    <h2>Pressure / inflation</h2>
-    <p style="font-size:9px;color:var(--txt-dim);margin:0 0 2px;line-height:1.5;">Pile inflates &amp; pulses with every join. Decays if chat goes quiet. Pops early once it hits threshold.</p>
-    <label class="chk-row"><input type="checkbox" id="nh-pressure-enabled" checked onchange="nhApplyConfig()"><span>Enable pressure mechanic</span></label>
-    <div class="ctrl-row"><label style="width:78px;">Per join</label><input type="range" id="nh-pressure-gain" min="2" max="15" step="1" value="6" oninput="nhFmtPressureGain();nhFmtPressureThreshold()"><span class="rng-v" id="nh-pressure-gain-v">6</span></div>
-    <div class="ctrl-row"><label style="width:78px;">Pop threshold</label><input type="range" id="nh-pressure-threshold" min="30" max="300" step="10" value="100" oninput="nhFmtPressureThreshold()"><span class="rng-v" id="nh-pressure-threshold-v">100 (~17)</span></div>
-    <div class="ctrl-row"><label style="width:78px;">Decay rate</label><input type="range" id="nh-pressure-decay" min="0" max="3" step="0.1" value="0.4" oninput="document.getElementById('nh-pressure-decay-v').textContent=this.value+'/s'"><span class="rng-v" id="nh-pressure-decay-v">0.4/s</span></div>
-    <div class="ctrl-row"><label style="width:78px;">Decay grace</label><input type="range" id="nh-pressure-grace" min="1" max="15" step="1" value="4" oninput="document.getElementById('nh-pressure-grace-v').textContent=this.value+'s'"><span class="rng-v" id="nh-pressure-grace-v">4s</span></div>
-    <div class="ctrl-row"><label style="width:78px;">Warn zone</label><input type="range" id="nh-pressure-warn" min="30" max="90" step="5" value="60" oninput="document.getElementById('nh-pressure-warn-v').textContent=this.value+'%'"><span class="rng-v" id="nh-pressure-warn-v">60%</span></div>
-    <div class="ctrl-row"><label style="width:78px;">Danger zone</label><input type="range" id="nh-pressure-danger" min="50" max="95" step="5" value="85" oninput="document.getElementById('nh-pressure-danger-v').textContent=this.value+'%'"><span class="rng-v" id="nh-pressure-danger-v">85%</span></div>
-    <div class="ctrl-row"><label style="width:78px;">Meter label</label><input class="ctrl-in" id="nh-pressure-label" type="text" value="PRESSURE" style="flex:1;min-width:0;"></div>
-    <div class="ctrl-row"><label style="width:78px;">Pop text</label><input class="ctrl-in" id="nh-pop-label" type="text" value="PRESSURE POPPED! 🎉" style="flex:1;min-width:0;"></div>
+    <h2>Pressure / inflation <span class="info" title="An optional hype mechanic: the pile visibly inflates and pulses with each join, decays when chat goes quiet, and 'pops' with a celebration once it fills — separate from the countdown timer.">?</span></h2>
+    <p class="hint">Pile inflates &amp; pulses with every join. Decays if chat goes quiet. Pops early once it hits threshold.</p>
+    <label class="chk-row" title="Turn the whole pressure/inflation mechanic on or off."><input type="checkbox" id="nh-pressure-enabled" checked onchange="nhApplyConfig()"><span>Enable pressure mechanic</span></label>
+    <div class="ctrl-row"><label style="width:78px;" title="How much pressure each join adds. Higher = fills faster.">Per join</label><input type="range" id="nh-pressure-gain" min="2" max="15" step="1" value="6" oninput="nhFmtPressureGain();nhFmtPressureThreshold()"><span class="rng-v" id="nh-pressure-gain-v">6</span></div>
+    <div class="ctrl-row"><label style="width:78px;" title="Pressure level that triggers the pop. The (~N) is roughly how many joins that takes at the current per-join gain.">Pop threshold</label><input type="range" id="nh-pressure-threshold" min="30" max="300" step="10" value="100" oninput="nhFmtPressureThreshold()"><span class="rng-v" id="nh-pressure-threshold-v">100 (~17)</span></div>
+    <div class="ctrl-row"><label style="width:78px;" title="How fast pressure bleeds away per second when chat is quiet.">Decay rate</label><input type="range" id="nh-pressure-decay" min="0" max="3" step="0.1" value="0.4" oninput="document.getElementById('nh-pressure-decay-v').textContent=this.value+'/s'"><span class="rng-v" id="nh-pressure-decay-v">0.4/s</span></div>
+    <div class="ctrl-row"><label style="width:78px;" title="How long after the last join before decay kicks in — a grace period so brief lulls don't drain it.">Decay grace</label><input type="range" id="nh-pressure-grace" min="1" max="15" step="1" value="4" oninput="document.getElementById('nh-pressure-grace-v').textContent=this.value+'s'"><span class="rng-v" id="nh-pressure-grace-v">4s</span></div>
+    <div class="ctrl-row"><label style="width:78px;" title="Fill % where the meter turns 'warning' colored to build tension.">Warn zone</label><input type="range" id="nh-pressure-warn" min="30" max="90" step="5" value="60" oninput="document.getElementById('nh-pressure-warn-v').textContent=this.value+'%'"><span class="rng-v" id="nh-pressure-warn-v">60%</span></div>
+    <div class="ctrl-row"><label style="width:78px;" title="Fill % where the meter turns 'danger' colored, right before it pops.">Danger zone</label><input type="range" id="nh-pressure-danger" min="50" max="95" step="5" value="85" oninput="document.getElementById('nh-pressure-danger-v').textContent=this.value+'%'"><span class="rng-v" id="nh-pressure-danger-v">85%</span></div>
+    <div class="ctrl-row"><label style="width:78px;" title="Text shown on the pressure meter.">Meter label</label><input class="ctrl-in" id="nh-pressure-label" type="text" value="PRESSURE" style="flex:1;min-width:0;"></div>
+    <div class="ctrl-row"><label style="width:78px;" title="Celebration text shown when the meter pops.">Pop text</label><input class="ctrl-in" id="nh-pop-label" type="text" value="PRESSURE POPPED! 🎉" style="flex:1;min-width:0;"></div>
     <div class="ctrl-row">
-      <button class="ctrl-btn" onclick="nhPressureAdd(20)" style="flex:1;">+20 pressure</button>
-      <button class="ctrl-btn" onclick="nhPressureSet(0)" style="flex:1;">Deflate to 0</button>
-      <button class="ctrl-btn danger" onclick="nhForcePop()" style="flex:1;">💥 Force Pop</button>
+      <button class="ctrl-btn" onclick="nhPressureAdd(20)" style="flex:1;" title="Manually add 20 pressure (preview the fill).">+20 pressure</button>
+      <button class="ctrl-btn" onclick="nhPressureSet(0)" style="flex:1;" title="Reset the meter back to empty.">Deflate to 0</button>
+      <button class="ctrl-btn danger" onclick="nhForcePop()" style="flex:1;" title="Trigger the pop celebration right now.">💥 Force Pop</button>
     </div>
   </div>
 
   <!-- TEST -->
   <div class="card">
-    <h2>Test</h2>
+    <h2>Test <span class="info" title="Fake joins so you can preview the overlay without waiting for real chat. The overlay must be ON (top button) for these to show.">?</span></h2>
     <div class="ctrl-row">
-      <input class="ctrl-in" id="nh-test-name" type="text" placeholder="username" style="flex:1;min-width:0;">
-      <select class="ctrl-in" id="nh-test-src" style="cursor:pointer;">
+      <input class="ctrl-in" id="nh-test-name" type="text" placeholder="username" title="Optional name for the test join. Leave blank for a random one." style="flex:1;min-width:0;">
+      <select class="ctrl-in" id="nh-test-src" style="cursor:pointer;" title="Which platform color the test mascot uses (red = YouTube, blue = TikTok).">
         <option value="youtube">YouTube</option>
         <option value="tiktok">TikTok</option>
       </select>
-      <button class="ctrl-btn c-act" onclick="nhTestJoin()" title="Simulate a single NEW HERE join">Join</button>
+      <button class="ctrl-btn c-act" onclick="nhTestJoin()" title="Simulate one 'new here' join.">Join</button>
     </div>
     <div class="ctrl-row">
-      <button class="ctrl-btn" onclick="nhBurst(5)" style="flex:1;">Burst ×5</button>
-      <button class="ctrl-btn" onclick="nhBurst(20)" style="flex:1;">Burst ×20</button>
-      <button class="ctrl-btn danger" onclick="nhReset()" style="flex:1;">Reset Pile</button>
+      <button class="ctrl-btn" onclick="nhBurst(5)" style="flex:1;" title="Simulate 5 joins at once (mixed platforms).">Burst ×5</button>
+      <button class="ctrl-btn" onclick="nhBurst(20)" style="flex:1;" title="Simulate 20 joins at once (mixed platforms).">Burst ×20</button>
+      <button class="ctrl-btn danger" onclick="nhReset()" style="flex:1;" title="Clear all mascots from the pile.">Reset Pile</button>
     </div>
   </div>
 </div>
@@ -452,9 +461,73 @@ function nhForcePop() {
   if (st) { st.textContent = '💥 forced pop'; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }
 
+/* ── Position/scale nudge UI ───────────────────────────────────── */
+// Each field: fine step on single arrow, coarse step on double arrow. Live-applies.
+const NUDGE_FIELDS = {
+  scale: { suffix: 'scale', fine: 1,  coarse: 5,  fmt: v => v + '%' },
+  x:     { suffix: 'x',     fine: 5,  coarse: 25, fmt: v => (v > 0 ? '+' : '') + v + 'px' },
+  y:     { suffix: 'y',     fine: 5,  coarse: 25, fmt: v => (v > 0 ? '+' : '') + v + 'px' },
+};
+const POS_SPEC = [
+  { key: 'sign',     label: 'JUST JOINED sign', tip: 'The banner that pops above the newest mascot each time someone joins.', fields: ['scale','x','y'] },
+  { key: 'ctr',      label: 'Counter pill',      tip: 'The running "NEW HERE / N joined" counter.', fields: ['scale','x','y'] },
+  { key: 'name',     label: 'Name tags',         tip: 'The small username tags on each mascot in the pile.', fields: ['scale','x','y'] },
+  { key: 'idle',     label: 'Idle prompt',       tip: 'The "Be the first!" prompt shown when nobody has joined yet.', fields: ['scale','x','y'] },
+  { key: 'timer',    label: 'Countdown timer',   tip: 'The countdown timer pill (Starting Soon).', fields: ['scale','x','y'] },
+  { key: 'pressure', label: 'Pressure meter',    tip: 'The pressure / inflation meter that fills as chat joins.', fields: ['scale','x','y'] },
+  { key: 'blob',     label: 'Mascot size',       tip: 'How big each mascot blob is drawn on the pile.', fields: ['scale'] },
+  { key: 'floor',    label: 'Pile floor',        tip: 'The floor line the whole pile sits on. Negative Y raises the pile higher up the screen.', fields: ['y'] },
+];
+const FIELD_LABEL = { scale: 'Scale', x: 'X', y: 'Y' };
+
+function nhInputId(key, field) {
+  // blob only has scale, floor only has y — their input ids match nh-blob-scale / nh-floor-y
+  return `nh-${key}-${NUDGE_FIELDS[field].suffix}`;
+}
+function nhReadout(id) {
+  const el = document.getElementById(id);
+  const field = id.endsWith('-scale') ? 'scale' : id.endsWith('-x') ? 'x' : 'y';
+  const ro = document.getElementById(id + '-ro');
+  if (ro) ro.textContent = NUDGE_FIELDS[field].fmt(parseInt(el.value) || 0);
+}
+function nhNudge(id, delta) {
+  const el = document.getElementById(id);
+  el.value = (parseInt(el.value) || 0) + delta;
+  nhReadout(id);
+  nhApplyConfig(); // apply live
+}
+function renderPosControls() {
+  const root = document.getElementById('pos-controls');
+  if (!root) return;
+  root.innerHTML = POS_SPEC.map(el => {
+    const rows = el.fields.map(f => {
+      const cfg = NUDGE_FIELDS[f];
+      const id = nhInputId(el.key, f);
+      return `<div class="nudge-row">
+        <span class="nlabel">${FIELD_LABEL[f]}</span>
+        <button class="nudge-btn" title="−${cfg.coarse}" onclick="nhNudge('${id}', ${-cfg.coarse})">⟨⟨</button>
+        <button class="nudge-btn" title="−${cfg.fine}" onclick="nhNudge('${id}', ${-cfg.fine})">⟨</button>
+        <span class="nudge-ro" id="${id}-ro">—</span>
+        <button class="nudge-btn" title="+${cfg.fine}" onclick="nhNudge('${id}', ${cfg.fine})">⟩</button>
+        <button class="nudge-btn" title="+${cfg.coarse}" onclick="nhNudge('${id}', ${cfg.coarse})">⟩⟩</button>
+      </div>`;
+    }).join('');
+    return `<div class="nudge-el">
+      <div class="nudge-el-hd">${el.label}<span class="info" title="${el.tip.replace(/"/g,'&quot;')}">?</span></div>
+      ${rows}
+    </div>`;
+  }).join('');
+  nhRefreshReadouts();
+}
+function nhRefreshReadouts() {
+  POS_SPEC.forEach(el => el.fields.forEach(f => nhReadout(nhInputId(el.key, f))));
+}
+
 /* ── Boot ──────────────────────────────────────────────────────── */
 nhLoadSettings();
+renderPosControls();
 nhLoadDisplayConfig();
+nhRefreshReadouts();
 nhRenderEnableBtn();
 </script>
 </body>
