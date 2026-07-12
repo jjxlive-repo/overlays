@@ -156,23 +156,39 @@
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
   }
 
-  /* wooden gift sign — illustrated prop planted at the floor line beside Jamie,
-     rotating through gift → item mappings. Live text/images sit over the blank
-     regions of the sign artwork (positions from SIGN-LAYOUT-MAP). */
+  /* wide wooden treat board — several gift → item mappings shown side by side
+     as carved-in windows, planted at the floor line beside Jamie, rotating
+     through the full mapping list a slot-count at a time. Pure CSS (no baked
+     art) so it scales cleanly to any width, height, font size, or slot count. */
   #gift-showcase {
     position: absolute; z-index: 28; opacity: 0; pointer-events: none;
-    transform-origin: 50% 100%;
+    transform-origin: 50% 100%; box-sizing: border-box;
+    display: flex; align-items: stretch;
     transition: opacity .35s ease, left .3s ease-out, top .3s ease-out;
+    background:
+      repeating-linear-gradient(90deg, #0000000f 0 2px, transparent 2px 40px),
+      linear-gradient(180deg, #A0703F 0%, #7C4F2B 55%, #6B4325 100%);
+    border-radius: 10px;
+    border: 3px solid #2A1608;
+    box-shadow: inset 0 0 0 2px #3B82F670, 0 4px 10px #0007;
   }
-  /* fill (not contain): lets the sign box be stretched taller than the art's
-     natural aspect ratio (heightScale) for more text room, without letterboxing
-     gaps that would throw off the fraction-based content region positions. */
-  #gift-showcase .gs-sign-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
-  #gift-showcase .gs-gift-img { position: absolute; z-index: 2; object-fit: contain; transform: translate(-50%, -50%); }
-  #gift-showcase .gs-action {
-    position: absolute; z-index: 2; transform: translate(-50%, -50%);
-    font: 700 22px 'DM Sans'; color: #3A2A1A; line-height: 1.12;
-    text-align: center; overflow: hidden; overflow-wrap: break-word;
+  .gs-cell {
+    position: relative; flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #FBF3E3 0%, #F2E2C4 100%);
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px #C9AE86, 0 2px 3px #0004;
+  }
+  .gs-cell::before, .gs-cell::after {
+    content: ''; position: absolute; top: 8%; width: 7%; aspect-ratio: 1; max-width: 12px;
+    border-radius: 50%; background: radial-gradient(circle at 35% 35%, #9a9a9a, #3a3a3a);
+  }
+  .gs-cell::before { left: 8%; }
+  .gs-cell::after  { right: 8%; }
+  .gs-cell-img { width: 46%; aspect-ratio: 1; object-fit: contain; }
+  .gs-cell-label {
+    font: 700 16px 'DM Sans'; color: #3A2A1A; line-height: 1.05;
+    text-align: center; overflow: hidden; overflow-wrap: break-word; max-width: 92%;
   }
 
   /* floating video-game trigger text above Jamie when a mapped gift lands */
@@ -242,11 +258,7 @@
   <div id="prompt-pill"></div>
   <div id="event-label"></div>
   <div id="like-meter"></div>
-  <div id="gift-showcase" aria-label="TikTok gift actions">
-    <img class="gs-sign-art" alt="">
-    <img class="gs-gift-img" alt="">
-    <div class="gs-action"></div>
-  </div>
+  <div id="gift-showcase" aria-label="TikTok gift actions"></div>
   <div id="gift-float-layer" aria-live="polite"></div>
   <div id="debug-hud"></div>
   <div id="conn-dot" title="Ably connection"></div>
@@ -346,11 +358,12 @@ const FJ_DEFAULT_CONFIG = {
     usernameEvents: {       /* which events display the viewer's username */
       follow: true, keyword: false, gift: true, subscribe: true, heartMe: true
     },
-    giftShowcase: {   /* illustrated wooden sign rotating through gift → item mappings */
+    giftShowcase: {   /* wide wooden treat board — N cells rotating through gift → item mappings */
       enabled: true, anchorToJamie: true, gap: 15, x: 420, floorOffset: 4,
       width: 365, intervalSec: 7, transitionMs: 350,
-      heightScale: 1, /* stretch the sign taller than its natural aspect for more text room */
-      fontScale: 1    /* independent text-size multiplier, on top of width-based scaling */
+      heightScale: 1, /* stretch the board taller than its default proportions for more text room */
+      fontScale: 1,   /* independent text-size multiplier, on top of per-cell-width scaling */
+      slots: 3        /* how many gift cells are shown side by side at once */
     },
     giftFloatText: {  /* video-game floating text above Jamie when a mapped gift lands */
       enabled: true, xOffset: 0, yOffset: -45, durationMs: 1500, risePx: 26,
@@ -445,6 +458,7 @@ function fjValidateConfig() {
   gsc.width = Math.min(Math.max(num(gsc.width, 365), 100), 520);
   gsc.heightScale = Math.min(Math.max(num(gsc.heightScale, 1), 0.6), 3);
   gsc.fontScale = Math.min(Math.max(num(gsc.fontScale, 1), 0.5), 3);
+  gsc.slots = Math.min(Math.max(Math.round(num(gsc.slots, 3)), 1), 4);
   gsc.intervalSec = Math.min(Math.max(num(gsc.intervalSec, 7), 2), 30);
   gsc.transitionMs = Math.min(Math.max(num(gsc.transitionMs, 350), 0), 1000);
   if (!c.visuals.giftFloatText || typeof c.visuals.giftFloatText !== 'object') c.visuals.giftFloatText = {};
@@ -1148,31 +1162,37 @@ function applyLayout() {
   applyGiftShowcaseLayout();
 }
 
-/* ── wooden gift sign layout (SIGN-LAYOUT-MAP.json values baked in) ── */
-/* art was cropped 2026-07-11 to drop the signpost stick and excess wood
-   margin (was 1127x957 with the parchment using ~42% of the canvas height;
-   now 1095x520 with the parchment using ~78%) so content reads at small
-   sizes instead of getting lost in a tall, mostly-empty sign. */
-const SIGN_ASPECT_W = 1095, SIGN_ASPECT_H = 520;
-/* no gift-name or detail line: the gift image already identifies the gift,
-   so the whole text column is given to the single trigger-action word. */
-const SIGN_REGIONS = {
-  giftImage:  { cx: 0.300, cy: 0.529, d: 0.268 },
-  actionText: { cx: 0.648, cy: 0.529, w: 0.402, h: 0.65 }
-};
-/* font sizes below were tuned at this reference width; they scale linearly
-   with the configured sign width so shrinking the sign shrinks text with it
-   instead of leaving fixed-px text to overflow a shrunken region. */
-const SIGN_FONT_REF_WIDTH = 365;
-let signArtOk = false;
+/* ── wide wooden treat board layout: N cells side by side, each holding a
+   gift image + one-word label, sized purely from CSS/flexbox (no baked art)
+   so it scales cleanly at any width, height, font size, or slot count. ── */
+const BOARD_FONT_REF_CELL_WIDTH = 120; /* label font size tuned at this per-cell width */
+function ensureBoardCells(gs, n) {
+  let cells = Array.from(gs.querySelectorAll('.gs-cell'));
+  while (cells.length < n) {
+    const cell = document.createElement('div');
+    cell.className = 'gs-cell';
+    const img = document.createElement('img');
+    img.className = 'gs-cell-img';
+    img.alt = '';
+    const label = document.createElement('div');
+    label.className = 'gs-cell-label';
+    cell.appendChild(img);
+    cell.appendChild(label);
+    gs.appendChild(cell);
+    cells.push(cell);
+  }
+  while (cells.length > n) { gs.removeChild(cells.pop()); }
+  return cells;
+}
 function applyGiftShowcaseLayout() {
   const gs = $('gift-showcase');
   const sc = CFG.visuals.giftShowcase;
   const width = sc.width;
-  /* heightScale stretches the sign (and its art, via object-fit:fill) taller
-     than its natural aspect ratio for more text room — content region
-     fractions still line up since both the art and the regions scale together. */
-  const height = width * SIGN_ASPECT_H / SIGN_ASPECT_W * (sc.heightScale || 1);
+  const slots = sc.slots || 3;
+  const cellWidth = width / slots;
+  /* heightScale stretches the board taller than its default proportions for
+     more label room, independent of width/slot count. */
+  const height = cellWidth * 1.2 * (sc.heightScale || 1);
   let x = sc.x;
   if (sc.anchorToJamie) {
     const rightX = jamieRect.x + jamieRect.w + sc.gap;
@@ -1187,33 +1207,19 @@ function applyGiftShowcaseLayout() {
   gs.style.top = y + 'px';
   gs.style.width = width + 'px';
   gs.style.height = height + 'px';
+  const cellGap = Math.max(2, Math.round(cellWidth * 0.06));
+  gs.style.gap = cellGap + 'px';
+  gs.style.padding = cellGap + 'px';
   gs.style.transition = `opacity ${sc.transitionMs}ms ease, left .3s ease-out, top .3s ease-out`;
-  /* live content regions over the blank areas of the artwork */
-  const px = (n, base) => Math.round(n * base) + 'px';
-  const gi = gs.querySelector('.gs-gift-img');
-  gi.style.left = px(SIGN_REGIONS.giftImage.cx, width);
-  gi.style.top = px(SIGN_REGIONS.giftImage.cy, height);
-  gi.style.width = gi.style.height = px(SIGN_REGIONS.giftImage.d, width);
-  const ga = gs.querySelector('.gs-action');
-  ga.style.left = px(SIGN_REGIONS.actionText.cx, width);
-  ga.style.top = px(SIGN_REGIONS.actionText.cy, height);
-  ga.style.width = px(SIGN_REGIONS.actionText.w, width);
-  ga.style.maxHeight = px(SIGN_REGIONS.actionText.h, height);
-  /* text scales with sign width (so a shrunk sign shrinks its text instead
-     of overflowing) times the independent fontScale knob for direct control. */
-  const fs = (width / SIGN_FONT_REF_WIDTH) * (sc.fontScale || 1);
-  ga.dataset.baseFontPx = Math.max(7, Math.round(22 * fs));
-  ga.style.fontSize = ga.dataset.baseFontPx + 'px';
-}
-function loadSignArt() {
-  const art = $('gift-showcase').querySelector('.gs-sign-art');
-  art.onload = () => { signArtOk = true; };
-  art.onerror = () => {
-    signArtOk = false;
-    assetWarnings.push('missing: ui/jamie-gift-wood-sign.png (gift sign hidden)');
-    if (CFG.debug.showWarnings) console.warn('[feed-jamie] wooden sign art missing');
-  };
-  art.src = fjAssetUrl('ui/jamie-gift-wood-sign.png');
+  const cells = ensureBoardCells(gs, slots);
+  /* text scales with per-cell width (so a shrunk board shrinks its text
+     instead of overflowing) times the independent fontScale knob. */
+  const fs = (cellWidth / BOARD_FONT_REF_CELL_WIDTH) * (sc.fontScale || 1);
+  cells.forEach(cell => {
+    const label = cell.querySelector('.gs-cell-label');
+    label.dataset.baseFontPx = Math.max(7, Math.round(16 * fs));
+    label.style.fontSize = label.dataset.baseFontPx + 'px';
+  });
 }
 function isFlipped() {
   /* default art faces right when Jamie sits on the left */
@@ -2084,10 +2090,9 @@ async function healGiftImages() {
     fillGiftImgs();
   } catch (e) { /* catalog unavailable — name-only cards */ }
 }
-function setSignContent(m) {
-  const gs = $('gift-showcase');
+function setCellContent(cell, m) {
   const defaults = GIFT_ACTION_DEFAULTS[m.itemType] || {};
-  const img = gs.querySelector('.gs-gift-img');
+  const img = cell.querySelector('.gs-cell-img');
   if (m.giftImg) {
     img.style.display = 'block';
     img.onerror = () => { img.style.display = 'none'; };
@@ -2095,17 +2100,18 @@ function setSignContent(m) {
   } else {
     img.style.display = 'none';
   }
-  const action = gs.querySelector('.gs-action');
-  action.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
-  /* auto-fit the action line: shrink from its width/height/font-scaled base
-     font until it fits its region (never below ~65% of that base). */
-  const scw = CFG.visuals.giftShowcase;
-  const regionH = SIGN_REGIONS.actionText.h * (scw.width * SIGN_ASPECT_H / SIGN_ASPECT_W * (scw.heightScale || 1));
-  const baseSize = +action.dataset.baseFontPx || Math.round(22 * (scw.width / SIGN_FONT_REF_WIDTH) * (scw.fontScale || 1));
+  const label = cell.querySelector('.gs-cell-label');
+  label.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
+  /* auto-fit: shrink from the cell's width/height/font-scaled base font
+     until the label fits its cell (never below ~65% of that base). */
+  const sc = CFG.visuals.giftShowcase;
+  const cellHeight = (sc.width / (sc.slots || 3)) * 1.2 * (sc.heightScale || 1);
+  const regionH = cellHeight * 0.4; /* label gets roughly the bottom 40% of the cell */
+  const baseSize = +label.dataset.baseFontPx || 16;
   const minSize = Math.max(6, Math.round(baseSize * 0.65));
   for (let size = baseSize; size >= minSize; size--) {
-    action.style.fontSize = size + 'px';
-    if (action.scrollHeight <= regionH + 2) break;
+    label.style.fontSize = size + 'px';
+    if (label.scrollHeight <= regionH + 2) break;
   }
 }
 let showcaseIdx = 0, showcaseTimer = null;
@@ -2114,17 +2120,21 @@ function giftShowcaseLoop() {
   healGiftImages();
   const gs = $('gift-showcase');
   const sc = CFG.visuals.giftShowcase;
+  const slots = sc.slots || 3;
   const maps = (CFG.events.giftMappings || []).filter(m => m.giftName && (GIFT_ACTION_DEFAULTS[m.itemType] || GIFT_ITEM_LABELS[m.itemType]));
-  if (!sc.enabled || !maps.length || J.hidden || !signArtOk) {
+  if (!sc.enabled || !maps.length || J.hidden) {
     gs.style.opacity = 0;
     showcaseTimer = setTimeout(giftShowcaseLoop, 2000);
     return;
   }
-  /* content swaps instantly, in place — the sign itself stays visible and
-     only the image/text change, no fade-out/fade-in between rotations. */
-  const m = maps[showcaseIdx % maps.length];
+  /* content swaps instantly, in place — the board itself stays visible and
+     only each cell's image/text change, no fade-out/fade-in between rotations.
+     Rotates a full slots-sized group at a time; wraps around (padding with
+     repeats) so the board is always full even when maps.length < slots. */
+  const cells = ensureBoardCells(gs, Math.min(slots, maps.length));
+  const start = (showcaseIdx * slots) % maps.length;
+  cells.forEach((cell, i) => setCellContent(cell, maps[(start + i) % maps.length]));
   showcaseIdx++;
-  setSignContent(m);
   gs.style.opacity = 1;
   showcaseTimer = setTimeout(giftShowcaseLoop, sc.intervalSec * 1000);
 }
@@ -2439,7 +2449,6 @@ applyMotionVar();
 showFrame('jamie-idle-01.png', { instant: true });
 setJamieState('IDLE');
 promptLoop();
-loadSignArt();
 giftShowcaseLoop();
 initComms();
 fjLoadAssets();
