@@ -3749,8 +3749,10 @@ let _dockRawScore = 0;  // kept for bean-boozled reset only
 const _DOCK_MAX_RAW = 200;  // kept so bean-boozled reset math works
 
 /* ── Publish engagement event → gift-bar hype meter ── */
-function publishMilk(type, platform, username) {
-  if (ablyChannel) ablyChannel.publish('milk-event', { type, platform: platform || 'other', username: username || null }).catch(() => {});
+function publishMilk(type, platform, username, message) {
+  const payload = { type, platform: platform || 'other', username: username || null };
+  if (message) payload.message = message; // needed by Feed Jamie's YouTube comment/keyword listener
+  if (ablyChannel) ablyChannel.publish('milk-event', payload).catch(() => {});
   // No local scoring — dock bar syncs exclusively via milk-pct from overlay
 }
 
@@ -3983,7 +3985,7 @@ function handleMsg(data) {
       }
     }
     if(isTT)_evtCounts.tt_comment++; if(isYT)_evtCounts.yt_comment++; _updateEvtDebug();
-    publishMilk('comment', _platH, data.chatname);
+    publishMilk('comment', _platH, data.chatname, data.chatmessage);
   }
 
   if (isGift) {
