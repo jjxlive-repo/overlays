@@ -167,6 +167,29 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
       <label style="width:78px;">Edge inset</label>
       <input type="range" id="nh-lane-inset" min="0" max="250" step="5" value="28" oninput="nhFmtLane();nhApplyConfig()"><span class="rng-v" id="nh-lane-inset-v">28px</span>
     </div>
+    <div class="ctrl-row" title="Glossy 3D shading on the mascots (all modes). Lower = flatter, matte, less distracting; 0 = solid flat color.">
+      <label style="width:78px;">Luminosity</label>
+      <input type="range" id="nh-gloss" min="0" max="100" step="5" value="100" oninput="nhFmtLane();nhApplyConfig()"><span class="rng-v" id="nh-gloss-v">100%</span>
+    </div>
+  </div>
+
+  <!-- BALLOON EVOLUTION / TIERS -->
+  <div class="card">
+    <h2>Balloon evolution <span class="info" title="Balloons mode retention mechanic: every comment earns progress; crossing a threshold evolves the balloon to the next of 10 tiers (new color + effects) with a level-up burst. Early tiers come fast to hook new chatters.">?</span></h2>
+    <label class="chk-row" title="Turn the whole 10-tier evolution + command system on or off."><input type="checkbox" id="nh-tier-enabled" checked onchange="nhApplyConfig()"><span>Enable evolution &amp; commands</span></label>
+    <label class="chk-row" title="Show the little 'Lv N' badge on each balloon."><input type="checkbox" id="nh-tier-label" checked onchange="nhApplyConfig()"><span>Show &quot;Lv N&quot; badge</span></label>
+    <p class="hint" style="margin:6px 0 2px;">Tiers (comments): 1·3·6·10·16·24·34·48·66·90 → Balloon→Shiny→Glow→Twinkle→Aura→Starlit→Crowned→Prism→Radiant→Legendary</p>
+    <p class="hint" style="margin:2px 0;">Chat commands (unlock by tier): <b>!balloon1</b> dance (Lv3) · <b>!balloon2</b> sparkle (Lv5) · <b>!balloon3</b> float up (Lv7) · <b>!balloon4</b> pop &amp; drop (Lv9)</p>
+    <div class="ctrl-row" style="margin-top:6px;">
+      <input class="ctrl-in" id="nh-evo-name" type="text" placeholder="test username" value="Legend" title="Name of the test balloon for the buttons below." style="flex:1;min-width:0;">
+      <button class="ctrl-btn" onclick="nhEvolveTest()" title="Send 95 comments from this user so it evolves all the way to Legendary (Lv 10), unlocking every command.">Evolve →Lv10</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon1')" style="flex:1;" title="Make the test balloon dance (needs Lv3).">💃 Dance</button>
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon2')" style="flex:1;" title="Make it sparkle (needs Lv5).">✨ Sparkle</button>
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon3')" style="flex:1;" title="Make it float higher (needs Lv7).">⬆ Float</button>
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon4')" style="flex:1;" title="Pop it and drop it back to the bottom (needs Lv9).">💥 Pop</button>
+    </div>
   </div>
 
   <!-- PILL TOGGLES -->
@@ -350,6 +373,9 @@ function nhApplyConfig() {
   const floorOffset = parseInt(document.getElementById('nh-floor-y').value);
   const laneWidth   = parseInt(document.getElementById('nh-lane-width').value);
   const laneInset   = parseInt(document.getElementById('nh-lane-inset').value);
+  const gloss       = parseInt(document.getElementById('nh-gloss').value) / 100;
+  const tierEnabled = document.getElementById('nh-tier-enabled').checked;
+  const tierLabelOn = document.getElementById('nh-tier-label').checked;
   const blobScale   = parseInt(document.getElementById('nh-blob-scale').value) / 100;
   const nameScale   = parseInt(document.getElementById('nh-name-scale').value) / 100;
   const nameXOffset = parseInt(document.getElementById('nh-name-x').value);
@@ -382,7 +408,7 @@ function nhApplyConfig() {
   const cfg = {
     signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
     signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
-    laneWidth, laneInset,
+    laneWidth, laneInset, gloss, tierEnabled, tierLabelOn,
     blobScale, nameScale, nameXOffset, nameYOffset,
     idleScale, idleXOffset, idleYOffset,
     timerLabel, timerScale, timerXOffset, timerYOffset,
@@ -413,7 +439,9 @@ function nhLoadDisplayConfig() {
     setPct('nh-timer-scale', c.timerScale); setNum('nh-timer-x', c.timerXOffset); setNum('nh-timer-y', c.timerYOffset);
     setPct('nh-pressure-scale', c.pressureScale); setNum('nh-pressure-x', c.pressureXOffset); setNum('nh-pressure-y', c.pressureYOffset);
     setPct('nh-blob-scale', c.blobScale); setNum('nh-floor-y', c.floorOffset);
-    setNum('nh-lane-width', c.laneWidth); setNum('nh-lane-inset', c.laneInset); nhFmtLane();
+    setNum('nh-lane-width', c.laneWidth); setNum('nh-lane-inset', c.laneInset);
+    setPct('nh-gloss', c.gloss); nhFmtLane();
+    setChk('nh-tier-enabled', c.tierEnabled); setChk('nh-tier-label', c.tierLabelOn);
     setTxt('nh-sign-label', c.signLabel); setTxt('nh-ctr-label', c.ctrLabel); setTxt('nh-ctr-format', c.ctrFormat);
     setTxt('nh-idle-title', c.idleTitle); setTxt('nh-idle-sub', c.idleSub); setTxt('nh-timer-label', c.timerLabel);
     setTxt('nh-pressure-label', c.pressureLabel); setTxt('nh-pop-label', c.popLabel);
@@ -436,9 +464,10 @@ function nhLoadDisplayConfig() {
 }
 
 function nhFmtLane() {
-  const w = document.getElementById('nh-lane-width'), i = document.getElementById('nh-lane-inset');
+  const w = document.getElementById('nh-lane-width'), i = document.getElementById('nh-lane-inset'), g = document.getElementById('nh-gloss');
   if (w) document.getElementById('nh-lane-width-v').textContent = w.value + 'px';
   if (i) document.getElementById('nh-lane-inset-v').textContent = i.value + 'px';
+  if (g) document.getElementById('nh-gloss-v').textContent = g.value + '%';
 }
 function nhNamePersistSec() {
   if (document.getElementById('nh-name-forever').checked) return 999;
@@ -573,6 +602,23 @@ function nhChatMix(n) {
   }
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ chat mix ×${n}`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+
+// Evolve a test balloon all the way to Legendary (Lv10) so every command unlocks.
+function nhEvolveTest() {
+  const name = (document.getElementById('nh-evo-name').value.trim() || 'Legend');
+  const source = document.getElementById('nh-test-src')?.value || 'youtube';
+  for (let i = 0; i < 95; i++) nhPublishJoin(name, source);
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ evolving ${name} → Lv10`; setTimeout(() => { st.textContent = '—'; }, 2500); }
+}
+// Fire a balloon command on the test user (overlay checks their tier unlock).
+function nhSendCmd(cmd) {
+  const name = (document.getElementById('nh-evo-name').value.trim() || 'Legend');
+  const source = document.getElementById('nh-test-src')?.value || 'youtube';
+  if (ablyChannel) ablyChannel.publish('new-here', { username: name, source, cmd }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ ${cmd} → ${name}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }
 
 // Send N comments from the SAME user so you can watch one mascot grow.
