@@ -2562,8 +2562,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 }
 .cp-dot.active { background: #C084FC; transform: scale(1.5); }
 
-/* ── Ably connection dot ── */
-#conn-dot{position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;background:#555;z-index:9999;transition:background .3s,box-shadow .3s;}
+/* ── Ably connection dot — hidden on the broadcast overlay; check stream-dock.html for status ── */
+#conn-dot{display:none;position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;background:#555;z-index:9999;transition:background .3s,box-shadow .3s;}
 
 /* ══ LIVE TEXT PILL — floats above bar, slides up to show ══ */
 #live-text-pill {
@@ -3348,7 +3348,8 @@ function getTier(a,t){
 /* ══ GIFT BAR PARTICLES ══ */
 const pCanvas=document.getElementById('particle-canvas'),pCtx=pCanvas.getContext('2d');
 let pList=[],pRaf=null;
-function emitParticles(tier,plat){const cfg=TIER_CONFIG[tier];if(!cfg||cfg.particles===0)return;const colors=PLAT_COLORS[plat].particles;for(let i=0;i<cfg.particles;i++){const a=Math.random()*Math.PI*2,sp=(3+Math.random()*tier*3.2)*(0.6+Math.random()*0.8);pList.push({x:200+Math.random()*680,y:455+Math.random()*20,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-1,color:colors[Math.floor(Math.random()*colors.length)],size:2+Math.random()*tier*1.5,life:0.7+Math.random()*0.3,decay:0.003+Math.random()*(0.007/Math.max(tier,1)),type:Math.random()<0.5?'rect':'circle',rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.12});}if(!pRaf)pTick();}
+const PARTICLE_POOL_CAP=800;/* several large gifts within seconds could otherwise push this into the thousands, tanking full-canvas redraw right when a raid needs it least */
+function emitParticles(tier,plat){const cfg=TIER_CONFIG[tier];if(!cfg||cfg.particles===0)return;const colors=PLAT_COLORS[plat].particles;for(let i=0;i<cfg.particles;i++){const a=Math.random()*Math.PI*2,sp=(3+Math.random()*tier*3.2)*(0.6+Math.random()*0.8);pList.push({x:200+Math.random()*680,y:455+Math.random()*20,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-1,color:colors[Math.floor(Math.random()*colors.length)],size:2+Math.random()*tier*1.5,life:0.7+Math.random()*0.3,decay:0.003+Math.random()*(0.007/Math.max(tier,1)),type:Math.random()<0.5?'rect':'circle',rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.12});}if(pList.length>PARTICLE_POOL_CAP)pList.splice(0,pList.length-PARTICLE_POOL_CAP);if(!pRaf)pTick();}
 function pTick(){pCtx.clearRect(0,0,1080,1920);pList=pList.filter(p=>p.life>0.01);for(const p of pList){p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.vx*=0.993;p.life-=p.decay;p.rot+=p.rotV;pCtx.save();pCtx.globalAlpha=Math.max(0,Math.min(1,p.life));pCtx.fillStyle=p.color;pCtx.translate(p.x,p.y);pCtx.rotate(p.rot);if(p.type==='rect'){pCtx.fillRect(-p.size*.5,-p.size,p.size,p.size*2);}else{pCtx.beginPath();pCtx.arc(0,0,p.size/2,0,Math.PI*2);pCtx.fill();}pCtx.restore();}pCtx.globalAlpha=1;pRaf=pList.length?requestAnimationFrame(pTick):null;}
 function clearParticles(){pList=[];if(pRaf){cancelAnimationFrame(pRaf);pRaf=null;}pCtx.clearRect(0,0,1080,1920);}
 
@@ -4325,8 +4326,10 @@ const LEAGUE_SPRINT = (() => {
   // queue. This is the ONLY destination for card-art events (Card Pull, Show Card, Rebirth,
   // Promotion, Demotion, New Champion, Boss Reward, Rank-up). One at a time, queued, never
   // a text log, never duel acknowledgements/errors (those go to micro pills / duel result pill).
+  const CARD_DOCK_QUEUE_CAP = 10; // ~70s max backlog at the ~6.8-7.6s linger per item
   function enqueueCardDock(eventType, card, label, lingerMs, opts = {}) {
     cardDockQueue.push({ eventType, card, label, lingerMs, opts });
+    while (cardDockQueue.length > CARD_DOCK_QUEUE_CAP) cardDockQueue.shift();
     processCardDockQueue();
   }
   function processCardDockQueue() {
@@ -4350,8 +4353,10 @@ const LEAGUE_SPRINT = (() => {
   }
   // Duel Result Pill: separate from zone 8 micro pills, sits just above the Duel Stage /
   // Card Event Dock strip, results only, queues multiple results so nothing gets clobbered.
+  const DUEL_RESULT_QUEUE_CAP = 8; // ~34s max backlog at the ~4.2s linger per item
   function enqueueDuelResultPill(text, kind = 'result') {
     duelResultQueue.push({ text, kind });
+    while (duelResultQueue.length > DUEL_RESULT_QUEUE_CAP) duelResultQueue.shift();
     processDuelResultQueue();
   }
   function processDuelResultQueue() {
@@ -6959,12 +6964,6 @@ ablyChannel.subscribe('top-gifters',msg=>{
     if(txt   && typeof d.text === 'string' && d.text.trim()) txt.textContent = d.text;
     if(strip && d.visible !== undefined) strip.classList.toggle('visible', !!d.visible);
     if(strip && d.commandStrip !== undefined) strip.classList.toggle('ls-command-strip', !!d.commandStrip);
-  });
-
-  ablyChannel.subscribe('milk-cta', msg => {
-    const text = msg.data?.text || '';
-    const el = document.getElementById('bb-cta-text');
-    if(el) el.textContent = text || 'to Bean Boozled';
   });
 
   // Dock controls bait text + visibility

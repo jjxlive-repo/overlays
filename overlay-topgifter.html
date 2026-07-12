@@ -28,7 +28,9 @@ html, body {
   --youtube: #ff0000;
   --direct: #22c55e;
 }
+/* hidden on the broadcast overlay; check stream-dock.html for status */
 #status-dot {
+  display: none;
   position: fixed;
   top: 18px;
   right: 18px;
@@ -53,7 +55,14 @@ html, body {
   width: 1080px;
   height: 1920px;
 }
-/* Idle carousel lives in the bottom-right safe area. The tracker decides what slot is pinned/enabled. */
+/* Idle carousel lives in the bottom-right safe area. The tracker decides what slot is pinned/enabled.
+   NOTE: bottom-anchored inside #stage, which spans the full 1080x1920 canvas — this is the one
+   real violation of the "never anchor to bottom:" rule in this file (unlike giftr-overlay.html's
+   bar elements, which are nested in a small fixed-position bar and aren't viewport-relative).
+   Left as bottom: rather than guessed at a top: pixel value, because min-height means the card
+   grows upward as content changes — converting to top: without knowing the real clip margin in
+   TikTok Studio risks a worse regression than the current (unverified) clipping risk. Verify in
+   TikTok Studio before changing. */
 #idle-card {
   position: absolute;
   right: 54px;
@@ -330,6 +339,11 @@ let slides = [];
 let slideIndex = 0;
 let rotateTimer = null;
 let alertTimer = null;
+// Without a queue, a burst of gifts just stomps the display with whatever arrived
+// last — earlier gifts in the same burst never got their own moment on screen.
+let alertQueue = [];
+let alertBusy = false;
+const MAX_ALERT_QUEUE = 8;
 const canvas = document.getElementById('particles');
 const ctx = canvas.getContext('2d');
 const particles = [];
@@ -441,6 +455,15 @@ function handleGiftAlert(alert) {
     alertTimer = setTimeout(() => { idle.card.classList.remove('micro-alert'); rotateIdle(); }, 5000);
     return;
   }
+  if (alertBusy) {
+    alertQueue.push(alert);
+    while (alertQueue.length > MAX_ALERT_QUEUE) alertQueue.shift();
+    return;
+  }
+  showGiftAlert(alert, cls);
+}
+function showGiftAlert(alert, cls) {
+  alertBusy = true;
   const classList = ['active','center','big','loud','third','mega'];
   alertEls.wrap.classList.remove(...classList);
   alertEls.name.textContent = alert.name || 'Unknown';
@@ -462,7 +485,14 @@ function handleGiftAlert(alert) {
   spawnBurst(540, 930, particlePlan[0], particlePlan[1]);
   setTimeout(() => spawnBurst(540, 780, Math.floor(particlePlan[0]*.45), particlePlan[1]*.85), 420);
   clearTimeout(alertTimer);
-  alertTimer = setTimeout(() => alertEls.wrap.classList.remove(...classList), cls === 'center' ? 6300 : 7600);
+  alertTimer = setTimeout(() => {
+    alertEls.wrap.classList.remove(...classList);
+    alertBusy = false;
+    if (alertQueue.length) {
+      const next = alertQueue.shift();
+      showGiftAlert(next, tierClass(next));
+    }
+  }, cls === 'center' ? 6300 : 7600);
 }
 /* Legacy leaderboard support: if the old leaderboard event comes in, use it as a fallback idle slide. */
 function updateLegacyLeaderboard(data) {

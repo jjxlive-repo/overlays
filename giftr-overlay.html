@@ -414,8 +414,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   100% { opacity: 0; transform: translateX(110%); }
 }
 
-/* ─── STATUS DOT ─── */
+/* ─── STATUS DOT — hidden on the broadcast overlay; check stream-dock.html for status ─── */
 #status-dot {
+  display: none;
   position: absolute; top: 456px; left: 8px;
   width: 6px; height: 6px; border-radius: 50%;
   background: #444; z-index: 30; transition: background 0.3s;
@@ -728,10 +729,12 @@ function onGiftrData(data) {
 }
 
 /* ══ GIFT ALERT SYSTEM ═══════════════════════════════════ */
+const MAX_ALERT_QUEUE = 8;
 function onGiftAlert(data) {
   const tier = getTier(data.amount, data.type);
   if (tier === 0) return;
   alertQueue.push({ ...data, tier });
+  while (alertQueue.length > MAX_ALERT_QUEUE) alertQueue.shift();
   if (!alertActive) runNextAlert();
 }
 
@@ -746,7 +749,8 @@ function runNextAlert() {
 }
 
 function showAlert(alert) {
-  const { name, amount, type, platform, note, tier } = alert;
+  const { name, amount, type, platform, message, tier } = alert;
+  const safeName = name || 'Someone';
   const plat = platKey(platform);
   const pc   = PLAT_COLORS[plat];
   const cfg  = TIER_CONFIG[tier];
@@ -756,7 +760,7 @@ function showAlert(alert) {
   clearTimeout(panelTimer);
 
   // ── Bar: update "JUST GIFTED" info in right section ──
-  setBarInfo('JUST GIFTED', name.toUpperCase(), fmtAmount(amount, type), pc.edge, platLabel(platform), 'bar-plat plat-'+plat, false);
+  setBarInfo('JUST GIFTED', safeName.toUpperCase(), fmtAmount(amount, type), pc.edge, platLabel(platform), 'bar-plat plat-'+plat, false);
 
   if (tier === 1) {
     // T1: bar-only shimmer, no panel
@@ -772,7 +776,7 @@ function showAlert(alert) {
   panelOpen = true;
 
   // Update hero name/amount and expand bar
-  document.getElementById('bar-hero-name').textContent = name.toUpperCase();
+  document.getElementById('bar-hero-name').textContent = safeName.toUpperCase();
   const heroAmt = document.getElementById('bar-hero-amount');
   heroAmt.textContent = fmtAmount(amount, type);
   heroAmt.style.color = pc.edge;
@@ -792,12 +796,12 @@ function showAlert(alert) {
 
   const badge = document.getElementById('panel-plat-badge');
   badge.className = 'plat-'+plat; badge.textContent = platLabel(platform);
-  document.getElementById('gift-name').textContent = name.toUpperCase();
+  document.getElementById('gift-name').textContent = safeName.toUpperCase();
   document.getElementById('gift-amount').textContent = fmtAmount(amount, type);
   document.getElementById('panel-tier-label').textContent = TIER_LABELS[tier] ?? '';
   document.getElementById('gift-divider').style.background = `linear-gradient(90deg,transparent,${pc.edge},transparent)`;
   const msgEl = document.getElementById('gift-message');
-  if (note && type === 'youtube_superchat') { msgEl.textContent = note; msgEl.classList.add('show'); }
+  if (message && type === 'youtube_superchat') { msgEl.textContent = message; msgEl.classList.add('show'); }
   else { msgEl.textContent = ''; msgEl.classList.remove('show'); }
 
   content.classList.remove('show');
@@ -875,7 +879,9 @@ function onGiftrCmd(data) {
     client.connection.on('connected',    () => { dot.className = 'connected'; });
     client.connection.on('disconnected', () => { dot.className = ''; });
     client.connection.on('connecting',   () => { dot.className = 'connecting'; });
-    client.connection.once('connected', () => channel.publish('cmd','requestLeaderboard').catch(()=>{}));
+    // .on (not .once) so a reconnect after a network blip also re-requests fresh data —
+    // otherwise the leaderboard silently goes stale for the rest of the stream.
+    client.connection.on('connected', () => channel.publish('cmd','requestLeaderboard').catch(()=>{}));
     channel.subscribe('giftr',      msg => onGiftrData(msg.data));
     channel.subscribe('gift-alert', msg => onGiftAlert(msg.data));
     channel.subscribe('giftr-cmd',  msg => onGiftrCmd(msg.data));
