@@ -802,8 +802,8 @@ function applyOverlaySettings(settings = {}) {
   if (settings.maxMessages != null) {
     CONFIG.chat.maxMessages = Math.max(1, Math.min(8, Number(settings.maxMessages) || CONFIG.chat.maxMessages));
     while (chatQueue.length > CONFIG.chat.maxMessages) {
-      chatQueue.shift();
-      removeOldestChatElement();
+      const stale = chatQueue.shift();
+      if (stale) removeChatElementById(stale.id);
     }
   }
   if (settings.showFollowsAsEvents != null) {
@@ -833,10 +833,12 @@ function loadOverlaySettings() {
 }
 
 function sanitizeText(value) {
-  return String(value ?? "").replace(/[<>&]/g, char => ({
+  return String(value ?? "").replace(/[<>&"']/g, char => ({
     "<": "&lt;",
     ">": "&gt;",
-    "&": "&amp;"
+    "&": "&amp;",
+    '"': "&quot;",
+    "'": "&#39;"
   }[char]));
 }
 
@@ -1151,8 +1153,8 @@ function addChatMessage({ platform = "unknown", username = "Viewer", message = "
   renderChatMessage(item);
 
   while (chatQueue.length > CONFIG.chat.maxMessages) {
-    chatQueue.shift();
-    removeOldestChatElement();
+    const stale = chatQueue.shift();
+    if (stale) removeChatElementById(stale.id);
   }
 }
 
@@ -1178,13 +1180,17 @@ function renderChatMessage(item) {
   chatList.appendChild(row);
 
   if (overlay.dataset.style === "chips") {
-    window.setTimeout(() => removeChatElement(row), CONFIG.chat.messageLifetime);
+    window.setTimeout(() => {
+      removeChatElement(row);
+      const idx = chatQueue.findIndex(q => q.id === item.id);
+      if (idx !== -1) chatQueue.splice(idx, 1);
+    }, CONFIG.chat.messageLifetime);
   }
 }
 
-function removeOldestChatElement() {
-  const oldest = chatList.querySelector(".chat-message");
-  if (oldest) removeChatElement(oldest);
+function removeChatElementById(id) {
+  const el = chatList.querySelector(`[data-id="${id}"]`);
+  if (el) removeChatElement(el);
 }
 
 function removeChatElement(el) {
@@ -1198,6 +1204,10 @@ function showEvent({ type = "system", username = "", text = "", value = "", icon
   const item = { type, username, text, value, icon };
   if (activeEvent && CONFIG.events.queue) {
     eventQueue.push(item);
+    // Cap the backlog so a sustained burst (raid/gift storm) can't queue minutes of
+    // now-stale toasts that keep firing long after the burst itself has ended.
+    const MAX_QUEUED_EVENTS = 5;
+    while (eventQueue.length > MAX_QUEUED_EVENTS) eventQueue.shift();
     return;
   }
   renderEvent(item);

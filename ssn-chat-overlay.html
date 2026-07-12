@@ -1,9 +1,15 @@
+<!--
+  Standalone overlay: connects directly to a Social Stream Ninja WebSocket join link
+  (see the SESSION/join code below) and is NOT wired to Ably or any dock/controller
+  page in this repo. In particular, ssn-chat-controller.html does not affect this file
+  despite the similar name — that controller instead drives jjxlive-chat-box.html.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
-<title>SSN Filtered Chat Overlay</title>
+<title>SSN Filtered Chat Overlay (standalone, no controller)</title>
 <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Chewy&family=DM+Sans:wght@500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; }
@@ -558,10 +564,25 @@ function viewerStatus(data, platform) {
   return null;
 }
 
+const SSN_ALLOWED_IMAGE_HOSTS = /(^|\.)(tiktokcdn|ttlivecdn|byteoversea|ibyteimg|akamaized|giphy|tenor|socialstream|ggpht|googleusercontent|ytimg)\.[a-z.]+$/i;
+function ssnIsLikelyImageUrl(url) {
+  try {
+    const parsed = new URL(url, location.href);
+    return /^https?:$/.test(parsed.protocol) &&
+      (/\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(parsed.href) || SSN_ALLOWED_IMAGE_HOSTS.test(parsed.hostname));
+  } catch (_) {
+    return false;
+  }
+}
+
 function sanitizeMessage(html) {
   const template = document.createElement("template");
   template.innerHTML = String(html || "");
   template.content.querySelectorAll("script, style, iframe, object, embed").forEach(el => el.remove());
+  template.content.querySelectorAll("img").forEach(el => {
+    const src = el.getAttribute("src") || "";
+    if (!ssnIsLikelyImageUrl(src)) el.remove();
+  });
   template.content.querySelectorAll("*").forEach(el => {
     [...el.attributes].forEach(attr => {
       const n = attr.name.toLowerCase();
