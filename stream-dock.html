@@ -3771,13 +3771,9 @@ function handleMsg(data) {
       messageText: data.chatmessage,
       timestamp: Date.now()
     });
-    // NEW HERE crowd overlay — every-chatter growth: EVERY comment forwards the
-    // chatter to the overlay. Their first comment drops a tiny mascot; each further
-    // comment grows it (the overlay dedupes by username). No command match needed.
-    if (data.chatname && ablyChannel) {
-      const nhSource = isTT ? 'tiktok' : 'youtube';
-      ablyChannel.publish('new-here', { username: data.chatname, source: nhSource }).catch(() => {});
-    }
+    // NEW HERE crowd overlay — every-chatter growth. No dedicated per-comment
+    // publish here: the overlay derives chatters from the 'milk-event' comment sent
+    // by publishMilk('comment', …) below, so New Here adds ZERO extra Ably messages.
     // Team Timing Bar — YouTube has no native join/like signal, so a chat
     // comment matching the configured command stands in for both (see
     // ttbMatches()/ttb-cmd panel). Only fires for YouTube; TikTok already
@@ -4712,13 +4708,23 @@ async function startRelayWithDevice() {
     return;
   }
 
-  // Publish freq data via Ably every 100ms — WSS works in TikTok Studio (no mixed-content block)
+  // Publish freq data via Ably (WSS works in TikTok Studio — no mixed-content block).
+  // This is by far the heaviest Ably publisher, so: (1) a slower cadence than the old
+  // 100ms, and (2) a silence gate — once audio drops to near-zero we publish one
+  // settling frame then go quiet until sound returns, so pauses cost no messages.
+  const MIC_FREQ_MS = 150; // ms between frames; raise to cut Ably usage further
+  const MIC_SILENCE = 6;   // peak-bin level below which a frame counts as "silent"
+  let _lastMicMax = 255;   // force the first frame to publish
   _relayInterval = setInterval(() => {
     if (gen !== _relayGen) { clearInterval(_relayInterval); return; }
     if (!ablyChannel) return;
     analyser.getByteFrequencyData(buf);
+    let mx = 0;
+    for (let i = 0; i < buf.length; i++) if (buf[i] > mx) mx = buf[i];
+    if (mx < MIC_SILENCE && _lastMicMax < MIC_SILENCE) return; // still silent → skip
+    _lastMicMax = mx;
     ablyChannel.publish('mic-freq', { f: Array.from(buf) }).catch(() => {});
-  }, 100);
+  }, MIC_FREQ_MS);
   _setRelayStatus(true);
 }
 
