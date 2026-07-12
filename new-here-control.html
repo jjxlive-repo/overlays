@@ -108,8 +108,9 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
 
   <!-- OVERLAY ON/OFF — the overlay stays blank until enabled. This mirrors the dock's
        toggle so you can show/hide it straight from here (either one works). -->
-  <div class="card" style="display:flex;align-items:center;gap:10px;">
-    <button class="ctrl-btn c-act" id="nh-enable-btn" onclick="nhToggleEnabled()" title="Show or hide the New Here overlay. It stays blank until this is ON. The dock's toggle does the same thing." style="flex:1;font-size:13px;padding:9px;">◉ Overlay: OFF</button>
+  <div class="card" style="display:flex;flex-direction:column;gap:8px;">
+    <button class="ctrl-btn c-act" id="nh-enable-btn" onclick="nhToggleEnabled()" title="Show or hide the New Here overlay. It stays blank until this is ON. The dock's toggle does the same thing." style="font-size:13px;padding:9px;">◉ Overlay: OFF</button>
+    <button class="ctrl-btn" id="nh-spread-btn" onclick="nhToggleSpread()" title="Pile = mascots stack into a mound. Spread = they line up along the ground and blink at their own intervals. Applies to new joins — hit Reset Pile after switching to re-lay the crowd." style="font-size:12px;padding:8px;">🏔 Layout: Pile</button>
   </div>
 
   <!-- COMMAND -->
@@ -244,8 +245,9 @@ let ably = null, ablyChannel = null;
     const dot = document.getElementById('conn-dot');
     ably.connection.on('connected', () => {
       dot.classList.add('connected');
-      // Re-send the enabled state on (re)connect so the overlay syncs whenever both are open.
+      // Re-send enabled + layout mode on (re)connect so the overlay syncs whenever both are open.
       nhPublishEnabled();
+      nhPublishSpread();
     });
     ably.connection.on('disconnected', () => dot.classList.remove('connected'));
     ably.connection.on('failed',       () => dot.classList.remove('connected'));
@@ -271,6 +273,26 @@ function nhToggleEnabled() {
   localStorage.setItem('nh_ctrl_enabled', _nhEnabled ? '1' : '0');
   nhPublishEnabled();
   nhRenderEnableBtn();
+}
+
+/* ── Layout mode: pile vs spread ───────────────────────────────── */
+let _nhSpread = localStorage.getItem('nh_ctrl_spread') === '1';
+function nhPublishSpread() {
+  if (ablyChannel) ablyChannel.publish('new-here-config', { spreadMode: _nhSpread }).catch(() => {});
+}
+function nhRenderSpreadBtn() {
+  const btn = document.getElementById('nh-spread-btn');
+  if (!btn) return;
+  btn.textContent = _nhSpread ? '↔ Layout: Spread' : '🏔 Layout: Pile';
+  btn.style.background = _nhSpread ? 'rgba(56,189,248,0.16)' : 'rgba(168,85,247,.12)';
+  btn.style.borderColor = _nhSpread ? 'rgba(56,189,248,0.5)' : 'rgba(168,85,247,.3)';
+  btn.style.color = _nhSpread ? '#7dd3fc' : 'var(--txt)';
+}
+function nhToggleSpread() {
+  _nhSpread = !_nhSpread;
+  localStorage.setItem('nh_ctrl_spread', _nhSpread ? '1' : '0');
+  nhPublishSpread();
+  nhRenderSpreadBtn();
 }
 
 /* ── Apply / persist display config ────────────────────────────── */
@@ -529,6 +551,7 @@ renderPosControls();
 nhLoadDisplayConfig();
 nhRefreshReadouts();
 nhRenderEnableBtn();
+nhRenderSpreadBtn();
 </script>
 </body>
 </html>
