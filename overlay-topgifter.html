@@ -434,7 +434,12 @@ function tick() {
 function tierClass(alert) {
   if (alert?.tier) return alert.tier;
   const usd = Number(alert?.viewerValue || 0);
-  const raw = Number(alert?.amount || 0);
+  // alert.viewerValue is never actually populated by the gift-alert publisher, so this
+  // falls through to the raw amount thresholds below for every gift. Those are calibrated
+  // for TikTok coins (~$0.01 each) — jewels are worth about half that, so without this
+  // conversion a modest jewel gift reached each size tier at roughly half the dollar value
+  // of an equivalent coin gift, firing an oversized reaction.
+  const raw = alert?.type === 'youtube_jewels' ? Number(alert?.amount || 0) * 0.5 : Number(alert?.amount || 0);
   if (usd >= 400) return 'mega';
   if (usd >= 250 || raw >= 25000) return 'third';
   if (usd >= 100 || raw >= 100000) return 'loud';
