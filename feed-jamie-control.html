@@ -396,6 +396,17 @@ function connectAbly() {
     ably = new Ably.Realtime({ key: FJ_ABLY_KEY });
     ablyChannel = ably.channels.get(FJ_ABLY_CH);
     ablyChannel.subscribe(FJ_ABLY_MSG_IN, m => { if (m.data && m.data.data) renderStatus(m.data.data); });
+    // Comments only ever reached Jamie through the Tikfinity WebSocket below, which is
+    // TikTok-only — YouTube comments had no path in at all, so keyword reactions never
+    // fired for YouTube viewers. stream-dock.html relays a 'comment' milk-event with the
+    // message text for both platforms; TikTok already works via Tikfinity, so only forward
+    // the YouTube ones here to avoid double-firing the same TikTok comment twice.
+    ablyChannel.subscribe('milk-event', m => {
+      const d = m.data || {};
+      if (d.type === 'comment' && d.platform === 'yt') {
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: d.username || null, message: String(d.message || '') } });
+      }
+    });
     ably.connection.on('connected',    () => setDot('ably', true,  'connected'));
     ably.connection.on('disconnected', () => setDot('ably', false, 'disconnected'));
     ably.connection.on('suspended',    () => setDot('ably', false, 'suspended'));
