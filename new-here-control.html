@@ -146,6 +146,16 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
     <div class="ctrl-row"><label style="width:80px;" title="Text shown on the countdown timer pill.">Timer label</label><input class="ctrl-in" id="nh-timer-label" type="text" value="STARTING SOON" style="flex:1;min-width:0;"></div>
   </div>
 
+  <!-- NAME DISPLAY -->
+  <div class="card">
+    <h2>Name tags <span class="info" title="By default only the pile surface + newest joins show names to avoid clutter. Keep them all up permanently, or set how long each name lingers after joining.">?</span></h2>
+    <label class="chk-row" title="Show every mascot's name permanently. Can get crowded with a big pile."><input type="checkbox" id="nh-name-forever" onchange="nhFmtNamePersist();nhApplyConfig()"><span>Keep all names on screen (never fade)</span></label>
+    <div class="ctrl-row" title="When 'never fade' is off: 0 = Auto (only the surface + newest show); higher = each name stays this many seconds after the viewer joins.">
+      <label style="width:78px;">Show for</label>
+      <input type="range" id="nh-name-persist" min="0" max="120" step="5" value="0" oninput="nhFmtNamePersist();nhApplyConfig()"><span class="rng-v" id="nh-name-persist-v">Auto</span>
+    </div>
+  </div>
+
   <!-- PILL TOGGLES -->
   <div class="card">
     <h2>Pill backgrounds <span class="info" title="Each on-screen label can sit on a rounded pill background, or show as plain text with no pill. Uncheck for a cleaner text-only look.">?</span></h2>
@@ -349,6 +359,7 @@ function nhApplyConfig() {
     pressureDecayPerSec, pressureDecayGraceMs, pressureWarnPct, pressureDangerPct,
     pressurePillOn, pressureScale, pressureXOffset, pressureYOffset,
     pressureLabel, popLabel,
+    namePersistSec: nhNamePersistSec(),
   };
   if (ablyChannel) ablyChannel.publish('new-here-config', cfg).catch(() => {});
   try { localStorage.setItem('nh_display_cfg', JSON.stringify(cfg)); } catch {}
@@ -376,6 +387,11 @@ function nhLoadDisplayConfig() {
     setChk('nh-sign-pill', c.signPillOn); setChk('nh-ctr-pill', c.ctrPillOn); setChk('nh-timer-pill', c.timerPillOn);
     setChk('nh-name-pill', c.namePillOn); setChk('nh-dedupe', c.dedupeOn); setChk('nh-pressure-pill', c.pressurePillOn);
     setChk('nh-pressure-enabled', c.pressureEnabled);
+    if (c.namePersistSec != null) {
+      const forever = c.namePersistSec >= 999;
+      document.getElementById('nh-name-forever').checked = forever;
+      document.getElementById('nh-name-persist').value = forever ? 0 : c.namePersistSec;
+    }
     if (c.pressureGainPerJoin != null) { document.getElementById('nh-pressure-gain').value = c.pressureGainPerJoin; }
     if (c.pressurePopThreshold != null) { document.getElementById('nh-pressure-threshold').value = c.pressurePopThreshold; }
     if (c.pressureDecayPerSec != null) { document.getElementById('nh-pressure-decay').value = c.pressureDecayPerSec; document.getElementById('nh-pressure-decay-v').textContent = c.pressureDecayPerSec + '/s'; }
@@ -384,6 +400,18 @@ function nhLoadDisplayConfig() {
     if (c.pressureDangerPct != null) { const p = Math.round(c.pressureDangerPct * 100); document.getElementById('nh-pressure-danger').value = p; document.getElementById('nh-pressure-danger-v').textContent = p + '%'; }
     nhFmtPressureGain(); nhFmtPressureThreshold();
   } catch {}
+}
+
+function nhNamePersistSec() {
+  if (document.getElementById('nh-name-forever').checked) return 999;
+  return parseInt(document.getElementById('nh-name-persist').value) || 0;
+}
+function nhFmtNamePersist() {
+  const forever = document.getElementById('nh-name-forever').checked;
+  const slider = document.getElementById('nh-name-persist');
+  slider.disabled = forever;
+  const s = parseInt(slider.value) || 0;
+  document.getElementById('nh-name-persist-v').textContent = forever ? 'Always' : (s === 0 ? 'Auto' : s + 's');
 }
 
 function nhFmtPressureGain() {
@@ -550,6 +578,7 @@ nhLoadSettings();
 renderPosControls();
 nhLoadDisplayConfig();
 nhRefreshReadouts();
+nhFmtNamePersist();
 nhRenderEnableBtn();
 nhRenderSpreadBtn();
 </script>
