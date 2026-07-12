@@ -59,6 +59,7 @@ let NH_MODE       = 'pile';
 let SPREAD_MODE   = false; // derived mirror of NH_MODE==='spread' (kept for existing references)
 function setMode(m) { NH_MODE = (m === 'spread' || m === 'balloons') ? m : 'pile'; SPREAD_MODE = (NH_MODE === 'spread'); }
 let BLOB_SCALE    = 1.0; // multiplier on mascot body render size (packing geometry unaffected)
+let GLOSS         = 1.0; // 1 = full glossy 3D shading; 0 = flat matte (less "3D")
 let NAME_SCALE    = 1.0; // per-figure name pill scale
 let NAME_X_OFFSET = 0;
 let NAME_Y_OFFSET = 0;
@@ -114,7 +115,8 @@ function saveDisplayCfg() {
       floorOffset: FLOOR_OFFSET,
       mode: NH_MODE,
       laneInset: LANE_INSET, laneWidth: LANE_WIDTH,
-      blobScale: BLOB_SCALE,
+      tierEnabled: TIER_ENABLED, tierLabelOn: TIER_LABEL_ON,
+      blobScale: BLOB_SCALE, gloss: GLOSS,
       nameScale: NAME_SCALE, nameXOffset: NAME_X_OFFSET, nameYOffset: NAME_Y_OFFSET,
       idleScale: IDLE_SCALE, idleXOffset: IDLE_X_OFFSET, idleYOffset: IDLE_Y_OFFSET,
       timerLabel: TIMER_LABEL, timerScale: TIMER_SCALE,
@@ -153,7 +155,10 @@ function saveDisplayCfg() {
     else if (c.spreadMode != null) setMode(c.spreadMode ? 'spread' : 'pile');
     if (c.laneInset    != null) LANE_INSET    = c.laneInset;
     if (c.laneWidth    != null) LANE_WIDTH    = c.laneWidth;
+    if (c.tierEnabled  != null) TIER_ENABLED  = c.tierEnabled;
+    if (c.tierLabelOn  != null) TIER_LABEL_ON = c.tierLabelOn;
     if (c.blobScale    != null) BLOB_SCALE    = c.blobScale;
+    if (c.gloss        != null) GLOSS         = c.gloss;
     if (c.nameScale    != null) NAME_SCALE    = c.nameScale;
     if (c.nameXOffset  != null) NAME_X_OFFSET = c.nameXOffset;
     if (c.nameYOffset  != null) NAME_Y_OFFSET = c.nameYOffset;
@@ -240,6 +245,43 @@ const BALLOON_RISE_K  = 0.055; // per-frame lerp toward target (scaled by dt) �
 const CEIL_TOP        = 130;   // y where the top of each channel's cluster sits
 const CEIL_ROW_H      = 95;    // vertical gap as maxed balloons stack down inside the channel
 const LANE_TOP_Y      = CEIL_TOP; // highest a climber reaches before joining the top cluster
+
+// ── BALLOON EVOLUTION / TIERS ────────────────────────────────────
+// The retention hook: every comment earns progress, and crossing a threshold
+// evolves the balloon to the next of 10 tiers (new color + stacked effects), with
+// a level-up burst so viewers SEE the reward instantly. Early tiers are cheap so a
+// fresh chatter evolves a couple times within ~a minute; later tiers reward staying.
+let TIER_ENABLED   = true;  // master switch for the whole evolution mechanic
+let TIER_LABEL_ON  = true;  // show the "Lv N" badge on each balloon
+// comments needed for tier 1..10 (index 0 unused). Tuned: 1→3→6 come fast.
+const TIER_NEED  = [0, 1, 3, 6, 10, 16, 24, 34, 48, 66, 90];
+const TIER_MAX   = 10;
+const TIER_NAME  = ['', 'Balloon','Shiny','Glow','Twinkle','Aura','Starlit','Crowned','Prism','Radiant','Legendary'];
+// Body color per tier — keeps platform identity low, converges on prestige gold up top.
+const TIER_COLOR = {
+  youtube: [null,'#DC2626','#EF4444','#F87171','#FB7185','#F472B6','#E879F9','#C084FC','#A78BFA','#FBBF24','#FDE047'],
+  tiktok:  [null,'#2563EB','#3B82F6','#60A5FA','#38BDF8','#22D3EE','#2DD4BF','#34D399','#818CF8','#FBBF24','#FDE047'],
+};
+function tierOf(comments) {
+  let t = 1;
+  for (let i = 1; i <= TIER_MAX; i++) if ((comments || 1) >= TIER_NEED[i]) t = i;
+  return t;
+}
+function tierColor(source, tier) {
+  const ramp = TIER_COLOR[source] || TIER_COLOR.youtube;
+  return ramp[Math.max(1, Math.min(TIER_MAX, tier))];
+}
+
+// Chat commands unlocked at higher tiers. Sent as ordinary chat (e.g. "!balloon1"),
+// detected from the same milk-event comment stream, so they cost no extra Ably msgs.
+const BALLOON_CMDS = {
+  '!balloon1': { action: 'dance',   minTier: 3, dur: 3200 },
+  '!balloon2': { action: 'sparkle', minTier: 5, dur: 3500 },
+  '!balloon3': { action: 'boost',   minTier: 7, dur: 4000 },
+  '!balloon4': { action: 'pop',     minTier: 9, dur: 900  },
+};
+const LEVELUP_MS = 1400;   // level-up burst duration
+const BOOST_LIFT = 260;    // px a !balloon3 boost lifts the balloon
 
 // Channel geometry (live-adjustable via 'new-here-config'). A channel runs from
 // LANE_INSET px off its edge, LANE_WIDTH px wide. Centers/roam derive from these
@@ -425,11 +467,16 @@ function balloonTarget(fig) {
   const floorY = FLOOR_Y - 40;
   const x = laneCenterX(fig.lane);
   const p = Math.min(1, (fig.comments - 1) / COMMENTS_TO_TOP);
+  let y;
   if (p >= 1) {
     if (fig.ceilSlot == null) fig.ceilSlot = (fig.lane < 0 ? balloonCeilSeqL++ : balloonCeilSeqR++);
-    return { x, y: CEIL_TOP + fig.ceilSlot * CEIL_ROW_H };
+    y = CEIL_TOP + fig.ceilSlot * CEIL_ROW_H;
+  } else {
+    y = floorY - p * (floorY - LANE_TOP_Y);
   }
-  return { x, y: floorY - p * (floorY - LANE_TOP_Y) };
+  // !balloon3 boost — temporarily lifts the balloon well above its earned height.
+  if (fig.boostUntil && performance.now() < fig.boostUntil) y = Math.max(CEIL_TOP - 40, y - BOOST_LIFT);
+  return { x, y };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -460,6 +507,9 @@ function spawnFigure(username, source, key) {
         lane, bx: laneX, by: floorY,
         swayPhase: rnd() * Math.PI * 2, swaySpeed: 0.5 + rnd() * 0.6, bobPhase: rnd() * Math.PI * 2,
         ceilSlot: null,
+        // Evolution/command state
+        tier: tierOf(comments), levelUpAt: -Infinity,
+        danceUntil: 0, sparkleUntil: 0, boostUntil: 0, popAt: -Infinity, popY: 0,
       };
       figures.push(fig);
       if (key) userFigs.set(key, fig);
@@ -535,6 +585,9 @@ function enqueue(username, source) {
     // Already on screen → grow instead of adding a body.
     existing.comments = (existing.comments || 1) + 1;
     existing.lastCommentAt = performance.now();
+    // Evolution: crossing a tier threshold fires a level-up burst so the reward is instant.
+    const newTier = tierOf(existing.comments);
+    if (newTier > (existing.tier || 1)) { existing.tier = newTier; existing.levelUpAt = performance.now(); }
     newestName = username; newestSource = source; newestJoinAt = performance.now();
     if (PRESSURE_ENABLED) { PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN * 0.5); lastPressureEventAt = performance.now(); }
     return;
@@ -554,6 +607,25 @@ function processQueue(now) {
   const { username, source, key } = queue.shift();
   lastSpawn = now;
   spawnFigure(username, source, key);
+}
+
+// A chat message like "!balloon1" triggers an action on that user's balloon —
+// but only if they've evolved to the tier that unlocks it. Returns true if a
+// command fired. Called with the raw chat text from the comment stream.
+function handleBalloonCommand(username, source, msg) {
+  if (!TIER_ENABLED || NH_MODE !== 'balloons') return false;
+  const m = String(msg || '').trim().toLowerCase();
+  const cmd = BALLOON_CMDS[m];
+  if (!cmd) return false;
+  const fig = userFigs.get(userKey(username, source));
+  if (!fig) return false;
+  if (tierOf(fig.comments) < cmd.minTier) return false; // not unlocked yet
+  const now = performance.now();
+  if (cmd.action === 'dance')   fig.danceUntil   = now + cmd.dur;
+  if (cmd.action === 'sparkle') fig.sparkleUntil = now + cmd.dur;
+  if (cmd.action === 'boost')   fig.boostUntil   = now + cmd.dur;
+  if (cmd.action === 'pop')   { fig.popY = fig.by; fig.popAt = now; fig.by = FLOOR_Y - 40; } // pop → drop to bottom, re-float
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -592,7 +664,10 @@ const MASCOT_CACHE_HALF_W = 90, MASCOT_CACHE_TOP = 155, MASCOT_CACHE_BOTTOM = 35
 const MASCOT_CACHE_DPR = 2; // supersample so drawImage stays crisp when blobS > 1
 const mascotBitmapCache = new Map();
 function getMascotBitmap(color) {
-  let bmp = mascotBitmapCache.get(color);
+  // Key by gloss too: lowering the luminosity slider must invalidate the cached
+  // bitmaps so settled figures re-render at the new shading.
+  const key = color + '|' + GLOSS.toFixed(2);
+  let bmp = mascotBitmapCache.get(key);
   if (bmp) return bmp;
   const w = MASCOT_CACHE_HALF_W * 2, h = MASCOT_CACHE_TOP + MASCOT_CACHE_BOTTOM;
   const off = document.createElement('canvas');
@@ -603,7 +678,8 @@ function getMascotBitmap(color) {
   octx.translate(MASCOT_CACHE_HALF_W, MASCOT_CACHE_TOP);
   drawMascot(octx, color, null, false, 0);
   bmp = { canvas: off, w, h };
-  mascotBitmapCache.set(color, bmp);
+  if (mascotBitmapCache.size > 64) mascotBitmapCache.clear(); // bound churn as the slider moves
+  mascotBitmapCache.set(key, bmp);
   return bmp;
 }
 function drawMascotCached(ctx, color) {
@@ -654,22 +730,24 @@ function drawMascot(ctx, color, pal, splatPhase, splatT, blink) {
   ctx.ellipse(0, -70, 64, 72, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Depth shade (vertical linear gradient)
-  {
+  // Depth shade (vertical linear gradient) — scaled by GLOSS so a low setting
+  // flattens the top-light and bottom-shadow toward a matte solid color.
+  if (GLOSS > 0) {
     const g = ctx.createLinearGradient(0, -142, 0, 2);
-    g.addColorStop(0,   'rgba(255,255,255,0.10)');
+    g.addColorStop(0,   `rgba(255,255,255,${0.10 * GLOSS})`);
     g.addColorStop(0.5, 'rgba(255,255,255,0)');
-    g.addColorStop(1,   'rgba(12,10,18,0.50)');
+    g.addColorStop(1,   `rgba(12,10,18,${0.50 * GLOSS})`);
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(0, -70, 64, 72, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Gloss sheen (radial highlight, upper-left)
-  {
+  // Gloss sheen (radial highlight, upper-left) — the main "shiny 3D" cue; GLOSS
+  // dims it so balloons can read as flatter, less distracting shapes.
+  if (GLOSS > 0) {
     const g = ctx.createRadialGradient(-22, -98, 0, -22, -98, 34);
-    g.addColorStop(0, 'rgba(255,255,255,0.65)');
+    g.addColorStop(0, `rgba(255,255,255,${0.65 * GLOSS})`);
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -719,6 +797,145 @@ function drawMascot(ctx, color, pal, splatPhase, splatT, blink) {
   ctx.stroke();
 
   ctx.restore(); // end squash transform
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TIER FX — balloon evolution visuals, drawn in WORLD space around a balloon.
+// All take the balloon feet position (px,py) and blobS. Body center/radius are
+// derived so effects sit on the body regardless of scale.
+// ═══════════════════════════════════════════════════════════════════
+function hexA(hex, a) {
+  const h = String(hex).replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function fxCenterY(py, blobS) { return py - 70 * blobS; }
+function fxRadius(blobS)      { return 66 * blobS; }
+function starPath(ctx, x, y, outer, inner, points) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const rr = i % 2 ? inner : outer, a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+    ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
+function drawTierGlow(ctx, px, py, blobS, color, tier, now) {
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
+  const pulse = 0.5 + 0.5 * Math.sin(now / 1000 * (1 + tier * 0.12) * Math.PI);
+  const rad = r * (1.7 + tier * 0.05) * (1 + pulse * 0.05);
+  const a   = Math.min(0.55, 0.12 + tier * 0.04);
+  ctx.save();
+  const g = ctx.createRadialGradient(px, cy, r * 0.4, px, cy, rad);
+  g.addColorStop(0, hexA(color, a));
+  g.addColorStop(1, hexA(color, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(px, cy, rad, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawAura(ctx, px, py, blobS, color, tier, now) {
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
+  const pulse = 0.5 + 0.5 * Math.sin(now / 1000 * 2 * Math.PI);
+  ctx.save();
+  ctx.globalAlpha = 0.22 + 0.28 * pulse;
+  ctx.strokeStyle = hexA(color, 1);
+  ctx.lineWidth   = (2.5 + tier * 0.3) * Math.max(0.6, blobS);
+  ctx.beginPath(); ctx.arc(px, cy, r * (1.24 + pulse * 0.12), 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+function drawPrismRing(ctx, px, py, blobS, now) {
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS) * 1.16;
+  ctx.save();
+  ctx.lineWidth = 4 * Math.max(0.6, blobS);
+  ctx.globalAlpha = 0.9;
+  const seg = 14;
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2 + 0.03;
+    ctx.strokeStyle = `hsl(${(i / seg * 360 + now / 12) % 360},90%,62%)`;
+    ctx.beginPath(); ctx.arc(px, cy, r, a0, a1); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawSparkles(ctx, px, py, blobS, now, count, seed) {
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const ph  = seed + i * 2.399;
+    const ang = ph + now / 1000 * (0.5 + (i % 3) * 0.25);
+    const rad = r * (1.12 + 0.28 * Math.sin(ph * 1.7 + now / 900));
+    const tw  = 0.5 + 0.5 * Math.sin(now / 220 + ph * 3);
+    if (tw < 0.15) continue;
+    const sx = px + Math.cos(ang) * rad, sy = cy + Math.sin(ang) * rad * 0.9;
+    const sz = (2 + 2 * Math.abs(Math.sin(ph))) * Math.max(0.6, blobS) * tw + 1.4;
+    ctx.globalAlpha = tw;
+    ctx.fillStyle = '#fff';
+    starPath(ctx, sx, sy, sz, sz * 0.4, 4); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawStarTopper(ctx, px, py, blobS, now) {
+  const topY = py - 150 * blobS, tw = 0.75 + 0.25 * Math.sin(now / 300);
+  ctx.save(); ctx.translate(px, topY); ctx.scale(blobS, blobS);
+  ctx.fillStyle = `rgba(253,224,71,${tw})`; ctx.strokeStyle = '#B45309'; ctx.lineWidth = 1.5;
+  starPath(ctx, 0, 0, 15, 6.5, 5); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function drawCrown(ctx, px, py, blobS) {
+  const topY = py - 150 * blobS;
+  ctx.save(); ctx.translate(px, topY); ctx.scale(blobS, blobS);
+  ctx.fillStyle = '#FCD34D'; ctx.strokeStyle = '#B45309'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-34, 8); ctx.lineTo(-34, -12); ctx.lineTo(-17, 2); ctx.lineTo(0, -18);
+  ctx.lineTo(17, 2); ctx.lineTo(34, -12); ctx.lineTo(34, 8); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function drawTierBadge(ctx, px, py, blobS, tier, color) {
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
+  ctx.save();
+  ctx.translate(px + r * 0.7, cy - r * 0.72);
+  ctx.scale(Math.max(0.5, blobS), Math.max(0.5, blobS));
+  ctx.font = '700 15px Fredoka, sans-serif';
+  const label = 'Lv ' + tier, w = ctx.measureText(label).width + 14, h = 20;
+  ctx.fillStyle = color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  roundRect(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, 0, 1);
+  ctx.restore();
+}
+function drawPopBurst(ctx, px, py, blobS, elapsed, dur) {
+  const t = elapsed / dur; if (t < 0 || t > 1) return;
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
+  ctx.save();
+  ctx.globalAlpha = (1 - t) * 0.9;
+  ctx.strokeStyle = '#FDE047'; ctx.lineWidth = 5 * Math.max(0.6, blobS);
+  ctx.beginPath(); ctx.arc(px, cy, r * (0.6 + t * 2.4), 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2, d = r * (0.6 + t * 2.2);
+    const s = 3 * Math.max(0.6, blobS) * (1 - t);
+    starPath(ctx, px + Math.cos(a) * d, cy + Math.sin(a) * d, s, s * 0.4, 4); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawLevelUp(ctx, px, py, blobS, tier, elapsed) {
+  const t = elapsed / LEVELUP_MS; if (t < 0 || t > 1) return;
+  const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
+  ctx.save();
+  ctx.globalAlpha = (1 - t) * 0.95;
+  ctx.strokeStyle = '#FDE047'; ctx.lineWidth = 4 * Math.max(0.6, blobS);
+  ctx.beginPath(); ctx.arc(px, cy, r * (1 + t * 2.2), 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  const rise = t * 26;
+  ctx.globalAlpha = t < 0.7 ? 1 : Math.max(0, (1 - t) / 0.3);
+  ctx.font = `700 ${Math.round(19 * Math.max(0.7, blobS))}px Fredoka, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.strokeStyle = '#1a0530';
+  const txt = 'LVL ' + tier + '!';
+  ctx.strokeText(txt, px, cy - r * 1.5 - rise); ctx.fillStyle = '#FDE047';
+  ctx.fillText(txt, px, cy - r * 1.5 - rise);
+  ctx.restore();
 }
 
 // Small pill above a mascot's head — drawn with its own independent
@@ -1327,11 +1544,25 @@ function frame(now) {
         blobS = S * BLOB_SCALE * growthOf(fig.comments) * (fig.phase === 'settled' ? pBreath : 1);
       }
 
+      // Balloon evolution: tier drives body color + stacked effects. Behind-body FX
+      // (glow / aura / prism ring / the !balloon4 pop burst) draw in world space here.
+      let tier = 1, mascotColor = fig.color, danceRot = 0;
+      if (balloonMode && !exploding && TIER_ENABLED) {
+        tier = tierOf(fig.comments);
+        mascotColor = tierColor(fig.source, tier);
+        if (fig.danceUntil && now < fig.danceUntil) danceRot = Math.sin(now * 0.018) * 15;
+        if (tier >= 3) drawTierGlow(ctx, pos.x, pos.y, blobS, mascotColor, tier, now);
+        if (tier >= 5) drawAura(ctx, pos.x, pos.y, blobS, mascotColor, tier, now);
+        if (tier >= 8) drawPrismRing(ctx, pos.x, pos.y, blobS, now);
+        const popDur = BALLOON_CMDS['!balloon4'].dur;
+        if (now - fig.popAt < popDur) drawPopBurst(ctx, pos.x, fig.popY, blobS, now - fig.popAt, popDur);
+      }
+
       ctx.save();
       ctx.translate(pos.x, pos.y);
       if (exploding) ctx.globalAlpha = Math.max(0, 1 - fig.explodeT);
       ctx.scale(blobS, blobS);
-      ctx.rotate(fig.rot * Math.PI / 180);
+      ctx.rotate((fig.rot + danceRot) * Math.PI / 180);
 
       // Speed streaks (fade out in last 15% of entry)
       if (fig.phase === 'entering' && fig.enterProgress < 0.85) {
@@ -1360,17 +1591,29 @@ function frame(now) {
       // The figure itself — settled figures (the vast majority once the pile builds up)
       // use the cached bitmap; anything mid-animation or mid-blink needs the live draw.
       if (fig.phase === 'settled' && !doBlink) {
-        drawMascotCached(ctx, fig.color);
+        drawMascotCached(ctx, mascotColor);
       } else {
-        drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress, doBlink);
+        drawMascot(ctx, mascotColor, fig.pal, fig.phase === 'splatting', fig.splatProgress, doBlink);
       }
 
       ctx.restore();
 
+      // Front-body tier FX (sparkles, star/crown topper, Lv badge, level-up burst).
+      if (balloonMode && !exploding && TIER_ENABLED) {
+        const sparkling = fig.sparkleUntil && now < fig.sparkleUntil;
+        const sc = (tier >= 4 ? 3 : 0) + (sparkling ? 9 : 0);
+        if (sc > 0) drawSparkles(ctx, pos.x, pos.y, blobS, now, sc, fig.id * 1.7);
+        if (tier === 6) drawStarTopper(ctx, pos.x, pos.y, blobS, now);
+        if (tier >= 7) drawCrown(ctx, pos.x, pos.y, blobS);
+        if (TIER_LABEL_ON) drawTierBadge(ctx, pos.x, pos.y, blobS, tier, mascotColor);
+        if (now - fig.levelUpAt < LEVELUP_MS) drawLevelUp(ctx, pos.x, pos.y, blobS, tier, now - fig.levelUpAt);
+      }
+
       // Name pill — independent scale/offset from the blob itself. In balloon
-      // mode it hangs BELOW the balloon (past the string); otherwise above the head.
+      // mode it sits ACROSS THE CHEST (over the lower body) as if the balloon is
+      // holding its name; otherwise above the head.
       if (!exploding && nameIds.has(fig.id) && fig.username) {
-        const nameY = balloonMode ? pos.y + 66 : pos.y - 172 * blobS;
+        const nameY = balloonMode ? pos.y - 46 * blobS : pos.y - 172 * blobS;
         ctx.save();
         ctx.translate(pos.x + NAME_X_OFFSET, nameY + NAME_Y_OFFSET);
         ctx.scale(NAME_SCALE, NAME_SCALE);
@@ -1491,6 +1734,9 @@ function loadState() {
       lane:          f.lane,
       bx:            undefined, by: undefined, ceilSlot: null,
       swayPhase:     rnd() * Math.PI * 2, swaySpeed: 0.5 + rnd() * 0.6, bobPhase: rnd() * Math.PI * 2,
+      // Evolution state re-derived from comment count; action timers reset.
+      tier:          tierOf(f.comments || 1), levelUpAt: -Infinity,
+      danceUntil: 0, sparkleUntil: 0, boostUntil: 0, popAt: -Infinity, popY: 0,
     }));
     // Rebuild the username→figure index so repeat comments after a reload grow
     // the existing body instead of adding a duplicate.
@@ -1516,8 +1762,11 @@ function connectAbly() {
   // Manual/test joins from the control panel (low volume).
   ch.subscribe('new-here', msg => {
     if (!OVERLAY_ENABLED) return;
-    const { username, source } = msg.data || {};
-    if (username && source) enqueue(username, source);
+    const { username, source, cmd } = msg.data || {};
+    if (username && source) {
+      enqueue(username, source);
+      if (cmd) handleBalloonCommand(username, source, cmd); // control test-fire commands
+    }
   });
 
   // Real chat traffic rides the 'milk-event' comment the dock already publishes for
@@ -1527,7 +1776,9 @@ function connectAbly() {
     if (!OVERLAY_ENABLED) return;
     const d = msg.data || {};
     if (d.type !== 'comment' || !d.username) return;
-    enqueue(d.username, d.platform === 'tt' ? 'tiktok' : 'youtube');
+    const src = d.platform === 'tt' ? 'tiktok' : 'youtube';
+    enqueue(d.username, src);
+    if (d.message) handleBalloonCommand(d.username, src, d.message); // !balloon1 etc.
   });
 
   ch.subscribe('new-here-reset', () => {
@@ -1558,6 +1809,9 @@ function connectAbly() {
     else if (d.spreadMode != null) setMode(d.spreadMode ? 'spread' : 'pile');
     if (d.laneInset    != null) LANE_INSET    = Math.max(0, d.laneInset);
     if (d.laneWidth    != null) LANE_WIDTH    = Math.max(40, d.laneWidth);
+    if (d.tierEnabled  != null) TIER_ENABLED  = !!d.tierEnabled;
+    if (d.tierLabelOn  != null) TIER_LABEL_ON = !!d.tierLabelOn;
+    if (d.gloss        != null) GLOSS         = Math.max(0, Math.min(1, d.gloss));
     if (d.namePersistSec != null) NAME_PERSIST_SEC = d.namePersistSec;
     if (d.blobScale    != null) BLOB_SCALE    = d.blobScale;
     if (d.nameScale    != null) NAME_SCALE    = d.nameScale;
