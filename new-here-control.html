@@ -90,6 +90,12 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
     <span style="color:#F87171;">■</span> Red = YouTube &nbsp;·&nbsp; <span style="color:#38BDF8;">■</span> Blue = TikTok.
   </p>
 
+  <!-- OVERLAY ON/OFF — the overlay stays blank until enabled. This mirrors the dock's
+       toggle so you can show/hide it straight from here (either one works). -->
+  <div class="card" style="display:flex;align-items:center;gap:10px;">
+    <button class="ctrl-btn c-act" id="nh-enable-btn" onclick="nhToggleEnabled()" style="flex:1;font-size:13px;padding:9px;">◉ Overlay: OFF</button>
+  </div>
+
   <!-- COMMAND -->
   <div class="card">
     <h2>Trigger command</h2>
@@ -227,11 +233,36 @@ let ably = null, ablyChannel = null;
     ably = new Ably.Realtime({ key: ABLY_KEY });
     ablyChannel = ably.channels.get(ABLY_CH);
     const dot = document.getElementById('conn-dot');
-    ably.connection.on('connected',    () => dot.classList.add('connected'));
+    ably.connection.on('connected', () => {
+      dot.classList.add('connected');
+      // Re-send the enabled state on (re)connect so the overlay syncs whenever both are open.
+      nhPublishEnabled();
+    });
     ably.connection.on('disconnected', () => dot.classList.remove('connected'));
     ably.connection.on('failed',       () => dot.classList.remove('connected'));
   } catch (e) {}
 })();
+
+/* ── Overlay on/off ────────────────────────────────────────────── */
+let _nhEnabled = localStorage.getItem('nh_ctrl_enabled') === '1';
+function nhPublishEnabled() {
+  if (ablyChannel) ablyChannel.publish('new-here-config', { enabled: _nhEnabled, visible: _nhEnabled }).catch(() => {});
+}
+function nhRenderEnableBtn() {
+  const btn = document.getElementById('nh-enable-btn');
+  if (!btn) return;
+  btn.textContent = _nhEnabled ? '◉ Overlay: ON' : '◉ Overlay: OFF';
+  btn.classList.toggle('c-act', _nhEnabled);
+  btn.style.background = _nhEnabled ? 'rgba(52,211,153,0.18)' : 'rgba(244,63,94,0.12)';
+  btn.style.borderColor = _nhEnabled ? 'rgba(52,211,153,0.6)' : 'rgba(244,63,94,0.4)';
+  btn.style.color = _nhEnabled ? '#6ee7b7' : '#fb7185';
+}
+function nhToggleEnabled() {
+  _nhEnabled = !_nhEnabled;
+  localStorage.setItem('nh_ctrl_enabled', _nhEnabled ? '1' : '0');
+  nhPublishEnabled();
+  nhRenderEnableBtn();
+}
 
 /* ── Apply / persist display config ────────────────────────────── */
 function nhApplyConfig() {
@@ -424,6 +455,7 @@ function nhForcePop() {
 /* ── Boot ──────────────────────────────────────────────────────── */
 nhLoadSettings();
 nhLoadDisplayConfig();
+nhRenderEnableBtn();
 </script>
 </body>
 </html>
