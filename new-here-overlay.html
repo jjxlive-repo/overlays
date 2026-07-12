@@ -193,11 +193,13 @@ const S = 0.46;             // figure scale (body ≈ 90 px tall at this scale)
 const PACK_R = 55 * S;      // packing radius ≈ 25.3 px
 const BIN_W = 2 * PACK_R * 0.9;   // ≈ 45.5 px per column
 const LAYER_H = 2 * PACK_R * 0.78; // ≈ 39.5 px per row
-const LO_X = 150 + PACK_R;
-const HI_X = 930 - PACK_R;
-const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 16 columns
+// Narrower footprint → the heap stacks taller/more vertically instead of spreading wide.
+const LO_X = 300 + PACK_R;
+const HI_X = 780 - PACK_R;
+const N_BINS = Math.max(6, Math.floor((HI_X - LO_X) / BIN_W)); // ≈ 9 columns
 
 const ENTER_DUR   = 1100;  // ms for a figure to travel to its resting position
+const ARC_LIFT    = 230;   // px the entry arc bows upward at mid-flight (parabolic toss)
 const SPLAT_DUR   = 420;   // ms for the squash+burst animation on landing
 const EXPLODE_DUR = 950;   // ms for the pile-clear burst animation
 const SIGN_HOLD_MS = 6000; // ms the JUST JOINED sign stays fully visible
@@ -317,17 +319,12 @@ function spawnFigure(username, source) {
   if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
     const { x: tx, y: ty } = getDepositionPos();
 
-    // Entry path: 60% fall from top, 40% run in from side
-    const useTop   = rnd() < 0.6;
+    // Entry path: always a side toss that arcs onto the pile (parabola in currentPos).
+    // Start off-screen left/right, a bit above the resting spot; the arc adds the lob.
+    const useTop   = false;
     const fromLeft = rnd() < 0.5;
-    let startX, startY;
-    if (useTop) {
-      startX = 540 + (rnd() * 180 - 90);
-      startY = 120 + rnd() * 60;
-    } else {
-      startX = fromLeft ? -80 : W + 80;
-      startY = Math.max(ty - 260, 380) - rnd() * 80;
-    }
+    const startX = fromLeft ? -80 : W + 80;
+    const startY = ty - 80 - rnd() * 100;
 
     figures.push({
       id:            ++figIdSeq,
@@ -961,24 +958,14 @@ function drawIdleState(ctx, now) {
 function currentPos(fig) {
   if (fig.phase !== 'entering') return { x: fig.x, y: fig.y };
 
-  const t = easeOutQuart(Math.min(1, fig.enterProgress));
-
-  if (fig.useTop) {
-    // Falls from top: x drifts to target in first 25% of travel, y eases down
-    const xt = easeOutQuart(Math.min(1, fig.enterProgress * 4));
-    return {
-      x: fig.startX + (fig.x - fig.startX) * xt,
-      y: fig.startY + (fig.y - fig.startY) * t,
-    };
-  } else {
-    // Runs from side: horizontal dash (0-70% of time), then drops (60-100%)
-    const runT  = easeOutQuart(Math.min(1, fig.enterProgress / 0.70));
-    const dropT = easeOutQuart(Math.max(0, (fig.enterProgress - 0.60) / 0.40));
-    return {
-      x: fig.startX + (fig.x - fig.startX) * runT,
-      y: fig.startY + (fig.y - fig.startY) * dropT,
-    };
-  }
+  // Parabolic toss: horizontal moves at a steady pace start→rest, while vertical
+  // follows a straight lerp plus a symmetric upward hump (4p(1−p) peaks at mid-flight).
+  // The result is a smooth arc onto the pile instead of a straight run + straight drop.
+  const p = Math.min(1, fig.enterProgress);
+  const x = fig.startX + (fig.x - fig.startX) * p;
+  const baseY = fig.startY + (fig.y - fig.startY) * p;
+  const arc = ARC_LIFT * 4 * p * (1 - p);
+  return { x, y: baseY - arc };
 }
 
 // ═══════════════════════════════════════════════════════════════════
