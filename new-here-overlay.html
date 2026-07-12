@@ -253,6 +253,45 @@ function laneRoamHalf() {
   const balloonHalf = 64 * BALLOON_S;                 // half a balloon's on-screen width
   return Math.max(4, LANE_WIDTH / 2 - balloonHalf);   // keep the balloon inside the channel walls
 }
+function balloonRadius() { return 74 * (BALLOON_S * BLOB_SCALE); } // collision radius (≈ balloon half-size)
+
+// Push overlapping balloons apart so they bounce off each other instead of passing
+// through. Balloons live in two narrow vertical channels, so we handle each lane
+// separately and sweep sorted by y — once the y-gap exceeds a balloon diameter no
+// further pair in that lane can overlap, keeping this near-linear even with a full
+// channel. A couple of relaxation passes settle tight stacks in one frame.
+function resolveBalloonCollisions() {
+  const r    = balloonRadius();
+  const minD = 2 * r;
+  for (const lane of [-1, 1]) {
+    const arr = figures.filter(f => f.lane === lane && f.phase !== 'exploding' && f.bx != null);
+    if (arr.length < 2) continue;
+    for (let pass = 0; pass < 2; pass++) {
+      arr.sort((a, b) => a.by - b.by);
+      for (let i = 0; i < arr.length; i++) {
+        const a = arr[i];
+        for (let j = i + 1; j < arr.length; j++) {
+          const b = arr[j];
+          const dy = b.by - a.by;
+          if (dy >= minD) break;                 // sorted: nothing below can overlap either
+          let dx = b.bx - a.bx;
+          let dist = Math.hypot(dx, dy);
+          if (dist < 0.001) { dx = rnd() - 0.5; dist = Math.hypot(dx, dy) || 1; } // identical → nudge
+          if (dist < minD) {
+            const push = (minD - dist) / 2;
+            const ux = dx / dist, uy = dy / dist;
+            a.bx -= ux * push; a.by -= uy * push;
+            b.bx += ux * push; b.by += uy * push;
+          }
+        }
+      }
+    }
+    // Keep balloons inside their channel walls horizontally.
+    const cx = laneCenterX(lane);
+    const halfSpan = Math.max(0, LANE_WIDTH / 2 - r * 0.65);
+    for (const f of arr) f.bx = Math.min(cx + halfSpan, Math.max(cx - halfSpan, f.bx));
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // PALETTES
@@ -1177,17 +1216,25 @@ function tick(now) {
 
   processQueue(now);
 
-  // Balloon mode: ease each figure's base position toward its comment-driven
-  // target (lane climb → ceiling spread). Sway/bob is added at draw time.
+  // Balloon mode: ease each figure toward its comment-driven target, with the
+  // roam-sway + float-bob folded into the target (so bx/by IS the drawn position),
+  // then push overlapping balloons apart so they bounce off each other.
   if (NH_MODE === 'balloons') {
+    const t = now / 1000;
     const k = Math.min(1, BALLOON_RISE_K * (dt / 16.7));
     for (const fig of figures) {
       if (fig.phase === 'exploding') continue;
-      const tgt = balloonTarget(fig);
-      if (fig.bx == null) { fig.bx = tgt.x; fig.by = FLOOR_Y - 40; }
-      fig.bx += (tgt.x - fig.bx) * k;
-      fig.by += (tgt.y - fig.by) * k;
+      const base   = balloonTarget(fig);
+      const atCeil = (fig.comments - 1) >= COMMENTS_TO_TOP;
+      const roam   = laneRoamHalf();
+      const tx = base.x + (atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * Math.min(10, roam)
+                                  : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * roam);
+      const ty = base.y + Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 8 : 5);
+      if (fig.bx == null) { fig.bx = tx; fig.by = FLOOR_Y - 40; }
+      fig.bx += (tx - fig.bx) * k;
+      fig.by += (ty - fig.by) * k;
     }
+    resolveBalloonCollisions();
   }
 
   for (const fig of figures) {
@@ -1266,39 +1313,18 @@ function frame(now) {
     for (const fig of sorted) {
       const exploding = fig.phase === 'exploding';
 
-      // Position + render scale differ by mode. Balloons float from bx/by with a
-      // gentle sway (lane roam) / bob (ceiling) added here; pile/spread use the
-      // pile geometry and grow with comment count.
+      // Position + render scale differ by mode. Balloon roam/bob is already baked
+      // into bx/by (with collisions resolved) in tick(), so we draw straight from
+      // there; pile/spread use the pile geometry and grow with comment count.
       let pos, blobS;
       if (balloonMode && !exploding) {
-        const t = now / 1000;
-        const atCeil = (fig.comments - 1) >= COMMENTS_TO_TOP;
-        const roam = laneRoamHalf();
-        const swayX = atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * Math.min(12, roam)
-                             : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * roam;
-        const bobY  = Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 10 : 6);
-        pos = { x: (fig.bx ?? fig.x) + swayX, y: (fig.by ?? fig.y) + bobY };
+        pos = { x: fig.bx ?? fig.x, y: fig.by ?? fig.y };
         blobS = BALLOON_S * BLOB_SCALE;
       } else {
         pos = currentPos(fig);
         // Exploding/entering figures skip the breathing multiplier so the pop
         // burst and mid-air travel read as clean physics, not a wobble.
         blobS = S * BLOB_SCALE * growthOf(fig.comments) * (fig.phase === 'settled' ? pBreath : 1);
-      }
-
-      // Balloon string — a short curved tether hanging below a floating balloon.
-      if (balloonMode && !exploding) {
-        ctx.save();
-        ctx.strokeStyle = fig.pal.accent;
-        ctx.globalAlpha = 0.6;
-        ctx.lineWidth   = 2;
-        ctx.lineCap     = 'round';
-        const sx = pos.x, sy = pos.y + 6 * blobS;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.quadraticCurveTo(sx + 8, sy + 22, sx, sy + 44);
-        ctx.stroke();
-        ctx.restore();
       }
 
       ctx.save();
