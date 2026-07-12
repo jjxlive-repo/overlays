@@ -86,23 +86,21 @@ body {
   justify-content: flex-end;
   gap: 7px;
   overflow: hidden;
+  /* Fade older messages out at the TOP only. Bottom (newest message) stays
+     fully solid so it is never clipped by a fade. */
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0,0,0,.35) 8px,
-    #000 24px,
-    #000 calc(100% - 24px),
-    rgba(0,0,0,.35) calc(100% - 8px),
-    transparent 100%
+    rgba(0,0,0,.4) 10px,
+    #000 26px,
+    #000 100%
   );
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0,0,0,.35) 8px,
-    #000 24px,
-    #000 calc(100% - 24px),
-    rgba(0,0,0,.35) calc(100% - 8px),
-    transparent 100%
+    rgba(0,0,0,.4) 10px,
+    #000 26px,
+    #000 100%
   );
 }
 .chat-message {
@@ -147,15 +145,23 @@ body {
 }
 .username {
   min-width: 0;
-  max-width: 150px;
+  max-width: 200px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--jjx-cyan);
-  font-size: calc(12px * var(--chat-font-scale));
+  color: #9ff2ff;
+  font-size: calc(14px * var(--chat-font-scale));
   font-weight: 900;
-  line-height: 1.1;
-  text-shadow: 0 2px 0 var(--jjx-shadow), 0 0 8px rgba(70,217,255,.26);
+  line-height: 1.15;
+  letter-spacing: .01em;
+  /* Heavy dark outline so names stay legible over any busy camera scene */
+  text-shadow:
+    0 0 3px #000,
+    0 1px 0 #000,
+    1px 0 0 rgba(0,0,0,.85),
+    -1px 0 0 rgba(0,0,0,.85),
+    0 2px 4px rgba(0,0,0,.9),
+    0 0 11px rgba(70,217,255,.5);
 }
 .status-pill {
   flex: 0 0 auto;
@@ -675,6 +681,8 @@ const CONFIG = {
   },
   chat: {
     maxMessages: 3,
+    maxMessagesCap: 30,   // hard upper limit for maxMessages
+    maxChars: 0,          // 0 = show full message; >0 = truncate to N characters
     messageLifetime: 8500,
     clampLines: 2
   },
@@ -743,6 +751,8 @@ function applyUrlParams() {
   CONFIG.events.enabled = asBool(param("events", null), CONFIG.events.enabled);
   CONFIG.events.duration = Number(param("eventDuration", CONFIG.events.duration)) || CONFIG.events.duration;
   CONFIG.chat.maxMessages = Number(param("maxMessages", CONFIG.chat.maxMessages)) || CONFIG.chat.maxMessages;
+  CONFIG.chat.maxChars = Math.max(0, Number(param("maxChars", CONFIG.chat.maxChars)) || 0);
+  CONFIG.chat.clampLines = Math.max(1, Number(param("lines", CONFIG.chat.clampLines)) || CONFIG.chat.clampLines);
   CONFIG.position.top = Number(param("top", CONFIG.position.top)) || CONFIG.position.top;
   CONFIG.position.right = Number(param("right", CONFIG.position.right)) || CONFIG.position.right;
   CONFIG.position.width = Number(param("width", CONFIG.position.width)) || CONFIG.position.width;
@@ -799,11 +809,29 @@ function applyOverlaySettings(settings = {}) {
     CONFIG.position.chatHeight = height;
     document.documentElement.style.setProperty("--chat-height", `${height}px`);
   }
+  if (settings.top != null) {
+    const top = Math.max(0, Math.min(1820, Number(settings.top)));
+    CONFIG.position.top = top;
+    document.documentElement.style.setProperty("--overlay-top", `${top}px`);
+  }
+  if (settings.right != null) {
+    const right = Math.max(0, Math.min(980, Number(settings.right)));
+    CONFIG.position.right = right;
+    document.documentElement.style.setProperty("--overlay-right", `${right}px`);
+  }
+  if (settings.clampLines != null) {
+    const lines = Math.max(1, Math.min(8, Math.round(Number(settings.clampLines)) || CONFIG.chat.clampLines));
+    CONFIG.chat.clampLines = lines;
+    document.documentElement.style.setProperty("--clamp-lines", String(lines));
+  }
+  if (settings.maxChars != null) {
+    CONFIG.chat.maxChars = Math.max(0, Math.min(600, Math.round(Number(settings.maxChars)) || 0));
+  }
   if (settings.maxMessages != null) {
-    CONFIG.chat.maxMessages = Math.max(1, Math.min(8, Number(settings.maxMessages) || CONFIG.chat.maxMessages));
+    CONFIG.chat.maxMessages = Math.max(1, Math.min(CONFIG.chat.maxMessagesCap, Number(settings.maxMessages) || CONFIG.chat.maxMessages));
     while (chatQueue.length > CONFIG.chat.maxMessages) {
-      const stale = chatQueue.shift();
-      if (stale) removeChatElementById(stale.id);
+      chatQueue.shift();
+      removeOldestChatElement();
     }
   }
   if (settings.showFollowsAsEvents != null) {
@@ -833,12 +861,10 @@ function loadOverlaySettings() {
 }
 
 function sanitizeText(value) {
-  return String(value ?? "").replace(/[<>&"']/g, char => ({
+  return String(value ?? "").replace(/[<>&]/g, char => ({
     "<": "&lt;",
     ">": "&gt;",
-    "&": "&amp;",
-    '"': "&quot;",
-    "'": "&#39;"
+    "&": "&amp;"
   }[char]));
 }
 
@@ -929,6 +955,20 @@ function sanitizeMessageContent(value) {
   }
   walk(template.content);
   return template.innerHTML || sanitizeText(raw);
+}
+
+function truncateForDisplay(message, maxChars) {
+  if (!maxChars || maxChars <= 0) return message;
+  const str = String(message ?? "");
+  if (!/</.test(str)) {
+    return str.length > maxChars ? str.slice(0, maxChars).replace(/\s+$/, "") + "…" : str;
+  }
+  // Message contains markup (emotes/stickers): measure visible text length only
+  const tmp = document.createElement("div");
+  tmp.innerHTML = str;
+  const visible = tmp.textContent || "";
+  if (visible.length <= maxChars) return str;
+  return visible.slice(0, maxChars).replace(/\s+$/, "") + "…";
 }
 
 function textBlob(...values) {
@@ -1153,8 +1193,8 @@ function addChatMessage({ platform = "unknown", username = "Viewer", message = "
   renderChatMessage(item);
 
   while (chatQueue.length > CONFIG.chat.maxMessages) {
-    const stale = chatQueue.shift();
-    if (stale) removeChatElementById(stale.id);
+    chatQueue.shift();
+    removeOldestChatElement();
   }
 }
 
@@ -1174,23 +1214,19 @@ function renderChatMessage(item) {
       ${statusHtml}
       <span class="username">${sanitizeText(item.username)}</span>
     </div>
-    <div class="message-text">${sanitizeMessageContent(item.message)}</div>
+    <div class="message-text">${sanitizeMessageContent(truncateForDisplay(item.message, CONFIG.chat.maxChars))}</div>
     ${imageHtml}
   `;
   chatList.appendChild(row);
 
   if (overlay.dataset.style === "chips") {
-    window.setTimeout(() => {
-      removeChatElement(row);
-      const idx = chatQueue.findIndex(q => q.id === item.id);
-      if (idx !== -1) chatQueue.splice(idx, 1);
-    }, CONFIG.chat.messageLifetime);
+    window.setTimeout(() => removeChatElement(row), CONFIG.chat.messageLifetime);
   }
 }
 
-function removeChatElementById(id) {
-  const el = chatList.querySelector(`[data-id="${id}"]`);
-  if (el) removeChatElement(el);
+function removeOldestChatElement() {
+  const oldest = chatList.querySelector(".chat-message");
+  if (oldest) removeChatElement(oldest);
 }
 
 function removeChatElement(el) {
@@ -1204,10 +1240,6 @@ function showEvent({ type = "system", username = "", text = "", value = "", icon
   const item = { type, username, text, value, icon };
   if (activeEvent && CONFIG.events.queue) {
     eventQueue.push(item);
-    // Cap the backlog so a sustained burst (raid/gift storm) can't queue minutes of
-    // now-stale toasts that keep firing long after the burst itself has ended.
-    const MAX_QUEUED_EVENTS = 5;
-    while (eventQueue.length > MAX_QUEUED_EVENTS) eventQueue.shift();
     return;
   }
   renderEvent(item);
