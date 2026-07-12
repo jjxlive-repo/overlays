@@ -1475,10 +1475,21 @@ function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
   const ch     = client.channels.get(ABLY_CH);
 
+  // Manual/test joins from the control panel (low volume).
   ch.subscribe('new-here', msg => {
     if (!OVERLAY_ENABLED) return;
     const { username, source } = msg.data || {};
     if (username && source) enqueue(username, source);
+  });
+
+  // Real chat traffic rides the 'milk-event' comment the dock already publishes for
+  // the hype meter — so New Here costs ZERO extra Ably messages per comment. Platform
+  // arrives as 'tt'/'yt' here; map it to the overlay's 'tiktok'/'youtube' source.
+  ch.subscribe('milk-event', msg => {
+    if (!OVERLAY_ENABLED) return;
+    const d = msg.data || {};
+    if (d.type !== 'comment' || !d.username) return;
+    enqueue(d.username, d.platform === 'tt' ? 'tiktok' : 'youtube');
   });
 
   ch.subscribe('new-here-reset', () => {

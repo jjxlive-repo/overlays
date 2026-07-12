@@ -484,6 +484,34 @@ function nhLoadSettings() {
 }
 
 /* ── Test fires ────────────────────────────────────────────────── */
+// Rate-limited publisher so a big Burst/Chat-Mix can never exceed Ably's
+// 500 msg/sec hard cap. Strict sliding-window limiter: it tracks the actual
+// send timestamps in the trailing second and refuses to send once 500 have
+// gone out in that window, deferring the rest until the window frees. Calls
+// that are already under budget (spaced Grow/Chat-Mix) still go out instantly.
+const NH_MAX_PER_SEC = 500;
+let _nhSendQ = [];
+let _nhSent = [];        // timestamps of sends within the last 1000ms
+let _nhSendTimer = null;
+function nhPublishJoin(username, source) {
+  _nhSendQ.push({ username, source });
+  nhPumpSendQ();
+}
+function nhPumpSendQ() {
+  const now = Date.now();
+  while (_nhSent.length && _nhSent[0] <= now - 1000) _nhSent.shift();
+  while (_nhSendQ.length && _nhSent.length < NH_MAX_PER_SEC) {
+    const it = _nhSendQ.shift();
+    if (ablyChannel) ablyChannel.publish('new-here', { username: it.username, source: it.source }).catch(() => {});
+    _nhSent.push(Date.now());
+  }
+  if (_nhSendQ.length && !_nhSendTimer) {
+    // Next slot opens when the oldest in-window send ages past 1000ms.
+    const wait = _nhSent.length ? Math.max(5, 1000 - (now - _nhSent[0])) : 20;
+    _nhSendTimer = setTimeout(() => { _nhSendTimer = null; nhPumpSendQ(); }, wait);
+  }
+}
+
 const _nhNames = ['PixelPanda','vortex_xX','luna92','GG_Mango','sleepydino','bunnyhopz',
   'toastykat','vibeLord','mochi_','crimsonFox','zephyr_','jellybean','novaaa','pochi',
   'sunnyD','kiwibyte','grumpcat','m0onpie','flux','dazzleq','snackman','tofu_','blip',
@@ -493,7 +521,7 @@ function nhTestJoin() {
   const name = document.getElementById('nh-test-name').value.trim()
     || _nhNames[Math.floor(Math.random() * _nhNames.length)] + Math.floor(Math.random() * 99);
   const source = document.getElementById('nh-test-src').value;
-  if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+  nhPublishJoin(name, source);
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ sent: ${name} (${source})`; setTimeout(() => { st.textContent = '—'; }, 2500); }
 }
@@ -504,7 +532,7 @@ function nhBurst(n) {
   for (let i = 0; i < n; i++) {
     const name = _nhNames[Math.floor(Math.random() * _nhNames.length)] + '_' + (_nhBurstSeq++);
     const source = Math.random() < 0.5 ? 'youtube' : 'tiktok';
-    if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+    nhPublishJoin(name, source);
   }
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ burst ×${n} sent`; setTimeout(() => { st.textContent = '—'; }, 2500); }
@@ -518,9 +546,7 @@ function nhChatMix(n) {
     const source = Math.random() < 0.5 ? 'youtube' : 'tiktok';
     const comments = 1 + Math.floor(Math.random() * 25);
     for (let c = 0; c < comments; c++) {
-      setTimeout(() => {
-        if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
-      }, c * 120 + Math.random() * 200);
+      setTimeout(() => { nhPublishJoin(name, source); }, c * 120 + Math.random() * 200);
     }
   }
   const st = document.getElementById('nh-status');
@@ -534,7 +560,7 @@ function nhTestGrow(n) {
   const source = document.getElementById('nh-test-src').value;
   let sent = 0;
   const tick = () => {
-    if (ablyChannel) ablyChannel.publish('new-here', { username: name, source }).catch(() => {});
+    nhPublishJoin(name, source);
     if (++sent < n) setTimeout(tick, 350); // spaced out so the growth is visible
   };
   tick();
