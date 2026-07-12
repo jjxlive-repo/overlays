@@ -16,8 +16,9 @@
     width: 1080px;
     height: 1920px;
   }
-  /* Ably connection dot — grey disconnected, blue connected (JJ is red-green colorblind) */
+  /* Ably connection dot — hidden on the broadcast overlay; check stream-dock.html for status */
   #conn-dot {
+    display: none;
     position: fixed; top: 12px; right: 12px;
     width: 12px; height: 12px; border-radius: 50%;
     background: #555; z-index: 9999;
@@ -404,6 +405,37 @@ function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
 // Origin = feet center; body extends upward (negative y).
 // All coords are in local "large" space; caller scales by S.
 // ═══════════════════════════════════════════════════════════════════
+
+// Settled figures redrew all ~15 primitive shapes below from scratch every frame even
+// though nothing about a settled figure changes frame-to-frame except the shared
+// breathing-scale multiplier applied by the caller's ctx.scale(). Since drawMascot's
+// output for a non-splatting figure depends only on `color` (pal is accepted but never
+// read inside it), and the palette only has 16 total distinct colors across both
+// sources, cache one offscreen bitmap per color and reuse it via ctx.drawImage —
+// roughly two orders of magnitude fewer draw calls per settled figure per frame.
+const MASCOT_CACHE_HALF_W = 90, MASCOT_CACHE_TOP = 155, MASCOT_CACHE_BOTTOM = 35;
+const MASCOT_CACHE_DPR = 2; // supersample so drawImage stays crisp when blobS > 1
+const mascotBitmapCache = new Map();
+function getMascotBitmap(color) {
+  let bmp = mascotBitmapCache.get(color);
+  if (bmp) return bmp;
+  const w = MASCOT_CACHE_HALF_W * 2, h = MASCOT_CACHE_TOP + MASCOT_CACHE_BOTTOM;
+  const off = document.createElement('canvas');
+  off.width = w * MASCOT_CACHE_DPR;
+  off.height = h * MASCOT_CACHE_DPR;
+  const octx = off.getContext('2d');
+  octx.scale(MASCOT_CACHE_DPR, MASCOT_CACHE_DPR);
+  octx.translate(MASCOT_CACHE_HALF_W, MASCOT_CACHE_TOP);
+  drawMascot(octx, color, null, false, 0);
+  bmp = { canvas: off, w, h };
+  mascotBitmapCache.set(color, bmp);
+  return bmp;
+}
+function drawMascotCached(ctx, color) {
+  const bmp = getMascotBitmap(color);
+  ctx.drawImage(bmp.canvas, -MASCOT_CACHE_HALF_W, -MASCOT_CACHE_TOP, bmp.w, bmp.h);
+}
+
 function drawMascot(ctx, color, pal, splatPhase, splatT) {
   // Squash-and-stretch: splatPhase=true means we're in the splat animation
   // splatT goes 0→1; max squash at splatT≈0.4 then springs back
@@ -1098,8 +1130,13 @@ function frame(now) {
         drawSplatBurst(ctx, fig.pal, fig.splatProgress);
       }
 
-      // The figure itself
-      drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress);
+      // The figure itself — settled figures (the vast majority once the pile builds up)
+      // use the cached bitmap; anything mid-animation still needs the live squash/stretch.
+      if (fig.phase === 'settled') {
+        drawMascotCached(ctx, fig.color);
+      } else {
+        drawMascot(ctx, fig.color, fig.pal, fig.phase === 'splatting', fig.splatProgress);
+      }
 
       ctx.restore();
 
@@ -1504,6 +1541,11 @@ window.forcePop = function () {
 loadState();
 connectAbly();
 requestAnimationFrame(frame);
+// State-only fallback so the queue/pressure/sign-tween keep advancing even if rAF gets
+// throttled in a backgrounded/unfocused tab — frame() already calls tick() on every real
+// rAF tick, this just keeps time moving when those stop. No draw here; the next real
+// frame() picks up drawing once rAF resumes.
+setInterval(() => tick(performance.now()), 250);
 </script>
 </body>
 </html>

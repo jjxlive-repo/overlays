@@ -44,8 +44,9 @@
       outline: 1.5px solid rgba(168, 85, 247, 0.45) !important;
     }
 
-    /* ── Connection dot ─────────────────────────────────────────────────── */
+    /* ── Connection dot — hidden on the broadcast overlay; check deuteranopia-controller.html for status ── */
     #dot {
+      display: none;
       position: absolute;
       top: 24px; right: 24px;
       width: 14px; height: 14px;
@@ -155,7 +156,10 @@
     ably.connection.on('disconnected', () => dot.classList.remove('connected'));
     ably.connection.on('failed',       () => dot.classList.remove('connected'));
 
-    channel.subscribe('cmd', (msg) => {
+    // Dedicated event name — 'cmd' is a busy, shared bus used by gift-bar.html's
+    // leaderboard requests and the splat timer's reset/save/idle commands; reusing it
+    // meant every publish here was also evaluated (and ignored) by those subscribers.
+    channel.subscribe('deuteranopia-cmd', (msg) => {
       const d = msg.data;
       // Grid state message from controller
       if (d && typeof d === 'object' && d.type === 'grid-state') {

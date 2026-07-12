@@ -171,8 +171,8 @@
       flex-shrink: 0;
     }
     #status-dot.connected {
-      background: #22c55e;
-      box-shadow: 0 0 6px #22c55e;
+      background: #3b82f6; /* blue, never green — JJ is red-green colorblind */
+      box-shadow: 0 0 6px #3b82f6;
     }
 
     /* ── Count badge ──────────────────────────────────────────────────────── */
@@ -381,7 +381,7 @@
     async function publishStrength(pct) {
       if (!connected) return;
       try {
-        await channel.publish('cmd', { type: 'set-strength', value: pct / 100 });
+        await channel.publish('deuteranopia-cmd', { type: 'set-strength', value: pct / 100 });
       } catch (e) {
         flash('Strength send failed', 'err');
       }
@@ -423,7 +423,7 @@
     async function publishState() {
       if (!connected) { flash('Not connected', 'err'); return; }
       try {
-        await channel.publish('cmd', {
+        await channel.publish('deuteranopia-cmd', {
           type:   'grid-state',
           active: [...activeSet],
         });
@@ -442,15 +442,6 @@
 
     function fillAll()   { setCells([...Array(TOTAL).keys()], true);  }
     function clearAll()  { setCells([...Array(TOTAL).keys()], false); }
-    function invertAll() { setCells([...Array(TOTAL).keys()], null);
-      // invert is a special case
-      const all = [...Array(TOTAL).keys()];
-      all.forEach(i => activeSet.has(i) ? activeSet.delete(i) : activeSet.add(i));
-      syncUI();
-      schedulePublish();
-    }
-
-    // Fix invertAll — rewrite to avoid the broken null above
     function invertAll() {
       [...Array(TOTAL).keys()].forEach(i => {
         if (activeSet.has(i)) activeSet.delete(i);

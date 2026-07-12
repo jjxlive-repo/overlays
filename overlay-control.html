@@ -135,7 +135,7 @@ button:active { transform: scale(.97); }
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--muted); flex-shrink: 0; transition: background .3s;
 }
-.conn-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.conn-dot.connected { background: #3b82f6; box-shadow: 0 0 6px #3b82f6; } /* blue, never green — JJ is red-green colorblind */
 .conn-dot.connecting { background: var(--gold); animation: blink .8s infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 #ably-label { font-size: 11px; color: var(--muted); }
@@ -496,10 +496,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 <!-- ══ GIFT BATTLE ══ -->
 <div class="panel" id="p-gbt">
   <div class="ph" onclick="togglePanel('gbt')">
-    <h2>🥊 Gift Battle / Progress Bar</h2>
+    <h2>🥊 Gift Battle / Progress Bar (⚠ not available)</h2>
     <span class="ph-chevron" id="ch-gbt">▼</span>
   </div>
   <div class="pb hidden" id="pb-gbt">
+    <div class="status-line" style="color:#f43f5e;margin-bottom:8px;">
+      ⚠ The live gift-bar.html has no Gift Battle / Progress Bar feature — this panel
+      currently has nothing to control. Activate/Deactivate below are disabled.
+    </div>
 
     <div class="row" data-tip="Off = hide the bar.\nBattle = two teams compete in real time.\nShared Progress = combined gifting toward a goal amount.">
       <div class="mode-group" id="gbt-mode-btns">
@@ -543,8 +547,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 
     <hr>
     <div class="row" style="gap:6px;">
-      <button class="btn-g" style="flex:1;" onclick="gbtActivate()">▶ Activate</button>
-      <button class="btn-r" style="flex:1;" onclick="gbtStop()">✕ Deactivate</button>
+      <button class="btn-g" style="flex:1;" onclick="gbtActivate()" disabled title="Not wired to gift-bar.html — see warning above">▶ Activate</button>
+      <button class="btn-r" style="flex:1;" onclick="gbtStop()" disabled title="Not wired to gift-bar.html — see warning above">✕ Deactivate</button>
     </div>
     <div class="status-line" id="gbt-status"></div>
   </div>
@@ -918,7 +922,9 @@ function gbInit() {
 
 function gbPin(slot) {
   document.querySelectorAll('[data-gbslot]').forEach(b => b.classList.toggle('active', b.dataset.gbslot === slot));
-  pub('giftr-cmd', slot === 'auto' ? 'auto' : 'slot:' + slot);
+  // gift-bar.html subscribes to the 'giftr' event and expects {cmd: 'auto'|'slot:<key>'} —
+  // not the old bare-string 'giftr-cmd' protocol only the stale backup gift-bar files still read.
+  pub('giftr', { cmd: slot === 'auto' ? 'auto' : 'slot:' + slot });
 }
 
 function gbToggleSlide(slot) {
@@ -1007,10 +1013,13 @@ function tgoTF(tf) {
   _tgoTF = tf;
   document.querySelectorAll('[data-tgotf]').forEach(b => b.classList.toggle('active', b.dataset.tgotf === tf));
 }
+// tgoShow/tgoRefresh route through tracker.html's 'cmd' relay (it's the only page that
+// turns this into the real 'top-gifters' event gift-bar.html listens for) — there's no
+// ack path over Ably, so we can only report that the request was sent, not that it worked.
 function tgoShow() {
   pub('cmd', JSON.stringify({ action: 'showTopGifters', timeFrame: _tgoTF }));
   const st = document.getElementById('tgo-status');
-  if (st) { st.textContent = 'shown'; setTimeout(() => st.textContent = '', 1800); }
+  if (st) { st.textContent = 'sent (needs tracker.html open)'; setTimeout(() => st.textContent = '', 2600); }
 }
 function tgoHide() {
   pub('top-gifters', { visible: false, gifters: [] });
@@ -1020,7 +1029,7 @@ function tgoHide() {
 function tgoRefresh() {
   pub('cmd', 'requestLeaderboard');
   const st = document.getElementById('tgo-status');
-  if (st) { st.textContent = 'refreshed'; setTimeout(() => st.textContent = '', 1800); }
+  if (st) { st.textContent = 'sent (needs tracker.html open)'; setTimeout(() => st.textContent = '', 2600); }
 }
 
 /* ═══════════════════════════════════════════
