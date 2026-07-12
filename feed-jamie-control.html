@@ -1177,9 +1177,17 @@ function deletePreset() {
 renderPresets();
 
 /* ── TIKFINITY BRIDGE (same event shapes as stream-dock.html) ──── */
-let tfWs = null, tfTimer = null, tfWanted = false, tfCount = 0;
+/* TikTok comments/gifts/likes reach Feed Jamie ONLY through this bridge —
+   auto-connect (and remember the user's on/off choice across reloads) so a
+   page refresh to pick up a config/UI update doesn't silently stop TikTok
+   capture until someone notices and clicks Connect again. */
+const TF_LS_WANTED = 'feedJamie.tfWanted';
+let tfWs = null, tfTimer = null, tfCount = 0;
+let tfWanted = (() => { try { const v = localStorage.getItem(TF_LS_WANTED); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+document.getElementById('tf-toggle').textContent = tfWanted ? 'Disconnect' : 'Connect';
 document.getElementById('tf-toggle').onclick = () => {
   tfWanted = !tfWanted;
+  try { localStorage.setItem(TF_LS_WANTED, tfWanted ? '1' : '0'); } catch (e) {}
   document.getElementById('tf-toggle').textContent = tfWanted ? 'Disconnect' : 'Connect';
   if (tfWanted) tfConnect();
   else { clearTimeout(tfTimer); try { if (tfWs) tfWs.close(); } catch (e) {} setDot('tf', false, 'off'); }
@@ -1248,6 +1256,7 @@ document.getElementById('preview-toggle').onchange = function () {
 connectAbly();
 pushConfig();
 send({ cmd: 'REQUEST_STATUS' });
+if (tfWanted) tfConnect();
 </script>
 </body>
 </html>
