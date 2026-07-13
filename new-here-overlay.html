@@ -53,6 +53,12 @@ let CTR_FORMAT    = '{n} joined';  // {n} is replaced with count
 let IDLE_TITLE    = 'Be the first!';
 let IDLE_SUB      = 'type NEW HERE';
 let FLOOR_OFFSET  = 0;   // shifts the pile floor up/down from its base position
+// Ranking timeframe for the supporter (right) channel. 'live' = totals accumulated
+// this session from gift events; the others rank gifters by tracker.html's historical
+// per-user spend for that window (daily/weekly/monthly/all-time).
+let RANK_TIMEFRAME = 'live'; // 'live' | 'daily' | 'weekly' | 'monthly' | 'all'
+let giftrRoster    = new Map(); // userKey -> { name, platform, day, week, month, all } ($ viewer-spend)
+
 // Animation model. 'pile' = mound; 'spread' = ground row that blinks;
 // 'balloons' = roam into a side lane, float higher per comment, spread across the ceiling.
 let NH_MODE       = 'pile';
@@ -113,7 +119,7 @@ function saveDisplayCfg() {
       signLabel: SIGN_LABEL, ctrLabel: CTR_LABEL, ctrFormat: CTR_FORMAT,
       idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
       floorOffset: FLOOR_OFFSET,
-      mode: NH_MODE,
+      mode: NH_MODE, rankTimeframe: RANK_TIMEFRAME,
       laneInset: LANE_INSET, laneWidth: LANE_WIDTH,
       tierEnabled: TIER_ENABLED, tierLabelOn: TIER_LABEL_ON,
       blobScale: BLOB_SCALE, gloss: GLOSS,
@@ -153,6 +159,7 @@ function saveDisplayCfg() {
     if (c.floorOffset  != null) FLOOR_OFFSET  = c.floorOffset;
     if (c.mode         != null) setMode(c.mode);
     else if (c.spreadMode != null) setMode(c.spreadMode ? 'spread' : 'pile');
+    if (c.rankTimeframe != null) RANK_TIMEFRAME = c.rankTimeframe;
     if (c.laneInset    != null) LANE_INSET    = c.laneInset;
     if (c.laneWidth    != null) LANE_WIDTH    = c.laneWidth;
     if (c.tierEnabled  != null) TIER_ENABLED  = c.tierEnabled;
@@ -283,6 +290,35 @@ const BALLOON_CMDS = {
 const LEVELUP_MS = 1400;   // level-up burst duration
 const BOOST_LIFT = 260;    // px a !balloon3 boost lifts the balloon
 
+// How much each engagement signal grows a casual (left) balloon, in comment-equivalents.
+const GROW_COMMENT    = 1;   // a chat message
+const GROW_FOLLOW     = 1;   // a new YouTube follow
+const GROW_MEMBERSHIP = 5;   // a YouTube membership / sub — a big loyalty jump
+const TAPS_PER_LEVEL  = 10;  // TikTok taps (likes) needed for +1 growth (taps are spammy)
+
+// ── SUPPORTERS (paid) ────────────────────────────────────────────
+// Chatters grow on the LEFT by comments. Anyone who sends a superchat / YouTube
+// gift / TikTok gift becomes a SUPPORTER and moves to the RIGHT channel, scaled by
+// total money given this stream. Money is normalized to "coin-equiv" (100 = $1),
+// matching the dock's gcNormalize so both platforms compare fairly.
+function giftCoinEquiv(amount, type) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'tiktok_coins')   return amount;                 // 1 coin ≈ $0.01
+  if (t === 'youtube_jewels') return Math.round(amount * 0.5); // jewel ≈ half a coin
+  return Math.round(amount * 100);                            // USD (superchat/donation) → coin-equiv
+}
+// Spend thresholds (coin-equiv) for supporter tiers 1..10 → $1,2,5,10,20,35,50,100,200,500.
+const SPEND_NEED = [0, 100, 200, 500, 1000, 2000, 3500, 5000, 10000, 20000, 50000];
+function spendTier(coins) {
+  let t = 1;
+  for (let i = 1; i <= TIER_MAX; i++) if ((coins || 0) >= SPEND_NEED[i]) t = i;
+  return t;
+}
+// Supporter color ramp — gold → diamond, clearly "paid" regardless of platform.
+const SUPPORTER_COLOR = [null,'#FCD34D','#FBBF24','#F59E0B','#FDE047','#FEF08A','#FDE68A','#A7F3D0','#67E8F9','#E9D5FF','#FFFFFF'];
+function supporterColor(tier) { return SUPPORTER_COLOR[Math.max(1, Math.min(TIER_MAX, tier))]; }
+function dollarsOf(coins) { return coins / 100; }
+
 // Channel geometry (live-adjustable via 'new-here-config'). A channel runs from
 // LANE_INSET px off its edge, LANE_WIDTH px wide. Centers/roam derive from these
 // so the control can resize the channels on the fly.
@@ -382,6 +418,7 @@ let queue    = [];
 let count    = 0;
 let userFigs = new Map();  // userKey -> settled/entering figure (grow on repeat comments)
 let pending  = new Map();  // userKey -> comment count accrued while queued but not yet spawned
+let userTaps = new Map();  // userKey -> TikTok taps accrued toward the next +1 growth
 let newestName   = '';
 let newestSource = null;
 let newestJoinAt = 0;         // timestamp the sign should hold/fade relative to
@@ -466,7 +503,11 @@ function setFloorOffset(offset) {
 function balloonTarget(fig) {
   const floorY = FLOOR_Y - 40;
   const x = laneCenterX(fig.lane);
-  const p = Math.min(1, (fig.comments - 1) / COMMENTS_TO_TOP);
+  // Supporters climb the RIGHT channel by spend tier (with a floor so any gift lifts
+  // them noticeably); chatters climb the LEFT channel by comment count.
+  const p = fig.isSupporter
+    ? Math.min(1, 0.22 + (spendTier(fig.spend) - 1) / (TIER_MAX - 1) * 0.78)
+    : Math.min(1, (fig.comments - 1) / COMMENTS_TO_TOP);
   let y;
   if (p >= 1) {
     if (fig.ceilSlot == null) fig.ceilSlot = (fig.lane < 0 ? balloonCeilSeqL++ : balloonCeilSeqR++);
@@ -490,11 +531,11 @@ function spawnFigure(username, source, key) {
   const comments = key ? (pending.get(key) || 1) : 1;
   seenUsers.add(username);
 
-  // Balloon mode: no arc toss / heightmap. Drop into an alternating side lane at
-  // the floor; float() below raises them per comment. Phase is 'settled' from the
-  // start so the pile-specific enter/splat transitions are skipped.
+  // Balloon mode: no arc toss / heightmap. Chatters drop into the LEFT channel and
+  // rise by comments; giving money later moves them to the RIGHT (addSupporterSpend).
+  // Phase is 'settled' from the start so the pile enter/splat transitions are skipped.
   if (NH_MODE === 'balloons') {
-    const lane   = (balloonLaneSeq++ % 2 === 0) ? -1 : 1;
+    const lane   = -1; // left = comment-based growth; supporters get moved right
     const floorY = FLOOR_Y - 40;
     const laneX  = laneCenterX(lane);
     if (figures.filter(f => f.phase === 'settled').length < CONFIG.maxFigures) {
@@ -510,6 +551,8 @@ function spawnFigure(username, source, key) {
         // Evolution/command state
         tier: tierOf(comments), levelUpAt: -Infinity,
         danceUntil: 0, sparkleUntil: 0, boostUntil: 0, popAt: -Infinity, popY: 0,
+        // Supporter (paid) state
+        spend: 0, isSupporter: false, spendTier: 0,
       };
       figures.push(fig);
       if (key) userFigs.set(key, fig);
@@ -578,26 +621,28 @@ function spawnFigure(username, source, key) {
 // ═══════════════════════════════════════════════════════════════════
 function userKey(username, source) { return `${source}:${String(username).toLowerCase()}`; }
 
-function enqueue(username, source) {
+// Grow a casual (left) balloon by `amount` comment-equivalents — the shared entry
+// point for every engagement signal (chat, follow, membership, TikTok taps). New
+// users are queued to spawn; existing ones grow and fire a level-up burst on a new tier.
+function grantGrowth(username, source, amount) {
   const key = userKey(username, source);
   const existing = userFigs.get(key);
   if (existing) {
-    // Already on screen → grow instead of adding a body.
-    existing.comments = (existing.comments || 1) + 1;
+    existing.comments = (existing.comments || 1) + amount;
     existing.lastCommentAt = performance.now();
-    // Evolution: crossing a tier threshold fires a level-up burst so the reward is instant.
     const newTier = tierOf(existing.comments);
     if (newTier > (existing.tier || 1)) { existing.tier = newTier; existing.levelUpAt = performance.now(); }
     newestName = username; newestSource = source; newestJoinAt = performance.now();
     if (PRESSURE_ENABLED) { PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN * 0.5); lastPressureEventAt = performance.now(); }
     return;
   }
-  if (pending.has(key)) { pending.set(key, pending.get(key) + 1); return; } // queued but not spawned yet
-  // Brand-new chatter.
-  pending.set(key, 1);
+  if (pending.has(key)) { pending.set(key, pending.get(key) + amount); return; } // queued but not spawned yet
+  // Brand-new user.
+  pending.set(key, amount);
   count++;
   queue.push({ username, source, key });
 }
+function enqueue(username, source) { grantGrowth(username, source, GROW_COMMENT); }
 
 function processQueue(now) {
   if (!queue.length) return;
@@ -619,13 +664,73 @@ function handleBalloonCommand(username, source, msg) {
   if (!cmd) return false;
   const fig = userFigs.get(userKey(username, source));
   if (!fig) return false;
-  if (tierOf(fig.comments) < cmd.minTier) return false; // not unlocked yet
+  // Supporters unlock by the higher of their comment tier and spend tier.
+  const effTier = fig.isSupporter ? Math.max(tierOf(fig.comments), spendTier(fig.spend)) : tierOf(fig.comments);
+  if (effTier < cmd.minTier) return false; // not unlocked yet
   const now = performance.now();
   if (cmd.action === 'dance')   fig.danceUntil   = now + cmd.dur;
   if (cmd.action === 'sparkle') fig.sparkleUntil = now + cmd.dur;
   if (cmd.action === 'boost')   fig.boostUntil   = now + cmd.dur;
   if (cmd.action === 'pop')   { fig.popY = fig.by; fig.popAt = now; fig.by = FLOOR_Y - 40; } // pop → drop to bottom, re-float
   return true;
+}
+
+// Money in → the user becomes/stays a SUPPORTER and moves to the RIGHT channel,
+// scaled by their running total this stream. `coins` is coin-equiv (100 = $1).
+// Spawns a balloon for a gifter who hasn't commented yet.
+function addSupporterSpend(username, source, coins) {
+  if (NH_MODE !== 'balloons' || !(coins > 0)) return;
+  const key = userKey(username, source);
+  let fig = userFigs.get(key);
+  if (!fig) {
+    // Gifter with no balloon yet — count them as a join and spawn one now.
+    if (!pending.has(key)) { pending.set(key, 1); count++; }
+    spawnFigure(username, source, key);
+    fig = userFigs.get(key);
+  }
+  if (!fig) return; // over maxFigures cap
+  fig.spend = (fig.spend || 0) + coins;
+  const wasSupporter = fig.isSupporter;
+  fig.isSupporter = true;
+  fig.lane = 1;             // move to the right channel
+  fig.ceilSlot = null;      // re-slot within the right channel
+  fig.lastCommentAt = performance.now(); // keep their name in the recent window
+  // Level-up burst on reaching a new spend tier (or first becoming a supporter).
+  const st = spendTier(fig.spend);
+  if (!wasSupporter || st > (fig.spendTier || 0)) { fig.spendTier = st; fig.levelUpAt = performance.now(); }
+  newestName = username; newestSource = source; newestJoinAt = performance.now();
+}
+
+// Ask tracker.html to (re)broadcast its per-user roster + leaderboard.
+function requestRoster() { if (window.__nh && window.__nh.ch) window.__nh.ch.publish('cmd', 'requestLeaderboard').catch(() => {}); }
+
+// Re-rank the RIGHT channel for the selected timeframe from tracker's roster:
+// gifters with spend in that window become supporters sized by it; anyone who was a
+// supporter but has nothing in the window falls back to a left-side casual. This is
+// the "shuffle" — switching timeframe re-lays who stands where. 'live' leaves the
+// session-accumulated totals untouched.
+function applyTimeframe() {
+  if (NH_MODE !== 'balloons' || RANK_TIMEFRAME === 'live') return;
+  const field = RANK_TIMEFRAME === 'daily' ? 'day' : RANK_TIMEFRAME === 'weekly' ? 'week'
+              : RANK_TIMEFRAME === 'monthly' ? 'month' : 'all';
+  const inWindow = new Set();
+  for (const [key, r] of giftrRoster) {
+    const dollars = r[field] || 0;
+    if (dollars <= 0) continue;
+    inWindow.add(key);
+    let fig = userFigs.get(key);
+    if (!fig) { if (!pending.has(key)) { pending.set(key, 1); count++; } spawnFigure(r.name, r.platform, key); fig = userFigs.get(key); }
+    if (!fig) continue;
+    fig.spend = Math.round(dollars * 100); // $ → coin-equiv
+    if (!fig.isSupporter) { fig.isSupporter = true; fig.lane = 1; fig.ceilSlot = null; }
+    fig.spendTier = spendTier(fig.spend);
+  }
+  // Demote supporters with nothing in this window back to casual (left).
+  for (const fig of figures) {
+    if (fig.isSupporter && !inWindow.has(userKey(fig.username, fig.source))) {
+      fig.isSupporter = false; fig.spend = 0; fig.spendTier = 0; fig.lane = -1; fig.ceilSlot = null;
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -890,13 +995,13 @@ function drawCrown(ctx, px, py, blobS) {
   ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
-function drawTierBadge(ctx, px, py, blobS, tier, color) {
+function drawTierBadge(ctx, px, py, blobS, label, color) {
   const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
   ctx.save();
   ctx.translate(px + r * 0.7, cy - r * 0.72);
   ctx.scale(Math.max(0.5, blobS), Math.max(0.5, blobS));
   ctx.font = '700 15px Fredoka, sans-serif';
-  const label = 'Lv ' + tier, w = ctx.measureText(label).width + 14, h = 20;
+  const w = ctx.measureText(label).width + 14, h = 20;
   ctx.fillStyle = color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
   roundRect(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -918,7 +1023,7 @@ function drawPopBurst(ctx, px, py, blobS, elapsed, dur) {
   }
   ctx.restore();
 }
-function drawLevelUp(ctx, px, py, blobS, tier, elapsed) {
+function drawLevelUp(ctx, px, py, blobS, label, elapsed) {
   const t = elapsed / LEVELUP_MS; if (t < 0 || t > 1) return;
   const cy = fxCenterY(py, blobS), r = fxRadius(blobS);
   ctx.save();
@@ -932,7 +1037,7 @@ function drawLevelUp(ctx, px, py, blobS, tier, elapsed) {
   ctx.font = `700 ${Math.round(19 * Math.max(0.7, blobS))}px Fredoka, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineWidth = 4; ctx.strokeStyle = '#1a0530';
-  const txt = 'LVL ' + tier + '!';
+  const txt = label;
   ctx.strokeText(txt, px, cy - r * 1.5 - rise); ctx.fillStyle = '#FDE047';
   ctx.fillText(txt, px, cy - r * 1.5 - rise);
   ctx.restore();
@@ -1544,16 +1649,25 @@ function frame(now) {
         blobS = S * BLOB_SCALE * growthOf(fig.comments) * (fig.phase === 'settled' ? pBreath : 1);
       }
 
-      // Balloon evolution: tier drives body color + stacked effects. Behind-body FX
-      // (glow / aura / prism ring / the !balloon4 pop burst) draw in world space here.
-      let tier = 1, mascotColor = fig.color, danceRot = 0;
+      // Balloon evolution: chatters evolve by comment tier (left); supporters by
+      // spend tier with a gold "paid" look (right). effTier/mascotColor/badgeLabel
+      // are set here and drive both the behind- and front-body FX below.
+      let effTier = 1, mascotColor = fig.color, danceRot = 0, isSup = false, badgeLabel = '';
       if (balloonMode && !exploding && TIER_ENABLED) {
-        tier = tierOf(fig.comments);
-        mascotColor = tierColor(fig.source, tier);
+        isSup = !!fig.isSupporter;
+        if (isSup) {
+          effTier    = spendTier(fig.spend);
+          mascotColor = supporterColor(effTier);
+          badgeLabel = '$' + Math.max(1, Math.round(dollarsOf(fig.spend)));
+        } else {
+          effTier    = tierOf(fig.comments);
+          mascotColor = tierColor(fig.source, effTier);
+          badgeLabel = 'Lv ' + effTier;
+        }
         if (fig.danceUntil && now < fig.danceUntil) danceRot = Math.sin(now * 0.018) * 15;
-        if (tier >= 3) drawTierGlow(ctx, pos.x, pos.y, blobS, mascotColor, tier, now);
-        if (tier >= 5) drawAura(ctx, pos.x, pos.y, blobS, mascotColor, tier, now);
-        if (tier >= 8) drawPrismRing(ctx, pos.x, pos.y, blobS, now);
+        if (isSup || effTier >= 3) drawTierGlow(ctx, pos.x, pos.y, blobS, mascotColor, effTier, now);
+        if (isSup || effTier >= 5) drawAura(ctx, pos.x, pos.y, blobS, mascotColor, effTier, now);
+        if (effTier >= 8)          drawPrismRing(ctx, pos.x, pos.y, blobS, now);
         const popDur = BALLOON_CMDS['!balloon4'].dur;
         if (now - fig.popAt < popDur) drawPopBurst(ctx, pos.x, fig.popY, blobS, now - fig.popAt, popDur);
       }
@@ -1598,15 +1712,15 @@ function frame(now) {
 
       ctx.restore();
 
-      // Front-body tier FX (sparkles, star/crown topper, Lv badge, level-up burst).
+      // Front-body FX (sparkles, star/crown topper, badge, level-up burst).
       if (balloonMode && !exploding && TIER_ENABLED) {
         const sparkling = fig.sparkleUntil && now < fig.sparkleUntil;
-        const sc = (tier >= 4 ? 3 : 0) + (sparkling ? 9 : 0);
+        const sc = ((isSup || effTier >= 4) ? 3 : 0) + (sparkling ? 9 : 0);
         if (sc > 0) drawSparkles(ctx, pos.x, pos.y, blobS, now, sc, fig.id * 1.7);
-        if (tier === 6) drawStarTopper(ctx, pos.x, pos.y, blobS, now);
-        if (tier >= 7) drawCrown(ctx, pos.x, pos.y, blobS);
-        if (TIER_LABEL_ON) drawTierBadge(ctx, pos.x, pos.y, blobS, tier, mascotColor);
-        if (now - fig.levelUpAt < LEVELUP_MS) drawLevelUp(ctx, pos.x, pos.y, blobS, tier, now - fig.levelUpAt);
+        if (!isSup && effTier === 6) drawStarTopper(ctx, pos.x, pos.y, blobS, now);
+        if (effTier >= 7 || (isSup && effTier >= 4)) drawCrown(ctx, pos.x, pos.y, blobS);
+        if (TIER_LABEL_ON) drawTierBadge(ctx, pos.x, pos.y, blobS, badgeLabel, mascotColor);
+        if (now - fig.levelUpAt < LEVELUP_MS) drawLevelUp(ctx, pos.x, pos.y, blobS, isSup ? badgeLabel + '!' : 'LVL ' + effTier + '!', now - fig.levelUpAt);
       }
 
       // Name pill — independent scale/offset from the blob itself. In balloon
@@ -1698,7 +1812,7 @@ function saveState() {
         id: f.id, x: f.x, y: f.y, color: f.color,
         source: f.source, username: f.username, rot: f.rot,
         comments: f.comments || 1, lastCommentAt: f.lastCommentAt || 0,
-        lane: f.lane,
+        lane: f.lane, spend: f.spend || 0, isSupporter: !!f.isSupporter,
       })),
       seenUsers: Array.from(seenUsers),
       pressure: PRESSURE,
@@ -1737,6 +1851,8 @@ function loadState() {
       // Evolution state re-derived from comment count; action timers reset.
       tier:          tierOf(f.comments || 1), levelUpAt: -Infinity,
       danceUntil: 0, sparkleUntil: 0, boostUntil: 0, popAt: -Infinity, popY: 0,
+      // Supporter state persists across reloads (their spend this stream).
+      spend:         f.spend || 0, isSupporter: !!f.isSupporter, spendTier: spendTier(f.spend || 0),
     }));
     // Rebuild the username→figure index so repeat comments after a reload grow
     // the existing body instead of adding a duplicate.
@@ -1775,10 +1891,47 @@ function connectAbly() {
   ch.subscribe('milk-event', msg => {
     if (!OVERLAY_ENABLED) return;
     const d = msg.data || {};
-    if (d.type !== 'comment' || !d.username) return;
     const src = d.platform === 'tt' ? 'tiktok' : 'youtube';
-    enqueue(d.username, src);
-    if (d.message) handleBalloonCommand(d.username, src, d.message); // !balloon1 etc.
+    if (d.type === 'comment' && d.username) {
+      enqueue(d.username, src);
+      if (d.message) handleBalloonCommand(d.username, src, d.message); // !balloon1 etc.
+    } else if (d.type === 'yt_sub' && d.username) {
+      grantGrowth(d.username, src, GROW_MEMBERSHIP);       // YouTube membership / sub → big jump
+    } else if (d.type === 'join' && d.username && d.platform === 'yt') {
+      grantGrowth(d.username, src, GROW_FOLLOW);           // YouTube follow (TikTok room-joins are noise → ignored)
+    } else if (d.type === 'like' && d.username) {
+      // TikTok taps are spammy — accrue and grant +1 every TAPS_PER_LEVEL.
+      const k = userKey(d.username, src), n = (userTaps.get(k) || 0) + 1;
+      if (n >= TAPS_PER_LEVEL) { userTaps.set(k, 0); grantGrowth(d.username, src, 1); }
+      else userTaps.set(k, n);
+    }
+  });
+
+  // Money in → supporter moves to the right channel. gift-alert is published on this
+  // same channel by tracker.html (the user's gift pipeline) for both platforms
+  // (superchat / jewels / TikTok coins), so this adds no new publishes — just one
+  // extra delivery per (rare) gift. Since we ACCUMULATE a running total, guard against
+  // a duplicate publish (e.g. dock + tracker both connected) inflating someone's spend:
+  // ignore an identical name+amount+type seen within a tight window.
+  let _lastGiftSig = '', _lastGiftAt = 0;
+  ch.subscribe('gift-alert', msg => {
+    if (!OVERLAY_ENABLED) return;
+    const d = msg.data || {};
+    if (!d.name || !(d.amount > 0)) return;
+    const sig = `${d.name}|${d.amount}|${d.type}`, t = Date.now();
+    if (sig === _lastGiftSig && t - _lastGiftAt < 900) return; // same gift, two publishers
+    _lastGiftSig = sig; _lastGiftAt = t;
+    const src = d.platform === 'tiktok' ? 'tiktok' : 'youtube';
+    addSupporterSpend(d.name, src, giftCoinEquiv(d.amount, d.type));
+  });
+
+  // tracker.html broadcasts its full per-user spend roster (day/week/month/all-time).
+  // We keep it and, in a non-live timeframe, re-rank the right channel from it.
+  ch.subscribe('giftr-roster', msg => {
+    const list = (msg.data && msg.data.gifters) || [];
+    giftrRoster = new Map();
+    for (const g of list) if (g && g.name) giftrRoster.set(userKey(g.name, g.platform || 'youtube'), g);
+    if (OVERLAY_ENABLED) applyTimeframe();
   });
 
   ch.subscribe('new-here-reset', () => {
@@ -1807,6 +1960,10 @@ function connectAbly() {
     if (d.floorOffset  != null) setFloorOffset(d.floorOffset);
     if (d.mode         != null) setMode(d.mode);
     else if (d.spreadMode != null) setMode(d.spreadMode ? 'spread' : 'pile');
+    if (d.rankTimeframe != null) {
+      RANK_TIMEFRAME = d.rankTimeframe;
+      if (RANK_TIMEFRAME !== 'live') { requestRoster(); applyTimeframe(); }
+    }
     if (d.laneInset    != null) LANE_INSET    = Math.max(0, d.laneInset);
     if (d.laneWidth    != null) LANE_WIDTH    = Math.max(40, d.laneWidth);
     if (d.tierEnabled  != null) TIER_ENABLED  = !!d.tierEnabled;
@@ -1918,6 +2075,7 @@ function connectAbly() {
   client.connection.on('connected', () => {
     console.log('[Ably] connected →', ABLY_CH);
     sendAlive();
+    if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {}); // pull the roster
   });
   client.connection.on('disconnected', () => console.warn('[Ably] disconnected'));
   client.connection.on('suspended',    () => console.warn('[Ably] suspended'));
@@ -1990,6 +2148,7 @@ function hardReset() {
   seenUsers     = new Set();
   userFigs      = new Map();
   pending       = new Map();
+  userTaps      = new Map();
   spreadSeq     = 0;
   balloonLaneSeq = 0;
   balloonCeilSeqL = 0;

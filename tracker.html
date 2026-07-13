@@ -2819,6 +2819,16 @@ function publishGiftrLeaderboard() {
   };
 
   ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
+
+  // Full per-user roster (viewer-spend $) for the New Here balloon overlay's
+  // daily/weekly/monthly/all-time ranking. Capped to the top 200 by all-time so the
+  // payload stays small. The overlay ranks gifter balloons by the selected period.
+  const roster = rows
+    .filter(r => r.allSpend > 0)
+    .sort((a, b) => b.allSpend - a.allSpend)
+    .slice(0, 200)
+    .map(r => ({ name: r.name, platform: r.platform, day: r.daySpend, week: r.weekSpend, month: r.monthSpend, all: r.allSpend }));
+  ablyChannel.publish('giftr-roster', { gifters: roster }).catch(() => {});
 }
 
 /* ── Community hype event publisher ── */
