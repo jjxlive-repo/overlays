@@ -3497,6 +3497,62 @@ function updateViewerCount(key, count) {
     topN.classList.add('pop');
     setTimeout(() => topN.classList.remove('pop'), 350);
   }
+
+  // Concurrent-viewer milestone check (per platform).
+  trackMilestone('viewers', key, count);
+}
+
+/* ═══════════════════════════════════════════
+   MILESTONES — celebrate subscriber/follower totals + concurrent-viewer peaks.
+   Fires a 'milestone' event (rendered as a banner on the balloon overlay) the
+   first time a metric crosses each threshold. Totals (subs/followers) baseline to
+   their value on first read so we don't celebrate history; viewers baseline at 0.
+═══════════════════════════════════════════ */
+let MILESTONE_ENABLED = true;
+const MILESTONE_THRESHOLDS = {
+  viewers:   [10, 25, 50, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000],
+  subs:      [100, 250, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000],
+  followers: [1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000],
+};
+const _msBaseline = {};        // `${metric}:${plat}` -> baseline value
+const _msPeak = {};            // `${metric}:${plat}` -> highest value seen
+const _msFired = new Set();    // `${metric}:${plat}:${threshold}` already celebrated
+function _msExtractCount(data) {
+  let n = data.count ?? data.total ?? data.totalCount ?? data.subscribers ?? data.followers ??
+          data.subscriberCount ?? data.followerCount ?? data.value ?? null;
+  if (n == null && data.meta != null) {
+    n = typeof data.meta === 'object'
+      ? (data.meta.count ?? data.meta.total ?? data.meta.subscribers ?? data.meta.followers ?? null)
+      : data.meta;
+  }
+  n = parseInt(n);
+  return isNaN(n) ? null : n;
+}
+function trackMilestone(metric, plat, value) {
+  if (!MILESTONE_ENABLED || value == null || isNaN(value)) return;
+  const key = `${metric}:${plat}`;
+  const isViewers = metric === 'viewers';
+  if (_msBaseline[key] == null) {
+    _msBaseline[key] = isViewers ? 0 : value;   // totals: don't celebrate the count you started at
+    _msPeak[key]     = isViewers ? 0 : value;
+    if (!isViewers) return;
+  }
+  const prevPeak = _msPeak[key];
+  if (value <= prevPeak) return;                 // only celebrate new highs
+  for (const t of (MILESTONE_THRESHOLDS[metric] || [])) {
+    if (t <= _msBaseline[key]) continue;
+    if (prevPeak < t && value >= t) {
+      const fkey = `${key}:${t}`;
+      if (!_msFired.has(fkey)) { _msFired.add(fkey); fireMilestone(metric, plat, t, value); }
+    }
+  }
+  _msPeak[key] = value;
+}
+function fireMilestone(metric, plat, threshold, value) {
+  const platform = plat === 'tt' ? 'tiktok' : plat === 'yt' ? 'youtube' : 'other';
+  const label = metric === 'viewers' ? 'WATCHING' : metric === 'subs' ? 'SUBSCRIBERS' : 'FOLLOWERS';
+  console.log('[milestone]', metric, platform, threshold, '(now', value + ')');
+  if (ablyChannel) ablyChannel.publish('milestone', { metric, platform, threshold, value, label }).catch(() => {});
 }
 
 
@@ -3645,6 +3701,15 @@ function handleMsg(data) {
         }
       }
     }
+    // Subscriber / follower TOTALS → milestone tracking (SSN sends these as count updates).
+    if (evt === 'subscriber_update' || evt === 'subscriber_count' || evt === 'subscribers') {
+      const n = _msExtractCount(data);
+      if (n != null) trackMilestone('subs', _plat0, n);
+    } else if (evt === 'follower_update' || evt === 'follower_count' || evt === 'followers') {
+      const n = _msExtractCount(data);
+      if (n != null) trackMilestone('followers', _plat0, n);
+    }
+
     // TikTok like delta from roomstats (fallback — only runs when Tikfinity is offline)
     if (evt === 'roomstats' && data.likes != null && _tfWs?.readyState !== WebSocket.OPEN) {
       const _ttLikeTotal = parseInt(data.likes) || 0;
@@ -3712,13 +3777,15 @@ function handleMsg(data) {
   // ── Milk meter engagement events (messages WITH chatname) ──
   const _platH = isTT ? 'tt' : isYT ? 'yt' : 'other';
   let _hypeSent = false;
-  if (evt === 'follow' || evt === 'follower')                          { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
-  else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter')    { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
-  else if (evt === 'like' || evt === 'like_batch')                     { if (!(isTT && _tfWs?.readyState===WebSocket.OPEN)) { if(isTT)_evtCounts.tt_like++; if(isYT)_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _platH, data.chatname); _hypeSent=true; } }
+  // SSN sends normalized names (new_follower / joined / liked / new_subscriber / membermilestone);
+  // older names (follow / join / like / subscribe / member) kept as aliases so both work.
+  if (evt === 'follow' || evt === 'follower' || evt === 'new_follower')  { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter' || evt === 'joined')    { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'like' || evt === 'like_batch' || evt === 'liked')    { if (!(isTT && _tfWs?.readyState===WebSocket.OPEN)) { if(isTT)_evtCounts.tt_like++; if(isYT)_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _platH, data.chatname); _hypeSent=true; } }
   else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH, data.chatname); _hypeSent=true; }
-  else if ((evt === 'subscribe' || evt === 'yt_sub') && isYT)         { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
-  else if (evt === 'member' && isYT)                                   { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
+  else if ((evt === 'subscribe' || evt === 'yt_sub' || evt === 'new_subscriber' || evt === 'resub') && isYT) { publishMilk('yt_sub', 'yt', data.chatname); _hypeSent=true; }
+  else if ((evt === 'member' || evt === 'membermilestone') && isYT)    { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
   // YouTube superchats, stickers, jewels, gift purchases → milk event with correct value
   else if (isYT && ytGiftEvt) {
     const _isJewels = evt === 'jeweldonation';

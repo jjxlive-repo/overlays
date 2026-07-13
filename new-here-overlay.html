@@ -437,6 +437,8 @@ let resetAt      = 0;      // timestamp when the explosion finishes and hardRese
 let PRESSURE             = 0;         // current pressure units (0..PRESSURE_POP_THRESHOLD)
 let lastPressureEventAt  = 0;         // performance.now() of last join, gates decay grace
 let popFlashAt           = -Infinity; // performance.now() of last pop, drives the flash text
+let milestoneFlash       = null;      // { at, big, small, color } — celebratory top banner
+const MILESTONE_MS       = 5500;      // how long the milestone banner shows
 
 // ═══════════════════════════════════════════════════════════════════
 // HEIGHTMAP DEPOSITION
@@ -1378,6 +1380,56 @@ function drawPopFlash(ctx, now) {
   ctx.restore();
 }
 
+// Milestone celebration banner across the top: scales in, holds, fades out.
+function drawMilestone(ctx, now) {
+  if (!milestoneFlash) return;
+  const el = now - milestoneFlash.at;
+  if (el < 0 || el > MILESTONE_MS) { if (el > MILESTONE_MS) milestoneFlash = null; return; }
+  const t = el / MILESTONE_MS;
+  const inS   = Math.min(1, t / 0.08);                 // 0→1 ease-in over first 8%
+  const alpha = t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
+  const pop   = 1 + Math.sin(Math.min(1, t * 4) * Math.PI) * 0.06;
+  const cx = 540, cy = 300;
+  const col = milestoneFlash.color || '#FDE047';
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, cy);
+  ctx.scale(inS * pop, inS * pop);
+
+  // Rounded banner plate
+  ctx.font = '800 62px Fredoka, sans-serif';
+  const bigW = ctx.measureText(milestoneFlash.big).width;
+  const w = Math.max(360, bigW + 120), h = 150;
+  ctx.fillStyle = 'rgba(20,16,25,0.94)';
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 4;
+  roundRect(ctx, -w / 2, -h / 2, w, h, 26);
+  ctx.fill(); ctx.stroke();
+
+  // Sparkles along the top edge
+  ctx.fillStyle = col;
+  for (let i = 0; i < 7; i++) {
+    const sx = -w / 2 + (i + 0.5) * (w / 7) + Math.sin(now / 300 + i) * 4;
+    const s = 6 + 3 * Math.sin(now / 200 + i * 1.7);
+    starPath(ctx, sx, -h / 2 - 6, s, s * 0.4, 4); ctx.fill();
+  }
+
+  // Big number + label
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 7; ctx.strokeStyle = '#1a0530';
+  ctx.font = '800 62px Fredoka, sans-serif';
+  ctx.strokeText(milestoneFlash.big, 0, -14);
+  ctx.fillStyle = col;
+  ctx.fillText(milestoneFlash.big, 0, -14);
+
+  // Sub line
+  ctx.font = '700 26px "Space Grotesk", sans-serif';
+  ctx.fillStyle = '#E5E7EB';
+  ctx.fillText(milestoneFlash.small, 0, 42);
+  ctx.restore();
+}
+
 // peakY = feet-Y of the topmost figure in the pile
 function drawJoinSign(ctx, name, source, peakY) {
   const pal = source ? PALETTES[source] : null;
@@ -1791,6 +1843,7 @@ function frame(now) {
   // of everything else in the scene.
   drawDangerVignette(ctx, now, pPct);
   drawPopFlash(ctx, now);
+  drawMilestone(ctx, now); // celebratory banner, always on top
 
   requestAnimationFrame(frame);
 }
@@ -1932,6 +1985,21 @@ function connectAbly() {
     giftrRoster = new Map();
     for (const g of list) if (g && g.name) giftrRoster.set(userKey(g.name, g.platform || 'youtube'), g);
     if (OVERLAY_ENABLED) applyTimeframe();
+  });
+
+  // Milestone celebration — subscriber/follower totals + concurrent-viewer peaks
+  // crossing a threshold (published by the dock). Shown as a top banner.
+  ch.subscribe('milestone', msg => {
+    if (!OVERLAY_ENABLED) return;
+    const d = msg.data || {};
+    if (!d.threshold) return;
+    const platName = d.platform === 'tiktok' ? 'TikTok' : d.platform === 'youtube' ? 'YouTube' : '';
+    milestoneFlash = {
+      at: performance.now(),
+      big: `${Number(d.threshold).toLocaleString()} ${d.label || ''}`.trim(),
+      small: `${platName} milestone! 🎉`,
+      color: d.platform === 'tiktok' ? '#38BDF8' : '#F87171',
+    };
   });
 
   ch.subscribe('new-here-reset', () => {
