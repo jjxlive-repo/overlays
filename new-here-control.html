@@ -186,6 +186,18 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
     <p class="hint" style="margin:4px 0 0;">Needs tracker.html open on the same channel for the historical windows.</p>
   </div>
 
+  <!-- MILESTONES -->
+  <div class="card">
+    <h2>Milestone banner <span class="info" title="The celebration banner shown when a subscriber/follower/viewer count crosses a threshold. Edit the wording here; position &amp; scale live in the 'Position & scale' card (Milestone banner). Placeholders: {n}=milestone number, {label}=WATCHING/SUBSCRIBERS/FOLLOWERS, {platform}=TikTok/YouTube, {value}=current total.">?</span></h2>
+    <div class="ctrl-row"><label style="width:70px;" title="Big line. Placeholders: {n} {label} {platform} {value}.">Main</label><input class="ctrl-in" id="nh-ms-main" type="text" value="{n} {label}" style="flex:1;min-width:0;" oninput="nhApplyConfig()"></div>
+    <div class="ctrl-row"><label style="width:70px;" title="Small line under the number.">Sub</label><input class="ctrl-in" id="nh-ms-sub" type="text" value="{platform} milestone! 🎉" style="flex:1;min-width:0;" oninput="nhApplyConfig()"></div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhTestMilestone('viewers','youtube',500)" style="flex:1;" title="Preview: YouTube 500 viewers.">🎉 YT viewers</button>
+      <button class="ctrl-btn" onclick="nhTestMilestone('subs','youtube',5000)" style="flex:1;" title="Preview: YouTube 5,000 subscribers.">YT subs</button>
+      <button class="ctrl-btn" onclick="nhTestMilestone('followers','tiktok',10000)" style="flex:1;" title="Preview: TikTok 10,000 followers.">TT followers</button>
+    </div>
+  </div>
+
   <!-- BALLOON EVOLUTION / TIERS -->
   <div class="card">
     <h2>Balloon evolution <span class="info" title="Balloons mode retention mechanic: every comment earns progress; crossing a threshold evolves the balloon to the next of 10 tiers (new color + effects) with a level-up burst. Early tiers come fast to hook new chatters.">?</span></h2>
@@ -232,6 +244,7 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
       <input id="nh-idle-scale" value="100"><input id="nh-idle-x" value="0"><input id="nh-idle-y" value="0">
       <input id="nh-timer-scale" value="100"><input id="nh-timer-x" value="0"><input id="nh-timer-y" value="0">
       <input id="nh-pressure-scale" value="100"><input id="nh-pressure-x" value="0"><input id="nh-pressure-y" value="0">
+      <input id="nh-ms-scale" value="100"><input id="nh-ms-x" value="0"><input id="nh-ms-y" value="0">
       <input id="nh-blob-scale" value="100"><input id="nh-floor-y" value="0">
     </div>
   </div>
@@ -446,7 +459,13 @@ function nhApplyConfig() {
   const pressureYOffset      = parseInt(document.getElementById('nh-pressure-y').value);
   const pressureLabel        = document.getElementById('nh-pressure-label').value.trim() || 'PRESSURE';
   const popLabel             = document.getElementById('nh-pop-label').value.trim() || 'PRESSURE POPPED! 🎉';
+  const msMain    = document.getElementById('nh-ms-main').value || '{n} {label}';
+  const msSub     = document.getElementById('nh-ms-sub').value;
+  const msScale   = parseInt(document.getElementById('nh-ms-scale').value) / 100;
+  const msXOffset = parseInt(document.getElementById('nh-ms-x').value);
+  const msYOffset = parseInt(document.getElementById('nh-ms-y').value);
   const cfg = {
+    msMain, msSub, msScale, msXOffset, msYOffset,
     signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
     signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
     laneWidth, laneInset, gloss, tierEnabled, tierLabelOn,
@@ -479,6 +498,8 @@ function nhLoadDisplayConfig() {
     setPct('nh-idle-scale', c.idleScale); setNum('nh-idle-x', c.idleXOffset); setNum('nh-idle-y', c.idleYOffset);
     setPct('nh-timer-scale', c.timerScale); setNum('nh-timer-x', c.timerXOffset); setNum('nh-timer-y', c.timerYOffset);
     setPct('nh-pressure-scale', c.pressureScale); setNum('nh-pressure-x', c.pressureXOffset); setNum('nh-pressure-y', c.pressureYOffset);
+    setPct('nh-ms-scale', c.msScale); setNum('nh-ms-x', c.msXOffset); setNum('nh-ms-y', c.msYOffset);
+    setTxt('nh-ms-main', c.msMain); setTxt('nh-ms-sub', c.msSub);
     setPct('nh-blob-scale', c.blobScale); setNum('nh-floor-y', c.floorOffset);
     setNum('nh-lane-width', c.laneWidth); setNum('nh-lane-inset', c.laneInset);
     setPct('nh-gloss', c.gloss); nhFmtLane();
@@ -731,6 +752,7 @@ const POS_SPEC = [
   { key: 'idle',     label: 'Idle prompt',       tip: 'The "Be the first!" prompt shown when nobody has joined yet.', fields: ['scale','x','y'] },
   { key: 'timer',    label: 'Countdown timer',   tip: 'The countdown timer pill (Starting Soon).', fields: ['scale','x','y'] },
   { key: 'pressure', label: 'Pressure meter',    tip: 'The pressure / inflation meter that fills as chat joins.', fields: ['scale','x','y'] },
+  { key: 'ms',       label: 'Milestone banner',  tip: 'The celebration banner shown when a subscriber/follower/viewer milestone is hit.', fields: ['scale','x','y'] },
   { key: 'blob',     label: 'Mascot size',       tip: 'How big each mascot blob is drawn on the pile.', fields: ['scale'] },
   { key: 'floor',    label: 'Pile floor',        tip: 'The floor line the whole pile sits on. Negative Y raises the pile higher up the screen.', fields: ['y'] },
 ];
