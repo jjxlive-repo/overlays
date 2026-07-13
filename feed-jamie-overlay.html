@@ -859,13 +859,15 @@ const SEQ = {
                  { f: 'jamie-bubble-pop.png',         d: 350  }],
   bubbleEnd:    [{ f: 'jamie-bubble-surprised.png',   d: 400  },
                  { f: 'jamie-bubble-sneeze.png',      d: 450  }],
-  heartMe:      [{ f: 'jamie-heart-celebrate-01.png', d: 450  },
-                 { f: 'jamie-heart-celebrate-02.png', d: 450  },
-                 { f: 'jamie-heart-celebrate-03.png', d: 700  },
-                 { f: 'jamie-heart-spin.png',         d: 500  }],
-  heartMeEnd:   [{ f: 'jamie-heart-land.png',         d: 600  }],
+  /* Heart Me: sprints to center screen, skids to a stop, holds the big
+     signature heart pose, then sprints back (see triggerHeartMe — the run
+     frame is reused mirrored for the return trip, so only one run pose
+     is needed). */
+  heartMeRun:   [{ f: 'jamie-heart-run.png',          d: 220  }],
+  heartMeSkid:  [{ f: 'jamie-heart-skid.png',         d: 260  }],
+  heartMeBurst: [{ f: 'jamie-heart-burst.png',        d: 900  }],
   /* jackpot: L4/L5 MEGA gift/superchat — gold, deliberately distinct from
-     the purple heartMe sequence above so a big spender reads differently
+     the purple Heart Me sequence above so a big spender reads differently
      from an actual Heart Me. */
   jackpot:      [{ f: 'jamie-jackpot-catch.png',      d: 900  }],
   jackpotEnd:   [{ f: 'jamie-heart-land.png',         d: 600  }],
@@ -897,6 +899,9 @@ const FRAME_FALLBACK = {
   'jamie-jackpot-catch.png':          'jamie-heart-celebrate-01.png',
   'jamie-grown-proud.png':            'jamie-idle-01.png',
   'jamie-shower-nom.png':             'jamie-treat-happy.png',
+  'jamie-heart-run.png':              'jamie-fetch-leap.png',
+  'jamie-heart-skid.png':             'jamie-heart-run.png',
+  'jamie-heart-burst.png':            'jamie-heart-celebrate-03.png',
   'jamie-idle-02-blink.png':          'jamie-idle-01.png',
   'jamie-idle-03-breathe.png':        'jamie-idle-01.png',
   'jamie-idle-04-ear-twitch.png':     'jamie-idle-01.png',
@@ -1178,6 +1183,20 @@ function currentMirror() { return poseMirror === null ? isFlipped() : poseMirror
 function applyJamieTransform() {
   const j = CFG.jamie;
   jamieEl.style.transform = `translate3d(${jamieRect.x}px, ${jamieRect.y}px, 0) rotate(${j.rotation || 0}deg)` + (currentMirror() ? ' scaleX(-1)' : '');
+}
+/* smoothly interpolates jamieRect.x over `ms`, re-applying the transform each
+   frame — drives Heart Me's run-to-center-and-back sprint. */
+function tweenJamieX(fromX, toX, ms, onDone) {
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / ms);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; /* ease-in-out quad */
+    jamieRect.x = fromX + (toX - fromX) * e;
+    applyJamieTransform();
+    if (t < 1) requestAnimationFrame(step);
+    else { jamieRect.x = toX; applyJamieTransform(); if (onDone) onDone(); }
+  }
+  requestAnimationFrame(step);
 }
 function applyLayout() {
   const j = CFG.jamie;
@@ -1986,55 +2005,93 @@ function handleComment(username, message) {
   }
 }
 let heartMeActive = false;
+/* Heart Me: sprints from wherever Jamie is standing to the center of the
+   screen, skids to a stop, holds the big signature heart pose, then sprints
+   back to his starting spot — deliberately the biggest, most unique reaction
+   in the whole set. The run pose is reused mirrored for the return trip (see
+   poseMirror/currentMirror), so only one running sprite is needed.
+   opts.durMul/opts.fxMul (from the spend spectacle in reactAtLevel) stretch
+   the hold time and the heart/sparkle burst for bigger gifts. */
 function triggerHeartMe(username, highGiftName = '', opts = {}) {
   // Guard on both flags — Heart Me and Jackpot share jamieEl's transform and the
   // dim/veil state, so letting one interrupt the other mid-celebration used to
   // compound the scale transform and could prematurely reset shared state.
   if (heartMeActive || jackpotActive) return;
   heartMeActive = true;
-  /* 1-2: dim normal objects, clear minor distractions */
   objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
   $('like-meter').style.opacity = 0;
-  /* 3-5: celebration sprite, slight enlarge, purple hearts + sparkles */
   clearTimeout(J.watchdog); clearTimeout(J.animTimer);
   J.currentSeq = null;
   jamieEl.classList.remove('breathe');
-  jamieEl.classList.add('pose-celebrate', 'ph-happy');
-  jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
-  const j = CFG.jamie;
-  poseMirror = null; // celebrations always use Jamie's real, un-mirrored art
-  applyLayout(); // reset to a clean base transform before appending the celebration scale
-  jamieEl.style.transform += ' scale(1.12)';
+  jamieEl.style.transition = 'none'; // position is hand-tweened every frame below; no CSS transition to fight it
+  poseMirror = null;
+  applyLayout(); // clean baseline position/transform before the run starts
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
-  playSeq('heartMe', { loop: false, onDone: () => playSeq('heartMeEnd', { loop: false }) });
-  $('heartme-veil').style.opacity = 1;
-  const rz = reachZoneRect();
-  const _hmFx = opts.fxMul || 1;
-  spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, Math.round(10 * _hmFx));
-  spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, Math.round(8 * _hmFx));
-  playSound('heartMe');
-  if (username && CFG.visuals.usernameEvents.heartMe) {
-    const giftLabel = sanitizeName(highGiftName);
-    showEventLabel(
-      giftLabel
-        ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
-        : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
-      CFG.visuals.usernameSeconds,
-      !!giftLabel
-    );
+
+  const startX = jamieRect.x;
+  const centerX = (1080 - jamieRect.w) / 2;
+  const dist = Math.abs(centerX - startX);
+  const runMs = Math.min(900, Math.max(350, dist * 0.9)); /* proportional to distance, clamped to a natural sprint speed */
+  const outMirror = centerX < startX; /* default art faces right; mirror to face left */
+  const fxMul = opts.fxMul || 1;
+
+  function runOut() {
+    poseMirror = outMirror;
+    playSeq('heartMeRun', { loop: true });
+    tweenJamieX(startX, centerX, runMs, skid);
   }
-  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
-  setTimeout(() => {
+  function skid() {
+    playSeq('heartMeSkid', { loop: false, onDone: burst });
+  }
+  function burst() {
+    poseMirror = null; /* the big heart pose is symmetric — no mirror needed */
+    jamieEl.classList.add('pose-celebrate', 'ph-happy');
+    jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+    applyJamieTransform();
+    jamieEl.style.transform += ' scale(1.28)'; /* biggest scale-up of any reaction — this is the signature moment */
+    playSeq('heartMeBurst', { loop: true });
+    $('heartme-veil').style.opacity = 1;
+    spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, Math.round(14 * fxMul));
+    spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, Math.round(10 * fxMul));
+    playSound('heartMe');
+    if (username && CFG.visuals.usernameEvents.heartMe) {
+      const giftLabel = sanitizeName(highGiftName);
+      showEventLabel(
+        giftLabel
+          ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
+          : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
+        CFG.visuals.usernameSeconds,
+        !!giftLabel
+      );
+    }
+    /* heartMeDurationSec (times the spend-scaled durMul) is the approximate
+       total; the run/skid legs come out of it, but the hold always keeps a
+       sensible minimum so the signature pose is never skipped even at the
+       shortest configured duration. */
+    const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
+    const holdMs = Math.max(400, durMs - runMs * 2 - 260);
+    setTimeout(runBack, holdMs);
+  }
+  function runBack() {
     $('heartme-veil').style.opacity = 0;
     jamieEl.classList.remove('pose-celebrate', 'ph-happy');
+    jamieEl.style.transition = 'none';
+    poseMirror = !outMirror;
+    applyJamieTransform();
+    playSeq('heartMeRun', { loop: true });
+    tweenJamieX(centerX, startX, runMs, finish);
+  }
+  function finish() {
+    poseMirror = null;
     objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
-    applyLayout(); /* restores clean transform */
+    applyLayout(); /* restores clean position/transform */
     heartMeActive = false;
     if (CFG.events.heartMeSpawnHeart) {
       queueSpawn('heart-large', { sourceEvent: 'heartMe', username, priority: 95, premium: true });
     }
     setJamieState(objects.length ? 'TRACKING' : 'IDLE');
-  }, durMs);
+  }
+  runOut();
   publishStatus();
 }
 let jackpotActive = false;
