@@ -122,6 +122,7 @@ function saveDisplayCfg() {
       mode: NH_MODE, rankTimeframe: RANK_TIMEFRAME,
       msMain: MILESTONE_MAIN_TMPL, msSub: MILESTONE_SUB_TMPL,
       msScale: MILESTONE_SCALE, msXOffset: MILESTONE_X_OFFSET, msYOffset: MILESTONE_Y_OFFSET,
+      timeoutScale: TIMEOUT_SCALE, timeoutXOffset: TIMEOUT_X_OFFSET, timeoutYOffset: TIMEOUT_Y_OFFSET,
       laneInset: LANE_INSET, laneWidth: LANE_WIDTH,
       tierEnabled: TIER_ENABLED, tierLabelOn: TIER_LABEL_ON,
       blobScale: BLOB_SCALE, gloss: GLOSS,
@@ -167,6 +168,9 @@ function saveDisplayCfg() {
     if (c.msScale      != null) MILESTONE_SCALE     = c.msScale;
     if (c.msXOffset    != null) MILESTONE_X_OFFSET  = c.msXOffset;
     if (c.msYOffset    != null) MILESTONE_Y_OFFSET  = c.msYOffset;
+    if (c.timeoutScale   != null) TIMEOUT_SCALE    = c.timeoutScale;
+    if (c.timeoutXOffset != null) TIMEOUT_X_OFFSET = c.timeoutXOffset;
+    if (c.timeoutYOffset != null) TIMEOUT_Y_OFFSET = c.timeoutYOffset;
     if (c.laneInset    != null) LANE_INSET    = c.laneInset;
     if (c.laneWidth    != null) LANE_WIDTH    = c.laneWidth;
     if (c.tierEnabled  != null) TIER_ENABLED  = c.tierEnabled;
@@ -340,6 +344,18 @@ function laneRoamHalf() {
 }
 function balloonRadius() { return 74 * (BALLOON_S * BLOB_SCALE); } // collision radius (≈ balloon half-size)
 
+// Timeout Corner geometry — 2 columns × 4 rows, centered on the (offset/scaled) corner.
+function timeoutCornerCenter() { return { x: TIMEOUT_BASE_X + TIMEOUT_X_OFFSET, y: TIMEOUT_BASE_Y + TIMEOUT_Y_OFFSET }; }
+function timeoutSlotPos(slot) {
+  const s = Math.max(0, Math.min(TIMEOUT_PER_PAGE - 1, slot | 0));
+  const col = s % TIMEOUT_COLS, row = Math.floor(s / TIMEOUT_COLS);
+  const c = timeoutCornerCenter(), sc = TIMEOUT_SCALE;
+  return {
+    x: c.x + (col - (TIMEOUT_COLS - 1) / 2) * TIMEOUT_CELL_W * sc,
+    y: c.y + (row - (TIMEOUT_ROWS - 1) / 2) * TIMEOUT_CELL_H * sc,
+  };
+}
+
 // Push overlapping balloons apart so they bounce off each other instead of passing
 // through. Balloons live in two narrow vertical channels, so we handle each lane
 // separately and sweep sorted by y — once the y-gap exceeds a balloon diameter no
@@ -349,7 +365,8 @@ function resolveBalloonCollisions() {
   const r    = balloonRadius();
   const minD = 2 * r;
   for (const lane of [-1, 1]) {
-    const arr = figures.filter(f => f.lane === lane && f.phase !== 'exploding' && f.bx != null);
+    // Impounded balloons live in the corner, not the lane — exclude them from the solver.
+    const arr = figures.filter(f => f.lane === lane && f.phase !== 'exploding' && f.bx != null && !isTimedOut(f));
     if (arr.length < 2) continue;
     for (let pass = 0; pass < 2; pass++) {
       arr.sort((a, b) => a.by - b.by);
@@ -454,6 +471,21 @@ let MILESTONE_SCALE      = 1.0;
 let MILESTONE_X_OFFSET   = 0;
 let MILESTONE_Y_OFFSET   = 0;
 
+// ── BALLOON TIMEOUT CORNER (impound) ─────────────────────────────
+// Punished balloons leave their lane and float into an upper-right impound area,
+// chained to a cartoon weight, name + remaining time always shown. Balloons mode
+// only; sentences keep counting in other modes but the corner isn't drawn.
+let TIMEOUT_SCALE    = 1.0;
+let TIMEOUT_X_OFFSET = 0;
+let TIMEOUT_Y_OFFSET = 0;
+const TIMEOUT_BASE_X = 850, TIMEOUT_BASE_Y = 430; // corner center (upper-right)
+const TIMEOUT_COLS = 2, TIMEOUT_ROWS = 4, TIMEOUT_PER_PAGE = TIMEOUT_COLS * TIMEOUT_ROWS; // 8 visible
+const TIMEOUT_CELL_W = 150, TIMEOUT_CELL_H = 170;
+const TIMEOUT_MAX_MS = 24 * 3600 * 1000; // clamp a single sentence to 24h
+let _timeoutPage = 0, _timeoutPageAt = 0; // pagination rotation state
+let _rosterSnapTimer = null;              // debounce handle for roster snapshots
+let nhChannel = null;                     // set in connectAbly() — used by timeout/roster publishers
+
 // ═══════════════════════════════════════════════════════════════════
 // HEIGHTMAP DEPOSITION
 // Center-biased column pick with NO valley-fill roll: each mascot lands on
@@ -539,7 +571,7 @@ function balloonTarget(fig) {
 // ═══════════════════════════════════════════════════════════════════
 // SPAWN — places one figure and starts its enter animation
 // ═══════════════════════════════════════════════════════════════════
-function spawnFigure(username, source, key) {
+function spawnFigure(username, source, key, opts = {}) {
   const pal   = PALETTES[source] || YT;
   const color = pal.figs[Math.floor(rnd() * pal.figs.length)];
   // Comments accrued while this chatter waited in the queue (>=1). Their body
@@ -569,16 +601,23 @@ function spawnFigure(username, source, key) {
         danceUntil: 0, sparkleUntil: 0, boostUntil: 0, popAt: -Infinity, popY: 0,
         // Supporter (paid) state
         spend: 0, isSupporter: false, spendTier: 0,
+        // Timeout / impound state (Balloon Timeout Corner)
+        timeoutUntil: 0, timeoutAddedAt: 0, timeoutBumpAt: -Infinity, timeoutReleaseAt: -Infinity,
+        manualCreated: !!opts.manual, lastActiveAt: Date.now(),
+        platformUserId: opts.platformUserId || null, timeoutSource: null, timeoutConfidence: null,
       };
       figures.push(fig);
       if (key) userFigs.set(key, fig);
     }
     if (key) pending.delete(key);
-    newestName = username; newestSource = source; newestJoinAt = performance.now();
-    if (PRESSURE_ENABLED) {
-      PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
-      lastPressureEventAt = newestJoinAt;
+    if (!opts.silent) {                       // manual/silent creation skips banner + pressure
+      newestName = username; newestSource = source; newestJoinAt = performance.now();
+      if (PRESSURE_ENABLED) {
+        PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
+        lastPressureEventAt = newestJoinAt;
+      }
     }
+    scheduleRosterSnapshot();
     return;
   }
 
@@ -613,20 +652,26 @@ function spawnFigure(username, source, key) {
       // Independent blink clock: first blink at a random offset so nobody is synced.
       blinkAt:       performance.now() + 800 + rnd() * 4000,
       joinedAt:      performance.now(), // for timed name persistence
+      // Timeout / impound state (tracked in all modes; corner only drawn in balloons)
+      timeoutUntil: 0, timeoutAddedAt: 0, timeoutBumpAt: -Infinity, timeoutReleaseAt: -Infinity,
+      manualCreated: !!opts.manual, lastActiveAt: Date.now(),
+      platformUserId: opts.platformUserId || null, timeoutSource: null, timeoutConfidence: null,
     };
     figures.push(fig);
     if (key) userFigs.set(key, fig);
   }
   if (key) pending.delete(key);
 
-  newestName   = username;
-  newestSource = source;
-  newestJoinAt = performance.now();
-
-  if (PRESSURE_ENABLED) {
-    PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
-    lastPressureEventAt = newestJoinAt;
+  if (!opts.silent) {
+    newestName   = username;
+    newestSource = source;
+    newestJoinAt = performance.now();
+    if (PRESSURE_ENABLED) {
+      PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN);
+      lastPressureEventAt = newestJoinAt;
+    }
   }
+  scheduleRosterSnapshot();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -646,8 +691,10 @@ function grantGrowth(username, source, amount) {
   if (existing) {
     existing.comments = (existing.comments || 1) + amount;
     existing.lastCommentAt = performance.now();
+    existing.lastActiveAt = Date.now();
+    if (existing.manualCreated) existing.manualCreated = false; // real activity — no longer a placeholder
     const newTier = tierOf(existing.comments);
-    if (newTier > (existing.tier || 1)) { existing.tier = newTier; existing.levelUpAt = performance.now(); }
+    if (newTier > (existing.tier || 1)) { existing.tier = newTier; existing.levelUpAt = performance.now(); scheduleRosterSnapshot(); }
     newestName = username; newestSource = source; newestJoinAt = performance.now();
     if (PRESSURE_ENABLED) { PRESSURE = Math.min(PRESSURE_POP_THRESHOLD, PRESSURE + PRESSURE_GAIN_PER_JOIN * 0.5); lastPressureEventAt = performance.now(); }
     return;
@@ -706,15 +753,155 @@ function addSupporterSpend(username, source, coins) {
   }
   if (!fig) return; // over maxFigures cap
   fig.spend = (fig.spend || 0) + coins;
+  fig.lastActiveAt = Date.now();
+  if (fig.manualCreated) fig.manualCreated = false;
   const wasSupporter = fig.isSupporter;
   fig.isSupporter = true;
-  fig.lane = 1;             // move to the right channel
+  if (!isTimedOut(fig)) fig.lane = 1; // move to the right channel (unless impounded — restored on release)
   fig.ceilSlot = null;      // re-slot within the right channel
   fig.lastCommentAt = performance.now(); // keep their name in the recent window
   // Level-up burst on reaching a new spend tier (or first becoming a supporter).
   const st = spendTier(fig.spend);
   if (!wasSupporter || st > (fig.spendTier || 0)) { fig.spendTier = st; fig.levelUpAt = performance.now(); }
   newestName = username; newestSource = source; newestJoinAt = performance.now();
+  scheduleRosterSnapshot();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BALLOON TIMEOUT CORNER — state helpers (sentences use Date.now(); animation
+// timestamps use performance.now()). The overlay is authoritative for all state.
+// ═══════════════════════════════════════════════════════════════════
+function normalizeUsername(username) { return String(username || '').trim().replace(/^@+/, ''); }
+function canonSource(source) {
+  const s = String(source || '').toLowerCase();
+  return (s === 'tt' || s === 'tiktok') ? 'tiktok' : (s === 'yt' || s === 'youtube') ? 'youtube' : (s || 'youtube');
+}
+function isTimedOut(fig, epochNow = Date.now()) { return !!fig && (Number(fig.timeoutUntil) || 0) > epochNow; }
+function remainingTimeoutMs(fig, epochNow = Date.now()) { return Math.max(0, (Number(fig.timeoutUntil) || 0) - epochNow); }
+function addTimeoutSeconds(fig, seconds, meta = {}) {
+  if (!fig) return 0;
+  const sec = Number(seconds);
+  if (!Number.isFinite(sec) || sec <= 0) return 0;               // reject non-finite / non-positive
+  const base = Math.max(Date.now(), Number(fig.timeoutUntil) || 0); // CUMULATIVE
+  fig.timeoutUntil   = Math.min(base + sec * 1000, Date.now() + TIMEOUT_MAX_MS);
+  fig.timeoutAddedAt = Date.now();
+  fig.timeoutBumpAt  = performance.now();                         // weight-slam animation
+  fig.timeoutAddMs   = sec * 1000;                                // for the +M:SS callout
+  fig.lastActiveAt   = Date.now();
+  if (meta.source)          fig.timeoutSource     = meta.source;
+  if (meta.confidence != null) fig.timeoutConfidence = meta.confidence;
+  fig.ceilSlot = null;                                            // leave normal placement
+  saveState();
+  scheduleRosterSnapshot();
+  return fig.timeoutUntil;
+}
+function releaseTimeout(fig, reason = 'manual') {
+  if (!fig || !(Number(fig.timeoutUntil) || 0)) return false;
+  fig.timeoutUntil = 0; fig.timeoutAddedAt = 0; fig.timeoutSource = null; fig.timeoutConfidence = null;
+  fig.timeoutReleaseAt = performance.now();                       // chain-snap / freedom burst + ease-back
+  fig.ceilSlot = null;                                            // recompute correct lane placement
+  fig.__toSlot = undefined;
+  saveState();
+  scheduleRosterSnapshot();
+  return true;
+}
+function activeTimeoutFigures(epochNow = Date.now()) {
+  return figures.filter(f => isTimedOut(f, epochNow))
+    .sort((a, b) => (b.timeoutUntil - a.timeoutUntil) || (a.id - b.id)); // longest sentence first, stable
+}
+// Find-or-create a session balloon without faking a chat/gift/follow event.
+function ensureBalloon(username, source, options = {}) {
+  const name = normalizeUsername(username);
+  const src = canonSource(source);
+  if (!name || (src !== 'tiktok' && src !== 'youtube')) return null;
+  const key = userKey(name, src);
+  let fig = userFigs.get(key);
+  if (fig) { if (options.platformUserId && !fig.platformUserId) fig.platformUserId = options.platformUserId; return fig; }
+  if (!pending.has(key)) { pending.set(key, 1); count++; }        // counts once as a session balloon
+  spawnFigure(name, src, key, { silent: true, manual: options.manual === true, platformUserId: options.platformUserId });
+  fig = userFigs.get(key);
+  if (fig) fig.lastActiveAt = Date.now();
+  return fig;
+}
+// Debounced roster snapshot → control (coalesce rapid changes; never per-comment-frame).
+function scheduleRosterSnapshot() {
+  if (_rosterSnapTimer) return;
+  _rosterSnapTimer = setTimeout(() => { _rosterSnapTimer = null; publishRosterSnapshot(); }, 250);
+}
+function publishRosterSnapshot() {
+  if (!nhChannel) return;
+  const nowE = Date.now();
+  const balloons = [];
+  for (const [key, f] of userFigs) {
+    balloons.push({
+      key, username: f.username, source: canonSource(f.source),
+      comments: f.comments || 1, tier: f.tier || tierOf(f.comments || 1),
+      isSupporter: !!f.isSupporter, spend: f.spend || 0,
+      manualCreated: !!f.manualCreated, lastActiveAt: f.lastActiveAt || 0,
+      timeoutUntil: Number(f.timeoutUntil) || 0, timeoutActive: isTimedOut(f, nowE),
+    });
+  }
+  nhChannel.publish('new-here-roster-snapshot', { version: 1, generatedAt: nowE, mode: NH_MODE, balloons }).catch(() => {});
+}
+// Resolve a command target: existing key → source+username → (optionally) create.
+function resolveTimeoutTarget(t, allowCreate) {
+  if (!t) return null;
+  if (t.key && userFigs.has(t.key)) return userFigs.get(t.key);
+  const name = normalizeUsername(t.username), src = canonSource(t.source);
+  if (name && (src === 'tiktok' || src === 'youtube')) {
+    const fig = userFigs.get(userKey(name, src));
+    if (fig) return fig;
+    if (allowCreate) return ensureBalloon(name, src, { manual: true });
+  }
+  return null;
+}
+function handleTimeoutCmd(d) {
+  if (!d || !d.action) return;
+  if (d.action === 'release-all') { activeTimeoutFigures().forEach(f => releaseTimeout(f, 'release-all')); return; }
+  if (d.action === 'test') {
+    const fig = ensureBalloon(d.username || 'TimeoutTest', d.source || 'tiktok', { manual: true });
+    if (fig) addTimeoutSeconds(fig, Number(d.addSeconds) || 90);
+    return;
+  }
+  const targets = Array.isArray(d.targets) ? d.targets : [];
+  const seen = new Set();
+  if (d.action === 'add-time') {
+    const sec = Number(d.addSeconds);
+    if (!Number.isFinite(sec) || sec <= 0) return;
+    for (const t of targets) {
+      const fig = resolveTimeoutTarget(t, true);
+      if (!fig || seen.has(fig.id)) continue;
+      seen.add(fig.id);
+      addTimeoutSeconds(fig, sec, { source: d.origin || 'control' });
+    }
+  } else if (d.action === 'release') {
+    for (const t of targets) {
+      const fig = resolveTimeoutTarget(t, false);
+      if (!fig || seen.has(fig.id)) continue;
+      seen.add(fig.id);
+      releaseTimeout(fig, 'manual');
+    }
+  }
+}
+// Normalized moderation receiver — a future TikTok/YouTube connector publishes here.
+// We never parse chat text ourselves; we only act on an explicit normalized event.
+function handleModeration(d) {
+  if (!d) return;
+  const platform = canonSource(d.platform);
+  const name = normalizeUsername(d.targetUsername);
+  if (!name || (platform !== 'tiktok' && platform !== 'youtube')) return;
+  const dur = Number(d.durationSeconds);
+  if (Number.isFinite(dur) && dur > 0) {                          // trustworthy duration → auto-apply
+    const fig = ensureBalloon(name, platform, { manual: true, platformUserId: d.targetUserId });
+    if (fig) addTimeoutSeconds(fig, dur, { source: platform, confidence: d.confidence });
+    return;
+  }
+  // Unknown duration → surface a pending detection; the streamer picks a sentence.
+  if (nhChannel) nhChannel.publish('new-here-timeout-detected', {
+    platform, targetUsername: name, targetUserId: d.targetUserId || null,
+    action: d.action || 'mute', moderatorUsername: d.moderatorUsername || null,
+    confidence: d.confidence || 'medium', detectedAt: d.detectedAt || Date.now(),
+  }).catch(() => {});
 }
 
 // Ask tracker.html to (re)broadcast its per-user roster + leaderboard.
@@ -1459,6 +1646,125 @@ function drawJoinSign(ctx, name, source, peakY) {
   });
 }
 
+// ── TIMEOUT CORNER DRAWING ───────────────────────────────────────
+function fmtTimeout(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+               : `${m}:${String(s).padStart(2, '0')}`;
+}
+// The earned appearance of a balloon (tier/supporter colour + badge), reused so an
+// impounded balloon keeps its exact status. (Main loop keeps its own inline copy.)
+function balloonVisual(fig) {
+  if (fig.isSupporter) {
+    const t = spendTier(fig.spend);
+    return { effTier: t, color: supporterColor(t), isSup: true, badge: '$' + Math.max(1, Math.round(dollarsOf(fig.spend))) };
+  }
+  const t = tierOf(fig.comments);
+  return { effTier: t, color: tierColor(fig.source, t), isSup: false, badge: 'Lv ' + t };
+}
+function drawImpoundBalloon(ctx, fig, slot, now, nowE) {
+  const v = balloonVisual(fig);
+  const blobS = BALLOON_S * BLOB_SCALE * TIMEOUT_SCALE * 0.92;
+  const px = fig.bx ?? slot.x, py = fig.by ?? slot.y;
+  const bump = now - (fig.timeoutBumpAt ?? -Infinity);
+  const slam = (bump >= 0 && bump < 350) ? (1 + Math.sin(bump / 350 * Math.PI) * 0.18) : 1;
+  const wy = slot.y + 62 * TIMEOUT_SCALE; // heavy weight anchor (fixed at slot bottom)
+
+  // Chain: balloon base → weight (gentle wobble).
+  ctx.save();
+  ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 3 * TIMEOUT_SCALE; ctx.lineCap = 'round';
+  const baseY = py + 8 * blobS, links = 5;
+  ctx.beginPath();
+  for (let l = 0; l <= links; l++) {
+    const yy = baseY + (wy - baseY) * (l / links), xx = px + Math.sin(l * 1.6 + now / 400) * 4;
+    if (l === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Cartoon weight (charcoal block + orange caution band).
+  ctx.save();
+  ctx.translate(px, wy); ctx.scale(TIMEOUT_SCALE * slam, TIMEOUT_SCALE * slam);
+  ctx.fillStyle = '#374151'; ctx.strokeStyle = '#111827'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-27, -17); ctx.lineTo(27, -17); ctx.lineTo(33, 17); ctx.lineTo(-33, 17); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#F59E0B'; ctx.fillRect(-30, -5, 60, 10);
+  ctx.fillStyle = '#111827';
+  for (let s = -30; s < 30; s += 12) { ctx.beginPath(); ctx.moveTo(s, -5); ctx.lineTo(s + 6, 5); ctx.lineTo(s, 5); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+
+  // Balloon itself — preserve glow / aura / prism / crown / star / badge / colour.
+  if (v.isSup || v.effTier >= 3) drawTierGlow(ctx, px, py, blobS, v.color, v.effTier, now);
+  if (v.isSup || v.effTier >= 5) drawAura(ctx, px, py, blobS, v.color, v.effTier, now);
+  if (v.effTier >= 8) drawPrismRing(ctx, px, py, blobS, now);
+  ctx.save(); ctx.translate(px, py); ctx.scale(blobS, blobS); drawMascotCached(ctx, v.color); ctx.restore();
+  if (v.isSup || v.effTier >= 4) drawSparkles(ctx, px, py, blobS, now, 3, fig.id * 1.7);
+  if (v.effTier >= 7 || (v.isSup && v.effTier >= 4)) drawCrown(ctx, px, py, blobS);
+  else if (!v.isSup && v.effTier === 6) drawStarTopper(ctx, px, py, blobS, now);
+  if (TIER_LABEL_ON) drawTierBadge(ctx, px, py, blobS, v.badge, v.color);
+
+  // Username — ALWAYS drawn regardless of the recent-name cap or persistence setting.
+  ctx.save();
+  ctx.translate(px, py - 52 * blobS); ctx.scale(TIMEOUT_SCALE, TIMEOUT_SCALE);
+  drawNamePill(ctx, 0, 0, fig.pal, fig.username);
+  ctx.restore();
+
+  // Remaining time under the weight (never negative).
+  ctx.save();
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111827'; ctx.lineWidth = 4;
+  ctx.font = `700 ${Math.round(20 * TIMEOUT_SCALE)}px Fredoka, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const lbl = fmtTimeout(remainingTimeoutMs(fig, nowE)), ty = wy + 30 * TIMEOUT_SCALE;
+  ctx.strokeText(lbl, px, ty); ctx.fillText(lbl, px, ty);
+  ctx.restore();
+
+  // +M:SS add-time callout above the weight (fades ~1.2s).
+  if (bump >= 0 && bump < 1200 && fig.timeoutAddMs) {
+    const a = 1 - bump / 1200;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#FDBA74'; ctx.strokeStyle = '#111827'; ctx.lineWidth = 4;
+    ctx.font = `800 ${Math.round(22 * TIMEOUT_SCALE)}px Fredoka, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const txt = '+' + fmtTimeout(fig.timeoutAddMs), fy = wy - 42 * TIMEOUT_SCALE - (1 - a) * 18;
+    ctx.strokeText(txt, px, fy); ctx.fillText(txt, px, fy);
+    ctx.restore();
+  }
+}
+function drawTimeoutCorner(ctx, now) {
+  const active = activeTimeoutFigures(Date.now());
+  if (!active.length) return;
+  const nowE = Date.now();
+  const c = timeoutCornerCenter(), sc = TIMEOUT_SCALE;
+  const pages = Math.max(1, Math.ceil(active.length / TIMEOUT_PER_PAGE));
+  const page = Math.min(_timeoutPage, pages - 1);
+  const visible = active.slice(page * TIMEOUT_PER_PAGE, page * TIMEOUT_PER_PAGE + TIMEOUT_PER_PAGE);
+
+  // Lightweight crooked caution-tape header (transparent, not a giant box).
+  const headY = c.y - (TIMEOUT_ROWS / 2) * TIMEOUT_CELL_H * sc - 34 * sc;
+  ctx.save();
+  ctx.translate(c.x, headY); ctx.rotate(-0.03); ctx.scale(sc, sc);
+  const bw = 292, bh = 40;
+  ctx.fillStyle = 'rgba(17,24,39,0.62)';
+  roundRect(ctx, -bw / 2, -bh / 2, bw, bh, 8); ctx.fill();
+  ctx.save(); roundRect(ctx, -bw / 2, -bh / 2 - 8, bw, 8, 3); ctx.clip();
+  for (let x = -bw / 2 - 12; x < bw / 2 + 12; x += 20) { ctx.fillStyle = (((x / 20) | 0) & 1) ? '#F59E0B' : '#1f2937'; ctx.fillRect(x, -bh / 2 - 8, 12, 8); }
+  ctx.restore();
+  ctx.fillStyle = '#fff'; ctx.font = '800 21px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('BALLOON IMPOUND', 0, 1);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(c.x, headY + 30 * sc); ctx.scale(sc, sc);
+  ctx.fillStyle = '#FDBA74'; ctx.font = '700 14px "Space Grotesk", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(`${active.length} GROUNDED${pages > 1 ? `    ${page + 1}/${pages}` : ''}`, 0, 0);
+  ctx.restore();
+
+  visible.forEach((fig, i) => drawImpoundBalloon(ctx, fig, timeoutSlotPos(i), now, nowE));
+}
+
 function drawIdleState(ctx, now) {
   const t    = now / 1000;
   const PI2  = Math.PI * 2;
@@ -1604,20 +1910,49 @@ function tick(now) {
 
   processQueue(now);
 
-  // Balloon mode: ease each figure toward its comment-driven target, with the
-  // roam-sway + float-bob folded into the target (so bx/by IS the drawn position),
-  // then push overlapping balloons apart so they bounce off each other.
+  // Expire finished sentences (all modes — sentences keep counting in Pile/Spread).
+  {
+    const nowE = Date.now();
+    for (const fig of figures) {
+      if ((Number(fig.timeoutUntil) || 0) && nowE >= fig.timeoutUntil) releaseTimeout(fig, 'expired');
+    }
+  }
+
+  // Balloon mode: ease each figure toward its target (lane float, or — if impounded —
+  // its Timeout Corner slot), then push overlapping balloons apart. Timed-out balloons
+  // are excluded from the lane collision solver and the ceiling.
   if (NH_MODE === 'balloons') {
     const t = now / 1000;
     const k = Math.min(1, BALLOON_RISE_K * (dt / 16.7));
+    // Assign stable corner slots to the visible page of timed-out balloons (longest first).
+    const activeTO = activeTimeoutFigures(Date.now());
+    const pages = Math.max(1, Math.ceil(activeTO.length / TIMEOUT_PER_PAGE));
+    if (pages > 1 && now - _timeoutPageAt > 6000) { _timeoutPage = (_timeoutPage + 1) % pages; _timeoutPageAt = now; }
+    if (_timeoutPage >= pages) _timeoutPage = 0;
+    const pageStart = _timeoutPage * TIMEOUT_PER_PAGE;
+    activeTO.forEach((f, i) => {
+      f.__toVisible = (i >= pageStart && i < pageStart + TIMEOUT_PER_PAGE);
+      f.__toSlot = f.__toVisible ? (i - pageStart) : -1;
+    });
+    const tk = Math.min(1, BALLOON_RISE_K * 1.5 * (dt / 16.7)); // impound easing (a touch snappier)
     for (const fig of figures) {
       if (fig.phase === 'exploding') continue;
+      let tx, ty;
+      if (isTimedOut(fig)) {
+        const slot = timeoutSlotPos(fig.__toSlot >= 0 ? fig.__toSlot : 0);
+        tx = slot.x + Math.sin(t * 1.2 + (fig.bobPhase || 0)) * 6;          // restrained sway
+        ty = slot.y - 8 + Math.sin(t * 1.7 + (fig.bobPhase || 0)) * 4;      // upward tug against the weight
+        if (fig.bx == null) { fig.bx = tx; fig.by = ty; }
+        fig.bx += (tx - fig.bx) * tk;
+        fig.by += (ty - fig.by) * tk;
+        continue;
+      }
       const base   = balloonTarget(fig);
       const atCeil = (fig.comments - 1) >= COMMENTS_TO_TOP;
       const roam   = laneRoamHalf();
-      const tx = base.x + (atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * Math.min(10, roam)
-                                  : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * roam);
-      const ty = base.y + Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 8 : 5);
+      tx = base.x + (atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * Math.min(10, roam)
+                            : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * roam);
+      ty = base.y + Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 8 : 5);
       if (fig.bx == null) { fig.bx = tx; fig.by = FLOOR_Y - 40; }
       fig.bx += (tx - fig.bx) * k;
       fig.by += (ty - fig.by) * k;
@@ -1700,6 +2035,7 @@ function frame(now) {
     const balloonMode = NH_MODE === 'balloons';
     for (const fig of sorted) {
       const exploding = fig.phase === 'exploding';
+      if (balloonMode && isTimedOut(fig)) continue; // impounded → drawn in the Timeout Corner pass
 
       // Position + render scale differ by mode. Balloon roam/bob is already baked
       // into bx/by (with collisions resolved) in tick(), so we draw straight from
@@ -1818,6 +2154,9 @@ function frame(now) {
       drawJoinSign(ctx, newestName, newestSource, clampedPeak);
       ctx.restore();
     }
+
+    // Balloon Timeout Corner — impounded balloons on top of normal balloons.
+    if (NH_MODE === 'balloons') drawTimeoutCorner(ctx, now);
   }
 
   // Counter (always visible)
@@ -1880,6 +2219,10 @@ function saveState() {
         source: f.source, username: f.username, rot: f.rot,
         comments: f.comments || 1, lastCommentAt: f.lastCommentAt || 0,
         lane: f.lane, spend: f.spend || 0, isSupporter: !!f.isSupporter,
+        timeoutUntil: Number(f.timeoutUntil) || 0, timeoutAddedAt: f.timeoutAddedAt || 0,
+        manualCreated: !!f.manualCreated, lastActiveAt: f.lastActiveAt || 0,
+        platformUserId: f.platformUserId || null, timeoutSource: f.timeoutSource || null,
+        timeoutConfidence: f.timeoutConfidence != null ? f.timeoutConfidence : null,
       })),
       seenUsers: Array.from(seenUsers),
       pressure: PRESSURE,
@@ -1920,6 +2263,13 @@ function loadState() {
       danceUntil: 0, sparkleUntil: 0, boostUntil: 0, popAt: -Infinity, popY: 0,
       // Supporter state persists across reloads (their spend this stream).
       spend:         f.spend || 0, isSupporter: !!f.isSupporter, spendTier: spendTier(f.spend || 0),
+      // Timeout state — keep STILL-ACTIVE sentences, drop already-expired ones. Older
+      // saved state without these fields initializes safely to "no timeout".
+      timeoutUntil:  (Number(f.timeoutUntil) || 0) > Date.now() ? Number(f.timeoutUntil) : 0,
+      timeoutAddedAt: f.timeoutAddedAt || 0, timeoutBumpAt: -Infinity, timeoutReleaseAt: -Infinity,
+      timeoutAddMs: 0, manualCreated: !!f.manualCreated, lastActiveAt: f.lastActiveAt || Date.now(),
+      platformUserId: f.platformUserId || null, timeoutSource: f.timeoutSource || null,
+      timeoutConfidence: f.timeoutConfidence != null ? f.timeoutConfidence : null,
     }));
     // Rebuild the username→figure index so repeat comments after a reload grow
     // the existing body instead of adding a duplicate.
@@ -1941,6 +2291,12 @@ function loadState() {
 function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
   const ch     = client.channels.get(ABLY_CH);
+  nhChannel = ch; // used by roster/timeout/moderation publishers
+
+  // ── Balloon Timeout Corner: roster requests, timeout commands, moderation ──
+  ch.subscribe('new-here-roster-request', () => { publishRosterSnapshot(); });
+  ch.subscribe('new-here-timeout-cmd', msg => { handleTimeoutCmd(msg.data || {}); });
+  ch.subscribe('new-here-moderation',   msg => { handleModeration(msg.data || {}); });
 
   // Manual/test joins from the control panel (low volume).
   ch.subscribe('new-here', msg => {
@@ -2058,6 +2414,9 @@ function connectAbly() {
     if (d.msScale      != null) MILESTONE_SCALE     = d.msScale;
     if (d.msXOffset    != null) MILESTONE_X_OFFSET  = d.msXOffset;
     if (d.msYOffset    != null) MILESTONE_Y_OFFSET  = d.msYOffset;
+    if (d.timeoutScale   != null) TIMEOUT_SCALE    = d.timeoutScale;
+    if (d.timeoutXOffset != null) TIMEOUT_X_OFFSET = d.timeoutXOffset;
+    if (d.timeoutYOffset != null) TIMEOUT_Y_OFFSET = d.timeoutYOffset;
     if (d.laneInset    != null) LANE_INSET    = Math.max(0, d.laneInset);
     if (d.laneWidth    != null) LANE_WIDTH    = Math.max(40, d.laneWidth);
     if (d.tierEnabled  != null) TIER_ENABLED  = !!d.tierEnabled;
@@ -2170,6 +2529,7 @@ function connectAbly() {
     console.log('[Ably] connected →', ABLY_CH);
     sendAlive();
     if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {}); // pull the roster
+    publishRosterSnapshot(); // let the control sync the current session balloons
   });
   client.connection.on('disconnected', () => console.warn('[Ably] disconnected'));
   client.connection.on('suspended',    () => console.warn('[Ably] suspended'));
@@ -2187,8 +2547,25 @@ function connectAbly() {
     get pressure() { return PRESSURE; },
     get pressurePct() { return pressurePct(); },
     get pressureZone() { return pressureZone(pressurePct()); },
+    // Timeout Corner debug/API — same helpers the Ably commands use.
+    get roster() { return Array.from(userFigs.values()).map(f => ({ key: userKey(f.username, canonSource(f.source)), username: f.username, source: canonSource(f.source), tier: f.tier, isSupporter: f.isSupporter, timeoutUntil: f.timeoutUntil })); },
+    get activeTimeouts() { return activeTimeoutFigures().map(f => ({ username: f.username, source: canonSource(f.source), remainingMs: remainingTimeoutMs(f) })); },
+    addTimeout(username, source, seconds) { const fig = ensureBalloon(username, source, { manual: true }); return fig ? addTimeoutSeconds(fig, seconds) : 0; },
+    releaseTimeout(username, source) { const fig = userFigs.get(userKey(normalizeUsername(username), canonSource(source))); return fig ? releaseTimeout(fig) : false; },
+    releaseAllTimeouts() { activeTimeoutFigures().forEach(f => releaseTimeout(f, 'release-all')); },
+    publishRosterSnapshot,
   };
 }
+
+// Console-safe helpers (call the real functions used by Ably commands).
+window.simulateTimeout = function (username, source, seconds) {
+  const fig = ensureBalloon(username || 'ExampleUser', source || 'tiktok', { manual: true });
+  return fig ? addTimeoutSeconds(fig, Number(seconds) || 300) : 0;
+};
+window.releaseSimulatedTimeout = function (username, source) {
+  const fig = userFigs.get(userKey(normalizeUsername(username || ''), canonSource(source || 'tiktok')));
+  return fig ? releaseTimeout(fig) : false;
+};
 
 // ═══════════════════════════════════════════════════════════════════
 // PUBLIC API (browser console or test page)
@@ -2247,10 +2624,12 @@ function hardReset() {
   balloonLaneSeq = 0;
   balloonCeilSeqL = 0;
   balloonCeilSeqR = 0;
+  _timeoutPage = 0; _timeoutPageAt = 0; // clear impound pagination with the roster
   resetPending  = false;
   PRESSURE            = 0;
   lastPressureEventAt = performance.now();
   if (CONFIG.persist) localStorage.removeItem(STORAGE_KEY);
+  scheduleRosterSnapshot(); // reset clears roster + all timeouts together
 }
 
 // Sends every current figure flying outward/upward with gravity + spin, then

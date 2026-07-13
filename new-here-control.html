@@ -221,6 +221,67 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
     </div>
   </div>
 
+  <!-- BALLOON TIMEOUT CORNER -->
+  <div class="card" id="nh-timeout-card">
+    <h2>Balloon Timeout Corner <span class="info" title="Send balloons to a playful impound in the upper-right of the overlay. Add time cumulatively, release, or add someone who isn't here yet. Only drawn in Balloons mode; sentences keep counting in other modes.">?</span></h2>
+    <p class="hint" id="nh-to-mode-note" style="display:none;color:#fbbf24;margin:0 0 6px;">Timeout Corner is visible in Balloons mode.</p>
+
+    <!-- searchable checkbox dropdown -->
+    <div style="position:relative;">
+      <button class="ctrl-btn" id="nh-to-dd-btn" onclick="nhToToggleDropdown(event)" style="width:100%;text-align:left;">Select session balloons…</button>
+      <div id="nh-to-dd-panel" style="display:none;border:1px solid var(--line,#333);border-radius:8px;padding:6px;margin-top:4px;background:rgba(0,0,0,0.25);">
+        <input class="ctrl-in" id="nh-to-search" type="text" placeholder="Search username…" oninput="nhToRenderList()" style="width:100%;margin-bottom:4px;">
+        <div class="ctrl-row" style="gap:3px;flex-wrap:wrap;">
+          <button class="ctrl-btn to-filt c-act" data-f="all" onclick="nhToSetFilter('all',event)" style="flex:1;min-width:44px;">All</button>
+          <button class="ctrl-btn to-filt" data-f="tiktok" onclick="nhToSetFilter('tiktok',event)" style="flex:1;min-width:44px;">TikTok</button>
+          <button class="ctrl-btn to-filt" data-f="youtube" onclick="nhToSetFilter('youtube',event)" style="flex:1;min-width:44px;">YouTube</button>
+          <button class="ctrl-btn to-filt" data-f="timedout" onclick="nhToSetFilter('timedout',event)" style="flex:1;min-width:44px;">Timed Out</button>
+        </div>
+        <div class="ctrl-row" style="gap:3px;margin-top:3px;">
+          <button class="ctrl-btn" onclick="nhToSelectVisible(event)" style="flex:1;">Select visible</button>
+          <button class="ctrl-btn" onclick="nhToClearSelection(event)" style="flex:1;">Clear selection</button>
+          <button class="ctrl-btn" onclick="nhToRequestRoster(event)" title="Refresh roster from the overlay" style="flex:0 0 auto;">↻</button>
+        </div>
+        <div id="nh-to-list" style="max-height:230px;overflow-y:auto;margin-top:5px;"></div>
+      </div>
+    </div>
+
+    <!-- batch controls -->
+    <div id="nh-to-sel-count" style="font-size:11px;font-weight:700;color:var(--txt-dim);margin:7px 0 3px;">0 BALLOONS SELECTED</div>
+    <div class="ctrl-row" style="gap:3px;">
+      <button class="ctrl-btn" onclick="nhToBatchAdd(60)" style="flex:1;" title="Add 1 minute to every checked user (cumulative).">+1 MIN</button>
+      <button class="ctrl-btn" onclick="nhToBatchAdd(300)" style="flex:1;" title="Add 5 minutes to every checked user (cumulative).">+5 MIN</button>
+      <button class="ctrl-btn" onclick="nhToBatchAdd(600)" style="flex:1;" title="Add 10 minutes to every checked user (cumulative).">+10 MIN</button>
+    </div>
+    <div class="ctrl-row"><button class="ctrl-btn danger" onclick="nhToReleaseSelected()" style="flex:1;">RELEASE SELECTED</button></div>
+
+    <!-- manual creation -->
+    <div style="margin-top:9px;">
+      <div style="font-size:10px;color:var(--txt-dim);letter-spacing:.05em;margin-bottom:3px;">ADD SOMEONE MANUALLY</div>
+      <div class="ctrl-row" style="gap:3px;">
+        <select class="ctrl-in" id="nh-to-man-src" style="flex:0 0 auto;cursor:pointer;"><option value="tiktok">TikTok</option><option value="youtube">YouTube</option></select>
+        <input class="ctrl-in" id="nh-to-man-name" type="text" placeholder="username" style="flex:1;min-width:0;">
+      </div>
+      <div class="ctrl-row" style="gap:3px;">
+        <button class="ctrl-btn" onclick="nhToManualAdd(60)" style="flex:1;">+1</button>
+        <button class="ctrl-btn" onclick="nhToManualAdd(300)" style="flex:1;">+5</button>
+        <button class="ctrl-btn" onclick="nhToManualAdd(600)" style="flex:1;">+10</button>
+      </div>
+    </div>
+
+    <!-- active timeouts -->
+    <div style="margin-top:9px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:10px;color:var(--txt-dim);letter-spacing:.05em;">ACTIVE TIMEOUTS — <span id="nh-to-active-n">0</span></div>
+        <button class="ctrl-btn danger" onclick="nhToReleaseAll()" style="padding:2px 8px;font-size:10px;">Release All</button>
+      </div>
+      <div id="nh-to-active-list" style="margin-top:4px;"></div>
+    </div>
+
+    <!-- pending moderation detections -->
+    <div id="nh-to-pending" style="margin-top:8px;"></div>
+  </div>
+
   <!-- PILL TOGGLES -->
   <div class="card">
     <h2>Pill backgrounds <span class="info" title="Each on-screen label can sit on a rounded pill background, or show as plain text with no pill. Uncheck for a cleaner text-only look.">?</span></h2>
@@ -245,6 +306,7 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
       <input id="nh-timer-scale" value="100"><input id="nh-timer-x" value="0"><input id="nh-timer-y" value="0">
       <input id="nh-pressure-scale" value="100"><input id="nh-pressure-x" value="0"><input id="nh-pressure-y" value="0">
       <input id="nh-ms-scale" value="100"><input id="nh-ms-x" value="0"><input id="nh-ms-y" value="0">
+      <input id="nh-timeout-scale" value="100"><input id="nh-timeout-x" value="0"><input id="nh-timeout-y" value="0">
       <input id="nh-blob-scale" value="100"><input id="nh-floor-y" value="0">
     </div>
   </div>
@@ -326,6 +388,9 @@ let ably = null, ablyChannel = null;
   try {
     ably = new Ably.Realtime({ key: ABLY_KEY });
     ablyChannel = ably.channels.get(ABLY_CH);
+    // Subscribe ONCE (channel object is stable across reconnects → no stacking).
+    ablyChannel.subscribe('new-here-roster-snapshot', msg => nhToOnSnapshot(msg.data || {}));
+    ablyChannel.subscribe('new-here-timeout-detected', msg => nhToOnDetected(msg.data || {}));
     const dot = document.getElementById('conn-dot');
     ably.connection.on('connected', () => {
       dot.classList.add('connected');
@@ -333,6 +398,7 @@ let ably = null, ablyChannel = null;
       nhPublishEnabled();
       nhPublishMode();
       nhPublishTimeframe();
+      nhToRequestRoster(); // pull the current session roster
     });
     ably.connection.on('disconnected', () => dot.classList.remove('connected'));
     ably.connection.on('failed',       () => dot.classList.remove('connected'));
@@ -387,6 +453,7 @@ function nhCycleMode() {
   localStorage.setItem('nh_ctrl_mode', _nhMode);
   nhPublishMode();
   nhRenderModeBtn();
+  if (typeof nhToUpdateModeNote === 'function') nhToUpdateModeNote();
 }
 
 /* ── Gifter ranking timeframe ───────────────────────────────────── */
@@ -464,8 +531,12 @@ function nhApplyConfig() {
   const msScale   = parseInt(document.getElementById('nh-ms-scale').value) / 100;
   const msXOffset = parseInt(document.getElementById('nh-ms-x').value);
   const msYOffset = parseInt(document.getElementById('nh-ms-y').value);
+  const timeoutScale   = parseInt(document.getElementById('nh-timeout-scale').value) / 100;
+  const timeoutXOffset = parseInt(document.getElementById('nh-timeout-x').value);
+  const timeoutYOffset = parseInt(document.getElementById('nh-timeout-y').value);
   const cfg = {
     msMain, msSub, msScale, msXOffset, msYOffset,
+    timeoutScale, timeoutXOffset, timeoutYOffset,
     signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
     signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
     laneWidth, laneInset, gloss, tierEnabled, tierLabelOn,
@@ -500,6 +571,7 @@ function nhLoadDisplayConfig() {
     setPct('nh-pressure-scale', c.pressureScale); setNum('nh-pressure-x', c.pressureXOffset); setNum('nh-pressure-y', c.pressureYOffset);
     setPct('nh-ms-scale', c.msScale); setNum('nh-ms-x', c.msXOffset); setNum('nh-ms-y', c.msYOffset);
     setTxt('nh-ms-main', c.msMain); setTxt('nh-ms-sub', c.msSub);
+    setPct('nh-timeout-scale', c.timeoutScale); setNum('nh-timeout-x', c.timeoutXOffset); setNum('nh-timeout-y', c.timeoutYOffset);
     setPct('nh-blob-scale', c.blobScale); setNum('nh-floor-y', c.floorOffset);
     setNum('nh-lane-width', c.laneWidth); setNum('nh-lane-inset', c.laneInset);
     setPct('nh-gloss', c.gloss); nhFmtLane();
@@ -753,6 +825,7 @@ const POS_SPEC = [
   { key: 'timer',    label: 'Countdown timer',   tip: 'The countdown timer pill (Starting Soon).', fields: ['scale','x','y'] },
   { key: 'pressure', label: 'Pressure meter',    tip: 'The pressure / inflation meter that fills as chat joins.', fields: ['scale','x','y'] },
   { key: 'ms',       label: 'Milestone banner',  tip: 'The celebration banner shown when a subscriber/follower/viewer milestone is hit.', fields: ['scale','x','y'] },
+  { key: 'timeout',  label: 'Timeout Corner',    tip: 'Moves and scales the Balloon Timeout Corner (impound area).', fields: ['scale','x','y'] },
   { key: 'blob',     label: 'Mascot size',       tip: 'How big each mascot blob is drawn on the pile.', fields: ['scale'] },
   { key: 'floor',    label: 'Pile floor',        tip: 'The floor line the whole pile sits on. Negative Y raises the pile higher up the screen.', fields: ['y'] },
 ];
@@ -801,6 +874,208 @@ function nhRefreshReadouts() {
   POS_SPEC.forEach(el => el.fields.forEach(f => nhReadout(nhInputId(el.key, f))));
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   BALLOON TIMEOUT CORNER — control logic. The overlay is authoritative;
+   the control shows the last roster snapshot and publishes timeout commands.
+   ══════════════════════════════════════════════════════════════════ */
+let _toRoster = new Map();    // key -> balloon snapshot (from the overlay)
+let _toSelected = new Set();  // keys checked in the dropdown
+let _toFilter = 'all';
+let _toOpen = false;
+let _toPending = [];          // moderation detections awaiting a chosen sentence
+
+function nhToNormName(u) { return String(u || '').trim().replace(/^@+/, ''); }
+function nhToCanon(s) { s = String(s || '').toLowerCase(); return (s === 'tt' || s === 'tiktok') ? 'tiktok' : (s === 'yt' || s === 'youtube') ? 'youtube' : s; }
+function nhToFmt(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+function nhToRemaining(b) { return Math.max(0, (Number(b.timeoutUntil) || 0) - Date.now()); }
+function nhToActiveB(b) { return (Number(b.timeoutUntil) || 0) > Date.now(); }
+function nhToDisplayName(b) { return (b.source === 'tiktok' ? '@' : '') + b.username; }
+function nhToStatusText(b) { return b.isSupporter ? '$' + Math.max(1, Math.round((b.spend || 0) / 100)) : 'Lv ' + (b.tier || 1); }
+function nhToStatus(msg) { const st = document.getElementById('nh-status'); if (st) { st.textContent = msg; setTimeout(() => { st.textContent = '—'; }, 2200); } }
+
+function nhToPublishCmd(payload) {
+  if (ablyChannel) ablyChannel.publish('new-here-timeout-cmd', Object.assign(
+    { origin: 'control', requestId: 'c' + Date.now() + Math.random().toString(36).slice(2, 6) }, payload)).catch(() => {});
+}
+function nhToRequestRoster(e) {
+  if (e) e.stopPropagation();
+  if (ablyChannel) ablyChannel.publish('new-here-roster-request', { requestId: 'r' + Date.now(), requestedAt: Date.now() }).catch(() => {});
+}
+
+function nhToOnSnapshot(d) {
+  const list = Array.isArray(d.balloons) ? d.balloons : [];
+  _toRoster = new Map();
+  for (const b of list) if (b && b.key) _toRoster.set(b.key, b);
+  for (const k of Array.from(_toSelected)) if (!_toRoster.has(k)) _toSelected.delete(k); // prune gone keys
+  nhToRenderAll();
+}
+function nhToOnDetected(d) {
+  if (!d || !d.targetUsername) return;
+  const platform = nhToCanon(d.platform), name = nhToNormName(d.targetUsername);
+  const id = platform + ':' + name.toLowerCase();
+  if (_toPending.some(p => p._id === id)) return;
+  _toPending.push({ _id: id, platform, targetUsername: name, targetUserId: d.targetUserId || null,
+    action: d.action || 'mute', confidence: d.confidence || 'medium', detectedAt: d.detectedAt || Date.now() });
+  nhToRenderPending();
+}
+
+// Sort: timed-out longest first → recent active → manual last.
+function nhToSortRoster(arr) {
+  return arr.slice().sort((a, b) => {
+    const at = nhToActiveB(a) ? 1 : 0, bt = nhToActiveB(b) ? 1 : 0;
+    if (at !== bt) return bt - at;
+    if (at && bt) return b.timeoutUntil - a.timeoutUntil;
+    const am = a.manualCreated ? 1 : 0, bm = b.manualCreated ? 1 : 0;
+    if (am !== bm) return am - bm;
+    return (b.lastActiveAt || 0) - (a.lastActiveAt || 0);
+  });
+}
+
+function nhToToggleDropdown(e) {
+  if (e) e.stopPropagation();
+  _toOpen = !_toOpen;
+  document.getElementById('nh-to-dd-panel').style.display = _toOpen ? 'block' : 'none';
+  if (_toOpen) { nhToRequestRoster(); nhToRenderList(); }
+}
+function nhToSetFilter(f, e) {
+  if (e) e.stopPropagation();
+  _toFilter = f;
+  document.querySelectorAll('.to-filt').forEach(b => b.classList.toggle('c-act', b.dataset.f === f));
+  nhToRenderList();
+}
+function nhToVisibleList() {
+  const q = (document.getElementById('nh-to-search').value || '').trim().toLowerCase();
+  let arr = Array.from(_toRoster.values());
+  if (_toFilter === 'tiktok') arr = arr.filter(b => b.source === 'tiktok');
+  else if (_toFilter === 'youtube') arr = arr.filter(b => b.source === 'youtube');
+  else if (_toFilter === 'timedout') arr = arr.filter(b => nhToActiveB(b));
+  if (q) arr = arr.filter(b => String(b.username).toLowerCase().includes(q));
+  return nhToSortRoster(arr);
+}
+function nhToMkTimeBtn(label, sec, targets) {
+  const bt = document.createElement('button');
+  bt.className = 'ctrl-btn'; bt.textContent = label; bt.style.cssText = 'padding:2px 5px;font-size:10px;';
+  bt.onclick = (ev) => { ev.stopPropagation(); nhToAddTargets(targets, sec); };
+  return bt;
+}
+function nhToRenderList() {
+  const root = document.getElementById('nh-to-list'); if (!root) return;
+  root.textContent = '';
+  const arr = nhToVisibleList();
+  if (!arr.length) {
+    const e = document.createElement('div'); e.style.cssText = 'font-size:11px;color:var(--txt-dim);padding:8px;text-align:center;';
+    e.textContent = _toRoster.size ? 'No matching balloons.' : 'No session balloons yet.'; root.appendChild(e);
+    nhToUpdateSelCount(); return;
+  }
+  for (const b of arr) {
+    const tgt = [{ key: b.key, username: b.username, source: b.source }];
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:4px;padding:3px 2px;border-bottom:1px solid rgba(255,255,255,0.06);';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = _toSelected.has(b.key);
+    cb.onclick = (ev) => ev.stopPropagation();
+    cb.onchange = () => { if (cb.checked) _toSelected.add(b.key); else _toSelected.delete(b.key); nhToUpdateSelCount(); };
+    row.appendChild(cb);
+    const plat = document.createElement('span'); plat.textContent = b.source === 'tiktok' ? '🎵' : '▶'; plat.title = b.source; plat.style.fontSize = '11px'; row.appendChild(plat);
+    const nm = document.createElement('span'); nm.textContent = nhToDisplayName(b);
+    nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;'; row.appendChild(nm);
+    const st = document.createElement('span'); st.textContent = nhToStatusText(b); st.style.cssText = 'font-size:10px;color:var(--txt-dim);'; row.appendChild(st);
+    if (nhToActiveB(b)) {
+      const to = document.createElement('span'); to.className = 'to-remain'; to.dataset.key = b.key;
+      to.textContent = nhToFmt(nhToRemaining(b)); to.style.cssText = 'font-size:11px;font-weight:700;color:#fbbf24;'; row.appendChild(to);
+      const badge = document.createElement('span'); badge.textContent = 'IN TIMEOUT';
+      badge.style.cssText = 'font-size:8px;background:#f59e0b;color:#111;padding:1px 4px;border-radius:4px;font-weight:800;'; row.appendChild(badge);
+    }
+    row.appendChild(nhToMkTimeBtn('+1', 60, tgt));
+    row.appendChild(nhToMkTimeBtn('+5', 300, tgt));
+    row.appendChild(nhToMkTimeBtn('+10', 600, tgt));
+    if (nhToActiveB(b)) {
+      const rl = document.createElement('button'); rl.className = 'ctrl-btn danger'; rl.textContent = 'Release';
+      rl.style.cssText = 'padding:2px 5px;font-size:10px;'; rl.onclick = (ev) => { ev.stopPropagation(); nhToReleaseTargets(tgt); }; row.appendChild(rl);
+    }
+    root.appendChild(row);
+  }
+  nhToUpdateSelCount();
+}
+function nhToSelectVisible(e) { if (e) e.stopPropagation(); nhToVisibleList().forEach(b => _toSelected.add(b.key)); nhToRenderList(); }
+function nhToClearSelection(e) { if (e) e.stopPropagation(); _toSelected.clear(); nhToRenderList(); }
+function nhToUpdateSelCount() {
+  const n = _toSelected.size;
+  const el = document.getElementById('nh-to-sel-count'); if (el) el.textContent = `${n} BALLOON${n === 1 ? '' : 'S'} SELECTED`;
+  const btn = document.getElementById('nh-to-dd-btn'); if (btn) btn.textContent = n ? `${n} selected — session balloons…` : 'Select session balloons…';
+}
+function nhToSelectedTargets() {
+  const t = [];
+  for (const k of _toSelected) { const b = _toRoster.get(k); if (b) t.push({ key: b.key, username: b.username, source: b.source }); }
+  return t;
+}
+function nhToAddTargets(targets, addSeconds) { if (!targets.length) return; nhToPublishCmd({ action: 'add-time', targets, addSeconds }); setTimeout(nhToRequestRoster, 350); }
+function nhToReleaseTargets(targets) { if (!targets.length) return; nhToPublishCmd({ action: 'release', targets }); setTimeout(nhToRequestRoster, 350); }
+function nhToBatchAdd(sec) { const t = nhToSelectedTargets(); if (!t.length) { nhToStatus('Select at least one balloon'); return; } nhToAddTargets(t, sec); }
+function nhToReleaseSelected() { const t = nhToSelectedTargets(); if (!t.length) { nhToStatus('Select at least one balloon'); return; } nhToReleaseTargets(t); }
+function nhToReleaseAll() {
+  const n = Array.from(_toRoster.values()).filter(nhToActiveB).length;
+  if (!n) { nhToStatus('Nobody is grounded'); return; }
+  if (!confirm(`Release all ${n} timed-out balloon(s)?`)) return;
+  nhToPublishCmd({ action: 'release-all' }); setTimeout(nhToRequestRoster, 350);
+}
+function nhToManualAdd(sec) {
+  const src = nhToCanon(document.getElementById('nh-to-man-src').value);
+  const name = nhToNormName(document.getElementById('nh-to-man-name').value);
+  if (!name) { nhToStatus('Enter a username'); return; }
+  nhToAddTargets([{ username: name, source: src }], sec);
+  document.getElementById('nh-to-man-name').value = '';
+}
+function nhToRenderActive() {
+  const root = document.getElementById('nh-to-active-list'); if (!root) return;
+  const arr = Array.from(_toRoster.values()).filter(nhToActiveB).sort((a, b) => b.timeoutUntil - a.timeoutUntil);
+  const nEl = document.getElementById('nh-to-active-n'); if (nEl) nEl.textContent = arr.length;
+  root.textContent = '';
+  if (!arr.length) { const e = document.createElement('div'); e.style.cssText = 'font-size:11px;color:var(--txt-dim);padding:6px;text-align:center;'; e.textContent = 'Nobody is currently grounded.'; root.appendChild(e); return; }
+  for (const b of arr) {
+    const tgt = [{ key: b.key, username: b.username, source: b.source }];
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:4px;padding:3px 2px;border-bottom:1px solid rgba(255,255,255,0.06);';
+    const plat = document.createElement('span'); plat.textContent = b.source === 'tiktok' ? '🎵' : '▶'; plat.style.fontSize = '11px'; row.appendChild(plat);
+    const nm = document.createElement('span'); nm.textContent = nhToDisplayName(b); nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;'; row.appendChild(nm);
+    const to = document.createElement('span'); to.className = 'to-remain'; to.dataset.key = b.key; to.textContent = nhToFmt(nhToRemaining(b));
+    to.style.cssText = 'font-size:12px;font-weight:700;color:#fbbf24;min-width:52px;text-align:right;'; row.appendChild(to);
+    row.appendChild(nhToMkTimeBtn('+1', 60, tgt));
+    row.appendChild(nhToMkTimeBtn('+5', 300, tgt));
+    row.appendChild(nhToMkTimeBtn('+10', 600, tgt));
+    const rl = document.createElement('button'); rl.className = 'ctrl-btn danger'; rl.textContent = 'Release'; rl.style.cssText = 'padding:2px 5px;font-size:10px;';
+    rl.onclick = () => nhToReleaseTargets(tgt); row.appendChild(rl);
+    root.appendChild(row);
+  }
+}
+function nhToRenderPending() {
+  const root = document.getElementById('nh-to-pending'); if (!root) return;
+  root.textContent = '';
+  for (const p of _toPending) {
+    const box = document.createElement('div'); box.style.cssText = 'border:1px solid #f59e0b;border-radius:8px;padding:5px;margin-bottom:5px;background:rgba(245,158,11,0.08);';
+    const t = document.createElement('div'); t.style.cssText = 'font-size:11px;font-weight:700;color:#fbbf24;'; t.textContent = (p.platform === 'tiktok' ? 'TikTok' : 'YouTube') + ' moderation detected'; box.appendChild(t);
+    const u = document.createElement('div'); u.style.cssText = 'font-size:11px;'; u.textContent = (p.platform === 'tiktok' ? '@' : '') + p.targetUsername + ' — duration unavailable'; box.appendChild(u);
+    const rowb = document.createElement('div'); rowb.className = 'ctrl-row'; rowb.style.cssText = 'gap:3px;margin-top:4px;';
+    const mk = (lbl, sec) => { const bt = document.createElement('button'); bt.className = 'ctrl-btn'; bt.textContent = lbl; bt.style.flex = '1';
+      bt.onclick = () => { nhToAddTargets([{ username: p.targetUsername, source: p.platform }], sec); nhToRemovePending(p._id); }; return bt; };
+    rowb.appendChild(mk('+1 MIN', 60)); rowb.appendChild(mk('+5 MIN', 300)); rowb.appendChild(mk('+10 MIN', 600));
+    const ig = document.createElement('button'); ig.className = 'ctrl-btn'; ig.textContent = 'IGNORE'; ig.style.flex = '1'; ig.onclick = () => nhToRemovePending(p._id); rowb.appendChild(ig);
+    box.appendChild(rowb); root.appendChild(box);
+  }
+}
+function nhToRemovePending(id) { _toPending = _toPending.filter(p => p._id !== id); nhToRenderPending(); }
+function nhToRenderAll() { nhToRenderActive(); if (_toOpen) nhToRenderList(); nhToUpdateSelCount(); }
+function nhToLocalTick() { document.querySelectorAll('.to-remain').forEach(el => { const b = _toRoster.get(el.dataset.key); if (b) el.textContent = nhToFmt(nhToRemaining(b)); }); }
+function nhToUpdateModeNote() { const el = document.getElementById('nh-to-mode-note'); if (el) el.style.display = (_nhMode === 'balloons') ? 'none' : 'block'; }
+setInterval(nhToLocalTick, 1000);              // per-second countdown from absolute deadlines (no Ably)
+setInterval(nhToRenderActive, 5000);           // drop locally-expired rows even before a fresh snapshot
+document.addEventListener('click', e => {      // close dropdown on outside click
+  if (_toOpen && !e.target.closest('#nh-to-dd-panel') && !e.target.closest('#nh-to-dd-btn')) {
+    _toOpen = false; const p = document.getElementById('nh-to-dd-panel'); if (p) p.style.display = 'none';
+  }
+});
+
 /* ── Boot ──────────────────────────────────────────────────────── */
 nhLoadSettings();
 renderPosControls();
@@ -810,6 +1085,9 @@ nhFmtNamePersist();
 nhRenderEnableBtn();
 nhRenderModeBtn();
 nhRenderTimeframe();
+nhToUpdateModeNote();
+nhToRenderAll();
+nhToRequestRoster();
 </script>
 </body>
 </html>

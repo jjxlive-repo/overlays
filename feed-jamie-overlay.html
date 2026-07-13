@@ -312,15 +312,17 @@ const FJ_DEFAULT_CONFIG = {
     giftLowMax: 99, giftHighMin: 5000,
     giftFallbackEnabled: true,  /* false = only explicitly mapped gifts react */
     giftSizeScaling: {
-      enabled: true,     /* bigger gifts spawn bigger items */
-      maxScale: 2,       /* size multiplier at/above coinsForMax (1-coin gifts stay 1x) */
-      coinsForMax: 5000  /* coin value that reaches full size (log curve between) */
+      enabled: true,      /* bigger gifts spawn bigger items */
+      maxScale: 2.6,      /* size multiplier at/above coinsForMax (1-coin gifts stay 1x) */
+      coinsForMax: 20000  /* coin value that reaches full size — pushed out so items keep
+                             growing from Galaxy toward a TikTok Universe (log curve between) */
     },
     /* intensity ladder: how big a reaction scales with coin value.
        L1 normal catch · L2 +sparkle & size · L3 premium (fast/glow/2x growth)
-       · L4 MEGA (Heart-Me style) · L5 MEGA + item shower.
-       A mapping can pin itself to a level, or leave 'auto' to use these breakpoints. */
-    intensityThresholds: { l2: 100, l3: 1000, l4: 5000, l5: 30000 },
+       · L4 MEGA (Heart-Me style) · L5 MEGA + item shower. Above L5 the SPEND
+       SPECTACLE keeps escalating (storm/size/duration/repeats) up to a Universe.
+       Gate is deliberately low so a Galaxy (~1k coins) already hits the mega. */
+    intensityThresholds: { l2: 50, l3: 250, l4: 500, l5: 1000 },
     /* cheap gifts (and all likes) skip the bounce entirely and go straight
        into Jamie's mouth — instant payoff, and they never occupy a bounce
        slot so a big gift right after isn't stuck waiting behind a Rose. */
@@ -489,10 +491,21 @@ function fjValidateConfig() {
     c.events.intensityThresholds = { l2: 100, l3: 1000, l4: Math.round(num(c.events.giftHighMin, 5000)), l5: 30000 };
   }
   const it = c.events.intensityThresholds;
-  it.l2 = Math.min(Math.max(Math.round(num(it.l2, 100)), 1), 1000000);
-  it.l3 = Math.min(Math.max(Math.round(num(it.l3, 1000)), 1), 1000000);
-  it.l4 = Math.min(Math.max(Math.round(num(it.l4, 5000)), 1), 1000000);
-  it.l5 = Math.min(Math.max(Math.round(num(it.l5, 30000)), 1), 1000000);
+  it.l2 = Math.min(Math.max(Math.round(num(it.l2, 50)), 1), 1000000);
+  it.l3 = Math.min(Math.max(Math.round(num(it.l3, 250)), 1), 1000000);
+  it.l4 = Math.min(Math.max(Math.round(num(it.l4, 500)), 1), 1000000);
+  it.l5 = Math.min(Math.max(Math.round(num(it.l5, 1000)), 1), 1000000);
+  /* One-time migration: drop the old high mega gate to the new low one (Galaxy ≈ mega)
+     and open up size scaling — but only for configs still on the previous defaults, so
+     a streamer who deliberately re-tuned isn't overridden. */
+  if (!c.events._megaGateV2) {
+    if (it.l2 === 100 && it.l3 === 1000 && it.l4 === 5000 && it.l5 === 30000) {
+      it.l2 = 50; it.l3 = 250; it.l4 = 500; it.l5 = 1000;
+    }
+    const gs = c.events.giftSizeScaling;
+    if (gs && gs.maxScale === 2 && gs.coinsForMax === 5000) { gs.maxScale = 2.6; gs.coinsForMax = 20000; }
+    c.events._megaGateV2 = true;
+  }
   if (!c.events.instantFeed || typeof c.events.instantFeed !== 'object') {
     c.events.instantFeed = { enabled: true, maxCoins: 1 };
   }
@@ -527,6 +540,35 @@ function giftSizeScale(coins) {
   const t = Math.min(1, Math.log(1 + Math.max(0, +coins || 0)) / Math.log(1 + g.coinsForMax));
   return 1 + (g.maxScale - 1) * t;
 }
+/* ── SPEND SPECTACLE ─────────────────────────────────────────────
+   Above the mega gate the reaction keeps growing with spend. `spectacle` is
+   value ÷ mega-threshold (≈1 at Galaxy, ≈45 at a TikTok Universe). It is fed
+   through a log curve and split across four levers, each HARD-CAPPED so a whale
+   gift never lags or buries the camera in items:
+   • treat storm (more items, staggered) • bigger items • longer mega • repeats */
+const MEGA_CAPS = {
+  showerBase: 5, showerMax: 22,   // total shower items (staggered ~260ms apart)
+  showerSizeMax: 1.55,            // shower item size multiplier ceiling
+  durMul: 2.4,                    // mega-hold duration multiplier ceiling
+  fxMul: 3.0,                     // heart/sparkle particle multiplier ceiling
+  maxRepeats: 3,                  // max chained mega bursts
+};
+function spectacleOf(value, refThreshold) {
+  const ref = Math.max(1, refThreshold || (CFG.events.intensityThresholds.l5 || 1000));
+  return Math.max(1, (+value || 0) / ref);
+}
+// 1 → ~5.5 as spectacle goes 1 → ~45 (Galaxy → Universe); the shared growth knob.
+function spectacleBoost(s) { return Math.log2(1 + Math.min(Math.max(1, s), 96)); }
+function megaSpec(s) {
+  const b = spectacleBoost(s);
+  return {
+    showerCount:  Math.min(MEGA_CAPS.showerMax, Math.round(MEGA_CAPS.showerBase + b * 3)),
+    showerSize:   Math.min(MEGA_CAPS.showerSizeMax, 0.85 + (b - 1) * 0.12),
+    durMul:       Math.min(MEGA_CAPS.durMul, 1 + (b - 1) * 0.35),
+    fxMul:        Math.min(MEGA_CAPS.fxMul, 1 + (b - 1) * 0.45),
+    repeats:      Math.min(MEGA_CAPS.maxRepeats, 1 + Math.floor((b - 1) / 1.6)),
+  };
+}
 /* ── intensity ladder: how big Jamie's reaction is, 1 (normal) to 5 (MEGA + shower) ── */
 function intensityForValue(value) {
   const t = CFG.events.intensityThresholds;
@@ -548,33 +590,47 @@ function resolveIntensity(mapping, value) {
    All pending timers are tracked so clearAllObjects()/Emergency Clear can
    cancel an in-flight shower instead of it leaking items in afterward. */
 let showerTimers = [];
-function spawnItemShower(itemType, username) {
-  const count = 5 + Math.floor(Math.random() * 4); /* 5-8 */
+function spawnItemShower(itemType, username, spec) {
+  // spec.showerCount / spec.showerSize scale with spend (both hard-capped); default = old 5-8 @ 0.85.
+  const count = spec ? spec.showerCount : (5 + Math.floor(Math.random() * 4));
+  const size  = spec ? spec.showerSize  : 0.85;
+  // Slightly tighter stagger for big storms so they don't drag on, but never so
+  // tight that many pile on screen at once.
+  const gap = count > 12 ? 180 : 260;
   for (let i = 0; i < count; i++) {
     const t = setTimeout(() => {
       showerTimers = showerTimers.filter(x => x !== t);
-      queueSpawn(itemType, { sourceEvent: 'gift-shower', username, priority: 65, showName: false, sizeScale: 0.85 });
-    }, i * 260);
+      queueSpawn(itemType, { sourceEvent: 'gift-shower', username, priority: 65, showName: false, sizeScale: size });
+    }, i * gap);
     showerTimers.push(t);
   }
 }
 /* core executor: run the escalation ladder at an ALREADY-RESOLVED level.
    sizeScale is passed in (not recomputed) so callers can use a currency-
    appropriate curve — coins for TikTok gifts, dollars for superchats. */
-function reactAtLevel(itemType, level, sizeScale, username, rawGiftName, mapping, showName, sourceEvent) {
+function reactAtLevel(itemType, level, sizeScale, username, rawGiftName, mapping, showName, sourceEvent, spectacle = 1) {
   const wantsHeartMe = itemType === 'heartme';
   const wantsJackpot = !wantsHeartMe && level >= 4;
   if (wantsHeartMe || wantsJackpot) {
+    // Spend spectacle: bigger celebration (duration + particles), a scaled treat
+    // storm, and — for whales — repeated storm waves. Every lever is capped.
+    const spec = megaSpec(spectacle);
+    const opts = { durMul: spec.durMul, fxMul: spec.fxMul };
     showGiftFloat(mapping || { itemType: wantsHeartMe ? 'heartme' : 'jackpot' }, username, rawGiftName);
-    if (wantsHeartMe) triggerHeartMe(username, rawGiftName);
-    else triggerJackpot(username, rawGiftName);
+    if (wantsHeartMe) triggerHeartMe(username, rawGiftName, opts);
+    else triggerJackpot(username, rawGiftName, opts);
     if (level >= 5) {
       const showerItem = (mapping && ITEM_DEFS[mapping.itemType]) ? mapping.itemType : 'treat-biscuit';
-      const t = setTimeout(() => {
-        showerTimers = showerTimers.filter(x => x !== t);
-        spawnItemShower(showerItem, username);
-      }, 900);
-      showerTimers.push(t);
+      // Each wave waits for the previous to finish so items stay staggered — a big
+      // spend rains treats for longer, never a single laggy pile that covers the cam.
+      const waveGap = spec.showerCount * (spec.showerCount > 12 ? 180 : 260) + 500;
+      for (let w = 0; w < spec.repeats; w++) {
+        const t = setTimeout(() => {
+          showerTimers = showerTimers.filter(x => x !== t);
+          spawnItemShower(showerItem, username, spec);
+        }, 900 + w * waveGap);
+        showerTimers.push(t);
+      }
     }
     return;
   }
@@ -642,7 +698,7 @@ function reactToGift(itemType, value, username, rawGiftName, mapping, showName) 
     playSound('gift');
     return;
   }
-  reactAtLevel(itemType, level, giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift');
+  reactAtLevel(itemType, level, giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift', spectacleOf(value));
 }
 /* YouTube Super Chat ladder — separate dollar thresholds + size curve,
    fed via stream-dock's existing 'gift-alert' Ably broadcast (no new
@@ -674,7 +730,8 @@ function handleSuperchat(evt) {
   const username = evt.name || evt.username || null;
   const level = resolveSuperchatIntensity(dollars);
   const itemType = superchatItemForLevel(level);
-  reactAtLevel(itemType, level, superchatSizeScale(dollars), username, 'Super Chat', null, true, 'superchat');
+  reactAtLevel(itemType, level, superchatSizeScale(dollars), username, 'Super Chat', null, true, 'superchat',
+    spectacleOf(dollars, CFG.events.superchat.thresholds.l5));
 }
 fjValidateConfig();
 function applyMotionVar() {
@@ -1929,7 +1986,7 @@ function handleComment(username, message) {
   }
 }
 let heartMeActive = false;
-function triggerHeartMe(username, highGiftName = '') {
+function triggerHeartMe(username, highGiftName = '', opts = {}) {
   // Guard on both flags — Heart Me and Jackpot share jamieEl's transform and the
   // dim/veil state, so letting one interrupt the other mid-celebration used to
   // compound the scale transform and could prematurely reset shared state.
@@ -1952,8 +2009,9 @@ function triggerHeartMe(username, highGiftName = '') {
   playSeq('heartMe', { loop: false, onDone: () => playSeq('heartMeEnd', { loop: false }) });
   $('heartme-veil').style.opacity = 1;
   const rz = reachZoneRect();
-  spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, 10);
-  spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, 8);
+  const _hmFx = opts.fxMul || 1;
+  spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, Math.round(10 * _hmFx));
+  spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, Math.round(8 * _hmFx));
   playSound('heartMe');
   if (username && CFG.visuals.usernameEvents.heartMe) {
     const giftLabel = sanitizeName(highGiftName);
@@ -1965,7 +2023,7 @@ function triggerHeartMe(username, highGiftName = '') {
       !!giftLabel
     );
   }
-  const durMs = CFG.events.heartMeDurationSec * 1000;
+  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
   setTimeout(() => {
     $('heartme-veil').style.opacity = 0;
     jamieEl.classList.remove('pose-celebrate', 'ph-happy');
@@ -1980,7 +2038,7 @@ function triggerHeartMe(username, highGiftName = '') {
   publishStatus();
 }
 let jackpotActive = false;
-function triggerJackpot(username, rawGiftName = '') {
+function triggerJackpot(username, rawGiftName = '', opts = {}) {
   if (jackpotActive || heartMeActive) return;
   jackpotActive = true;
   objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
@@ -1996,8 +2054,9 @@ function triggerJackpot(username, rawGiftName = '') {
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
   playSeq('jackpot', { loop: false, onDone: () => playSeq('jackpotEnd', { loop: false }) });
   $('jackpot-veil').style.opacity = 1;
-  spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, 14);
-  spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, 10);
+  const _jpFx = opts.fxMul || 1;
+  spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, Math.round(14 * _jpFx));
+  spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, Math.round(10 * _jpFx));
   playSound('jackpot');
   if (username && CFG.visuals.usernameEvents.gift) {
     const giftLabel = sanitizeName(rawGiftName);
@@ -2009,7 +2068,7 @@ function triggerJackpot(username, rawGiftName = '') {
       true
     );
   }
-  const durMs = CFG.events.heartMeDurationSec * 1000;
+  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
   setTimeout(() => {
     $('jackpot-veil').style.opacity = 0;
     jamieEl.classList.remove('pose-celebrate', 'ph-happy');
