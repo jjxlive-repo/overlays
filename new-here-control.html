@@ -31,7 +31,7 @@ body {
   margin: 0; background: var(--bg); color: var(--txt); font-family: var(--font);
   padding: 18px; display: flex; justify-content: center;
 }
-.wrap { width: 100%; max-width: 460px; }
+.wrap { width: 100%; max-width: 948px; }
 h1 {
   font-size: 16px; font-weight: 700; margin: 0 0 3px; display: flex;
   align-items: center; gap: 8px;
@@ -46,8 +46,16 @@ h1 .dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); 
 }
 .card > h2 {
   font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--purple);
-  margin: 0 0 8px; font-weight: 700;
+  margin: 0 0 8px; font-weight: 700; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 6px;
 }
+.card > h2 .collapse-arrow { margin-left: auto; font-size: 11px; color: var(--txt-dim); transition: transform .15s; }
+.card.collapsed > h2 .collapse-arrow { transform: rotate(-90deg); }
+.card.collapsed > .card-body { display: none; }
+/* 2-column masonry layout — cards flow into two columns on a wider dock. */
+.cards { column-count: 2; column-gap: 12px; }
+.cards > .card { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 12px; }
+@media (max-width: 720px) { .cards { column-count: 1; } .wrap { max-width: 460px; } }
 .sec-label {
   font-size: 9px; color: var(--txt-dim); margin-top: 8px; letter-spacing: .04em;
   text-transform: uppercase;
@@ -106,6 +114,7 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
     <span style="color:#F87171;">■</span> Red = YouTube &nbsp;·&nbsp; <span style="color:#38BDF8;">■</span> Blue = TikTok.
   </p>
 
+  <div class="cards">
   <!-- OVERLAY ON/OFF — the overlay stays blank until enabled. This mirrors the dock's
        toggle so you can show/hide it straight from here (either one works). -->
   <div class="card" style="display:flex;flex-direction:column;gap:8px;">
@@ -225,6 +234,9 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
   <div class="card" id="nh-timeout-card">
     <h2>Balloon Timeout Corner <span class="info" title="Send balloons to a playful impound in the upper-right of the overlay. Add time cumulatively, release, or add someone who isn't here yet. Only drawn in Balloons mode; sentences keep counting in other modes.">?</span></h2>
     <p class="hint" id="nh-to-mode-note" style="display:none;color:#fbbf24;margin:0 0 6px;">Timeout Corner is visible in Balloons mode.</p>
+    <div class="ctrl-row"><label style="width:64px;" title="Header sign text on the impound corner.">Title</label><input class="ctrl-in" id="nh-timeout-title" type="text" value="BALLOON IMPOUND" style="flex:1;min-width:0;" oninput="nhApplyConfig()"></div>
+    <div class="ctrl-row"><label style="width:64px;" title="Word after the count, e.g. '8 GROUNDED'.">Count word</label><input class="ctrl-in" id="nh-timeout-unit" type="text" value="GROUNDED" style="flex:1;min-width:0;" oninput="nhApplyConfig()"></div>
+    <p class="hint" style="margin:2px 0 6px;">Size &amp; position: <b>Position &amp; scale → Timeout Corner</b>.</p>
 
     <!-- searchable checkbox dropdown -->
     <div style="position:relative;">
@@ -377,6 +389,42 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
       <button class="ctrl-btn danger" onclick="nhReset()" style="flex:1;" title="Clear all mascots from the pile.">Reset Pile</button>
     </div>
   </div>
+
+  <!-- TEST FIRE — simulate every event that drives this overlay -->
+  <div class="card">
+    <h2>Test fire — simulate events <span class="info" title="Publishes the exact events the dock/tracker send on the shared channel, so you can preview how the overlay (and Feed Jamie / gift bar) react without real chat. Comments/likes/follows/subs grow left-channel balloons; gifts/superchats move users to the supporter lane.">?</span></h2>
+    <div class="ctrl-row">
+      <input class="ctrl-in" id="nh-tf-name" type="text" value="TestViewer" placeholder="username" style="flex:1;min-width:0;">
+      <select class="ctrl-in" id="nh-tf-src" style="cursor:pointer;"><option value="youtube">YouTube</option><option value="tiktok">TikTok</option></select>
+    </div>
+    <div class="sec-label">Engagement</div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhTfComment()" style="flex:1;" title="milk-event comment → grows a left-channel balloon.">💬 Comment</button>
+      <button class="ctrl-btn" onclick="nhTfFollow()" style="flex:1;" title="milk-event join → YouTube follow (+1), TikTok join (ignored by balloons).">➕ Follow</button>
+      <button class="ctrl-btn" onclick="nhTfLike()" style="flex:1;" title="milk-event like → TikTok tap (10 = +1 level).">👍 Tap</button>
+      <button class="ctrl-btn" onclick="nhTfSub()" style="flex:1;" title="milk-event yt_sub → membership (+5 levels).">🔔 Sub</button>
+    </div>
+    <div class="sec-label">TikTok gift (coins)</div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhTfCoins(1)" style="flex:1;" title="Rose (1 coin).">Rose 1</button>
+      <button class="ctrl-btn" onclick="nhTfCoins(100)" style="flex:1;">100</button>
+      <button class="ctrl-btn" onclick="nhTfCoins(1000)" style="flex:1;" title="Galaxy (~1k) — triggers Feed Jamie mega.">Galaxy 1k</button>
+      <button class="ctrl-btn" onclick="nhTfCoins(44999)" style="flex:1;" title="TikTok Universe (~45k).">Universe</button>
+    </div>
+    <div class="sec-label">YouTube Super Chat ($) &amp; Jewels</div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhTfSuperchat(2)" style="flex:1;">$2</button>
+      <button class="ctrl-btn" onclick="nhTfSuperchat(10)" style="flex:1;">$10</button>
+      <button class="ctrl-btn" onclick="nhTfSuperchat(50)" style="flex:1;">$50</button>
+      <button class="ctrl-btn" onclick="nhTfSuperchat(500)" style="flex:1;">$500</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhTfJewels(100)" style="flex:1;" title="YouTube Jewels (100).">💎 Jewels 100</button>
+      <input class="ctrl-in" id="nh-tf-amt" type="number" value="500" min="1" style="width:74px;" title="Custom amount (coins for TikTok, $ for YouTube).">
+      <button class="ctrl-btn c-act" onclick="nhTfCustomGift()" style="flex:0 0 auto;">Send gift</button>
+    </div>
+  </div>
+  </div><!-- /.cards -->
 </div>
 
 <script>
@@ -534,9 +582,11 @@ function nhApplyConfig() {
   const timeoutScale   = parseInt(document.getElementById('nh-timeout-scale').value) / 100;
   const timeoutXOffset = parseInt(document.getElementById('nh-timeout-x').value);
   const timeoutYOffset = parseInt(document.getElementById('nh-timeout-y').value);
+  const timeoutTitle   = (document.getElementById('nh-timeout-title').value || 'BALLOON IMPOUND');
+  const timeoutUnit    = (document.getElementById('nh-timeout-unit').value || 'GROUNDED');
   const cfg = {
     msMain, msSub, msScale, msXOffset, msYOffset,
-    timeoutScale, timeoutXOffset, timeoutYOffset,
+    timeoutScale, timeoutXOffset, timeoutYOffset, timeoutTitle, timeoutUnit,
     signScale, signXOffset, signYOffset, ctrScale, ctrXOffset, ctrYOffset,
     signLabel, ctrLabel, ctrFormat, idleTitle, idleSub, floorOffset,
     laneWidth, laneInset, gloss, tierEnabled, tierLabelOn,
@@ -572,6 +622,7 @@ function nhLoadDisplayConfig() {
     setPct('nh-ms-scale', c.msScale); setNum('nh-ms-x', c.msXOffset); setNum('nh-ms-y', c.msYOffset);
     setTxt('nh-ms-main', c.msMain); setTxt('nh-ms-sub', c.msSub);
     setPct('nh-timeout-scale', c.timeoutScale); setNum('nh-timeout-x', c.timeoutXOffset); setNum('nh-timeout-y', c.timeoutYOffset);
+    setTxt('nh-timeout-title', c.timeoutTitle); setTxt('nh-timeout-unit', c.timeoutUnit);
     setPct('nh-blob-scale', c.blobScale); setNum('nh-floor-y', c.floorOffset);
     setNum('nh-lane-width', c.laneWidth); setNum('nh-lane-inset', c.laneInset);
     setPct('nh-gloss', c.gloss); nhFmtLane();
@@ -756,6 +807,31 @@ function nhTestGift(dollars) {
   if (ablyChannel) ablyChannel.publish('gift-alert', { name, amount, type, platform: source, _src: 'nh-test' }).catch(() => {});
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ $${dollars} gift → ${name}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
+/* ── Test fire — publish the same events the dock/tracker send ──── */
+function nhTfName() { const v = document.getElementById('nh-tf-name'); return (v && v.value.trim()) || 'TestViewer'; }
+function nhTfSrc()  { const v = document.getElementById('nh-tf-src'); return (v && v.value) || 'youtube'; }
+function nhTfMilk(type, extra) {
+  const plat = nhTfSrc() === 'tiktok' ? 'tt' : 'yt';
+  if (ablyChannel) ablyChannel.publish('milk-event', Object.assign({ type, platform: plat, username: nhTfName() }, extra || {})).catch(() => {});
+  nhToStatus('↑ ' + type + ' → ' + nhTfName());
+}
+function nhTfComment() { nhTfMilk('comment', { message: 'test comment' }); }
+function nhTfFollow()  { nhTfMilk('join'); }
+function nhTfLike()    { nhTfMilk('like'); }
+function nhTfSub()     { if (nhTfSrc() !== 'youtube') { document.getElementById('nh-tf-src').value = 'youtube'; } nhTfMilk('yt_sub'); }
+function nhTfGift(type, amount) {
+  const src = nhTfSrc() === 'tiktok' ? 'tiktok' : 'youtube';
+  if (ablyChannel) ablyChannel.publish('gift-alert', { name: nhTfName(), amount, type, platform: src, _src: 'nh-testfire' }).catch(() => {});
+  nhToStatus('↑ gift ' + amount + ' (' + type + ')');
+}
+function nhTfCoins(n)     { document.getElementById('nh-tf-src').value = 'tiktok'; nhTfGift('tiktok_coins', n); }
+function nhTfSuperchat(d) { document.getElementById('nh-tf-src').value = 'youtube'; nhTfGift('youtube_superchat', d); }
+function nhTfJewels(n)    { document.getElementById('nh-tf-src').value = 'youtube'; nhTfGift('youtube_jewels', n); }
+function nhTfCustomGift() {
+  const amt = Math.max(1, parseInt(document.getElementById('nh-tf-amt').value) || 1);
+  if (nhTfSrc() === 'tiktok') nhTfGift('tiktok_coins', amt); else nhTfGift('youtube_superchat', amt);
 }
 
 // Preview a milestone celebration banner on the overlay.
@@ -1088,6 +1164,32 @@ nhRenderTimeframe();
 nhToUpdateModeNote();
 nhToRenderAll();
 nhToRequestRoster();
+
+/* Collapsible cards — click a card's header to fold it; state persists per card. */
+function nhInitCollapsible() {
+  const KEY = 'nh_ctrl_collapsed';
+  let collapsed = {};
+  try { collapsed = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}
+  document.querySelectorAll('.cards > .card').forEach((card, idx) => {
+    const h2 = card.querySelector(':scope > h2');
+    if (!h2 || h2.dataset.collapsible) return;
+    h2.dataset.collapsible = '1';
+    const id = 'c' + idx;
+    const body = document.createElement('div'); body.className = 'card-body';
+    let n = h2.nextSibling;
+    while (n) { const next = n.nextSibling; body.appendChild(n); n = next; }
+    card.appendChild(body);
+    const arrow = document.createElement('span'); arrow.className = 'collapse-arrow'; arrow.textContent = '▾';
+    h2.appendChild(arrow);
+    if (collapsed[id]) card.classList.add('collapsed');
+    h2.addEventListener('click', () => {
+      card.classList.toggle('collapsed');
+      collapsed[id] = card.classList.contains('collapsed');
+      try { localStorage.setItem(KEY, JSON.stringify(collapsed)); } catch {}
+    });
+  });
+}
+nhInitCollapsible();
 </script>
 </body>
 </html>

@@ -123,6 +123,7 @@ function saveDisplayCfg() {
       msMain: MILESTONE_MAIN_TMPL, msSub: MILESTONE_SUB_TMPL,
       msScale: MILESTONE_SCALE, msXOffset: MILESTONE_X_OFFSET, msYOffset: MILESTONE_Y_OFFSET,
       timeoutScale: TIMEOUT_SCALE, timeoutXOffset: TIMEOUT_X_OFFSET, timeoutYOffset: TIMEOUT_Y_OFFSET,
+      timeoutTitle: TIMEOUT_TITLE, timeoutUnit: TIMEOUT_UNIT,
       laneInset: LANE_INSET, laneWidth: LANE_WIDTH,
       tierEnabled: TIER_ENABLED, tierLabelOn: TIER_LABEL_ON,
       blobScale: BLOB_SCALE, gloss: GLOSS,
@@ -171,6 +172,8 @@ function saveDisplayCfg() {
     if (c.timeoutScale   != null) TIMEOUT_SCALE    = c.timeoutScale;
     if (c.timeoutXOffset != null) TIMEOUT_X_OFFSET = c.timeoutXOffset;
     if (c.timeoutYOffset != null) TIMEOUT_Y_OFFSET = c.timeoutYOffset;
+    if (c.timeoutTitle   != null) TIMEOUT_TITLE    = c.timeoutTitle;
+    if (c.timeoutUnit    != null) TIMEOUT_UNIT     = c.timeoutUnit;
     if (c.laneInset    != null) LANE_INSET    = c.laneInset;
     if (c.laneWidth    != null) LANE_WIDTH    = c.laneWidth;
     if (c.tierEnabled  != null) TIER_ENABLED  = c.tierEnabled;
@@ -263,6 +266,15 @@ const BALLOON_RISE_K  = 0.055; // per-frame lerp toward target (scaled by dt) �
 const CEIL_TOP        = 130;   // y where the top of each channel's cluster sits
 const CEIL_ROW_H      = 95;    // vertical gap as maxed balloons stack down inside the channel
 const LANE_TOP_Y      = CEIL_TOP; // highest a climber reaches before joining the top cluster
+// Spring + damping so balloons SETTLE against each other instead of buzzing/bouncing
+// in unison. Weak spring toward the comment-height goal; collisions win when packed;
+// strong damping bleeds off energy so a full lane goes still.
+const BALLOON_SPRING  = 0.018; // pull toward the comment-height goal (gentle)
+const BALLOON_DAMP    = 0.80;  // velocity retained per frame (energy drain → no jitter)
+const COLLIDE_RELAX   = 0.55;  // partial separation per frame → smooth convergence, no ping-pong
+// !balloon4 pop: slow deflating fall to the floor, sit, then shoot back up.
+const POP_FALL_MS = 1800, POP_STAY_MS = 900, POP_RISE_MS = 700;
+const POP_TOTAL_MS = POP_FALL_MS + POP_STAY_MS + POP_RISE_MS;
 
 // ── BALLOON EVOLUTION / TIERS ────────────────────────────────────
 // The retention hook: every comment earns progress, and crossing a threshold
@@ -365,26 +377,29 @@ function resolveBalloonCollisions() {
   const r    = balloonRadius();
   const minD = 2 * r;
   for (const lane of [-1, 1]) {
-    // Impounded balloons live in the corner, not the lane — exclude them from the solver.
-    const arr = figures.filter(f => f.lane === lane && f.phase !== 'exploding' && f.bx != null && !isTimedOut(f));
+    // Impounded + popping balloons run their own paths — exclude them from the solver.
+    const arr = figures.filter(f => f.lane === lane && f.phase !== 'exploding' && f.bx != null && !isTimedOut(f) && !isPopping(f));
     if (arr.length < 2) continue;
-    for (let pass = 0; pass < 2; pass++) {
-      arr.sort((a, b) => a.by - b.by);
-      for (let i = 0; i < arr.length; i++) {
-        const a = arr[i];
-        for (let j = i + 1; j < arr.length; j++) {
-          const b = arr[j];
-          const dy = b.by - a.by;
-          if (dy >= minD) break;                 // sorted: nothing below can overlap either
-          let dx = b.bx - a.bx;
-          let dist = Math.hypot(dx, dy);
-          if (dist < 0.001) { dx = rnd() - 0.5; dist = Math.hypot(dx, dy) || 1; } // identical → nudge
-          if (dist < minD) {
-            const push = (minD - dist) / 2;
-            const ux = dx / dist, uy = dy / dist;
-            a.bx -= ux * push; a.by -= uy * push;
-            b.bx += ux * push; b.by += uy * push;
-          }
+    // Single relaxed pass with a partial push: overlaps resolve over a few frames
+    // instead of snapping apart, which (with the velocity damping) stops the ping-pong.
+    arr.sort((a, b) => a.by - b.by);
+    for (let i = 0; i < arr.length; i++) {
+      const a = arr[i];
+      for (let j = i + 1; j < arr.length; j++) {
+        const b = arr[j];
+        const dy = b.by - a.by;
+        if (dy >= minD) break;                   // sorted: nothing below can overlap either
+        let dx = b.bx - a.bx;
+        let dist = Math.hypot(dx, dy);
+        if (dist < 0.001) { dx = rnd() - 0.5; dist = Math.hypot(dx, dy) || 1; } // identical → nudge
+        if (dist < minD) {
+          const push = (minD - dist) / 2 * COLLIDE_RELAX;
+          const ux = dx / dist, uy = dy / dist;
+          a.bx -= ux * push; a.by -= uy * push;
+          b.bx += ux * push; b.by += uy * push;
+          // Bleed the closing velocity so a contact settles instead of rebounding.
+          a.vx = (a.vx || 0) * 0.5; a.vy = (a.vy || 0) * 0.5;
+          b.vx = (b.vx || 0) * 0.5; b.vy = (b.vy || 0) * 0.5;
         }
       }
     }
@@ -478,9 +493,13 @@ let MILESTONE_Y_OFFSET   = 0;
 let TIMEOUT_SCALE    = 1.0;
 let TIMEOUT_X_OFFSET = 0;
 let TIMEOUT_Y_OFFSET = 0;
+let TIMEOUT_TITLE    = 'BALLOON IMPOUND'; // header sign text (editable from control)
+let TIMEOUT_UNIT     = 'GROUNDED';        // count label, e.g. "8 GROUNDED"
 const TIMEOUT_BASE_X = 850, TIMEOUT_BASE_Y = 430; // corner center (upper-right)
 const TIMEOUT_COLS = 2, TIMEOUT_ROWS = 4, TIMEOUT_PER_PAGE = TIMEOUT_COLS * TIMEOUT_ROWS; // 8 visible
-const TIMEOUT_CELL_W = 150, TIMEOUT_CELL_H = 170;
+const TIMEOUT_CELL_W = 116, TIMEOUT_CELL_H = 124; // compact so it doesn't crowd the chat panel
+const TIMEOUT_BALLOON_MUL = 0.58;  // impound balloons are smaller than lane balloons — easier to read
+const TIMEOUT_CHAIN = 30;          // short tether from balloon base to weight
 const TIMEOUT_MAX_MS = 24 * 3600 * 1000; // clamp a single sentence to 24h
 let _timeoutPage = 0, _timeoutPageAt = 0; // pagination rotation state
 let _rosterSnapTimer = null;              // debounce handle for roster snapshots
@@ -566,6 +585,29 @@ function balloonTarget(fig) {
   // !balloon3 boost — temporarily lifts the balloon well above its earned height.
   if (fig.boostUntil && performance.now() < fig.boostUntil) y = Math.max(CEIL_TOP - 40, y - BOOST_LIFT);
   return { x, y };
+}
+
+// !balloon4 pop: is this balloon mid-pop, and where should it be right now?
+function isPopping(fig) { return fig.popAt > -Infinity && (performance.now() - fig.popAt) < POP_TOTAL_MS; }
+// Returns true when the pop is finished. Drives by along a slow-fall → sit → shoot-up
+// path (bx drifts gently to lane center meanwhile).
+function applyPop(fig, now) {
+  const el = now - fig.popAt;
+  if (el >= POP_TOTAL_MS) return true;
+  const floorY = FLOOR_Y - 40;
+  const startY = fig.popStartY != null ? fig.popStartY : fig.by;
+  const target = balloonTarget(fig);
+  fig.bx += (target.x - fig.bx) * 0.03;   // drift back to the channel center
+  if (el < POP_FALL_MS) {
+    const p = el / POP_FALL_MS;            // ease-in: slow, deflating sink
+    fig.by = startY + (floorY - startY) * (p * p);
+  } else if (el < POP_FALL_MS + POP_STAY_MS) {
+    fig.by = floorY + Math.sin(now / 320) * 2; // sit at the bottom, tiny wobble
+  } else {
+    const p = (el - POP_FALL_MS - POP_STAY_MS) / POP_RISE_MS; // ease-out: shoot back up
+    fig.by = floorY + (target.y - floorY) * (1 - (1 - p) * (1 - p));
+  }
+  return false;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -734,7 +776,7 @@ function handleBalloonCommand(username, source, msg) {
   if (cmd.action === 'dance')   fig.danceUntil   = now + cmd.dur;
   if (cmd.action === 'sparkle') fig.sparkleUntil = now + cmd.dur;
   if (cmd.action === 'boost')   fig.boostUntil   = now + cmd.dur;
-  if (cmd.action === 'pop')   { fig.popY = fig.by; fig.popAt = now; fig.by = FLOOR_Y - 40; } // pop → drop to bottom, re-float
+  if (cmd.action === 'pop')   { fig.popStartY = fig.by; fig.popAt = now; } // slow deflate → floor → shoot back up
   return true;
 }
 
@@ -1261,22 +1303,35 @@ function drawNamePill(ctx, cx, cy, pal, username) {
   }
 
   if (!NAME_PILL_ENABLED) {
-    ctx.fillStyle    = pal.plateTx;
+    // Text-only: a drop shadow + dark outline so the name reads over any background.
+    ctx.save();
     ctx.font         = `600 ${fsize}px Fredoka, sans-serif`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
+    ctx.lineWidth    = 4; ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+    ctx.strokeText(username, cx, cy);
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.fillStyle    = '#fff';
     ctx.fillText(username, cx, cy);
+    ctx.restore();
     return;
   }
 
   const pillW = Math.max(50, tw + padX * 2);
   const pillH = fsize + padY * 2;
 
+  // Drop shadow so the pill lifts off the background, then draw crisply.
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
   ctx.fillStyle   = pal.plate;
+  roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, pillH / 2);
+  ctx.fill();
+  ctx.restore();
+
   ctx.strokeStyle = pal.plateStroke;
   ctx.lineWidth   = 2;
   roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, pillH / 2);
-  ctx.fill();
   ctx.stroke();
 
   // Downward pointer nub
@@ -1665,34 +1720,37 @@ function balloonVisual(fig) {
 }
 function drawImpoundBalloon(ctx, fig, slot, now, nowE) {
   const v = balloonVisual(fig);
-  const blobS = BALLOON_S * BLOB_SCALE * TIMEOUT_SCALE * 0.92;
+  const blobS = BALLOON_S * BLOB_SCALE * TIMEOUT_SCALE * TIMEOUT_BALLOON_MUL; // smaller than lane balloons
   const px = fig.bx ?? slot.x, py = fig.by ?? slot.y;
   const bump = now - (fig.timeoutBumpAt ?? -Infinity);
   const slam = (bump >= 0 && bump < 350) ? (1 + Math.sin(bump / 350 * Math.PI) * 0.18) : 1;
-  const wy = slot.y + 62 * TIMEOUT_SCALE; // heavy weight anchor (fixed at slot bottom)
+  const wy = slot.y + TIMEOUT_CHAIN * TIMEOUT_SCALE; // short tether → weight
 
   // Chain: balloon base → weight (gentle wobble).
   ctx.save();
-  ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 3 * TIMEOUT_SCALE; ctx.lineCap = 'round';
-  const baseY = py + 8 * blobS, links = 5;
+  ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 2.4 * TIMEOUT_SCALE; ctx.lineCap = 'round';
+  const baseY = py + 6 * blobS, links = 4;
   ctx.beginPath();
   for (let l = 0; l <= links; l++) {
-    const yy = baseY + (wy - baseY) * (l / links), xx = px + Math.sin(l * 1.6 + now / 400) * 4;
+    const yy = baseY + (wy - baseY) * (l / links), xx = px + Math.sin(l * 1.6 + now / 400) * 3;
     if (l === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
   }
   ctx.stroke();
   ctx.restore();
 
-  // Cartoon weight (charcoal block + orange caution band).
+  // Cartoon weight — charcoal block with a top ring (where the chain hooks) + orange
+  // caution band, so it reads as a heavy weight, not a brick. Smaller/compact.
   ctx.save();
   ctx.translate(px, wy); ctx.scale(TIMEOUT_SCALE * slam, TIMEOUT_SCALE * slam);
+  ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 2; ctx.fillStyle = 'transparent';
+  ctx.beginPath(); ctx.arc(0, -15, 5, Math.PI * 0.15, Math.PI * 0.85, true); ctx.stroke(); // hook ring
   ctx.fillStyle = '#374151'; ctx.strokeStyle = '#111827'; ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-27, -17); ctx.lineTo(27, -17); ctx.lineTo(33, 17); ctx.lineTo(-33, 17); ctx.closePath();
+  ctx.moveTo(-19, -11); ctx.lineTo(19, -11); ctx.lineTo(24, 13); ctx.lineTo(-24, 13); ctx.closePath();
   ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#F59E0B'; ctx.fillRect(-30, -5, 60, 10);
+  ctx.fillStyle = '#F59E0B'; ctx.fillRect(-22, -4, 44, 7);
   ctx.fillStyle = '#111827';
-  for (let s = -30; s < 30; s += 12) { ctx.beginPath(); ctx.moveTo(s, -5); ctx.lineTo(s + 6, 5); ctx.lineTo(s, 5); ctx.closePath(); ctx.fill(); }
+  for (let s = -22; s < 22; s += 10) { ctx.beginPath(); ctx.moveTo(s, -4); ctx.lineTo(s + 5, 3); ctx.lineTo(s, 3); ctx.closePath(); ctx.fill(); }
   ctx.restore();
 
   // Balloon itself — preserve glow / aura / prism / crown / star / badge / colour.
@@ -1705,19 +1763,20 @@ function drawImpoundBalloon(ctx, fig, slot, now, nowE) {
   else if (!v.isSup && v.effTier === 6) drawStarTopper(ctx, px, py, blobS, now);
   if (TIER_LABEL_ON) drawTierBadge(ctx, px, py, blobS, v.badge, v.color);
 
-  // Username — ALWAYS drawn regardless of the recent-name cap or persistence setting.
+  // Username — ALWAYS drawn (with a drop shadow so it reads over any background).
   ctx.save();
-  ctx.translate(px, py - 52 * blobS); ctx.scale(TIMEOUT_SCALE, TIMEOUT_SCALE);
+  ctx.translate(px, py - 46 * blobS); ctx.scale(TIMEOUT_SCALE * 0.9, TIMEOUT_SCALE * 0.9);
   drawNamePill(ctx, 0, 0, fig.pal, fig.username);
   ctx.restore();
 
-  // Remaining time under the weight (never negative).
+  // Remaining time under the weight (never negative), with a drop shadow.
   ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 4 * TIMEOUT_SCALE; ctx.shadowOffsetY = 1;
   ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111827'; ctx.lineWidth = 4;
-  ctx.font = `700 ${Math.round(20 * TIMEOUT_SCALE)}px Fredoka, sans-serif`;
+  ctx.font = `700 ${Math.round(18 * TIMEOUT_SCALE)}px Fredoka, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const lbl = fmtTimeout(remainingTimeoutMs(fig, nowE)), ty = wy + 30 * TIMEOUT_SCALE;
-  ctx.strokeText(lbl, px, ty); ctx.fillText(lbl, px, ty);
+  const lbl = fmtTimeout(remainingTimeoutMs(fig, nowE)), ty = wy + 24 * TIMEOUT_SCALE;
+  ctx.strokeText(lbl, px, ty); ctx.shadowBlur = 0; ctx.fillText(lbl, px, ty);
   ctx.restore();
 
   // +M:SS add-time callout above the weight (fades ~1.2s).
@@ -1743,23 +1802,26 @@ function drawTimeoutCorner(ctx, now) {
   const visible = active.slice(page * TIMEOUT_PER_PAGE, page * TIMEOUT_PER_PAGE + TIMEOUT_PER_PAGE);
 
   // Lightweight crooked caution-tape header (transparent, not a giant box).
-  const headY = c.y - (TIMEOUT_ROWS / 2) * TIMEOUT_CELL_H * sc - 34 * sc;
+  const headY = c.y - (TIMEOUT_ROWS / 2) * TIMEOUT_CELL_H * sc - 30 * sc;
   ctx.save();
   ctx.translate(c.x, headY); ctx.rotate(-0.03); ctx.scale(sc, sc);
-  const bw = 292, bh = 40;
+  ctx.font = '800 18px Fredoka, sans-serif';
+  const bw = Math.max(180, ctx.measureText(TIMEOUT_TITLE).width + 34), bh = 34;
   ctx.fillStyle = 'rgba(17,24,39,0.62)';
-  roundRect(ctx, -bw / 2, -bh / 2, bw, bh, 8); ctx.fill();
-  ctx.save(); roundRect(ctx, -bw / 2, -bh / 2 - 8, bw, 8, 3); ctx.clip();
-  for (let x = -bw / 2 - 12; x < bw / 2 + 12; x += 20) { ctx.fillStyle = (((x / 20) | 0) & 1) ? '#F59E0B' : '#1f2937'; ctx.fillRect(x, -bh / 2 - 8, 12, 8); }
+  roundRect(ctx, -bw / 2, -bh / 2, bw, bh, 7); ctx.fill();
+  ctx.save(); roundRect(ctx, -bw / 2, -bh / 2 - 7, bw, 7, 3); ctx.clip();
+  for (let x = -bw / 2 - 12; x < bw / 2 + 12; x += 18) { ctx.fillStyle = (((x / 18) | 0) & 1) ? '#F59E0B' : '#1f2937'; ctx.fillRect(x, -bh / 2 - 7, 11, 7); }
   ctx.restore();
-  ctx.fillStyle = '#fff'; ctx.font = '800 21px Fredoka, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('BALLOON IMPOUND', 0, 1);
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 3;
+  ctx.fillText(TIMEOUT_TITLE, 0, 1);
   ctx.restore();
 
   ctx.save();
-  ctx.translate(c.x, headY + 30 * sc); ctx.scale(sc, sc);
-  ctx.fillStyle = '#FDBA74'; ctx.font = '700 14px "Space Grotesk", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(`${active.length} GROUNDED${pages > 1 ? `    ${page + 1}/${pages}` : ''}`, 0, 0);
+  ctx.translate(c.x, headY + 26 * sc); ctx.scale(sc, sc);
+  ctx.fillStyle = '#FDBA74'; ctx.font = '700 13px "Space Grotesk", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 3;
+  ctx.fillText(`${active.length} ${TIMEOUT_UNIT}${pages > 1 ? `    ${page + 1}/${pages}` : ''}`, 0, 0);
   ctx.restore();
 
   visible.forEach((fig, i) => drawImpoundBalloon(ctx, fig, timeoutSlotPos(i), now, nowE));
@@ -1934,28 +1996,44 @@ function tick(now) {
       f.__toVisible = (i >= pageStart && i < pageStart + TIMEOUT_PER_PAGE);
       f.__toSlot = f.__toVisible ? (i - pageStart) : -1;
     });
-    const tk = Math.min(1, BALLOON_RISE_K * 1.5 * (dt / 16.7)); // impound easing (a touch snappier)
+    const tk = Math.min(1, BALLOON_RISE_K * 1.4 * (dt / 16.7)); // impound easing
+    const dtN = Math.min(2.5, dt / 16.7);                        // normalized frame step
+    const damp = Math.pow(BALLOON_DAMP, dtN);
     for (const fig of figures) {
       if (fig.phase === 'exploding') continue;
-      let tx, ty;
+      if (fig.vx == null) { fig.vx = 0; fig.vy = 0; }
+
+      // !balloon4 pop — own slow-fall/rise trajectory (no spring/collision fighting it).
+      if (fig.popAt > -Infinity) {
+        if (applyPop(fig, now)) fig.popAt = -Infinity;
+        fig.vx = 0; fig.vy = 0;
+        continue;
+      }
+
       if (isTimedOut(fig)) {
+        // Impounded: ease to the corner slot with only the faintest, slow tug — no bounce.
         const slot = timeoutSlotPos(fig.__toSlot >= 0 ? fig.__toSlot : 0);
-        tx = slot.x + Math.sin(t * 1.2 + (fig.bobPhase || 0)) * 6;          // restrained sway
-        ty = slot.y - 8 + Math.sin(t * 1.7 + (fig.bobPhase || 0)) * 4;      // upward tug against the weight
+        const tx = slot.x, ty = slot.y - 4 + Math.sin(t * 0.5 + (fig.bobPhase || 0)) * 2;
         if (fig.bx == null) { fig.bx = tx; fig.by = ty; }
         fig.bx += (tx - fig.bx) * tk;
         fig.by += (ty - fig.by) * tk;
+        fig.vx = 0; fig.vy = 0;
         continue;
       }
-      const base   = balloonTarget(fig);
-      const atCeil = (fig.comments - 1) >= COMMENTS_TO_TOP;
-      const roam   = laneRoamHalf();
-      tx = base.x + (atCeil ? Math.sin(t * 0.8 + (fig.bobPhase || 0)) * Math.min(10, roam)
-                            : Math.sin(t * (fig.swaySpeed || 0.7) + (fig.swayPhase || 0)) * roam);
-      ty = base.y + Math.sin(t * 0.9 + (fig.bobPhase || 0)) * (atCeil ? 8 : 5);
+
+      // Lane float: a GENTLE, slow horizontal drift + a weak spring toward the
+      // comment-height goal, integrated with strong damping so a packed lane settles
+      // (they sit against each other) instead of buzzing in unison.
+      const base = balloonTarget(fig);
+      const roam = laneRoamHalf();
+      const swayX = Math.sin(t * (fig.swaySpeed || 0.5) * 0.4 + (fig.swayPhase || 0)) * roam * 0.4;
+      const tx = base.x + swayX, ty = base.y;
       if (fig.bx == null) { fig.bx = tx; fig.by = FLOOR_Y - 40; }
-      fig.bx += (tx - fig.bx) * k;
-      fig.by += (ty - fig.by) * k;
+      fig.vx += (tx - fig.bx) * BALLOON_SPRING * dtN;
+      fig.vy += (ty - fig.by) * BALLOON_SPRING * dtN;
+      fig.vx *= damp; fig.vy *= damp;
+      fig.bx += fig.vx * dtN;
+      fig.by += fig.vy * dtN;
     }
     resolveBalloonCollisions();
   }
@@ -2070,14 +2148,24 @@ function frame(now) {
         if (isSup || effTier >= 3) drawTierGlow(ctx, pos.x, pos.y, blobS, mascotColor, effTier, now);
         if (isSup || effTier >= 5) drawAura(ctx, pos.x, pos.y, blobS, mascotColor, effTier, now);
         if (effTier >= 8)          drawPrismRing(ctx, pos.x, pos.y, blobS, now);
-        const popDur = BALLOON_CMDS['!balloon4'].dur;
-        if (now - fig.popAt < popDur) drawPopBurst(ctx, pos.x, fig.popY, blobS, now - fig.popAt, popDur);
+        // pop: a small "pfft" puff right as it starts to deflate (at the balloon itself).
+        const popEl = now - fig.popAt;
+        if (popEl >= 0 && popEl < 500) drawPopBurst(ctx, pos.x, pos.y, blobS, popEl, 500);
       }
 
       ctx.save();
       ctx.translate(pos.x, pos.y);
       if (exploding) ctx.globalAlpha = Math.max(0, 1 - fig.explodeT);
-      ctx.scale(blobS, blobS);
+      // Deflated squish while a popped balloon sinks (widens & flattens toward the floor).
+      let sqx = 1, sqy = 1;
+      if (balloonMode && fig.popAt > -Infinity) {
+        const pe = now - fig.popAt;
+        if (pe >= 0 && pe < POP_FALL_MS + POP_STAY_MS) {
+          const f = Math.min(1, pe / (POP_FALL_MS * 0.8));
+          sqx = 1 + 0.18 * f; sqy = 1 - 0.26 * f;
+        }
+      }
+      ctx.scale(blobS * sqx, blobS * sqy);
       ctx.rotate((fig.rot + danceRot) * Math.PI / 180);
 
       // Speed streaks (fade out in last 15% of entry)
@@ -2417,6 +2505,8 @@ function connectAbly() {
     if (d.timeoutScale   != null) TIMEOUT_SCALE    = d.timeoutScale;
     if (d.timeoutXOffset != null) TIMEOUT_X_OFFSET = d.timeoutXOffset;
     if (d.timeoutYOffset != null) TIMEOUT_Y_OFFSET = d.timeoutYOffset;
+    if (d.timeoutTitle   != null) TIMEOUT_TITLE    = d.timeoutTitle || TIMEOUT_TITLE;
+    if (d.timeoutUnit    != null) TIMEOUT_UNIT     = d.timeoutUnit  || TIMEOUT_UNIT;
     if (d.laneInset    != null) LANE_INSET    = Math.max(0, d.laneInset);
     if (d.laneWidth    != null) LANE_WIDTH    = Math.max(40, d.laneWidth);
     if (d.tierEnabled  != null) TIER_ENABLED  = !!d.tierEnabled;
