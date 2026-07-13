@@ -293,6 +293,11 @@ const FJ_DEFAULT_CONFIG = {
     normalSpeedMin: 150, normalSpeedMax: 220,
     premiumSpeedMin: 190, premiumSpeedMax: 280,
     objectScale: 1, maxObjects: 1, spin: 40,
+    /* L5 item showers get their own, higher concurrent-object cap — a big
+       spend spectacle can queue up to 22 shower items, and bottlenecking
+       them through the normal 1-3 cap would turn the storm into a slow
+       trickle instead of an actual swarm. */
+    showerMaxObjects: 8,
     maxLifetimeNormal: 25, maxLifetimePremium: 35,
     guidanceEnabled: true, guidanceStrength: 0.6,
     cornerJackpot: true, cornerTolerance: 30, cornerWindowMs: 150,
@@ -430,6 +435,7 @@ function fjValidateConfig() {
   const c = CFG;
   c.floor.y = Math.min(Math.max(+c.floor.y || 500, 180), 1500);
   c.movement.maxObjects = Math.min(Math.max(Math.round(+c.movement.maxObjects || 1), 1), 3);
+  c.movement.showerMaxObjects = Math.min(Math.max(Math.round(+c.movement.showerMaxObjects || 8), 3), 22);
   c.events.likesPerTreat = Math.min(Math.max(Math.round(+c.events.likesPerTreat || 50), 10), 1000);
   c.jamie.width = Math.min(Math.max(+c.jamie.width || 260, 80), 600);
   if (!['ellipse', 'rect'].includes(c.reachZone.shape)) c.reachZone.shape = 'ellipse';
@@ -1918,9 +1924,25 @@ function queueSpawn(itemType, opts) {
   drainQueue();
 }
 function drainQueue() {
-  while (spawnQueue.length && objects.filter(o => !o.captured).length < CFG.movement.maxObjects) {
-    const q = spawnQueue.shift();
-    spawnObject(q.itemType, q.opts);
+  /* gift-shower items get their own concurrent-object cap (showerMaxObjects,
+     default 8) instead of sharing the normal 1-3 maxObjects cap — otherwise a
+     big spend spectacle's 22-item storm would trickle in 1-3 at a time and a
+     normal gift arriving mid-storm would get stuck behind it. Scan past a
+     blocked head item so the OTHER category can still spawn; always restart
+     from the top afterward so priority order still wins within each category. */
+  let i = 0;
+  while (i < spawnQueue.length) {
+    const q = spawnQueue[i];
+    const isShower = q.opts.sourceEvent === 'gift-shower';
+    const cap = isShower ? CFG.movement.showerMaxObjects : CFG.movement.maxObjects;
+    const active = objects.filter(o => !o.captured && (o.sourceEvent === 'gift-shower') === isShower).length;
+    if (active < cap) {
+      spawnQueue.splice(i, 1);
+      spawnObject(q.itemType, q.opts);
+      i = 0;
+    } else {
+      i++;
+    }
   }
   publishStatus();
 }
