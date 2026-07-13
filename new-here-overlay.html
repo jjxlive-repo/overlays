@@ -120,6 +120,8 @@ function saveDisplayCfg() {
       idleTitle: IDLE_TITLE, idleSub: IDLE_SUB,
       floorOffset: FLOOR_OFFSET,
       mode: NH_MODE, rankTimeframe: RANK_TIMEFRAME,
+      msMain: MILESTONE_MAIN_TMPL, msSub: MILESTONE_SUB_TMPL,
+      msScale: MILESTONE_SCALE, msXOffset: MILESTONE_X_OFFSET, msYOffset: MILESTONE_Y_OFFSET,
       laneInset: LANE_INSET, laneWidth: LANE_WIDTH,
       tierEnabled: TIER_ENABLED, tierLabelOn: TIER_LABEL_ON,
       blobScale: BLOB_SCALE, gloss: GLOSS,
@@ -160,6 +162,11 @@ function saveDisplayCfg() {
     if (c.mode         != null) setMode(c.mode);
     else if (c.spreadMode != null) setMode(c.spreadMode ? 'spread' : 'pile');
     if (c.rankTimeframe != null) RANK_TIMEFRAME = c.rankTimeframe;
+    if (c.msMain       != null) MILESTONE_MAIN_TMPL = c.msMain;
+    if (c.msSub        != null) MILESTONE_SUB_TMPL  = c.msSub;
+    if (c.msScale      != null) MILESTONE_SCALE     = c.msScale;
+    if (c.msXOffset    != null) MILESTONE_X_OFFSET  = c.msXOffset;
+    if (c.msYOffset    != null) MILESTONE_Y_OFFSET  = c.msYOffset;
     if (c.laneInset    != null) LANE_INSET    = c.laneInset;
     if (c.laneWidth    != null) LANE_WIDTH    = c.laneWidth;
     if (c.tierEnabled  != null) TIER_ENABLED  = c.tierEnabled;
@@ -439,6 +446,13 @@ let lastPressureEventAt  = 0;         // performance.now() of last join, gates d
 let popFlashAt           = -Infinity; // performance.now() of last pop, drives the flash text
 let milestoneFlash       = null;      // { at, big, small, color } — celebratory top banner
 const MILESTONE_MS       = 5500;      // how long the milestone banner shows
+// Editable from the control: wording (templates) + position/scale of the banner.
+// Templates support {n}=threshold, {value}=current total, {label}, {platform}, {metric}.
+let MILESTONE_MAIN_TMPL  = '{n} {label}';
+let MILESTONE_SUB_TMPL   = '{platform} milestone! 🎉';
+let MILESTONE_SCALE      = 1.0;
+let MILESTONE_X_OFFSET   = 0;
+let MILESTONE_Y_OFFSET   = 0;
 
 // ═══════════════════════════════════════════════════════════════════
 // HEIGHTMAP DEPOSITION
@@ -1389,13 +1403,13 @@ function drawMilestone(ctx, now) {
   const inS   = Math.min(1, t / 0.08);                 // 0→1 ease-in over first 8%
   const alpha = t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
   const pop   = 1 + Math.sin(Math.min(1, t * 4) * Math.PI) * 0.06;
-  const cx = 540, cy = 300;
+  const cx = 540 + MILESTONE_X_OFFSET, cy = 300 + MILESTONE_Y_OFFSET;
   const col = milestoneFlash.color || '#FDE047';
 
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(cx, cy);
-  ctx.scale(inS * pop, inS * pop);
+  ctx.scale(inS * pop * MILESTONE_SCALE, inS * pop * MILESTONE_SCALE);
 
   // Rounded banner plate
   ctx.font = '800 62px Fredoka, sans-serif';
@@ -1994,10 +2008,17 @@ function connectAbly() {
     const d = msg.data || {};
     if (!d.threshold) return;
     const platName = d.platform === 'tiktok' ? 'TikTok' : d.platform === 'youtube' ? 'YouTube' : '';
+    const fill = tmpl => String(tmpl)
+      .replace(/\{n\}/g, Number(d.threshold).toLocaleString())
+      .replace(/\{value\}/g, Number(d.value ?? d.threshold).toLocaleString())
+      .replace(/\{label\}/g, d.label || '')
+      .replace(/\{platform\}/g, platName)
+      .replace(/\{metric\}/g, d.metric || '')
+      .trim();
     milestoneFlash = {
       at: performance.now(),
-      big: `${Number(d.threshold).toLocaleString()} ${d.label || ''}`.trim(),
-      small: `${platName} milestone! 🎉`,
+      big: fill(MILESTONE_MAIN_TMPL),
+      small: fill(MILESTONE_SUB_TMPL),
       color: d.platform === 'tiktok' ? '#38BDF8' : '#F87171',
     };
   });
@@ -2032,6 +2053,11 @@ function connectAbly() {
       RANK_TIMEFRAME = d.rankTimeframe;
       if (RANK_TIMEFRAME !== 'live') { requestRoster(); applyTimeframe(); }
     }
+    if (d.msMain       != null) MILESTONE_MAIN_TMPL = d.msMain || MILESTONE_MAIN_TMPL;
+    if (d.msSub        != null) MILESTONE_SUB_TMPL  = d.msSub;
+    if (d.msScale      != null) MILESTONE_SCALE     = d.msScale;
+    if (d.msXOffset    != null) MILESTONE_X_OFFSET  = d.msXOffset;
+    if (d.msYOffset    != null) MILESTONE_Y_OFFSET  = d.msYOffset;
     if (d.laneInset    != null) LANE_INSET    = Math.max(0, d.laneInset);
     if (d.laneWidth    != null) LANE_WIDTH    = Math.max(40, d.laneWidth);
     if (d.tierEnabled  != null) TIER_ENABLED  = !!d.tierEnabled;
