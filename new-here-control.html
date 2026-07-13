@@ -173,22 +173,39 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
     </div>
   </div>
 
+  <!-- GIFTER RANKING TIMEFRAME -->
+  <div class="card">
+    <h2>Gifter ranking <span class="info" title="Balloons mode. The RIGHT (supporter) channel ranks gifters by money given in the selected window, pulled live from tracker.html. 'Live' = only what's happened since the overlay loaded. Switching reshuffles who stands where. Casuals on the LEFT always rank by this-session engagement.">?</span></h2>
+    <div class="ctrl-row" id="nh-tf-row" style="flex-wrap:wrap;gap:4px;">
+      <button class="ctrl-btn" data-tf="live"    onclick="nhSetTimeframe('live')"    style="flex:1;min-width:60px;">Live</button>
+      <button class="ctrl-btn" data-tf="daily"   onclick="nhSetTimeframe('daily')"   style="flex:1;min-width:60px;">Daily</button>
+      <button class="ctrl-btn" data-tf="weekly"  onclick="nhSetTimeframe('weekly')"  style="flex:1;min-width:60px;">Weekly</button>
+      <button class="ctrl-btn" data-tf="monthly" onclick="nhSetTimeframe('monthly')" style="flex:1;min-width:60px;">Monthly</button>
+      <button class="ctrl-btn" data-tf="all"     onclick="nhSetTimeframe('all')"     style="flex:1;min-width:60px;">All-time</button>
+    </div>
+    <p class="hint" style="margin:4px 0 0;">Needs tracker.html open on the same channel for the historical windows.</p>
+  </div>
+
   <!-- BALLOON EVOLUTION / TIERS -->
   <div class="card">
     <h2>Balloon evolution <span class="info" title="Balloons mode retention mechanic: every comment earns progress; crossing a threshold evolves the balloon to the next of 10 tiers (new color + effects) with a level-up burst. Early tiers come fast to hook new chatters.">?</span></h2>
     <label class="chk-row" title="Turn the whole 10-tier evolution + command system on or off."><input type="checkbox" id="nh-tier-enabled" checked onchange="nhApplyConfig()"><span>Enable evolution &amp; commands</span></label>
-    <label class="chk-row" title="Show the little 'Lv N' badge on each balloon."><input type="checkbox" id="nh-tier-label" checked onchange="nhApplyConfig()"><span>Show &quot;Lv N&quot; badge</span></label>
-    <p class="hint" style="margin:6px 0 2px;">Tiers (comments): 1·3·6·10·16·24·34·48·66·90 → Balloon→Shiny→Glow→Twinkle→Aura→Starlit→Crowned→Prism→Radiant→Legendary</p>
-    <p class="hint" style="margin:2px 0;">Chat commands (unlock by tier): <b>!balloon1</b> dance (Lv3) · <b>!balloon2</b> sparkle (Lv5) · <b>!balloon3</b> float up (Lv7) · <b>!balloon4</b> pop &amp; drop (Lv9)</p>
+    <label class="chk-row" title="Show the little 'Lv N' badge (chatters) / '$X' badge (supporters) on each balloon."><input type="checkbox" id="nh-tier-label" checked onchange="nhApplyConfig()"><span>Show badge (Lv N / $X)</span></label>
+    <p class="hint" style="margin:6px 0 2px;"><b>LEFT = chatters</b> (evolve by comments): 1·3·6·10·16·24·34·48·66·90 → Balloon→…→Legendary.<br><b>RIGHT = supporters</b> (a superchat / YT or TikTok gift moves you here; gold, higher = more $ this stream: $1·2·5·10·20·35·50·100·200·500).</p>
+    <p class="hint" style="margin:2px 0;">Commands (unlock by tier): <b>!balloon1</b> dance (3) · <b>!balloon2</b> sparkle (5) · <b>!balloon3</b> float up (7) · <b>!balloon4</b> pop &amp; drop (9)</p>
     <div class="ctrl-row" style="margin-top:6px;">
       <input class="ctrl-in" id="nh-evo-name" type="text" placeholder="test username" value="Legend" title="Name of the test balloon for the buttons below." style="flex:1;min-width:0;">
-      <button class="ctrl-btn" onclick="nhEvolveTest()" title="Send 95 comments from this user so it evolves all the way to Legendary (Lv 10), unlocking every command.">Evolve →Lv10</button>
+      <button class="ctrl-btn" onclick="nhEvolveTest()" title="Send 95 comments from this user so it evolves all the way to Legendary (Lv 10) on the LEFT.">Evolve →Lv10</button>
     </div>
     <div class="ctrl-row">
-      <button class="ctrl-btn" onclick="nhSendCmd('!balloon1')" style="flex:1;" title="Make the test balloon dance (needs Lv3).">💃 Dance</button>
-      <button class="ctrl-btn" onclick="nhSendCmd('!balloon2')" style="flex:1;" title="Make it sparkle (needs Lv5).">✨ Sparkle</button>
-      <button class="ctrl-btn" onclick="nhSendCmd('!balloon3')" style="flex:1;" title="Make it float higher (needs Lv7).">⬆ Float</button>
-      <button class="ctrl-btn" onclick="nhSendCmd('!balloon4')" style="flex:1;" title="Pop it and drop it back to the bottom (needs Lv9).">💥 Pop</button>
+      <button class="ctrl-btn" onclick="nhTestGift(5)" style="flex:1;" title="Simulate a $5 gift from the name above — moves them to the RIGHT supporter channel.">💵 Gift $5</button>
+      <button class="ctrl-btn" onclick="nhTestGift(50)" style="flex:1;" title="Simulate a $50 gift — a high-tier supporter on the RIGHT.">💰 Gift $50</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon1')" style="flex:1;" title="Make the test balloon dance (needs tier 3).">💃</button>
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon2')" style="flex:1;" title="Make it sparkle (needs tier 5).">✨</button>
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon3')" style="flex:1;" title="Make it float higher (needs tier 7).">⬆</button>
+      <button class="ctrl-btn" onclick="nhSendCmd('!balloon4')" style="flex:1;" title="Pop it and drop it back to the bottom (needs tier 9).">💥</button>
     </div>
   </div>
 
@@ -301,6 +318,7 @@ let ably = null, ablyChannel = null;
       // Re-send enabled + layout mode on (re)connect so the overlay syncs whenever both are open.
       nhPublishEnabled();
       nhPublishMode();
+      nhPublishTimeframe();
     });
     ably.connection.on('disconnected', () => dot.classList.remove('connected'));
     ably.connection.on('failed',       () => dot.classList.remove('connected'));
@@ -355,6 +373,28 @@ function nhCycleMode() {
   localStorage.setItem('nh_ctrl_mode', _nhMode);
   nhPublishMode();
   nhRenderModeBtn();
+}
+
+/* ── Gifter ranking timeframe ───────────────────────────────────── */
+let _nhTimeframe = localStorage.getItem('nh_ctrl_timeframe') || 'live';
+function nhPublishTimeframe() {
+  if (ablyChannel) ablyChannel.publish('new-here-config', { rankTimeframe: _nhTimeframe }).catch(() => {});
+}
+function nhRenderTimeframe() {
+  document.querySelectorAll('#nh-tf-row [data-tf]').forEach(b => {
+    const on = b.dataset.tf === _nhTimeframe;
+    b.style.background  = on ? 'rgba(251,191,36,0.18)' : '';
+    b.style.borderColor = on ? 'rgba(251,191,36,0.6)' : '';
+    b.style.color       = on ? '#fcd34d' : '';
+  });
+}
+function nhSetTimeframe(tf) {
+  _nhTimeframe = tf;
+  localStorage.setItem('nh_ctrl_timeframe', tf);
+  nhPublishTimeframe();
+  nhRenderTimeframe();
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ ranking: ${tf}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }
 
 /* ── Apply / persist display config ────────────────────────────── */
@@ -612,6 +652,18 @@ function nhEvolveTest() {
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ evolving ${name} → Lv10`; setTimeout(() => { st.textContent = '—'; }, 2500); }
 }
+// Simulate a gift from the test user — publishes a gift-alert (USD superchat) the
+// overlay reads to move them into the RIGHT supporter channel.
+function nhTestGift(dollars) {
+  const name = (document.getElementById('nh-evo-name').value.trim() || 'Legend');
+  const source = document.getElementById('nh-test-src')?.value || 'youtube';
+  const type = source === 'tiktok' ? 'tiktok_coins' : 'youtube_superchat';
+  const amount = source === 'tiktok' ? dollars * 100 : dollars; // tiktok pays in coins (100=$1)
+  if (ablyChannel) ablyChannel.publish('gift-alert', { name, amount, type, platform: source, _src: 'nh-test' }).catch(() => {});
+  const st = document.getElementById('nh-status');
+  if (st) { st.textContent = `↑ $${dollars} gift → ${name}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
+}
+
 // Fire a balloon command on the test user (overlay checks their tier unlock).
 function nhSendCmd(cmd) {
   const name = (document.getElementById('nh-evo-name').value.trim() || 'Legend');
@@ -726,6 +778,7 @@ nhRefreshReadouts();
 nhFmtNamePersist();
 nhRenderEnableBtn();
 nhRenderModeBtn();
+nhRenderTimeframe();
 </script>
 </body>
 </html>
