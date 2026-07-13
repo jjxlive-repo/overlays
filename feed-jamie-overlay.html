@@ -1187,16 +1187,23 @@ function applyJamieTransform() {
 /* smoothly interpolates jamieRect.x over `ms`, re-applying the transform each
    frame — drives Heart Me's run-to-center-and-back sprint. */
 function tweenJamieX(fromX, toX, ms, onDone) {
+  /* setTimeout, not requestAnimationFrame: this is a one-shot animation, not
+     a continuously-rescheduling loop like the main tick() below, so it has no
+     way to self-heal if a single rAF callback never fires (e.g. the OBS
+     browser source gets occluded/backgrounded for a moment mid-Heart-Me) —
+     that would leave heartMeActive stuck true forever. setTimeout can't get
+     silently suspended the same way, so this always eventually completes. */
   const start = performance.now();
-  function step(now) {
+  function step() {
+    const now = performance.now();
     const t = Math.min(1, (now - start) / ms);
     const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; /* ease-in-out quad */
     jamieRect.x = fromX + (toX - fromX) * e;
     applyJamieTransform();
-    if (t < 1) requestAnimationFrame(step);
+    if (t < 1) setTimeout(step, 16);
     else { jamieRect.x = toX; applyJamieTransform(); if (onDone) onDone(); }
   }
-  requestAnimationFrame(step);
+  step();
 }
 function applyLayout() {
   const j = CFG.jamie;
@@ -2035,6 +2042,23 @@ function triggerHeartMe(username, highGiftName = '', opts = {}) {
   const outMirror = centerX < startX; /* default art faces right; mirror to face left */
   const fxMul = opts.fxMul || 1;
 
+  /* dead-man's switch: this is a multi-step chain (tween -> playSeq -> tween ->
+     ...), so unlike the old single-setTimeout version, several things would
+     need to fire correctly for heartMeActive to ever clear. If anything in the
+     chain stalls, force a clean reset instead of leaving Jamie stuck offscreen
+     at center with every future Heart Me silently no-op'ing on the busy guard. */
+  const safetyTimer = setTimeout(() => {
+    if (!heartMeActive) return; // already finished normally
+    heartMeActive = false;
+    poseMirror = null;
+    jamieEl.style.transition = 'none';
+    jamieEl.classList.remove('pose-celebrate', 'ph-happy');
+    $('heartme-veil').style.opacity = 0;
+    objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
+    applyLayout();
+    setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  }, Math.max(8000, runMs * 2 + 260 + CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1) + 3000));
+
   function runOut() {
     poseMirror = outMirror;
     playSeq('heartMeRun', { loop: true });
@@ -2082,6 +2106,7 @@ function triggerHeartMe(username, highGiftName = '', opts = {}) {
     tweenJamieX(centerX, startX, runMs, finish);
   }
   function finish() {
+    clearTimeout(safetyTimer);
     poseMirror = null;
     objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
     applyLayout(); /* restores clean position/transform */
