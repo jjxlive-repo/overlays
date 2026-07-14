@@ -4783,21 +4783,42 @@ async function startRelayWithDevice() {
   }
 
   // Publish freq data via Ably (WSS works in TikTok Studio — no mixed-content block).
-  // This is by far the heaviest Ably publisher, so: (1) a slower cadence than the old
-  // 100ms, and (2) a silence gate — once audio drops to near-zero we publish one
-  // settling frame then go quiet until sound returns, so pauses cost no messages.
-  const MIC_FREQ_MS = 150; // ms between frames; raise to cut Ably usage further
-  const MIC_SILENCE = 6;   // peak-bin level below which a frame counts as "silent"
-  let _lastMicMax = 255;   // force the first frame to publish
+  // This is BY FAR the heaviest Ably publisher (fires continuously while there's any
+  // sound, and Ably bills the publish + every gift-bar delivery), so three gates keep
+  // the message count down without the waveform looking dead:
+  //   • cadence — sample every 250ms (4/s) instead of 150ms.
+  //   • silence — once audio drops near zero, send one settling frame then go quiet.
+  //   • change  — skip frames nearly identical to the last one we SENT, unless the
+  //               heartbeat is due. Heartbeat (500ms → effective 500ms gap on the 250ms
+  //               tick) stays under the overlay's 700ms freshness window so a held tone
+  //               never falls back to the synthetic wave.
+  const MIC_FREQ_MS      = 250; // sample cadence (raise to cut usage further)
+  const MIC_SILENCE      = 6;   // peak-bin level below which a frame counts as "silent"
+  const MIC_DELTA        = 80;  // min total change across bins to bother re-publishing
+  const MIC_HEARTBEAT_MS = 500; // publish at least this often while sound persists
+  let _lastMicMax = 255;        // force the first frame to publish
+  let _lastSent = null, _lastSentAt = 0;
   _relayInterval = setInterval(() => {
     if (gen !== _relayGen) { clearInterval(_relayInterval); return; }
     if (!ablyChannel) return;
     analyser.getByteFrequencyData(buf);
     let mx = 0;
     for (let i = 0; i < buf.length; i++) if (buf[i] > mx) mx = buf[i];
-    if (mx < MIC_SILENCE && _lastMicMax < MIC_SILENCE) return; // still silent → skip
+    const now = performance.now();
+    if (mx < MIC_SILENCE) {                        // silence → one settling frame, then quiet
+      if (_lastMicMax < MIC_SILENCE) return;
+      _lastMicMax = mx; _lastSent = Array.from(buf); _lastSentAt = now;
+      ablyChannel.publish('mic-freq', { f: _lastSent }).catch(() => {});
+      return;
+    }
     _lastMicMax = mx;
-    ablyChannel.publish('mic-freq', { f: Array.from(buf) }).catch(() => {});
+    if (_lastSent && (now - _lastSentAt) < MIC_HEARTBEAT_MS) {   // skip near-duplicate frames
+      let diff = 0;
+      for (let i = 0; i < buf.length; i++) { diff += Math.abs(buf[i] - _lastSent[i]); if (diff >= MIC_DELTA) break; }
+      if (diff < MIC_DELTA) return;
+    }
+    _lastSent = Array.from(buf); _lastSentAt = now;
+    ablyChannel.publish('mic-freq', { f: _lastSent }).catch(() => {});
   }, MIC_FREQ_MS);
   _setRelayStatus(true);
 }
