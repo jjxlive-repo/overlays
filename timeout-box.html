@@ -33,20 +33,54 @@ const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
 const ABLY_CH  = 'splat-overlay';
 const W = 1080, H = 1920;
 
-// ── Config (URL params override) ─────────────────────────────────
+// ── Config ───────────────────────────────────────────────────────
+// Layout is driven live from the stream-dock (sliders publish `timeout-box-config`)
+// and persisted here so the OBS source keeps its last layout even if it loads
+// before the dock. URL params still win on first load for one-off setups.
 const QS = new URLSearchParams(location.search);
 function qnum(k, d) { const v = parseFloat(QS.get(k)); return isFinite(v) ? v : d; }
-let BOX_X     = qnum('x', 540);          // box top-center x
-let BOX_Y     = qnum('y', 470);          // top row y
-let BOX_SCALE = qnum('scale', 1);
-let BOX_COLS  = Math.max(1, Math.round(qnum('cols', 3)));
-let BOX_TITLE = QS.get('title') || 'TIME OUT';
+const CFG_STORAGE = 'timeoutBox.cfg.v1';
+let BOX_X = 540, BOX_Y = 470, BOX_SCALE = 1, BOX_COLS = 3, BOX_TITLE = 'TIME OUT';
+(function loadCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CFG_STORAGE) || 'null');
+    if (c) {
+      if (isFinite(c.x)) BOX_X = +c.x;
+      if (isFinite(c.y)) BOX_Y = +c.y;
+      if (isFinite(c.scale)) BOX_SCALE = +c.scale;
+      if (isFinite(c.cols)) BOX_COLS = +c.cols;
+      if (typeof c.title === 'string' && c.title.trim()) BOX_TITLE = c.title;
+    }
+  } catch (e) {}
+  if (QS.has('x')) BOX_X = qnum('x', BOX_X);
+  if (QS.has('y')) BOX_Y = qnum('y', BOX_Y);
+  if (QS.has('scale')) BOX_SCALE = qnum('scale', BOX_SCALE);
+  if (QS.has('cols')) BOX_COLS = qnum('cols', BOX_COLS);
+  if (QS.get('title')) BOX_TITLE = QS.get('title');
+  BOX_SCALE = Math.max(0.3, BOX_SCALE);
+  BOX_COLS = Math.max(1, Math.round(BOX_COLS));
+})();
+function saveCfg() { try { localStorage.setItem(CFG_STORAGE, JSON.stringify({ x: BOX_X, y: BOX_Y, scale: BOX_SCALE, cols: BOX_COLS, title: BOX_TITLE })); } catch (e) {} }
+function applyCfg(c) {
+  if (!c) return;
+  if (isFinite(c.x)) BOX_X = +c.x;
+  if (isFinite(c.y)) BOX_Y = +c.y;
+  if (isFinite(c.scale)) BOX_SCALE = Math.max(0.3, +c.scale);
+  if (isFinite(c.cols)) BOX_COLS = Math.max(1, Math.round(+c.cols));
+  if (typeof c.title === 'string' && c.title.trim()) BOX_TITLE = c.title;
+  saveCfg();
+}
 const CELL_W = 184, CELL_H = 208, ROWS_MAX = 3;
 const PER_PAGE = () => BOX_COLS * ROWS_MAX;
 
 const YT = { body: '#DC2626', accent: '#F87171', plate: '#2a0808', plateTx: '#FECACA', plateStroke: '#F87171' };
 const TK = { body: '#2563EB', accent: '#38BDF8', plate: '#081026', plateTx: '#BFDBFE', plateStroke: '#38BDF8' };
 function pal(src) { return src === 'tiktok' ? TK : YT; }
+
+// Each timed-out balloon gets one of these grumpy moods (picked at spawn).
+const FACES = ['cry', 'tantrum', 'sullen', 'welling', 'angry'];
+const INK = '#23052e';
+function pickFace() { return FACES[Math.floor(Math.random() * FACES.length)]; }
 
 const STORAGE = 'timeoutBox.v1';
 const ENTER_K = 0.10, EXIT_MS = 1500;
@@ -88,7 +122,8 @@ function addPerson(username, source, seconds, absUntil, silent) {
   if (p) { p.until = until; p.bumpAt = performance.now(); }
   else {
     p = { key, username: u, source: s, until, enterAt: performance.now(), exitAt: 0, bumpAt: -1e9,
-          y: H + 220, bx: BOX_X, targetX: BOX_X, targetY: H + 220, slot: -1, visible: false, bobPhase: Math.random() * 6.283 };
+          y: H + 220, bx: BOX_X, targetX: BOX_X, targetY: H + 220, slot: -1, visible: false,
+          bobPhase: Math.random() * 6.283, face: pickFace() };
     people.push(p);
   }
   if (!silent) { save(); scheduleStatus(); }
@@ -137,10 +172,146 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
+// Draw one of several grumpy expressions inside a balloon of radius r, centered at (0,0).
+// t = performance.now() (for animated tears/blinks/steam), ph = per-balloon phase offset,
+// bodyCol = balloon body color (used to paint half-lidded "sullen" eyelids).
+function drawFace(ctx, r, face, t, ph, bodyCol) {
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const ex = r * 0.33, ey = -r * 0.05;
+
+  if (face === 'angry') {
+    // narrowed eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(-ex, ey + r * 0.02, r * 0.19, r * 0.13, 0, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex, ey + r * 0.02, r * 0.19, r * 0.13, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.arc(-ex + r * 0.02, ey + r * 0.03, r * 0.095, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(ex - r * 0.02, ey + r * 0.03, r * 0.095, 0, 6.283); ctx.fill();
+    // heavy brows driving down toward the center (V)
+    ctx.strokeStyle = INK; ctx.lineWidth = r * 0.11;
+    ctx.beginPath(); ctx.moveTo(-r * 0.56, -r * 0.30); ctx.lineTo(-r * 0.12, -r * 0.10); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r * 0.56, -r * 0.30); ctx.lineTo(r * 0.12, -r * 0.10); ctx.stroke();
+    // deep scowl
+    ctx.lineWidth = r * 0.085;
+    ctx.beginPath(); ctx.moveTo(-r * 0.28, r * 0.52); ctx.quadraticCurveTo(0, r * 0.30, r * 0.28, r * 0.52); ctx.stroke();
+    // hot-cheek anger flush ticks
+    ctx.strokeStyle = 'rgba(248,113,113,0.9)'; ctx.lineWidth = r * 0.05;
+    for (let s = -1; s <= 1; s += 2) { ctx.beginPath(); ctx.moveTo(s * r * 0.62, r * 0.02); ctx.lineTo(s * r * 0.62, r * 0.16); ctx.stroke(); }
+
+  } else if (face === 'cry') {
+    // squeezed-shut eyes (upward arcs)
+    ctx.strokeStyle = INK; ctx.lineWidth = r * 0.08;
+    ctx.beginPath(); ctx.arc(-ex, ey + r * 0.06, r * 0.18, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ex, ey + r * 0.06, r * 0.18, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    // raised worried brows
+    ctx.lineWidth = r * 0.06;
+    ctx.beginPath(); ctx.moveTo(-r * 0.52, -r * 0.36); ctx.quadraticCurveTo(-r * 0.33, -r * 0.46, -r * 0.16, -r * 0.34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r * 0.52, -r * 0.36); ctx.quadraticCurveTo(r * 0.33, -r * 0.46, r * 0.16, -r * 0.34); ctx.stroke();
+    // wailing open mouth + tongue
+    ctx.fillStyle = '#3b0a18';
+    ctx.beginPath(); ctx.ellipse(0, r * 0.5, r * 0.2, r * 0.16, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#ef6d8a';
+    ctx.beginPath(); ctx.ellipse(0, r * 0.58, r * 0.11, r * 0.06, 0, 0, 6.283); ctx.fill();
+    // gushing tear streams (animated droplets falling from both eyes)
+    ctx.fillStyle = '#7dbefb';
+    for (let s = -1; s <= 1; s += 2) {
+      for (let k = 0; k < 3; k++) {
+        const prog = ((t / 650 + k / 3 + (s > 0 ? 0.15 : 0)) % 1);
+        const dy = r * 0.18 + prog * r * 0.95, rr = r * 0.09 * (1 - prog * 0.4);
+        ctx.globalAlpha = 0.85 * (1 - prog * 0.5);
+        ctx.beginPath(); ctx.ellipse(s * ex, dy, rr * 0.7, rr, 0, 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+  } else if (face === 'tantrum') {
+    // scrunched-tight eyes (downward arcs)
+    ctx.strokeStyle = INK; ctx.lineWidth = r * 0.085;
+    ctx.beginPath(); ctx.arc(-ex, ey - r * 0.02, r * 0.17, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ex, ey - r * 0.02, r * 0.17, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+    // furious down-brows
+    ctx.lineWidth = r * 0.10;
+    ctx.beginPath(); ctx.moveTo(-r * 0.56, -r * 0.34); ctx.lineTo(-r * 0.14, -r * 0.16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r * 0.56, -r * 0.34); ctx.lineTo(r * 0.14, -r * 0.16); ctx.stroke();
+    // screaming mouth with a row of top teeth
+    ctx.fillStyle = '#3b0a18'; roundRect(ctx, -r * 0.26, r * 0.34, r * 0.52, r * 0.30, r * 0.10); ctx.fill();
+    ctx.fillStyle = '#fff'; roundRect(ctx, -r * 0.26, r * 0.34, r * 0.52, r * 0.09, r * 0.04); ctx.fill();
+    // red-faced flush
+    ctx.fillStyle = 'rgba(248,113,113,0.5)';
+    for (let s = -1; s <= 1; s += 2) { ctx.beginPath(); ctx.ellipse(s * r * 0.6, r * 0.14, r * 0.14, r * 0.10, 0, 0, 6.283); ctx.fill(); }
+    // steam puffs rising from the sides
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (let s = -1; s <= 1; s += 2) {
+      const pf = ((t / 500 + (s > 0 ? 0.5 : 0)) % 1);
+      ctx.globalAlpha = 0.5 * (1 - pf);
+      ctx.beginPath(); ctx.arc(s * r * 0.5, -r * 0.5 - pf * r * 0.4, r * 0.09 * (0.6 + pf * 0.6), 0, 6.283); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+  } else if (face === 'welling') {
+    // big glossy watery eyes, with an occasional blink
+    const blink = ((t / 1000 + ph) % 3.4), closed = blink > 3.24;
+    if (closed) {
+      ctx.strokeStyle = INK; ctx.lineWidth = r * 0.06;
+      ctx.beginPath(); ctx.moveTo(-ex - r * 0.2, ey + r * 0.02); ctx.lineTo(-ex + r * 0.2, ey + r * 0.02); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex - r * 0.2, ey + r * 0.02); ctx.lineTo(ex + r * 0.2, ey + r * 0.02); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-ex, ey, r * 0.24, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, ey, r * 0.24, 0, 6.283); ctx.fill();
+      ctx.fillStyle = INK;
+      ctx.beginPath(); ctx.arc(-ex, ey + r * 0.03, r * 0.15, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, ey + r * 0.03, r * 0.15, 0, 6.283); ctx.fill();
+      // water welling along the lower lid (not yet falling)
+      ctx.fillStyle = 'rgba(147,197,253,0.75)';
+      ctx.beginPath(); ctx.ellipse(-ex, ey + r * 0.16, r * 0.2, r * 0.07, 0, 0, Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(ex, ey + r * 0.16, r * 0.2, r * 0.07, 0, 0, Math.PI); ctx.fill();
+      // shiny catch-lights
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-ex - r * 0.06, ey - r * 0.05, r * 0.05, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex - r * 0.06, ey - r * 0.05, r * 0.05, 0, 6.283); ctx.fill();
+    }
+    // worried brows
+    ctx.strokeStyle = INK; ctx.lineWidth = r * 0.06;
+    ctx.beginPath(); ctx.moveTo(-r * 0.54, -r * 0.40); ctx.lineTo(-r * 0.18, -r * 0.30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r * 0.54, -r * 0.40); ctx.lineTo(r * 0.18, -r * 0.30); ctx.stroke();
+    // trembling frown (quivers held-back tears)
+    const q = Math.sin(t / 70 + ph) * r * 0.015;
+    ctx.lineWidth = r * 0.07;
+    ctx.beginPath(); ctx.moveTo(-r * 0.22, r * 0.5 + q); ctx.quadraticCurveTo(0, r * 0.34 - q, r * 0.22, r * 0.5 - q); ctx.stroke();
+
+  } else { // sullen
+    // eye whites + low pupils, then paint the top half over with body color for heavy lids
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-ex, ey + r * 0.02, r * 0.18, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(ex, ey + r * 0.02, r * 0.18, 0, 6.283); ctx.fill();
+    ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.arc(-ex, ey + r * 0.08, r * 0.10, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(ex, ey + r * 0.08, r * 0.10, 0, 6.283); ctx.fill();
+    ctx.fillStyle = bodyCol || '#444';
+    ctx.beginPath(); ctx.ellipse(-ex, ey + r * 0.02, r * 0.2, r * 0.2, 0, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex, ey + r * 0.02, r * 0.2, r * 0.2, 0, Math.PI, Math.PI * 2); ctx.fill();
+    // heavy lid creases
+    ctx.strokeStyle = INK; ctx.lineWidth = r * 0.055;
+    ctx.beginPath(); ctx.moveTo(-ex - r * 0.2, ey + r * 0.02); ctx.lineTo(-ex + r * 0.2, ey + r * 0.02); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ex - r * 0.2, ey + r * 0.02); ctx.lineTo(ex + r * 0.2, ey + r * 0.02); ctx.stroke();
+    // flat, faintly down-turned brows
+    ctx.lineWidth = r * 0.06;
+    ctx.beginPath(); ctx.moveTo(-r * 0.52, -r * 0.26); ctx.lineTo(-r * 0.16, -r * 0.23); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r * 0.52, -r * 0.26); ctx.lineTo(r * 0.16, -r * 0.23); ctx.stroke();
+    // small pouty mouth
+    ctx.lineWidth = r * 0.07;
+    ctx.beginPath(); ctx.moveTo(-r * 0.16, r * 0.48); ctx.quadraticCurveTo(0, r * 0.42, r * 0.16, r * 0.48); ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawSad(ctx, x, y, r, p, squish, bob) {
   const c = pal(p.source);
   ctx.save();
-  ctx.translate(x, y + bob);
+  // tantrum balloons shake side to side (but not while deflating away)
+  const shx = (p.face === 'tantrum' && squish < 0.05) ? Math.sin(performance.now() / 45 + (p.bobPhase || 0)) * r * 0.06 : 0;
+  ctx.translate(x + shx, y + bob);
   const sx = 1 + 0.22 * squish, sy = 1 - 0.42 * squish; // deflate: widen + flatten
   ctx.scale(sx, sy);
   // soft shadow
@@ -156,24 +327,8 @@ function drawSad(ctx, x, y, r, p, squish, bob) {
   { const g = ctx.createRadialGradient(-r * 0.32, -r * 0.36, 0, -r * 0.32, -r * 0.36, r * 0.5);
     g.addColorStop(0, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(-r * 0.3, -r * 0.34, r * 0.32, r * 0.24, 0, 0, 6.283); ctx.fill(); }
-  // sad eyes (whites + droopy pupils low)
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(-r * 0.33, -r * 0.05, r * 0.2, 0, 6.283); ctx.fill();
-  ctx.beginPath(); ctx.arc(r * 0.33, -r * 0.05, r * 0.2, 0, 6.283); ctx.fill();
-  ctx.fillStyle = '#23052e';
-  ctx.beginPath(); ctx.arc(-r * 0.31, r * 0.04, r * 0.1, 0, 6.283); ctx.fill();
-  ctx.beginPath(); ctx.arc(r * 0.35, r * 0.04, r * 0.1, 0, 6.283); ctx.fill();
-  // worried brows (angled up toward the middle)
-  ctx.strokeStyle = '#23052e'; ctx.lineWidth = r * 0.07; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-r * 0.54, -r * 0.34); ctx.lineTo(-r * 0.16, -r * 0.22); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(r * 0.54, -r * 0.34); ctx.lineTo(r * 0.16, -r * 0.22); ctx.stroke();
-  // frown
-  ctx.lineWidth = r * 0.075;
-  ctx.beginPath(); ctx.moveTo(-r * 0.26, r * 0.46); ctx.quadraticCurveTo(0, r * 0.24, r * 0.26, r * 0.46); ctx.stroke();
-  // tear
-  ctx.fillStyle = '#93C5FD';
-  ctx.beginPath(); ctx.moveTo(-r * 0.44, r * 0.06); ctx.quadraticCurveTo(-r * 0.5, r * 0.24, -r * 0.42, r * 0.26);
-  ctx.quadraticCurveTo(-r * 0.34, r * 0.24, -r * 0.44, r * 0.06); ctx.fill();
+  // grumpy face (varies by mood)
+  drawFace(ctx, r, p.face || 'sullen', performance.now(), p.bobPhase || 0, c.body);
   // knotted tie at the bottom
   ctx.fillStyle = c.body; ctx.beginPath(); ctx.moveTo(-r * 0.14, r * 1.02); ctx.lineTo(r * 0.14, r * 1.02); ctx.lineTo(0, r * 1.2); ctx.closePath(); ctx.fill();
   ctx.restore();
@@ -261,6 +416,7 @@ function connect() {
     else if (d.action === 'release') releasePerson(d.username, d.source);
     else if (d.action === 'release-all') releaseAll();
   });
+  ch.subscribe('timeout-box-config', msg => applyCfg(msg.data || {}));
   ch.subscribe('timeout-box-request', () => publishStatus());
   const dot = document.getElementById('conn');
   client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
