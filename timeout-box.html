@@ -40,7 +40,9 @@ const W = 1080, H = 1920;
 const QS = new URLSearchParams(location.search);
 function qnum(k, d) { const v = parseFloat(QS.get(k)); return isFinite(v) ? v : d; }
 const CFG_STORAGE = 'timeoutBox.cfg.v1';
-let BOX_X = 540, BOX_Y = 470, BOX_SCALE = 1, BOX_COLS = 3, BOX_TITLE = 'TIME OUT';
+// BOX_W / BOX_H are spacing multipliers: they stretch the grid's column spacing
+// (width) and row spacing (height) independently of balloon size (BOX_SCALE).
+let BOX_X = 540, BOX_Y = 470, BOX_SCALE = 1, BOX_COLS = 3, BOX_W = 1, BOX_H = 1, BOX_TITLE = 'TIME OUT';
 (function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_STORAGE) || 'null');
@@ -49,6 +51,8 @@ let BOX_X = 540, BOX_Y = 470, BOX_SCALE = 1, BOX_COLS = 3, BOX_TITLE = 'TIME OUT
       if (isFinite(c.y)) BOX_Y = +c.y;
       if (isFinite(c.scale)) BOX_SCALE = +c.scale;
       if (isFinite(c.cols)) BOX_COLS = +c.cols;
+      if (isFinite(c.w)) BOX_W = +c.w;
+      if (isFinite(c.h)) BOX_H = +c.h;
       if (typeof c.title === 'string' && c.title.trim()) BOX_TITLE = c.title;
     }
   } catch (e) {}
@@ -56,17 +60,22 @@ let BOX_X = 540, BOX_Y = 470, BOX_SCALE = 1, BOX_COLS = 3, BOX_TITLE = 'TIME OUT
   if (QS.has('y')) BOX_Y = qnum('y', BOX_Y);
   if (QS.has('scale')) BOX_SCALE = qnum('scale', BOX_SCALE);
   if (QS.has('cols')) BOX_COLS = qnum('cols', BOX_COLS);
+  if (QS.has('w')) BOX_W = qnum('w', BOX_W);
+  if (QS.has('h')) BOX_H = qnum('h', BOX_H);
   if (QS.get('title')) BOX_TITLE = QS.get('title');
   BOX_SCALE = Math.max(0.3, BOX_SCALE);
   BOX_COLS = Math.max(1, Math.round(BOX_COLS));
+  BOX_W = Math.max(0.3, BOX_W); BOX_H = Math.max(0.3, BOX_H);
 })();
-function saveCfg() { try { localStorage.setItem(CFG_STORAGE, JSON.stringify({ x: BOX_X, y: BOX_Y, scale: BOX_SCALE, cols: BOX_COLS, title: BOX_TITLE })); } catch (e) {} }
+function saveCfg() { try { localStorage.setItem(CFG_STORAGE, JSON.stringify({ x: BOX_X, y: BOX_Y, scale: BOX_SCALE, cols: BOX_COLS, w: BOX_W, h: BOX_H, title: BOX_TITLE })); } catch (e) {} }
 function applyCfg(c) {
   if (!c) return;
   if (isFinite(c.x)) BOX_X = +c.x;
   if (isFinite(c.y)) BOX_Y = +c.y;
   if (isFinite(c.scale)) BOX_SCALE = Math.max(0.3, +c.scale);
   if (isFinite(c.cols)) BOX_COLS = Math.max(1, Math.round(+c.cols));
+  if (isFinite(c.w)) BOX_W = Math.max(0.3, +c.w);
+  if (isFinite(c.h)) BOX_H = Math.max(0.3, +c.h);
   if (typeof c.title === 'string' && c.title.trim()) BOX_TITLE = c.title;
   saveCfg();
 }
@@ -137,7 +146,7 @@ function releaseAll() { activePeople().forEach(p => { p.exitAt = performance.now
 // ── Slot layout ──────────────────────────────────────────────────
 function slotPos(i) {
   const col = i % BOX_COLS, row = Math.floor(i / BOX_COLS);
-  return { x: BOX_X + (col - (BOX_COLS - 1) / 2) * CELL_W * BOX_SCALE, y: BOX_Y + row * CELL_H * BOX_SCALE };
+  return { x: BOX_X + (col - (BOX_COLS - 1) / 2) * CELL_W * BOX_SCALE * BOX_W, y: BOX_Y + row * CELL_H * BOX_SCALE * BOX_H };
 }
 
 // ── Tick (expiry + slotting + easing) ────────────────────────────
