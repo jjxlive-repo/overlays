@@ -157,6 +157,34 @@
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
   }
 
+  /* milestone goal bars — cumulative like/comment totals counting up toward a
+     configurable target that fires an action (Heart Me, Jackpot, an item) */
+  #milestone-bars {
+    position: absolute; z-index: 58; transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 8px; align-items: center;
+    opacity: 0; transition: opacity .35s;
+  }
+  .milestone-bar {
+    background: rgba(30, 8, 56, 0.6); border: 2px solid #C084FC66; border-radius: 10px;
+    padding: 6px 14px; min-width: 240px;
+  }
+  .milestone-bar-label {
+    font: 400 20px 'Boogaloo', sans-serif; letter-spacing: .4px; color: #fff;
+    text-shadow: 0 1px 3px #000; line-height: 1;
+  }
+  .milestone-bar-track {
+    margin-top: 4px; width: 100%; height: 10px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.15); overflow: hidden;
+  }
+  .milestone-bar-fill {
+    height: 100%; border-radius: 6px; background: linear-gradient(90deg, #C084FC, #F472B6);
+    transition: width .4s ease-out;
+  }
+  .milestone-bar-nums {
+    margin-top: 2px; font: 700 13px 'DM Sans'; color: #F4D8FF; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* wide wooden treat board — several gift → item mappings shown side by side
      as carved-in windows, planted at the floor line beside Jamie, rotating
      through the full mapping list a slot-count at a time. Pure CSS (no baked
@@ -259,6 +287,7 @@
   <div id="prompt-pill"></div>
   <div id="event-label"></div>
   <div id="like-meter"></div>
+  <div id="milestone-bars"></div>
   <div id="gift-showcase" aria-label="TikTok gift actions"></div>
   <div id="gift-float-layer" aria-live="polite"></div>
   <div id="debug-hud"></div>
@@ -313,6 +342,9 @@ const FJ_DEFAULT_CONFIG = {
     },
     treatWeights: { 'treat-biscuit': 45, 'treat-bone': 30, 'treat-purple-splat': 20, 'treat-heart': 5 },
     heartMeDurationSec: 3, heartMeSpawnHeart: true,
+    /* Heart Me randomly rotates through these 4 variants each time it fires
+       (uncheck any you don't want in the rotation). */
+    heartMeVariants: { run: true, classic: true, spin: true, proud: true },
     subscribeDurationSec: 2.5,
     giftLowMax: 99, giftHighMin: 5000,
     giftFallbackEnabled: true,  /* false = only explicitly mapped gifts react */
@@ -340,6 +372,23 @@ const FJ_DEFAULT_CONFIG = {
       enabled: true,
       thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 },
       sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 }
+    },
+    /* Simple auto-mode goals: pick a cumulative counter (likes/comments), a
+       target, and an action — the goal fires once the running total reaches
+       target, shows a progress bar on screen the whole way there, and can
+       auto-escalate to a bigger target afterward (either +N flat or ×N) so
+       it keeps going without you having to reconfigure it mid-stream. */
+    milestones: {
+      enabled: true,
+      x: 540, y: 1790, scale: 1,
+      goals: [
+        { id: 'goal-likes', label: 'Like Goal', counter: 'likes', target: 1000, baseValue: 0,
+          action: 'heartme', autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
+          enabled: true, completed: false },
+        { id: 'goal-comments', label: 'Comment Goal', counter: 'comments', target: 50, baseValue: 0,
+          action: 'jackpot', autoEscalate: true, escalateMode: 'multiply', escalateAmount: 50, escalateFactor: 2,
+          enabled: true, completed: false }
+      ]
     }
   },
   prompts: {
@@ -535,7 +584,34 @@ function fjValidateConfig() {
   // or imported config could set 0 or negative and cut the celebration veil/dim reset
   // short almost instantly.
   c.events.heartMeDurationSec = Math.min(Math.max(num(c.events.heartMeDurationSec, 3), 1.5), 6);
+  if (!c.events.heartMeVariants || typeof c.events.heartMeVariants !== 'object') {
+    c.events.heartMeVariants = { run: true, classic: true, spin: true, proud: true };
+  }
+  for (const k of ['run', 'classic', 'spin', 'proud']) c.events.heartMeVariants[k] = c.events.heartMeVariants[k] !== false;
   c.events.subscribeDurationSec = Math.min(Math.max(num(c.events.subscribeDurationSec, 2.5), 1), 6);
+  if (!c.events.milestones || typeof c.events.milestones !== 'object') {
+    c.events.milestones = { enabled: true, x: 540, y: 1790, scale: 1, goals: [] };
+  }
+  const ms = c.events.milestones;
+  ms.enabled = ms.enabled !== false;
+  ms.x = Math.min(Math.max(num(ms.x, 540), 0), 1080);
+  ms.y = Math.min(Math.max(num(ms.y, 1790), 0), 1920);
+  ms.scale = Math.min(Math.max(num(ms.scale, 1), 0.4), 2.5);
+  if (!Array.isArray(ms.goals)) ms.goals = [];
+  for (const g of ms.goals) {
+    g.id = g.id || ('goal-' + Math.random().toString(36).slice(2, 9));
+    g.label = String(g.label || '').slice(0, 40);
+    g.counter = ['likes', 'comments'].includes(g.counter) ? g.counter : 'likes';
+    g.target = Math.max(1, Math.round(num(g.target, 1000)));
+    g.baseValue = Math.max(0, Math.round(num(g.baseValue, 0)));
+    g.action = typeof g.action === 'string' && g.action ? g.action : 'heartme';
+    g.autoEscalate = g.autoEscalate !== false;
+    g.escalateMode = g.escalateMode === 'multiply' ? 'multiply' : 'add';
+    g.escalateAmount = Math.max(1, Math.round(num(g.escalateAmount, 1000)));
+    g.escalateFactor = Math.min(Math.max(num(g.escalateFactor, 2), 1.05), 20);
+    g.enabled = g.enabled !== false;
+    g.completed = !!g.completed;
+  }
 }
 /* size multiplier for a gift-spawned item: log curve from 1x (1 coin) up to
    maxScale (at coinsForMax coins) — big gifts read big without a 30k-coin
@@ -760,6 +836,106 @@ function growthScale() { return CFG.growth.enabled ? growth : 1; }
 function saveGrowth() {
   try { localStorage.setItem(FJ_LS_GROWTH, JSON.stringify({ g: growth, t: Date.now() })); } catch (e) {}
 }
+
+/* ── milestone goals: cumulative like/comment totals that persist across
+   reloads, checked against each configured goal every time either counter
+   moves. ── */
+const FJ_LS_MILESTONES = 'feedJamie.milestoneTotals.v1';
+let milestoneTotals = { likes: 0, comments: 0 };
+try {
+  const mt = JSON.parse(localStorage.getItem(FJ_LS_MILESTONES) || 'null');
+  if (mt && typeof mt === 'object') {
+    milestoneTotals.likes = Math.max(0, +mt.likes || 0);
+    milestoneTotals.comments = Math.max(0, +mt.comments || 0);
+  }
+} catch (e) {}
+let milestoneSaveTimer = null;
+function saveMilestoneTotals() {
+  clearTimeout(milestoneSaveTimer);
+  milestoneSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(FJ_LS_MILESTONES, JSON.stringify(milestoneTotals)); } catch (e) {}
+  }, 800);
+}
+function resetMilestoneTotals() {
+  milestoneTotals = { likes: 0, comments: 0 };
+  for (const g of (CFG.events.milestones.goals || [])) { g.baseValue = 0; g.completed = false; }
+  saveMilestoneTotals();
+  renderMilestoneBars();
+  publishStatus();
+}
+/* fires a goal's action once its counter reaches target; auto-escalating
+   goals raise the target (+N or ×N) and keep going, others complete once. */
+function checkMilestones() {
+  const ms = CFG.events.milestones;
+  if (!ms || !ms.enabled) { renderMilestoneBars(); return; }
+  let changed = false;
+  for (const g of (ms.goals || [])) {
+    if (!g.enabled || g.completed) continue;
+    const total = milestoneTotals[g.counter] || 0;
+    let guard = 0;
+    while (total >= g.target && guard < 50) {
+      fireMilestoneAction(g);
+      changed = true;
+      if (g.autoEscalate) {
+        const oldTarget = g.target;
+        g.target = g.escalateMode === 'multiply'
+          ? Math.max(oldTarget + 1, Math.round(oldTarget * (g.escalateFactor || 2)))
+          : oldTarget + Math.max(1, Math.round(g.escalateAmount || 0));
+        g.baseValue = oldTarget;
+      } else {
+        g.completed = true;
+        break;
+      }
+      guard++;
+    }
+  }
+  if (changed) { saveMilestoneTotals(); publishStatus(); }
+  renderMilestoneBars();
+}
+function fireMilestoneAction(goal) {
+  const label = goal.label || (goal.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
+  const targetLabel = `${(milestoneTotals[goal.counter] || 0).toLocaleString()} ${goal.counter}`;
+  switch (goal.action) {
+    case 'heartme': triggerHeartMe(null, label); break;
+    case 'jackpot': triggerJackpot(null, label); break;
+    default:
+      if (ITEM_DEFS[goal.action]) {
+        queueSpawn(goal.action, { sourceEvent: 'milestone', priority: 92, premium: true, showName: false });
+      }
+  }
+  showEventLabel(`🎯 ${sanitizeName(label)} reached! (${targetLabel})`, CFG.visuals.usernameSeconds, true);
+}
+function renderMilestoneBars() {
+  const el = $('milestone-bars');
+  if (!el) return;
+  const ms = CFG.events.milestones;
+  const goals = (ms && ms.enabled) ? (ms.goals || []).filter(g => g.enabled && !g.completed) : [];
+  el.innerHTML = '';
+  if (!goals.length) { el.style.opacity = 0; return; }
+  el.style.opacity = 1;
+  for (const g of goals) {
+    const total = milestoneTotals[g.counter] || 0;
+    const base = g.baseValue || 0;
+    const span = Math.max(1, g.target - base);
+    const pct = Math.max(0, Math.min(100, ((total - base) / span) * 100));
+    const bar = document.createElement('div');
+    bar.className = 'milestone-bar';
+    const label = document.createElement('div');
+    label.className = 'milestone-bar-label';
+    label.textContent = g.label || (g.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
+    const track = document.createElement('div');
+    track.className = 'milestone-bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'milestone-bar-fill';
+    fill.style.width = pct + '%';
+    track.appendChild(fill);
+    const nums = document.createElement('div');
+    nums.className = 'milestone-bar-nums';
+    nums.textContent = total.toLocaleString() + ' / ' + g.target.toLocaleString();
+    bar.appendChild(label); bar.appendChild(track); bar.appendChild(nums);
+    el.appendChild(bar);
+  }
+}
 let growGlowTimer = null;
 let pendingGrownProud = false;
 function growthFlash(hitMax) {
@@ -872,6 +1048,15 @@ const SEQ = {
   heartMeRun:   [{ f: 'jamie-heart-run.png',          d: 220  }],
   heartMeSkid:  [{ f: 'jamie-heart-skid.png',         d: 260  }],
   heartMeBurst: [{ f: 'jamie-heart-burst.png',        d: 900  }],
+  /* Heart Me variant "classic" — the original in-place celebration, kept as
+     one of the 4 random variants instead of the only one. */
+  heartMeClassic:    [{ f: 'jamie-heart-celebrate-01.png', d: 450 },
+                       { f: 'jamie-heart-celebrate-02.png', d: 450 },
+                       { f: 'jamie-heart-celebrate-03.png', d: 700 },
+                       { f: 'jamie-heart-spin.png',         d: 500 }],
+  heartMeClassicEnd: [{ f: 'jamie-heart-land.png',          d: 600 }],
+  /* Heart Me variant "spin" */
+  heartMeSpinPose:   [{ f: 'jamie-heart-spin.png',          d: 900 }],
   /* jackpot: L4/L5 MEGA gift/superchat — gold, deliberately distinct from
      the purple Heart Me sequence above so a big spender reads differently
      from an actual Heart Me. */
@@ -1268,6 +1453,10 @@ function applyLayout() {
   el.style.left = CFG.visuals.eventLabelX + 'px';
   el.style.top = CFG.visuals.eventLabelY + 'px';
   el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
+  const mb = $('milestone-bars');
+  mb.style.left = CFG.events.milestones.x + 'px';
+  mb.style.top = CFG.events.milestones.y + 'px';
+  mb.style.transform = `translateX(-50%) scale(${CFG.events.milestones.scale})`;
   applyGiftShowcaseLayout();
 }
 
@@ -1972,12 +2161,15 @@ function handleEvent(evt) {
   lastEventInfo = type + (username ? ' @' + sanitizeName(username) : '');
   switch (type) {
     case 'like': {
-      likeAccumulator += Math.max(1, Math.round(+evt.count || 1));
+      const likeN = Math.max(1, Math.round(+evt.count || 1));
+      likeAccumulator += likeN;
+      milestoneTotals.likes += likeN;
       while (likeAccumulator >= CFG.events.likesPerTreat) {
         likeAccumulator -= CFG.events.likesPerTreat;
         instantFeed(pickTreat(), { sourceEvent: 'like' });
       }
       updateLikeMeter();
+      checkMilestones();
       break;
     }
     case 'comment': handleComment(username, evt.message || ''); break;
@@ -1991,7 +2183,7 @@ function handleEvent(evt) {
         showEventLabel(`@${sanitizeName(username)} threw Jamie a ball! 🎾`, CFG.visuals.usernameSeconds, false);
       break;
     }
-    case 'heartme': triggerHeartMe(username); break;
+    case 'heartme': triggerHeartMe(username, '', evt.variant ? { variant: evt.variant } : {}); break;
     case 'subscribe': triggerSubscribe(username); break;
     case 'gift': handleGift(evt); break;
     case 'share':
@@ -2002,6 +2194,11 @@ function handleEvent(evt) {
   publishStatus();
 }
 function handleComment(username, message) {
+  /* counted for milestone goals regardless of Jamie's reaction cooldown below —
+     that cooldown is only an anti-spam limit on Jamie's own visual reaction,
+     not on how many comments actually came in. */
+  milestoneTotals.comments++;
+  checkMilestones();
   const now = performance.now();
   if (now - lastCommentAt < CFG.events.commentCooldown * 1000) return;
   const ukey = String(username || 'anon').toLowerCase();
@@ -2034,28 +2231,60 @@ function handleComment(username, message) {
   }
 }
 let heartMeActive = false;
-/* Heart Me: sprints from wherever Jamie is standing to the center of the
-   screen, skids to a stop, holds the big signature heart pose, then sprints
-   back to his starting spot — deliberately the biggest, most unique reaction
-   in the whole set. The run pose is reused mirrored for the return trip (see
-   poseMirror/currentMirror), so only one running sprite is needed.
-   opts.durMul/opts.fxMul (from the spend spectacle in reactAtLevel) stretch
-   the hold time and the heart/sparkle burst for bigger gifts. */
-function triggerHeartMe(username, highGiftName = '', opts = {}) {
-  // Guard on both flags — Heart Me and Jackpot share jamieEl's transform and the
-  // dim/veil state, so letting one interrupt the other mid-celebration used to
-  // compound the scale transform and could prematurely reset shared state.
-  if (heartMeActive || jackpotActive) return;
-  heartMeActive = true;
+/* Heart Me randomly rotates through 4 variants each time it fires (toggle
+   any off in CFG.events.heartMeVariants) so repeat Heart Mes don't feel
+   identical. opts.durMul/opts.fxMul (from the spend spectacle in
+   reactAtLevel) stretch the hold time and the heart/sparkle burst for
+   bigger gifts, and opts.variant forces a specific one (used by the
+   control panel test buttons). */
+function heartMeBegin() {
   objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
   $('like-meter').style.opacity = 0;
   clearTimeout(J.watchdog); clearTimeout(J.animTimer);
   J.currentSeq = null;
   jamieEl.classList.remove('breathe');
-  jamieEl.style.transition = 'none'; // position is hand-tweened every frame below; no CSS transition to fight it
   poseMirror = null;
-  applyLayout(); // clean baseline position/transform before the run starts
+  applyLayout(); /* clean baseline position/transform before the variant starts */
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
+}
+function heartMeShowLabel(username, highGiftName) {
+  if (username && CFG.visuals.usernameEvents.heartMe) {
+    const giftLabel = sanitizeName(highGiftName);
+    showEventLabel(
+      giftLabel
+        ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
+        : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
+      CFG.visuals.usernameSeconds,
+      !!giftLabel
+    );
+  }
+}
+function heartMeEnd(username) {
+  poseMirror = null;
+  jamieEl.style.transition = 'none';
+  jamieEl.classList.remove('pose-celebrate', 'ph-happy');
+  $('heartme-veil').style.opacity = 0;
+  objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
+  applyLayout(); /* restores clean position/transform */
+  heartMeActive = false;
+  if (CFG.events.heartMeSpawnHeart) {
+    queueSpawn('heart-large', { sourceEvent: 'heartMe', username, priority: 95, premium: true });
+  }
+  setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+}
+/* dead-man's switch shared by every variant — force a clean reset if a
+   variant's own timer/animation chain ever stalls, instead of leaving
+   Jamie stuck mid-celebration with every future Heart Me silently
+   no-op'ing on the busy guard. */
+function heartMeSafety(ms, username) {
+  return setTimeout(() => { if (heartMeActive) heartMeEnd(username); }, ms);
+}
+
+/* ── variant: RUN — sprints to center screen, skids, big heart burst, sprints back ── */
+function heartMeRunVariant(username, highGiftName, opts) {
+  heartMeActive = true;
+  heartMeBegin();
+  jamieEl.style.transition = 'none'; // position is hand-tweened every frame below; no CSS transition to fight it
 
   const startX = jamieRect.x;
   const centerX = (1080 - jamieRect.w) / 2;
@@ -2063,23 +2292,8 @@ function triggerHeartMe(username, highGiftName = '', opts = {}) {
   const runMs = Math.min(900, Math.max(350, dist * 0.9)); /* proportional to distance, clamped to a natural sprint speed */
   const outMirror = centerX < startX; /* default art faces right; mirror to face left */
   const fxMul = opts.fxMul || 1;
-
-  /* dead-man's switch: this is a multi-step chain (tween -> playSeq -> tween ->
-     ...), so unlike the old single-setTimeout version, several things would
-     need to fire correctly for heartMeActive to ever clear. If anything in the
-     chain stalls, force a clean reset instead of leaving Jamie stuck offscreen
-     at center with every future Heart Me silently no-op'ing on the busy guard. */
-  const safetyTimer = setTimeout(() => {
-    if (!heartMeActive) return; // already finished normally
-    heartMeActive = false;
-    poseMirror = null;
-    jamieEl.style.transition = 'none';
-    jamieEl.classList.remove('pose-celebrate', 'ph-happy');
-    $('heartme-veil').style.opacity = 0;
-    objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
-    applyLayout();
-    setJamieState(objects.length ? 'TRACKING' : 'IDLE');
-  }, Math.max(8000, runMs * 2 + 260 + CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1) + 3000));
+  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
+  const safetyTimer = heartMeSafety(Math.max(8000, runMs * 2 + 260 + durMs + 3000), username);
 
   function runOut() {
     poseMirror = outMirror;
@@ -2094,27 +2308,17 @@ function triggerHeartMe(username, highGiftName = '', opts = {}) {
     jamieEl.classList.add('pose-celebrate', 'ph-happy');
     jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
     applyJamieTransform();
-    jamieEl.style.transform += ' scale(1.28)'; /* biggest scale-up of any reaction — this is the signature moment */
+    jamieEl.style.transform += ' scale(1.28)'; /* biggest scale-up of any variant — this is the signature moment */
     playSeq('heartMeBurst', { loop: true });
     $('heartme-veil').style.opacity = 1;
     spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, Math.round(14 * fxMul));
     spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, Math.round(10 * fxMul));
     playSound('heartMe');
-    if (username && CFG.visuals.usernameEvents.heartMe) {
-      const giftLabel = sanitizeName(highGiftName);
-      showEventLabel(
-        giftLabel
-          ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
-          : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
-        CFG.visuals.usernameSeconds,
-        !!giftLabel
-      );
-    }
+    heartMeShowLabel(username, highGiftName);
     /* heartMeDurationSec (times the spend-scaled durMul) is the approximate
        total; the run/skid legs come out of it, but the hold always keeps a
        sensible minimum so the signature pose is never skipped even at the
        shortest configured duration. */
-    const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
     const holdMs = Math.max(400, durMs - runMs * 2 - 260);
     setTimeout(runBack, holdMs);
   }
@@ -2129,16 +2333,83 @@ function triggerHeartMe(username, highGiftName = '', opts = {}) {
   }
   function finish() {
     clearTimeout(safetyTimer);
-    poseMirror = null;
-    objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
-    applyLayout(); /* restores clean position/transform */
-    heartMeActive = false;
-    if (CFG.events.heartMeSpawnHeart) {
-      queueSpawn('heart-large', { sourceEvent: 'heartMe', username, priority: 95, premium: true });
-    }
-    setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+    heartMeEnd(username);
   }
   runOut();
+}
+
+/* ── variant: CLASSIC — the original in-place purple celebration ── */
+function heartMeClassicVariant(username, highGiftName, opts) {
+  heartMeActive = true;
+  heartMeBegin();
+  jamieEl.classList.add('pose-celebrate', 'ph-happy');
+  jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  applyJamieTransform();
+  jamieEl.style.transform += ' scale(1.12)';
+  playSeq('heartMeClassic', { loop: false, onDone: () => playSeq('heartMeClassicEnd', { loop: false }) });
+  $('heartme-veil').style.opacity = 1;
+  const fxMul = opts.fxMul || 1;
+  spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.3, Math.round(10 * fxMul));
+  spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.5, Math.round(8 * fxMul));
+  playSound('heartMe');
+  heartMeShowLabel(username, highGiftName);
+  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
+  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username);
+  setTimeout(() => { clearTimeout(safetyTimer); heartMeEnd(username); }, Math.max(800, durMs));
+}
+
+/* ── variant: SPIN — heart-spin pose with a big radiating sparkle burst ── */
+function heartMeSpinVariant(username, highGiftName, opts) {
+  heartMeActive = true;
+  heartMeBegin();
+  jamieEl.classList.add('pose-celebrate', 'ph-happy');
+  jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  applyJamieTransform();
+  jamieEl.style.transform += ' scale(1.2)';
+  playSeq('heartMeSpinPose', { loop: true });
+  $('heartme-veil').style.opacity = 1;
+  const fxMul = opts.fxMul || 1;
+  const cx = jamieRect.x + jamieRect.w / 2, cy = jamieRect.y + jamieRect.h * 0.4;
+  spawnFx('sparkle', cx, cy, Math.round(16 * fxMul));
+  spawnFx('heart', cx, cy, Math.round(8 * fxMul));
+  playSound('heartMe');
+  heartMeShowLabel(username, highGiftName);
+  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
+  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username);
+  setTimeout(() => { clearTimeout(safetyTimer); heartMeEnd(username); }, Math.max(800, durMs));
+}
+
+/* ── variant: PROUD — puffed-up growth-proud pose with a heart rain ── */
+function heartMeProudVariant(username, highGiftName, opts) {
+  heartMeActive = true;
+  heartMeBegin();
+  jamieEl.classList.add('pose-celebrate', 'ph-happy');
+  jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
+  applyJamieTransform();
+  jamieEl.style.transform += ' scale(1.2)';
+  playSeq('grownProud', { loop: true });
+  $('heartme-veil').style.opacity = 1;
+  const fxMul = opts.fxMul || 1;
+  spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.25, Math.round(12 * fxMul));
+  spawnFx('sparkle', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.55, Math.round(8 * fxMul));
+  playSound('heartMe');
+  heartMeShowLabel(username, highGiftName);
+  const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
+  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username);
+  setTimeout(() => { clearTimeout(safetyTimer); heartMeEnd(username); }, Math.max(800, durMs));
+}
+
+const HEARTME_VARIANT_FNS = { run: heartMeRunVariant, classic: heartMeClassicVariant, spin: heartMeSpinVariant, proud: heartMeProudVariant };
+function triggerHeartMe(username, highGiftName = '', opts = {}) {
+  // Guard on both flags — Heart Me and Jackpot share jamieEl's transform and the
+  // dim/veil state, so letting one interrupt the other mid-celebration used to
+  // compound the scale transform and could prematurely reset shared state.
+  if (heartMeActive || jackpotActive) return;
+  const enabledMap = CFG.events.heartMeVariants || {};
+  let pool = Object.keys(HEARTME_VARIANT_FNS).filter(k => enabledMap[k] !== false);
+  if (!pool.length) pool = ['run'];
+  const variant = (opts.variant && HEARTME_VARIANT_FNS[opts.variant]) ? opts.variant : pool[Math.floor(Math.random() * pool.length)];
+  HEARTME_VARIANT_FNS[variant](username, highGiftName, opts);
   publishStatus();
 }
 let jackpotActive = false;
@@ -2501,7 +2772,7 @@ function processMessage(msg) {
     case 'CONFIG_UPDATE':
       CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), msg.data || {});
       fjValidateConfig();
-      applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar();
+      applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar(); renderMilestoneBars();
       break;
     case 'SPAWN_ITEM':
       if (msg.data && ITEM_DEFS[msg.data.itemType]) spawnObject(msg.data.itemType, msg.data.options || {});
@@ -2514,6 +2785,12 @@ function processMessage(msg) {
     case 'SHOW':   setHidden(false); break;
     case 'RESET_STATE': forceReset('control'); break;
     case 'RESET_GROWTH': resetGrowth(); break;
+    case 'MILESTONE_RESET': resetMilestoneTotals(); break;
+    case 'MILESTONE_TRIGGER': {
+      const goal = (CFG.events.milestones.goals || []).find(g => g.id === (msg.data && msg.data.id));
+      if (goal) fireMilestoneAction(goal);
+      break;
+    }
     case 'GIFT_SIGN_NEXT': giftShowcaseLoop(); break;   /* advance the wooden sign immediately */
     case 'TEST_GIFT_FLOAT': {
       const d = msg.data || {};
@@ -2574,6 +2851,7 @@ function publishStatus(immediate) {
         queued: spawnQueue.length,
         likeProgress: likeAccumulator, likesPerTreat: CFG.events.likesPerTreat,
         growth: Math.round(growth * 100) / 100,
+        milestoneTotals: { ...milestoneTotals },
         lastEvent: lastEventInfo,
         warnings: assetWarnings.slice(0, 40),
         assetAvailable: Object.fromEntries(Object.entries(assetAvailable)),
@@ -2655,6 +2933,7 @@ window.feedJamie = {
     state: J.state, paused: J.paused, hidden: J.hidden, growth,
     objects: objects.map(o => ({ id: o.id, itemType: o.itemType, x: o.x, y: o.y, captured: o.captured })),
     queued: spawnQueue.length, likeAccumulator, warnings: assetWarnings.slice(),
+    milestoneTotals: { ...milestoneTotals },
     config: fjClone(CFG)
   }),
   resetGrowth,
@@ -2669,6 +2948,7 @@ showFrame('jamie-idle-01.png', { instant: true });
 setJamieState('IDLE');
 promptLoop();
 giftShowcaseLoop();
+renderMilestoneBars();
 initComms();
 fjLoadAssets();
 rafId = requestAnimationFrame(tick);

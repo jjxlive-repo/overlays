@@ -99,6 +99,17 @@
   .gift-picker .gift-opt .coins { margin-left: auto; color: var(--gold); font-weight: 700; font-size: 12px; white-space: nowrap; }
   .gift-map-row select.item-pick { min-width: 140px; }
   .gift-map-row .del { border-color: var(--warn); color: var(--warn); padding: 4px 10px; }
+  /* milestone goal editor */
+  .goal-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px; margin: 6px 0;
+    background: var(--panel2); border: 1px solid #4a2b78; border-radius: 10px; flex-wrap: wrap;
+  }
+  .goal-row input[type=text] { min-width: 110px; flex: 1; }
+  .goal-row select { min-width: 118px; }
+  .goal-row input[type=number] { width: 88px; }
+  .goal-row .del { border-color: var(--warn); color: var(--warn); padding: 4px 10px; margin-left: auto; }
+  .goal-row .goal-progress { flex-basis: 100%; font-size: 11px; color: var(--txt-dim); }
+  .goal-row .goal-progress b { color: var(--light); }
   #preview-wrap { position: relative; width: 302px; height: 538px; overflow: hidden; border: 1px solid #4a2b78; border-radius: 10px;
     background: repeating-conic-gradient(#1d0d33 0% 25%, #241040 0% 50%) 0 0/24px 24px; }
   #preview-frame { width: 1080px; height: 1920px; transform: scale(0.28); transform-origin: top left; border: 0; }
@@ -191,6 +202,20 @@
           <textarea id="gift-editor" spellcheck="false" placeholder='[{"giftName":"Rose","itemType":"treat-heart","showUsername":true}] — itemType "heartme" triggers the mega reaction'></textarea></div>
         <div class="btnrow"><button onclick="applyGiftMappings()">Apply JSON</button></div>
       </details>
+    </div>
+  </details>
+
+  <!-- E2. MILESTONE GOALS -->
+  <details class="section">
+    <summary>E2 · Milestone Goals</summary>
+    <div class="body" id="sec-milestones">
+      <div id="milestones-controls"></div>
+      <div class="note"><b>Auto mode</b> — pick a cumulative counter (total likes or comments since last reset), a target, and an action. Jamie fires the action once the running total reaches the target, with a progress bar on screen the whole way there. Turn on "Auto-escalate" to have it raise the target afterward (add a fixed amount, or multiply) and keep going — e.g. 1000 likes → 2000 → 3000, or 50 comments → 100 → 200.</div>
+      <div id="goal-rows"></div>
+      <div class="btnrow">
+        <button class="primary" onclick="addGoal()">➕ Add goal</button>
+        <button class="warn" onclick="if(confirm('Reset all milestone totals (likes + comments) back to 0?')) send({cmd:'MILESTONE_RESET'})">↩ Reset totals</button>
+      </div>
     </div>
   </details>
 
@@ -322,13 +347,25 @@ const FJ_DEFAULT_CONFIG = {
     keywords: { ball: 'tennis-ball', treat: 'random-treat', toy: 'squeaky-toy', duck: 'duck', sock: 'sock', bubble: 'bubble', jamie: 'look' },
     treatWeights: { 'treat-biscuit': 45, 'treat-bone': 30, 'treat-purple-splat': 20, 'treat-heart': 5 },
     heartMeDurationSec: 3, heartMeSpawnHeart: true,
+    heartMeVariants: { run: true, classic: true, spin: true, proud: true },
     subscribeDurationSec: 2.5,
     giftLowMax: 99, giftHighMin: 5000, giftFallbackEnabled: true,
     giftSizeScaling: { enabled: true, maxScale: 2.6, coinsForMax: 20000 },
     intensityThresholds: { l2: 50, l3: 250, l4: 500, l5: 1000 },
     instantFeed: { enabled: true, maxCoins: 1 },
     giftMappings: [],
-    superchat: { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } }
+    superchat: { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } },
+    milestones: {
+      enabled: true, x: 540, y: 1790, scale: 1,
+      goals: [
+        { id: 'goal-likes', label: 'Like Goal', counter: 'likes', target: 1000, baseValue: 0,
+          action: 'heartme', autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
+          enabled: true, completed: false },
+        { id: 'goal-comments', label: 'Comment Goal', counter: 'comments', target: 50, baseValue: 0,
+          action: 'jackpot', autoEscalate: true, escalateMode: 'multiply', escalateAmount: 50, escalateFactor: 2,
+          enabled: true, completed: false }
+      ]
+    }
   },
   prompts: {
     enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
@@ -455,6 +492,21 @@ function renderStatus(s) {
     wn.textContent = `⚠ ${s.warnings.length} asset warning(s) — placeholder art in use. See section G.`;
   } else wn.textContent = '';
   if (s.assetAvailable) { lastAssetMap = s.assetAvailable; refreshAssetStatuses(); }
+  if (s.milestoneTotals) { window.lastMilestoneTotals = s.milestoneTotals; updateGoalProgressReadouts(); }
+}
+/* lightweight refresh — updates just the progress text in each goal row
+   instead of rebuilding the whole editor, so it can't steal focus mid-edit */
+function updateGoalProgressReadouts() {
+  const totals = window.lastMilestoneTotals || {};
+  for (const row of document.querySelectorAll('.goal-row')) {
+    const g = row._orig; if (!g) continue;
+    const p = row.querySelector('.goal-progress'); if (!p) continue;
+    const target = +row.querySelector('.goal-target')?.value || g.target;
+    const total = totals[row.querySelector('.goal-counter')?.value || g.counter] || 0;
+    p.innerHTML = g.completed
+      ? '✅ Completed (one-time goal — re-enable auto-escalate or edit the target to reuse it)'
+      : `Progress: <b>${total.toLocaleString()}</b> / ${target.toLocaleString()} ${g.counter}`;
+  }
 }
 setInterval(() => {
   if (Date.now() - lastStatusAt > 6000) setDot('overlay', false, 'no status');
@@ -663,6 +715,23 @@ function colorInput(parent, label, path) {
   /* per-event username toggles moved to section F (Show usernames for:) */
   slider(p, 'Heart Me duration', 'events.heartMeDurationSec', 1.5, 6, 0.25, v => v + 's');
   toggle(p, 'Heart Me spawns big heart', 'events.heartMeSpawnHeart');
+  const hmNote = document.createElement('div');
+  hmNote.className = 'note';
+  hmNote.innerHTML = '<b>Heart Me variants</b> — each Heart Me randomly picks one of the checked reactions below, so repeats don\'t feel identical. Uncheck any you don\'t want in the rotation (at least one must stay checked).';
+  p.appendChild(hmNote);
+  toggle(p, '🏃 Run to center + big heart burst', 'events.heartMeVariants.run');
+  toggle(p, '💜 Classic in-place celebration', 'events.heartMeVariants.classic');
+  toggle(p, '🌀 Spin + sparkle burst', 'events.heartMeVariants.spin');
+  toggle(p, '🥹 Proud puffed-up pose', 'events.heartMeVariants.proud');
+  const hmTestRow = document.createElement('div');
+  hmTestRow.className = 'btnrow';
+  for (const [key, label] of [['run', '🏃 Test run'], ['classic', '💜 Test classic'], ['spin', '🌀 Test spin'], ['proud', '🥹 Test proud']]) {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.onclick = () => send({ cmd: 'TRIGGER_EVENT', data: { type: 'heartme', username: testUser(), variant: key } });
+    hmTestRow.appendChild(btn);
+  }
+  p.appendChild(hmTestRow);
   slider(p, 'Subscribe reaction', 'events.subscribeDurationSec', 1, 6, 0.25, v => v + 's');
   numberInput(p, 'Fallback: toy tier starts at (coins)', 'events.giftLowMax', 1, 100000);
   const sizeNote = document.createElement('div');
@@ -904,6 +973,159 @@ function addGiftMapping() {
     buildGiftMapRow({ giftName: '', itemType: 'treat-heart', showUsername: true }));
 }
 loadGiftCatalog();
+
+/* E2. MILESTONE GOALS */
+const GOAL_COUNTER_CHOICES = [['likes', '❤️ Total likes'], ['comments', '💬 Total comments']];
+const GOAL_ACTION_CHOICES = [...GIFT_ITEM_CHOICES, ['jackpot', '🌟 JACKPOT reaction (gold)']];
+(function () {
+  const p = document.getElementById('milestones-controls');
+  toggle(p, 'Milestone goals enabled', 'events.milestones.enabled');
+  slider(p, 'Bars X', 'events.milestones.x', 0, 1080, 5);
+  slider(p, 'Bars Y', 'events.milestones.y', 0, 1920, 5);
+  slider(p, 'Bars scale', 'events.milestones.scale', 0.4, 2.5, 0.05, v => (+v).toFixed(2) + '×');
+})();
+function saveGoalsFromUI() {
+  const rows = [...document.querySelectorAll('.goal-row')];
+  CFG.events.milestones.goals = rows.map(r => ({
+    id: r.dataset.id,
+    label: r.querySelector('.goal-label').value.trim(),
+    counter: r.querySelector('.goal-counter').value,
+    target: +r.querySelector('.goal-target').value || 1000,
+    baseValue: r._orig ? (r._orig.baseValue || 0) : 0,
+    action: r.querySelector('.goal-action').value,
+    autoEscalate: r.querySelector('.goal-autoescalate').checked,
+    escalateMode: r.querySelector('.goal-escalate-mode').value,
+    escalateAmount: +r.querySelector('.goal-escalate-amount').value || 1000,
+    escalateFactor: +r.querySelector('.goal-escalate-factor').value || 2,
+    enabled: r.querySelector('.goal-enabled').checked,
+    completed: r._orig ? !!r._orig.completed : false
+  }));
+  pushConfig();
+  /* deliberately no full renderGoalRows() here — rebuilding every row on every
+     single field edit would detach whatever row you're mid-edit on and could
+     silently drop a second field change made right after the first (the
+     saveGoalsFromUI triggered by field A's change event would rebuild the
+     row before field B's own pending change ever reads back from it). Rows
+     are only rebuilt on add/remove; progress numbers update separately via
+     updateGoalProgressReadouts() on each status tick. */
+}
+function buildGoalRow(goal) {
+  const row = document.createElement('div');
+  row.className = 'goal-row';
+  row.dataset.id = goal.id;
+  row._orig = goal;
+  const label = document.createElement('input');
+  label.type = 'text'; label.className = 'goal-label';
+  label.placeholder = 'Goal name (e.g. Like Goal)';
+  label.value = goal.label || '';
+  label.addEventListener('change', saveGoalsFromUI);
+  row.appendChild(label);
+
+  const counterSel = document.createElement('select');
+  counterSel.className = 'goal-counter';
+  for (const [val, lbl] of GOAL_COUNTER_CHOICES) {
+    const o = document.createElement('option'); o.value = val; o.textContent = lbl; counterSel.appendChild(o);
+  }
+  counterSel.value = goal.counter;
+  counterSel.addEventListener('change', saveGoalsFromUI);
+  row.appendChild(counterSel);
+
+  const targetLbl = document.createElement('span');
+  targetLbl.style.cssText = 'font-size:11px;color:var(--txt-dim);';
+  targetLbl.textContent = 'target';
+  row.appendChild(targetLbl);
+  const target = document.createElement('input');
+  target.type = 'number'; target.className = 'goal-target'; target.min = 1; target.step = 1;
+  target.value = goal.target;
+  target.addEventListener('change', saveGoalsFromUI);
+  row.appendChild(target);
+
+  const arrow = document.createElement('span');
+  arrow.style.cssText = 'color:var(--accent);font-weight:700;'; arrow.textContent = '→';
+  row.appendChild(arrow);
+  const actionSel = document.createElement('select');
+  actionSel.className = 'goal-action';
+  for (const [val, lbl] of GOAL_ACTION_CHOICES) {
+    const o = document.createElement('option'); o.value = val; o.textContent = lbl; actionSel.appendChild(o);
+  }
+  actionSel.value = GOAL_ACTION_CHOICES.some(([v]) => v === goal.action) ? goal.action : 'heartme';
+  actionSel.addEventListener('change', saveGoalsFromUI);
+  row.appendChild(actionSel);
+
+  const enLbl = document.createElement('label');
+  enLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;color:var(--txt-dim);';
+  const en = document.createElement('input');
+  en.type = 'checkbox'; en.className = 'goal-enabled'; en.checked = goal.enabled !== false;
+  en.addEventListener('change', saveGoalsFromUI);
+  enLbl.appendChild(en); enLbl.appendChild(document.createTextNode('on'));
+  row.appendChild(enLbl);
+
+  const trigBtn = document.createElement('button');
+  trigBtn.textContent = '🎯 Trigger now';
+  trigBtn.onclick = () => send({ cmd: 'MILESTONE_TRIGGER', data: { id: goal.id } });
+  row.appendChild(trigBtn);
+
+  const del = document.createElement('button');
+  del.className = 'del'; del.textContent = '✕'; del.title = 'Remove goal';
+  del.addEventListener('click', () => { row.remove(); saveGoalsFromUI(); });
+  row.appendChild(del);
+
+  /* sub-row: auto-escalate settings */
+  const sub = document.createElement('div');
+  sub.style.cssText = 'flex-basis:100%;display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap;';
+  const escLbl = document.createElement('label');
+  escLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;color:var(--txt-dim);';
+  const esc = document.createElement('input');
+  esc.type = 'checkbox'; esc.className = 'goal-autoescalate'; esc.checked = goal.autoEscalate !== false;
+  esc.addEventListener('change', saveGoalsFromUI);
+  escLbl.appendChild(esc); escLbl.appendChild(document.createTextNode('Auto-escalate after firing:'));
+  sub.appendChild(escLbl);
+  const modeSel = document.createElement('select');
+  modeSel.className = 'goal-escalate-mode'; modeSel.style.minWidth = '90px';
+  [['add', '+ add'], ['multiply', '× multiply']].forEach(([val, lbl]) => {
+    const o = document.createElement('option'); o.value = val; o.textContent = lbl; modeSel.appendChild(o);
+  });
+  modeSel.value = goal.escalateMode === 'multiply' ? 'multiply' : 'add';
+  modeSel.addEventListener('change', saveGoalsFromUI);
+  sub.appendChild(modeSel);
+  const amt = document.createElement('input');
+  amt.type = 'number'; amt.className = 'goal-escalate-amount'; amt.min = 1; amt.step = 1; amt.style.width = '80px';
+  amt.title = 'Amount to add to the target each time (used when mode = + add)';
+  amt.value = goal.escalateAmount || 1000;
+  amt.addEventListener('change', saveGoalsFromUI);
+  sub.appendChild(amt);
+  const fac = document.createElement('input');
+  fac.type = 'number'; fac.className = 'goal-escalate-factor'; fac.min = 1.05; fac.step = 0.1; fac.style.width = '70px';
+  fac.title = 'Factor to multiply the target by each time (used when mode = × multiply)';
+  fac.value = goal.escalateFactor || 2;
+  fac.addEventListener('change', saveGoalsFromUI);
+  sub.appendChild(fac);
+  row.appendChild(sub);
+
+  /* progress readout */
+  const progress = document.createElement('div');
+  progress.className = 'goal-progress';
+  const total = (window.lastMilestoneTotals && window.lastMilestoneTotals[goal.counter]) || 0;
+  progress.innerHTML = goal.completed
+    ? '✅ Completed (one-time goal — re-enable auto-escalate or edit the target to reuse it)'
+    : `Progress: <b>${total.toLocaleString()}</b> / ${goal.target.toLocaleString()} ${goal.counter}`;
+  row.appendChild(progress);
+  return row;
+}
+function renderGoalRows() {
+  const holder = document.getElementById('goal-rows');
+  holder.innerHTML = '';
+  for (const g of (CFG.events.milestones.goals || [])) holder.appendChild(buildGoalRow(g));
+}
+function addGoal() {
+  document.getElementById('goal-rows').appendChild(buildGoalRow({
+    id: 'goal-' + Math.random().toString(36).slice(2, 9),
+    label: '', counter: 'likes', target: 1000, baseValue: 0, action: 'heartme',
+    autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
+    enabled: true, completed: false
+  }));
+}
+renderGoalRows();
 
 /* F. VISUALS */
 (function () {

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
 <title>JJxLive Chat Box</title>
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;900&family=Rubik:wght@500;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; }
 :root {
@@ -622,6 +625,68 @@ body {
   text-shadow: none;
 }
 
+/* 12. minimal — quiet translucent cards, platform shown by name color only */
+[data-style="minimal"] .chat-zone {
+  padding: 12px 10px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+[data-style="minimal"] .chat-list { gap: 6px; }
+[data-style="minimal"] .chat-message {
+  padding: 6px 9px;
+  border-radius: 5px;
+  border-left: 0;
+  background: rgba(0,0,0,.34);
+  outline: none;
+  box-shadow: none;
+}
+[data-style="minimal"] .platform-chip { display: none; }
+[data-style="minimal"] .chat-meta { gap: 0; }
+[data-style="minimal"] .chat-message .username {
+  max-width: 100%;
+  font-family: "Rubik", sans-serif;
+  font-size: calc(11px * var(--chat-font-scale));
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #C4B9D6;
+  text-shadow: none;
+}
+[data-style="minimal"] .chat-message[data-platform="tiktok"] .username { color: #7EDCE2; }
+[data-style="minimal"] .chat-message[data-platform="youtube"] .username { color: #FF8A8A; }
+[data-style="minimal"] .message-text {
+  font-family: "DM Sans", sans-serif;
+  font-size: calc(14px * var(--chat-font-scale));
+  font-weight: 500;
+  line-height: 1.25;
+  color: #FAF5FF;
+  margin-top: 1px;
+  text-shadow: none;
+}
+[data-style="minimal"] .chat-message.is-superfan,
+[data-style="minimal"] .chat-message.is-member,
+[data-style="minimal"] .chat-message.is-fanclub {
+  border-left: 2px solid #FDE68A;
+  outline: none;
+  box-shadow: none;
+}
+[data-style="minimal"] .status-pill,
+[data-style="minimal"] .status-pill.fanclub {
+  min-width: 0;
+  width: auto;
+  height: auto;
+  margin-right: 5px;
+  padding: 0;
+  border-radius: 0;
+  font-size: calc(9px * var(--chat-font-scale));
+  letter-spacing: .06em;
+  color: #FDE68A;
+  background: none;
+  box-shadow: none;
+}
+
 .event-zone[data-event-type="highGift"],
 .event-zone[data-event-type="diamondDrop"] {
   box-shadow: 0 0 26px rgba(255,216,77,.44), 0 0 12px rgba(70,217,255,.24);
@@ -661,7 +726,7 @@ body {
 </style>
 </head>
 <body>
-<div id="jjx-chat-overlay" class="jjx-chat-overlay" data-style="sticker">
+<div id="jjx-chat-overlay" class="jjx-chat-overlay" data-style="neon">
   <div id="event-zone" class="event-zone"></div>
   <div id="chat-zone" class="chat-zone">
     <div id="chat-list" class="chat-list"></div>
@@ -670,7 +735,7 @@ body {
 
 <script>
 const CONFIG = {
-  defaultStyle: "sticker",
+  defaultStyle: "neon",
   position: {
     top: 134,
     right: 34,
@@ -712,7 +777,7 @@ const CONFIG = {
   }
 };
 
-const STYLE_PRESETS = ["sticker", "splat", "arcade", "chips", "comms", "spotlight", "glass", "caption", "sidebar", "neon", "bubble"];
+const STYLE_PRESETS = ["sticker", "splat", "arcade", "chips", "comms", "spotlight", "glass", "caption", "sidebar", "neon", "bubble", "minimal"];
 const chatQueue = [];
 const eventQueue = [];
 let activeEvent = false;
@@ -1202,6 +1267,7 @@ function renderChatMessage(item) {
   const row = document.createElement("div");
   row.className = `chat-message${item.status ? ` is-${item.status.kind}` : ""}`;
   row.dataset.id = item.id;
+  row.dataset.platform = platformKey(item.platform);
   const statusHtml = item.status
     ? `<span class="status-pill ${sanitizeText(item.status.kind)}">${sanitizeText(item.status.label)}</span>`
     : "";
