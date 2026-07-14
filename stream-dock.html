@@ -1473,7 +1473,9 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
 }
 .dock-quick-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Auto-fit: two columns when there's room, collapses to one in a narrow dock so
+     the toggle buttons never clip off the right edge. */
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 5px;
 }
 .dock-quick-toggle {
@@ -1482,6 +1484,7 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
   justify-content: space-between;
   gap: 6px;
   padding: 5px 7px;
+  min-width: 0;   /* let the label ellipsis instead of forcing the cell wider */
   border: 1px solid rgba(255,255,255,.2);
   border-radius: 6px;
   background: #111827;
@@ -3868,6 +3871,7 @@ function handleMsg(data) {
     }
     if(isTT)_evtCounts.tt_comment++; if(isYT)_evtCounts.yt_comment++; _updateEvtDebug();
     publishMilk('comment', _platH, data.chatname, data.chatmessage);
+    tboRecordChatter(data.chatname, isTT ? 'tiktok' : 'youtube'); // for the Timeout control's recent list
   }
 
   if (isGift) {
@@ -4803,6 +4807,14 @@ let _epConfig = null;
 ablyChannel.subscribe('event-promo', msg => {
   if (msg.data && msg.data.type === 'event-promo-config') _epConfig = msg.data.config;
 });
+
+// Timeout Box: sync active list from the overlay + request it on load. Restore any
+// persisted local sentences, and tick the countdown once per second.
+ablyChannel.subscribe('timeout-box-status', msg => tboOnStatus(msg.data || {}));
+tboLoad();
+try { ablyChannel.publish('timeout-box-request', {}).catch(() => {}); } catch (e) {}
+setInterval(() => { if (document.getElementById('tbo-active')) tboRenderActive(); }, 1000);
+setInterval(tboRenderRecent, 4000);
 
 // milk-full alert — DISABLED
 // ablyChannel.subscribe('milk-full', ...) — no-op
@@ -7252,6 +7264,92 @@ function dockAddBaitRescueButtons() {
   body.dataset.rescueButtons = 'true';
 }
 
+/* ════════════════════════════════════════
+   TIMEOUT BOX — slim moderation control (drives timeout-box.html overlay)
+════════════════════════════════════════ */
+const TBO_LS = 'streamDock.timeoutBox.v1';
+let _tboActive = new Map();  // key -> { username, source, until }
+let _tboRecent = new Map();  // key -> { username, source, at } — recent chatters for the picker
+function tboKey(u, s) { return (s === 'tiktok' ? 'tiktok' : 'youtube') + ':' + String(u || '').trim().replace(/^@+/, '').toLowerCase(); }
+function tboRecordChatter(name, source) {
+  const u = String(name || '').trim().replace(/^@+/, ''); if (!u) return;
+  _tboRecent.set(tboKey(u, source), { username: u, source: source === 'tiktok' ? 'tiktok' : 'youtube', at: Date.now() });
+  if (_tboRecent.size > 200) { const oldest = [..._tboRecent.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) _tboRecent.delete(oldest[0]); }
+}
+function tboFmt(ms) { const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; }
+function tboLoad() { try { const a = JSON.parse(localStorage.getItem(TBO_LS) || '[]'); const now = Date.now(); a.forEach(r => { if ((+r.until || 0) > now) _tboActive.set(tboKey(r.username, r.source), { username: r.username, source: r.source, until: +r.until }); }); } catch (e) {} }
+function tboSave() { try { localStorage.setItem(TBO_LS, JSON.stringify([..._tboActive.values()])); } catch (e) {} }
+function tboPublish(payload) { if (typeof ablyChannel !== 'undefined' && ablyChannel) ablyChannel.publish('timeout-box-cmd', payload).catch(() => {}); }
+function tboAdd(username, source, minutes) {
+  const u = String(username || '').trim().replace(/^@+/, ''); if (!u) return;
+  const s = source === 'tiktok' ? 'tiktok' : 'youtube', key = tboKey(u, s), now = Date.now();
+  const cur = _tboActive.get(key), until = Math.max(now, cur ? cur.until : now) + (Number(minutes) || 0) * 60000; // cumulative
+  if (until <= now) return;
+  _tboActive.set(key, { username: u, source: s, until });
+  tboSave(); tboPublish({ action: 'add', username: u, source: s, until }); tboRenderActive();
+}
+function tboRelease(username, source) { _tboActive.delete(tboKey(username, source)); tboSave(); tboPublish({ action: 'release', username, source }); tboRenderActive(); }
+function tboReleaseAll() { if (!_tboActive.size) return; _tboActive.clear(); tboSave(); tboPublish({ action: 'release-all' }); tboRenderActive(); }
+function tboOnStatus(d) {
+  if (!d || !Array.isArray(d.people)) return;
+  const now = Date.now(), m = new Map();
+  d.people.forEach(p => { if ((+p.until || 0) > now) m.set(tboKey(p.username, p.source), { username: p.username, source: p.source, until: +p.until }); });
+  _tboActive = m; tboSave(); tboRenderActive();
+}
+function tboAddFromForm() {
+  const name = document.getElementById('tbo-name').value;
+  const src = document.getElementById('tbo-src').value;
+  const min = parseInt(document.getElementById('tbo-min').value) || 5;
+  if (!String(name).trim()) return;
+  tboAdd(name, src, min);
+  document.getElementById('tbo-name').value = '';
+}
+function tboQuick(min) { const name = document.getElementById('tbo-name').value; const src = document.getElementById('tbo-src').value; if (!String(name).trim()) return; tboAdd(name, src, min); document.getElementById('tbo-name').value = ''; }
+function tboRenderRecent() {
+  const dl = document.getElementById('tbo-recent'); if (!dl) return;
+  const arr = [..._tboRecent.values()].sort((a, b) => b.at - a.at).slice(0, 60);
+  dl.innerHTML = arr.map(r => `<option value="${(r.username || '').replace(/"/g, '&quot;')}">`).join('');
+}
+function tboRenderActive() {
+  const root = document.getElementById('tbo-active'); if (!root) return;
+  const now = Date.now();
+  for (const [k, v] of [..._tboActive]) if ((+v.until || 0) <= now) _tboActive.delete(k); // local expiry
+  const arr = [..._tboActive.values()].sort((a, b) => b.until - a.until);
+  const nEl = document.getElementById('tbo-active-n'); if (nEl) nEl.textContent = arr.length;
+  root.textContent = '';
+  if (!arr.length) { const e = document.createElement('div'); e.style.cssText = 'font-size:9px;color:var(--txt-dim);padding:5px;text-align:center;'; e.textContent = 'Nobody in timeout.'; root.appendChild(e); return; }
+  for (const v of arr) {
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:4px;padding:2px 0;';
+    const plat = document.createElement('span'); plat.textContent = v.source === 'tiktok' ? '🎵' : '▶'; plat.style.fontSize = '10px'; row.appendChild(plat);
+    const nm = document.createElement('span'); nm.textContent = v.username; nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;'; row.appendChild(nm);
+    const to = document.createElement('span'); to.textContent = tboFmt(v.until - now); to.style.cssText = 'font-size:11px;font-weight:700;color:#fbbf24;min-width:44px;text-align:right;'; row.appendChild(to);
+    const p1 = document.createElement('button'); p1.className = 'tf-btn'; p1.textContent = '+1'; p1.style.cssText = 'padding:1px 5px;font-size:9px;'; p1.onclick = () => tboAdd(v.username, v.source, 1); row.appendChild(p1);
+    const rl = document.createElement('button'); rl.className = 'tf-btn tf-btn-danger'; rl.textContent = 'Free'; rl.style.cssText = 'padding:1px 5px;font-size:9px;'; rl.onclick = () => tboRelease(v.username, v.source); row.appendChild(rl);
+    root.appendChild(row);
+  }
+}
+function dockBuildTimeoutCard() {
+  return dockMakeCard('timeout-box', 'Timeout Box', `
+    <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">Float a chatter into the <code>timeout-box.html</code> overlay for N minutes. Type a name (recent chatters autocomplete) or paste one.</div>
+    <div style="display:flex;gap:4px;margin-top:6px;">
+      <input id="tbo-name" list="tbo-recent" placeholder="username" style="flex:1;min-width:0;background:var(--bg-card,#1a1a22);border:1px solid var(--border,#333);color:#fff;border-radius:6px;padding:4px 6px;font-size:11px;">
+      <datalist id="tbo-recent"></datalist>
+      <select id="tbo-src" style="background:var(--bg-card,#1a1a22);border:1px solid var(--border,#333);color:#fff;border-radius:6px;font-size:11px;cursor:pointer;"><option value="tiktok">TikTok</option><option value="youtube">YouTube</option></select>
+      <input id="tbo-min" type="number" min="1" max="1440" value="5" style="width:46px;background:var(--bg-card,#1a1a22);border:1px solid var(--border,#333);color:#fff;border-radius:6px;padding:4px;font-size:11px;text-align:center;">
+    </div>
+    <div style="display:flex;gap:4px;margin-top:4px;">
+      <button class="tf-btn tf-btn-danger" style="flex:2;" onclick="tboAddFromForm()">⏱ TIMEOUT</button>
+      <button class="tf-btn" style="flex:1;" onclick="tboQuick(1)">+1m</button>
+      <button class="tf-btn" style="flex:1;" onclick="tboQuick(5)">+5m</button>
+      <button class="tf-btn" style="flex:1;" onclick="tboQuick(10)">+10m</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+      <span style="font-size:9px;color:var(--txt-dim);">IN TIMEOUT — <span id="tbo-active-n">0</span></span>
+      <button class="tf-btn tf-btn-danger" style="padding:1px 8px;font-size:9px;" onclick="tboReleaseAll()">Free All</button>
+    </div>
+    <div id="tbo-active" style="margin-top:2px;"></div>`);
+}
+
 function dockBuildQuickToggles() {
   return dockMakeCard('dock-toggles', 'Overlay Toggles', `
     <div class="dock-quick-grid">
@@ -7476,8 +7574,10 @@ function organizeDockControls() {
   const quick = dockBuildQuickToggles();
   const chatTesting = dockBuildChatTestCard();
   const funDrawer = dockBuildFunDrawerCard();
+  const timeoutBox = dockBuildTimeoutCard();
   const groups = [
     ['Config Toggles', [quick, dockCardByCtrl('layout'), dockCardByCtrl('cloud-sync')]],
+    ['Moderation', [timeoutBox]],
     ['Testing', [dockCardByCtrl('testfire'), chatTesting]],
     ['Promo', [dockCardByCtrl('lt'), dockCardByCtrl('ep'), dockCardByCtrl('psc'), dockCardByCtrl('tgo'), dockCardByCtrl('gb')]],
     ['Events', [dockCardByCtrl('stg'), funDrawer, dockCardByCtrl('gifttiers'), dockCardByCtrl('peek')]],
@@ -7494,6 +7594,7 @@ function organizeDockControls() {
   dockMoveFunConfig();
   dockSyncQuickToggles();
   dockSetChatCols(parseInt(localStorage.getItem('streamDockChatCols') || '1', 10));
+  if (typeof tboRenderActive === 'function') { tboRenderActive(); tboRenderRecent(); } // Timeout Box card is now in the DOM
   col.dataset.organized = 'true';
 }
 
