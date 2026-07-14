@@ -4723,6 +4723,23 @@ function _updateAblyCounter() {
    Usage: hit ↺ to list mics, pick one, hit Connect.                         */
 let _relayInterval = null, _relayStream = null, _relayGen = 0;
 
+// Mic waveform relay is OFF by default. It was the dominant Ably message cost
+// (the mic-freq firehose that exhausted the monthly quota). With it off the dock
+// publishes ZERO mic-freq messages and gift-bar shows its built-in synthetic
+// waveform instead. Re-enable the live mic only when you want it, from the
+// console: setMicRelay(true) then hit Connect.
+let _micRelayEnabled = false;
+window.setMicRelay = function (on) {
+  _micRelayEnabled = !!on;
+  if (!_micRelayEnabled) {
+    _relayGen++;                                  // kill any running relay
+    clearInterval(_relayInterval); _relayInterval = null;
+    if (_relayStream) { _relayStream.getTracks().forEach(t => t.stop()); _relayStream = null; }
+    _setRelayStatus(false);
+  }
+  return _micRelayEnabled;
+};
+
 function _setRelayStatus(connected) {
   const dot   = document.getElementById('audio-relay-dot');
   const label = document.getElementById('audio-relay-label');
@@ -4756,9 +4773,17 @@ async function populateAudioDevices() {
 /* Start (or restart) the relay with the currently selected device. */
 async function startRelayWithDevice() {
   const gen = ++_relayGen; // invalidates any in-flight reconnect loops
-  clearInterval(_relayInterval);
+  clearInterval(_relayInterval); _relayInterval = null;
   if (_relayStream) { _relayStream.getTracks().forEach(t => t.stop()); _relayStream = null; }
   _setRelayStatus(false);
+
+  if (!_micRelayEnabled) {
+    // Relay disabled → publish nothing (gift-bar uses its synthetic waveform).
+    // Run setMicRelay(true) in the console first if you want the live mic.
+    const label = document.getElementById('audio-relay-label');
+    if (label) { label.textContent = '🎙 off'; label.style.color = 'var(--txt-dim)'; }
+    return;
+  }
 
   if (!navigator.mediaDevices?.getUserMedia) return;
   const deviceId  = document.getElementById('audio-device-select')?.value || null;
