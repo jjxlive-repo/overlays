@@ -196,15 +196,15 @@
   #gift-float-layer { position: absolute; inset: 0; z-index: 64; overflow: visible; pointer-events: none; }
   .fj-gift-float {
     position: absolute; transform: translate(-50%, -50%);
-    text-align: center; white-space: nowrap;
+    text-align: center; white-space: nowrap; line-height: 1;
     animation: fjGiftFloat var(--float-duration, 1500ms) ease-out forwards;
   }
   .fj-gift-float-main {
-    font: 700 32px 'DM Sans', sans-serif; color: #fff;
+    font: 400 34px 'Boogaloo', sans-serif; letter-spacing: .5px; color: #fff;
     text-shadow: -3px -3px 0 #3B0764, 3px -3px 0 #3B0764, -3px 3px 0 #3B0764, 3px 3px 0 #3B0764, 0 5px 8px #000a;
   }
   .fj-gift-float-sub {
-    margin-top: 3px; font: 700 17px 'DM Sans', sans-serif; color: #F4D8FF;
+    margin-top: -2px; font: 400 18px 'Boogaloo', sans-serif; letter-spacing: .3px; color: #F4D8FF;
     text-shadow: 0 2px 4px #000, 0 0 5px #3B0764;
   }
   @keyframes fjGiftFloat {
@@ -2341,6 +2341,7 @@ function giftShowcaseLoop() {
 
 /* ── floating trigger text above Jamie's head (damage-number style) ── */
 let floatActive = [];
+let floatSlotSeq = 0;
 function showGiftFloat(mapping, username, rawGiftName) {
   const cfgF = CFG.visuals.giftFloatText;
   if (!cfgF.enabled) return;
@@ -2369,8 +2370,17 @@ function showGiftFloat(mapping, username, rawGiftName) {
   const withSender = cfgF.showSender && username && CFG.visuals.usernameEvents.gift;
   sub.textContent = withSender ? '@' + sanitizeName(username) + ' • ' + (rawGiftName || '') : (rawGiftName || '');
   el.appendChild(main); el.appendChild(sub);
-  const x = jamieRect.x + jamieRect.w / 2 + cfgF.xOffset;
-  const y = jamieRect.y + cfgF.yOffset - floatActive.length * 46;  /* stack concurrent popups upward */
+  /* each concurrent float gets its own rotating vertical slot — not just the
+     current array length, which plateaus at (maxVisible - 1) forever once
+     the buffer fills and the oldest keeps getting shifted out, which is why
+     everything past the first few used to land in the exact same spot —
+     plus a small alternating side jitter so near-simultaneous gifts read as
+     genuinely separate bubbles floating out of Jamie independently. */
+  const slot = floatSlotSeq % cfgF.maxVisible;
+  floatSlotSeq++;
+  const jitterX = (slot % 2 === 0 ? -1 : 1) * (14 + (slot % 3) * 8);
+  const x = jamieRect.x + jamieRect.w / 2 + cfgF.xOffset + jitterX;
+  const y = jamieRect.y + cfgF.yOffset - slot * 48;
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   el.style.setProperty('--float-duration', cfgF.durationMs + 'ms');
