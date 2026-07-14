@@ -4812,9 +4812,12 @@ ablyChannel.subscribe('event-promo', msg => {
 // persisted local sentences, and tick the countdown once per second.
 ablyChannel.subscribe('timeout-box-status', msg => tboOnStatus(msg.data || {}));
 tboLoad();
+tboCfgLoad();
 try { ablyChannel.publish('timeout-box-request', {}).catch(() => {}); } catch (e) {}
+try { tboCfgPublish(); } catch (e) {}
 setInterval(() => { if (document.getElementById('tbo-active')) tboRenderActive(); }, 1000);
 setInterval(tboRenderRecent, 4000);
+setTimeout(tboCfgRender, 400);
 
 // milk-full alert — DISABLED
 // ablyChannel.subscribe('milk-full', ...) — no-op
@@ -4838,6 +4841,7 @@ ably.connection.on(stateChange => {
     publishSplatCardLayout();
     publishOverlayToggles();
     publishLeagueSprintState();
+    try { tboCfgPublish(); } catch (e) {}
     document.getElementById('gift-bar-y-val').textContent = _giftBarY;
     ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
   } else if (s === 'connecting') {
@@ -7328,6 +7332,23 @@ function tboRenderActive() {
     root.appendChild(row);
   }
 }
+/* Box layout — balloon size + where they stack. Sliders publish `timeout-box-config`
+   to the timeout-box.html overlay (dock is authoritative; overlay persists last layout). */
+const TBO_CFG_LS = 'streamDock.timeoutBox.cfg.v1';
+let _tboCfg = { x: 540, y: 470, scale: 1, cols: 3 };
+function tboCfgLoad() { try { const c = JSON.parse(localStorage.getItem(TBO_CFG_LS) || 'null'); if (c) _tboCfg = Object.assign(_tboCfg, c); } catch (e) {} }
+function tboCfgSave() { try { localStorage.setItem(TBO_CFG_LS, JSON.stringify(_tboCfg)); } catch (e) {} }
+function tboCfgPublish() { if (typeof ablyChannel !== 'undefined' && ablyChannel) ablyChannel.publish('timeout-box-config', _tboCfg).catch(() => {}); }
+function tboCfgSet(k, v) { if (!isFinite(v)) return; _tboCfg[k] = v; tboCfgSave(); tboCfgPublish(); tboCfgRender(); }
+function tboCfgReset() { _tboCfg = { x: 540, y: 470, scale: 1, cols: 3 }; tboCfgSave(); tboCfgPublish(); tboCfgRender(); }
+function tboCfgRender() {
+  const txt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const sld = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
+  txt('tbo-cfg-scale-v', Math.round(_tboCfg.scale * 100) + '%'); sld('tbo-cfg-scale', _tboCfg.scale);
+  txt('tbo-cfg-cols-v', _tboCfg.cols);                          sld('tbo-cfg-cols', _tboCfg.cols);
+  txt('tbo-cfg-x-v', Math.round(_tboCfg.x) + 'px');             sld('tbo-cfg-x', _tboCfg.x);
+  txt('tbo-cfg-y-v', Math.round(_tboCfg.y) + 'px');             sld('tbo-cfg-y', _tboCfg.y);
+}
 function dockBuildTimeoutCard() {
   return dockMakeCard('timeout-box', 'Timeout Box', `
     <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">Float a chatter into the <code>timeout-box.html</code> overlay for N minutes. Type a name (recent chatters autocomplete) or paste one.</div>
@@ -7347,7 +7368,33 @@ function dockBuildTimeoutCard() {
       <span style="font-size:9px;color:var(--txt-dim);">IN TIMEOUT — <span id="tbo-active-n">0</span></span>
       <button class="tf-btn tf-btn-danger" style="padding:1px 8px;font-size:9px;" onclick="tboReleaseAll()">Free All</button>
     </div>
-    <div id="tbo-active" style="margin-top:2px;"></div>`);
+    <div id="tbo-active" style="margin-top:2px;"></div>
+    <div style="margin-top:8px;border-top:1px solid var(--border,#333);padding-top:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:9px;color:var(--txt-dim);font-weight:800;letter-spacing:.06em;">BOX LAYOUT</span>
+        <button class="tf-btn" style="padding:1px 8px;font-size:9px;" onclick="tboCfgReset()">Reset</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
+        <span style="width:60px;color:var(--txt-dim);">Size</span>
+        <input id="tbo-cfg-scale" type="range" min="0.4" max="1.7" step="0.05" value="1" style="flex:1;min-width:0;" oninput="tboCfgSet('scale', parseFloat(this.value))">
+        <span id="tbo-cfg-scale-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">100%</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
+        <span style="width:60px;color:var(--txt-dim);">Columns</span>
+        <input id="tbo-cfg-cols" type="range" min="1" max="6" step="1" value="3" style="flex:1;min-width:0;" oninput="tboCfgSet('cols', parseInt(this.value))">
+        <span id="tbo-cfg-cols-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">3</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
+        <span style="width:60px;color:var(--txt-dim);">Stack X</span>
+        <input id="tbo-cfg-x" type="range" min="120" max="960" step="5" value="540" style="flex:1;min-width:0;" oninput="tboCfgSet('x', parseInt(this.value))">
+        <span id="tbo-cfg-x-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">540px</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
+        <span style="width:60px;color:var(--txt-dim);">Stack Y</span>
+        <input id="tbo-cfg-y" type="range" min="120" max="1560" step="10" value="470" style="flex:1;min-width:0;" oninput="tboCfgSet('y', parseInt(this.value))">
+        <span id="tbo-cfg-y-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">470px</span>
+      </label>
+    </div>`);
 }
 
 function dockBuildQuickToggles() {
