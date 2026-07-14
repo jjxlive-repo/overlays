@@ -91,6 +91,21 @@ const FACES = ['cry', 'tantrum', 'sullen', 'welling', 'angry'];
 const INK = '#23052e';
 function pickFace() { return FACES[Math.floor(Math.random() * FACES.length)]; }
 
+// …and a random balloon color (body + matching name-pill palette), picked at spawn.
+const BALLOON_COLORS = [
+  { body: '#EF4444', plate: '#2a0808', plateTx: '#FECACA', plateStroke: '#F87171' }, // red
+  { body: '#3B82F6', plate: '#081026', plateTx: '#BFDBFE', plateStroke: '#60A5FA' }, // blue
+  { body: '#22C55E', plate: '#052e16', plateTx: '#BBF7D0', plateStroke: '#4ADE80' }, // green
+  { body: '#A855F7', plate: '#1e0a2e', plateTx: '#E9D5FF', plateStroke: '#C084FC' }, // purple
+  { body: '#EC4899', plate: '#2a0819', plateTx: '#FBCFE8', plateStroke: '#F472B6' }, // pink
+  { body: '#F97316', plate: '#2a1206', plateTx: '#FED7AA', plateStroke: '#FB923C' }, // orange
+  { body: '#14B8A6', plate: '#042f2a', plateTx: '#99F6E4', plateStroke: '#2DD4BF' }, // teal
+  { body: '#EAB308', plate: '#2a2206', plateTx: '#FEF08A', plateStroke: '#FACC15' }, // yellow
+  { body: '#06B6D4', plate: '#06272e', plateTx: '#A5F3FC', plateStroke: '#22D3EE' }, // cyan
+  { body: '#F43F5E', plate: '#2a0812', plateTx: '#FECDD3', plateStroke: '#FB7185' }  // rose
+];
+function pickColor() { return BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)]; }
+
 const STORAGE = 'timeoutBox.v1';
 const ENTER_K = 0.10, EXIT_MS = 1500;
 let people = [];   // {key, username, source, until, enterAt, exitAt, bumpAt, y, bx, targetX, targetY, slot, visible, bobPhase}
@@ -132,7 +147,7 @@ function addPerson(username, source, seconds, absUntil, silent) {
   else {
     p = { key, username: u, source: s, until, enterAt: performance.now(), exitAt: 0, bumpAt: -1e9,
           y: H + 220, bx: BOX_X, targetX: BOX_X, targetY: H + 220, slot: -1, visible: false,
-          bobPhase: Math.random() * 6.283, face: pickFace() };
+          bobPhase: Math.random() * 6.283, face: pickFace(), color: pickColor() };
     people.push(p);
   }
   if (!silent) { save(); scheduleStatus(); }
@@ -316,7 +331,7 @@ function drawFace(ctx, r, face, t, ph, bodyCol) {
   ctx.restore();
 }
 function drawSad(ctx, x, y, r, p, squish, bob) {
-  const c = pal(p.source);
+  const c = p.color || pal(p.source);
   ctx.save();
   // tantrum balloons shake side to side (but not while deflating away)
   const shx = (p.face === 'tantrum' && squish < 0.05) ? Math.sin(performance.now() / 45 + (p.bobPhase || 0)) * r * 0.06 : 0;
@@ -343,7 +358,7 @@ function drawSad(ctx, x, y, r, p, squish, bob) {
   ctx.restore();
 }
 function drawLabel(ctx, cx, cy, p, alpha) {
-  const c = pal(p.source);
+  const c = p.color || pal(p.source);
   ctx.save();
   ctx.globalAlpha = alpha;
   // name pill (with drop shadow so it reads over video)
