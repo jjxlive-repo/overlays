@@ -2459,11 +2459,20 @@ function tick(now) {
   lastFrame = now;
   if (dt > 0.05) dt = 0.05;  /* clamp after tab-hidden gaps */
   if (J.paused || J.hidden) return;
-  /* growth decay: shrink slowly back toward 1x (layout refresh throttled to ~1/s) */
+  /* growth decay: shrink slowly back toward 1x (layout refresh throttled to ~1/s).
+     Skip the refresh while Heart Me/Jackpot are running — they hand-manage
+     jamieRect.x/jamieEl's transform (the Heart Me run-to-center-and-back
+     tween, the Jackpot scale-up), and this periodic applyLayout() would
+     silently reset that mid-sequence, snapping Jamie back to his resting
+     position and making the run look like it glitches/restarts. Both
+     already call applyLayout() themselves once they finish. */
   if (CFG.growth.enabled && growth > 1 && CFG.growth.decayPerMinute > 0) {
     growth = Math.max(1, growth - CFG.growth.decayPerMinute * dt / 60);
     growthDecayAccum += dt;
-    if (growthDecayAccum >= 1) { growthDecayAccum = 0; saveGrowth(); applyLayout(); }
+    if (growthDecayAccum >= 1) {
+      growthDecayAccum = 0; saveGrowth();
+      if (!heartMeActive && !jackpotActive) applyLayout();
+    }
   }
   const active = objects.filter(o => !o.captured);
   for (const o of objects) stepObject(o, dt, now);
