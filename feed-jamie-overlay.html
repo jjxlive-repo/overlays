@@ -159,14 +159,10 @@
 
   /* milestone goal bars — cumulative like/comment totals counting up toward a
      configurable target that fires an action (Heart Me, Jackpot, an item) */
-  #milestone-bars {
-    position: absolute; z-index: 58; transform: translateX(-50%);
-    display: flex; flex-direction: column; gap: 8px; align-items: center;
-    opacity: 0; transition: opacity .35s;
-  }
+  #milestone-bars { position: absolute; inset: 0; z-index: 58; pointer-events: none; }
   .milestone-bar {
-    background: rgba(30, 8, 56, 0.6); border: 2px solid #C084FC66; border-radius: 10px;
-    padding: 6px 14px; min-width: 240px;
+    position: absolute; background: rgba(30, 8, 56, 0.6); border: 2px solid #C084FC66; border-radius: 10px;
+    padding: 6px 14px; min-width: 240px; transition: left .3s ease-out, top .3s ease-out;
   }
   .milestone-bar-label {
     font: 400 20px 'Boogaloo', sans-serif; letter-spacing: .4px; color: #fff;
@@ -333,7 +329,7 @@ const FJ_DEFAULT_CONFIG = {
     cornerRewardMultiplier: 1, squashStretch: true
   },
   events: {
-    likesPerTreat: 50, likeQueueCap: 2,
+    likesPerTreatEnabled: true, likesPerTreat: 50, likeQueueCap: 2,
     commentCooldown: 4, perUserCooldown: 10,
     genericSpawnChance: 0.05, keywordOnly: false,
     keywords: {
@@ -380,14 +376,14 @@ const FJ_DEFAULT_CONFIG = {
        it keeps going without you having to reconfigure it mid-stream. */
     milestones: {
       enabled: true,
-      x: 540, y: 1790, scale: 1,
+      scale: 1, /* shared size for every bar; position is set per-goal below */
       goals: [
         { id: 'goal-likes', label: 'Like Goal', counter: 'likes', target: 1000, baseValue: 0,
           action: 'heartme', autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
-          enabled: true, completed: false },
+          enabled: true, completed: false, x: 540, y: 1740 },
         { id: 'goal-comments', label: 'Comment Goal', counter: 'comments', target: 50, baseValue: 0,
           action: 'jackpot', autoEscalate: true, escalateMode: 'multiply', escalateAmount: 50, escalateFactor: 2,
-          enabled: true, completed: false }
+          enabled: true, completed: false, x: 540, y: 1840 }
       ]
     }
   },
@@ -485,6 +481,7 @@ function fjValidateConfig() {
   c.floor.y = Math.min(Math.max(+c.floor.y || 500, 180), 1500);
   c.movement.maxObjects = Math.min(Math.max(Math.round(+c.movement.maxObjects || 1), 1), 3);
   c.movement.showerMaxObjects = Math.min(Math.max(Math.round(+c.movement.showerMaxObjects || 8), 3), 22);
+  c.events.likesPerTreatEnabled = c.events.likesPerTreatEnabled !== false;
   c.events.likesPerTreat = Math.min(Math.max(Math.round(+c.events.likesPerTreat || 50), 10), 1000);
   c.jamie.width = Math.min(Math.max(+c.jamie.width || 260, 80), 600);
   if (!['ellipse', 'rect'].includes(c.reachZone.shape)) c.reachZone.shape = 'ellipse';
@@ -594,11 +591,9 @@ function fjValidateConfig() {
   }
   const ms = c.events.milestones;
   ms.enabled = ms.enabled !== false;
-  ms.x = Math.min(Math.max(num(ms.x, 540), 0), 1080);
-  ms.y = Math.min(Math.max(num(ms.y, 1790), 0), 1920);
   ms.scale = Math.min(Math.max(num(ms.scale, 1), 0.4), 2.5);
   if (!Array.isArray(ms.goals)) ms.goals = [];
-  for (const g of ms.goals) {
+  ms.goals.forEach((g, i) => {
     g.id = g.id || ('goal-' + Math.random().toString(36).slice(2, 9));
     g.label = String(g.label || '').slice(0, 40);
     g.counter = ['likes', 'comments'].includes(g.counter) ? g.counter : 'likes';
@@ -611,7 +606,11 @@ function fjValidateConfig() {
     g.escalateFactor = Math.min(Math.max(num(g.escalateFactor, 2), 1.05), 20);
     g.enabled = g.enabled !== false;
     g.completed = !!g.completed;
-  }
+    /* each bar is independently positioned; stagger the fallback so newly
+       added goals don't all land exactly on top of each other by default */
+    g.x = Math.min(Math.max(num(g.x, 540), 0), 1080);
+    g.y = Math.min(Math.max(num(g.y, 1740 + i * 70), 0), 1920);
+  });
 }
 /* size multiplier for a gift-spawned item: log curve from 1x (1 coin) up to
    maxScale (at coinsForMax coins) — big gifts read big without a 30k-coin
@@ -911,8 +910,6 @@ function renderMilestoneBars() {
   const ms = CFG.events.milestones;
   const goals = (ms && ms.enabled) ? (ms.goals || []).filter(g => g.enabled && !g.completed) : [];
   el.innerHTML = '';
-  if (!goals.length) { el.style.opacity = 0; return; }
-  el.style.opacity = 1;
   for (const g of goals) {
     const total = milestoneTotals[g.counter] || 0;
     const base = g.baseValue || 0;
@@ -920,6 +917,11 @@ function renderMilestoneBars() {
     const pct = Math.max(0, Math.min(100, ((total - base) / span) * 100));
     const bar = document.createElement('div');
     bar.className = 'milestone-bar';
+    /* each goal is independently positioned (not stacked) so likes/comments
+       bars can sit anywhere on screen relative to each other */
+    bar.style.left = (g.x ?? 540) + 'px';
+    bar.style.top = (g.y ?? 1790) + 'px';
+    bar.style.transform = `translate(-50%, -50%) scale(${ms.scale || 1})`;
     const label = document.createElement('div');
     label.className = 'milestone-bar-label';
     label.textContent = g.label || (g.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
@@ -1453,10 +1455,7 @@ function applyLayout() {
   el.style.left = CFG.visuals.eventLabelX + 'px';
   el.style.top = CFG.visuals.eventLabelY + 'px';
   el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
-  const mb = $('milestone-bars');
-  mb.style.left = CFG.events.milestones.x + 'px';
-  mb.style.top = CFG.events.milestones.y + 'px';
-  mb.style.transform = `translateX(-50%) scale(${CFG.events.milestones.scale})`;
+  renderMilestoneBars(); /* each bar is positioned independently — see its own x/y */
   applyGiftShowcaseLayout();
 }
 
@@ -2162,13 +2161,17 @@ function handleEvent(evt) {
   switch (type) {
     case 'like': {
       const likeN = Math.max(1, Math.round(+evt.count || 1));
-      likeAccumulator += likeN;
+      /* milestone totals always track likes regardless of the per-treat
+         mechanic below, so goals keep working even with it turned off */
       milestoneTotals.likes += likeN;
-      while (likeAccumulator >= CFG.events.likesPerTreat) {
-        likeAccumulator -= CFG.events.likesPerTreat;
-        instantFeed(pickTreat(), { sourceEvent: 'like' });
+      if (CFG.events.likesPerTreatEnabled) {
+        likeAccumulator += likeN;
+        while (likeAccumulator >= CFG.events.likesPerTreat) {
+          likeAccumulator -= CFG.events.likesPerTreat;
+          instantFeed(pickTreat(), { sourceEvent: 'like' });
+        }
+        updateLikeMeter();
       }
-      updateLikeMeter();
       checkMilestones();
       break;
     }
@@ -2772,7 +2775,7 @@ function processMessage(msg) {
     case 'CONFIG_UPDATE':
       CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), msg.data || {});
       fjValidateConfig();
-      applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar(); renderMilestoneBars();
+      applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar();
       break;
     case 'SPAWN_ITEM':
       if (msg.data && ITEM_DEFS[msg.data.itemType]) spawnObject(msg.data.itemType, msg.data.options || {});
@@ -2955,7 +2958,6 @@ showFrame('jamie-idle-01.png', { instant: true });
 setJamieState('IDLE');
 promptLoop();
 giftShowcaseLoop();
-renderMilestoneBars();
 initComms();
 fjLoadAssets();
 rafId = requestAnimationFrame(tick);
