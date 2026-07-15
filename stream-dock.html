@@ -4888,6 +4888,13 @@ ably.connection.on(stateChange => {
     publishOverlayToggles();
     publishLeagueSprintState();
     try { tboCfgPublish(); } catch (e) {}
+    // Re-assert persisted on/off states on every (re)connect — not just the button's own
+    // color, the actual overlay-side visibility. Without this, an "off" set before a dock
+    // reload/reconnect only looked off in the dock UI while the overlay kept its last
+    // (possibly stale) state, which is how a hidden panel could "come back" on its own.
+    try { ablyChannel.publish('splat-card-layout', { hidden: !_dockSplatVisible }).catch(() => {}); } catch (e) {}
+    try { ablyChannel.publish('gift-animation-config', { enabled: _dockGiftAnimVisible }).catch(() => {}); } catch (e) {}
+    try { gbPublishSlideWindow(false); } catch (e) {}
     document.getElementById('gift-bar-y-val').textContent = _giftBarY;
     ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
   } else if (s === 'connecting') {
@@ -6564,8 +6571,9 @@ function pushMissionStrip() {
   if (input && input.value.trim()) _missionStripText = lsCleanDisplayText(input.value.trim());
   syncMissionStripInputs(_missionStripText);
   localStorage.setItem('missionStripText', _missionStripText);
-  _missionStripVisible = true;
-  localStorage.setItem('missionStripVisible', '1');
+  // Editing text should NOT silently re-show a strip you deliberately hid — that was
+  // making "mission strip keeps showing up" whenever the text was touched afterward.
+  // Visibility only changes via the explicit Show/Hide controls.
   publishMissionStrip();
   dockSyncQuickToggles?.();
   doFlash('purple');
@@ -7526,21 +7534,25 @@ function dockSyncQuickToggles() {
   dockSetToggleState('gift-anim', !!_dockGiftAnimVisible);
   dockSetToggleState('crowd-glass', !!_dockCrowdGlassVisible);
   dockSetToggleState('new-here', !!_dockNewHereVisible);
-  dockSetToggleState('gifter-highlight', !!_dockGifterHighlightVisible);
-  dockSetToggleState('gift-bar', !!_dockGiftBarVisible);
+  dockSetToggleState('gifter-highlight', !!_gifterPanelVisible);
+  dockSetToggleState('gift-bar', !!_gifterPanelVisible);
   dockSetToggleState('top-gifters', !!_dockTopGiftersVisible);
   dockSetToggleState('bait', !!_baitVisible);
   dockSetToggleState('team-timing', !!_ttbConfig?.enabled);
 }
 
 let _streamBarEnabled = localStorage.getItem('streamBarEnabled') !== 'false';
-let _dockSplatVisible = true;
-let _dockGiftAnimVisible = true;
+let _dockSplatVisible = localStorage.getItem('dockSplatVisible') !== '0';
+let _dockGiftAnimVisible = localStorage.getItem('dockGiftAnimVisible') !== '0';
 let _dockCrowdGlassVisible = localStorage.getItem('dockCrowdGlassVisible') === '1';
 let _dockNewHereVisible = localStorage.getItem('dockNewHereVisible') === '1';
-let _dockGifterHighlightVisible = false;
-let _dockGiftBarVisible = false;
-let _dockTopGiftersVisible = false;
+let _dockTopGiftersVisible = localStorage.getItem('dockTopGiftersVisible') === '1';
+// "Gifter Highlight" and "Top Camera Gifter Panel" are two dock buttons that both
+// show/hide the SAME overlay panel (#bar-info in gift-bar.html, gated by the single
+// `gifter-slides-config.enabled` flag). They used to track separate booleans, so
+// toggling one could silently get overridden by a stale publish from the other —
+// one symptom of "off doesn't stick". Unified into one canonical, persisted flag.
+let _gifterPanelVisible = localStorage.getItem('gifterPanelVisible') === '1';
 
 function dockToggleStreamBar() {
   _streamBarEnabled = !_streamBarEnabled;
@@ -7552,16 +7564,12 @@ function dockToggleStreamBar() {
     }
     if (_dockSplatVisible) {
       _dockSplatVisible = false;
+      localStorage.setItem('dockSplatVisible', '0');
       if (ablyChannel) ablyChannel.publish('splat-card-layout', { hidden:true }).catch(() => {});
       publishLeagueSprintVisual({ action:'idle', text:'' });
     }
-    if (_dockGiftBarVisible) {
-      _dockGiftBarVisible = false;
-      gbClearBar();
-    }
-    if (_dockGifterHighlightVisible) {
-      _dockGifterHighlightVisible = false;
-      if (ablyChannel) ablyChannel.publish('gifter-slides-config', { enabled: false }).catch(() => {});
+    if (_gifterPanelVisible) {
+      setGifterPanelVisible(false);
       gbUnfeature();
     }
     if (_ttbConfig?.enabled) ttbDockSetEnabled(false);
@@ -7589,6 +7597,7 @@ function dockToggleSplatCards() {
     publishOverlayToggles();
   }
   _dockSplatVisible = !_dockSplatVisible;
+  localStorage.setItem('dockSplatVisible', _dockSplatVisible ? '1' : '0');
   publishLeagueSprintVisual({ action:_dockSplatVisible ? 'phase' : 'idle', phase:_lsPhase, text:_dockSplatVisible ? undefined : '' });
   if (ablyChannel) ablyChannel.publish('splat-card-layout', { hidden: !_dockSplatVisible }).catch(() => {});
   doFlash(_dockSplatVisible ? 'green' : 'red');
@@ -7596,6 +7605,7 @@ function dockToggleSplatCards() {
 
 function dockToggleGiftAnimations() {
   _dockGiftAnimVisible = !_dockGiftAnimVisible;
+  localStorage.setItem('dockGiftAnimVisible', _dockGiftAnimVisible ? '1' : '0');
   if (ablyChannel) ablyChannel.publish('gift-animation-config', { enabled:_dockGiftAnimVisible }).catch(() => {});
   doFlash(_dockGiftAnimVisible ? 'green' : 'red');
 }
@@ -7622,18 +7632,25 @@ function dockToggleCrowdGlass() {
   doFlash(_dockCrowdGlassVisible ? 'green' : 'red');
 }
 
+// "Gifter Highlight" and "Top Camera Gifter Panel" both drive the same overlay panel
+// (see _gifterPanelVisible declaration above) — route both through one setter so
+// they can never disagree, and so "off" always publishes enabled:false, which is
+// what makes it stick against a real gift event repopulating the panel right after.
+function setGifterPanelVisible(on) {
+  _gifterPanelVisible = !!on;
+  localStorage.setItem('gifterPanelVisible', _gifterPanelVisible ? '1' : '0');
+  gbPublishSlideWindow(false); // publishes gifter-slides-config { enabled: _gifterPanelVisible, ... }
+}
+
 function dockToggleGifterHighlight() {
   if (!_streamBarEnabled) {
     _streamBarEnabled = true;
     publishOverlayToggles();
   }
-  _dockGifterHighlightVisible = !_dockGifterHighlightVisible;
-  // Publish a persistent on/off switch — a one-time clear isn't enough because a real gift
-  // event can immediately repopulate the overlay's leaderboard slides right after.
-  gbPublishSlideWindow(false);
-  if (_dockGifterHighlightVisible) gbRefresh();
+  setGifterPanelVisible(!_gifterPanelVisible);
+  if (_gifterPanelVisible) gbRefresh();
   else gbUnfeature();
-  doFlash(_dockGifterHighlightVisible ? 'green' : 'red');
+  doFlash(_gifterPanelVisible ? 'green' : 'red');
 }
 
 function dockToggleGiftBar() {
@@ -7641,14 +7658,15 @@ function dockToggleGiftBar() {
     _streamBarEnabled = true;
     publishOverlayToggles();
   }
-  _dockGiftBarVisible = !_dockGiftBarVisible;
-  if (_dockGiftBarVisible) gbTestBar();
+  setGifterPanelVisible(!_gifterPanelVisible);
+  if (_gifterPanelVisible) gbTestBar();
   else gbClearGifterSlide();
-  doFlash(_dockGiftBarVisible ? 'green' : 'red');
+  doFlash(_gifterPanelVisible ? 'green' : 'red');
 }
 
 function dockToggleTopGifters() {
   _dockTopGiftersVisible = !_dockTopGiftersVisible;
+  localStorage.setItem('dockTopGiftersVisible', _dockTopGiftersVisible ? '1' : '0');
   if (_dockTopGiftersVisible) qcTGOShow();
   else qcTGOHide();
 }
@@ -7844,7 +7862,7 @@ function gbPublishSlideWindow(flash = true) {
   localStorage.setItem('gbSlideH', _gbSlideH);
   if (ablyChannel) {
     ablyChannel.publish('gifter-slides-config', {
-      enabled: _dockGifterHighlightVisible,
+      enabled: _gifterPanelVisible,
       x: _gbSlideX,
       y: _gbSlideY,
       w: _gbSlideW,
