@@ -427,9 +427,20 @@ function frame() {
 }
 
 // ── Ably ─────────────────────────────────────────────────────────
+// Ably delivers every message on a channel to every attached client regardless
+// of which named events that client has a handler for — subscribing to specific
+// event names doesn't reduce delivery cost, only fully detaching the whole
+// channel does. A second, tiny, always-attached channel ('timeout-box-toggle')
+// carries only the on/off command so this overlay can hear "turn back on" while
+// fully detached from the busy shared channel. Defaults to ATTACHED (matches
+// this overlay's original always-on behavior) until the dock explicitly says
+// off — active timeouts keep counting down (their `until` is a real timestamp)
+// even while hidden, they just can't receive new add/release commands until
+// re-attached, same tradeoff as New Here's moderation-goes-idle-while-off.
+let _tboxAttached = false;
 function scheduleStatus() { if (_statusTimer) return; _statusTimer = setTimeout(() => { _statusTimer = null; publishStatus(); }, 250); }
 function publishStatus() {
-  if (!ch) return;
+  if (!ch || !_tboxAttached) return;
   ch.publish('timeout-box-status', { people: activePeople().map(p => ({ username: p.username, source: p.source, until: p.until })) }).catch(() => {});
 }
 function connect() {
@@ -443,10 +454,29 @@ function connect() {
   });
   ch.subscribe('timeout-box-config', msg => applyCfg(msg.data || {}));
   ch.subscribe('timeout-box-request', () => publishStatus());
+
+  function attachMain() {
+    if (_tboxAttached) return;
+    _tboxAttached = true;
+    canvas.style.display = '';
+    ch.attach().catch(() => {});
+    publishStatus();
+  }
+  function detachMain() {
+    _tboxAttached = false;
+    canvas.style.display = 'none';
+    ch.detach().catch(() => {});
+  }
+  const toggleCh = client.channels.get('timeout-box-toggle');
+  toggleCh.subscribe('set', msg => { if (msg.data && msg.data.enabled === false) detachMain(); else attachMain(); });
+
   const dot = document.getElementById('conn');
   client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
-  client.connection.on('connected', () => publishStatus());
-  window.__timeoutBox = { get people() { return people; }, add: addPerson, release: releasePerson, releaseAll };
+  client.connection.on('connected', () => {
+    attachMain(); // default on — preserves this overlay's original always-on behavior
+    toggleCh.publish('request', {}).catch(() => {}); // then ask the dock for its real state, in case it's off
+  });
+  window.__timeoutBox = { get people() { return people; }, add: addPerson, release: releasePerson, releaseAll, get attached() { return _tboxAttached; } };
 }
 
 load();

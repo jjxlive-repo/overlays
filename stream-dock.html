@@ -4379,11 +4379,15 @@ const ablyChannel = ably.channels.get(ABLY_CH);
 // so those overlays need a separate tiny channel to hear "turn back on" while detached.
 const nhToggleChannel = ably.channels.get('new-here-toggle');
 const cgToggleChannel = ably.channels.get('crowd-glass-toggle');
+const tboxToggleChannel = ably.channels.get('timeout-box-toggle');
 nhToggleChannel.subscribe('request', () => {
   nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {});
 });
 cgToggleChannel.subscribe('request', () => {
   cgToggleChannel.publish('set', { enabled: _dockCrowdGlassVisible }).catch(() => {});
+});
+tboxToggleChannel.subscribe('request', () => {
+  tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {});
 });
 
 // NEW HERE overlay connection — ping on load, show LIVE/offline status
@@ -4858,6 +4862,7 @@ ably.connection.on(stateChange => {
     try { gbPublishSlideWindow(false); } catch (e) {}
     try { nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {}); } catch (e) {}
     try { cgToggleChannel.publish('set', { enabled: _dockCrowdGlassVisible }).catch(() => {}); } catch (e) {}
+    try { tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {}); } catch (e) {}
     document.getElementById('gift-bar-y-val').textContent = _giftBarY;
     ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
   } else if (s === 'connecting') {
@@ -7442,6 +7447,7 @@ function dockBuildQuickToggles() {
       ${dockToggleHtml('Gifter Highlight', "dockQuickToggle('gifter-highlight')", 'gifter-highlight')}
       ${dockToggleHtml('Top Camera Gifter Panel', "dockQuickToggle('gift-bar')", 'gift-bar')}
       ${dockToggleHtml('Top Gifters', "dockQuickToggle('top-gifters')", 'top-gifters')}
+      ${dockToggleHtml('Timeout Box', "dockQuickToggle('timeout-box')", 'timeout-box')}
       ${dockToggleHtml('Bait Card', "dockQuickToggle('bait')", 'bait')}
       ${dockToggleHtml('Team Timing', "dockQuickToggle('team-timing')", 'team-timing')}
     </div>`);
@@ -7466,6 +7472,7 @@ function dockQuickToggle(name) {
     case 'gifter-highlight': dockToggleGifterHighlight(); break;
     case 'gift-bar': dockToggleGiftBar(); break;
     case 'top-gifters': dockToggleTopGifters(); break;
+    case 'timeout-box': dockToggleTimeoutBoxOverlay(); break;
     case 'bait': qcToggleBait(); break;
     case 'team-timing': ttbDockSetEnabled(!_ttbConfig.enabled); break;
   }
@@ -7500,6 +7507,7 @@ function dockSyncQuickToggles() {
   dockSetToggleState('gifter-highlight', !!_gifterPanelVisible);
   dockSetToggleState('gift-bar', !!_gifterPanelVisible);
   dockSetToggleState('top-gifters', !!_dockTopGiftersVisible);
+  dockSetToggleState('timeout-box', !!_dockTimeoutBoxVisible);
   dockSetToggleState('bait', !!_baitVisible);
   dockSetToggleState('team-timing', !!_ttbConfig?.enabled);
 }
@@ -7510,6 +7518,12 @@ let _dockGiftAnimVisible = localStorage.getItem('dockGiftAnimVisible') !== '0';
 let _dockCrowdGlassVisible = localStorage.getItem('dockCrowdGlassVisible') === '1';
 let _dockNewHereVisible = localStorage.getItem('dockNewHereVisible') === '1';
 let _dockTopGiftersVisible = localStorage.getItem('dockTopGiftersVisible') === '1';
+// Defaults ON (unlike New Here/Crowd Glass, which default off) — this preserves
+// timeout-box.html's original always-on behavior for anyone who hasn't touched
+// this new toggle yet. Detaches from the shared channel when off (see
+// timeout-box.html's attachMain/detachMain) — real zero Ably cost while hidden,
+// same as New Here/Crowd Glass.
+let _dockTimeoutBoxVisible = localStorage.getItem('dockTimeoutBoxVisible') !== '0';
 // "Gifter Highlight" and "Top Camera Gifter Panel" are two dock buttons that both
 // show/hide the SAME overlay panel (#bar-info in gift-bar.html, gated by the single
 // `gifter-slides-config.enabled` flag). They used to track separate booleans, so
@@ -7640,6 +7654,16 @@ function dockToggleTopGifters() {
   localStorage.setItem('dockTopGiftersVisible', _dockTopGiftersVisible ? '1' : '0');
   if (_dockTopGiftersVisible) qcTGOShow();
   else qcTGOHide();
+}
+
+function dockToggleTimeoutBoxOverlay() {
+  _dockTimeoutBoxVisible = !_dockTimeoutBoxVisible;
+  localStorage.setItem('dockTimeoutBoxVisible', _dockTimeoutBoxVisible ? '1' : '0');
+  // The on/off command must go over the always-attached toggle channel — the
+  // overlay fully detaches from ablyChannel while off, so it would never see
+  // this on the shared channel (see timeout-box.html's attachMain/detachMain).
+  tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {});
+  doFlash(_dockTimeoutBoxVisible ? 'green' : 'red');
 }
 
 function dockTestChatCommand() {
