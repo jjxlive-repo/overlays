@@ -2040,6 +2040,53 @@ function checkReachZone(obj, now) {
   }
   if (inside) captureObject(obj);
 }
+/* Pluck-steal: the gesture engine (gesture-cam.html) publishes a one-shot
+   'gesture-event' {type:'pluck', x, y} when the streamer pinches on camera.
+   If a live treat is near that point, the STREAMER takes it instead of Jamie —
+   it zips to the pinch point, shrinks, sparkles, and never reaches the dog. */
+function pluckSteal(px, py) {
+  let best = null, bestD = 180; // grab radius in canvas px
+  for (const o of objects) {
+    if (o.captured || o.paused) continue;
+    const d = Math.hypot(o.x + o.w / 2 - px, o.y + o.h / 2 - py);
+    if (d < bestD) { bestD = d; best = o; }
+  }
+  if (!best) return;
+  const obj = best;
+  obj.captured = true; /* stop physics + take it out of Jamie's reach checks */
+  obj.el.classList.remove('jackpot-glow');
+  playSound(obj.def.catchSound);
+  const fromX = obj.x, fromY = obj.y;
+  const toX = px - obj.w / 2, toY = py - obj.h / 2;
+  const start = performance.now(), dur = 320;
+  /* same rAF-stall safety net captureObject uses */
+  setTimeout(() => { if (!obj.finished) { obj.finished = true; removeObject(obj); drainQueue(); } }, dur + 1500);
+  const ease = t => 1 - Math.pow(1 - t, 2.2);
+  (function animSteal(nowT) {
+    const t = Math.min(1, (nowT - start) / dur);
+    const e = ease(t);
+    obj.x = fromX + (toX - fromX) * e;
+    obj.y = fromY + (toY - fromY) * e;
+    obj.el.style.transform = `translate3d(${obj.x}px, ${obj.y}px, 0) rotate(${obj.rotation * (1 - e)}deg) scale(${1 - e * 0.75})`;
+    if (t < 1) requestAnimationFrame(animSteal);
+    else {
+      if (obj.finished) return;
+      obj.finished = true;
+      spawnFx('sparkle', px, py, 7);
+      const tag = document.createElement('div');
+      tag.className = 'fj-obj-tag';
+      tag.textContent = 'YOURS! 🤏';
+      tag.style.cssText = `position:absolute;left:${px - 60}px;top:${py - 70}px;transition:transform 1s ease, opacity 1s ease;`;
+      objectsLayer.appendChild(tag);
+      requestAnimationFrame(() => { tag.style.transform = 'translateY(-60px)'; tag.style.opacity = '0'; });
+      setTimeout(() => tag.remove(), 1100);
+      removeObject(obj);
+      drainQueue();
+      if (!objects.length && ['TRACKING', 'ANTICIPATION'].includes(J.state)) setJamieState('IDLE');
+    }
+  })(start);
+}
+
 function captureObject(obj) {
   if (obj.captured) return;
   obj.captured = true;
@@ -2899,6 +2946,11 @@ function initComms() {
       ablyChannel.subscribe('gift-alert', m => {
         const d = m.data || {};
         if (d.type === 'youtube_superchat' && (+d.amount || 0) > 0) handleSuperchat(d);
+      });
+      /* gesture engine: streamer pinched on camera → steal the nearest treat for them */
+      ablyChannel.subscribe('gesture-event', m => {
+        const d = m.data || {};
+        if (d.type === 'pluck') pluckSteal(Number(d.x) || 540, Number(d.y) || 960);
       });
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
