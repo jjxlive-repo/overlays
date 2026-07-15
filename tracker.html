@@ -2650,6 +2650,29 @@ function formatRawAmount(rawAmount, type) {
     ablyClient  = new Ably.Realtime({ key: ABLY_KEY });
     ablyChannel = ablyClient.channels.get(ABLY_CHANNEL);
 
+    // ── Hard daily publish cap — shared safety net with stream-dock.html ──
+    // Ably has no spend cap on paid plans (overage is just billed, with an email
+    // notification after the fact), so this localStorage-persisted guard is what
+    // actually bounds worst-case cost from a bug/runaway loop. Same key + cap as
+    // stream-dock.html's guard so the two share one daily budget rather than each
+    // getting their own 400,000 (this file publishes gift-alert/giftr — real
+    // money events — so it gets the same protection, not a separate allowance).
+    (function installAblyDailyCapGuard(channel) {
+      const CAP = 400000, LS_KEY = 'ablyDailyPublishGuard.v1';
+      const today = () => new Date().toISOString().slice(0, 10);
+      const load = () => { let s = null; try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {} const t = today(); return (!s || s.day !== t) ? { day: t, count: 0, tripped: false } : s; };
+      const save = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) {} };
+      const orig = channel.publish.bind(channel);
+      channel.publish = function(...args) {
+        let s = load();
+        if (s.tripped) return Promise.resolve();
+        s.count++;
+        if (s.count > CAP) { s.tripped = true; save(s); console.error('[Ably Safety] Daily publish cap reached — tracker.html publishing halted.'); return Promise.resolve(); }
+        save(s);
+        return orig(...args);
+      };
+    })(ablyChannel);
+
     const dot = document.createElement('div');
     dot.id = 'ably-dot';
     Object.assign(dot.style, {

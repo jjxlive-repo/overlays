@@ -3205,6 +3205,19 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
       <span style="font-size:9px;color:var(--txt-dim);">·</span>
       <span id="ably-hour-pct" style="font-size:9px;color:var(--green);" title="Actual messages sent in the last 60 minutes — catches raid/gift-bomb bursts the monthly average smooths over">0/hr</span>
     </div>
+    <!-- Hard daily publish cap — persisted (survives reload), independent of Ably's own
+         billing (which has no spend cap on paid plans). Once today's real publish count
+         crosses this, ALL Ably publishing from this page stops dead until you hit Resume
+         or the day rolls over. This is what makes a runaway bug/loop cost-bounded instead
+         of a surprise bill. -->
+    <div class="splat-bar-row" style="justify-content:center;padding:1px 0;gap:6px;">
+      <span style="font-size:9px;color:var(--txt-dim);">🛡 Daily cap:</span>
+      <span id="ably-cap-count" style="font-size:9px;color:var(--txt-dim);">0 / 400,000</span>
+    </div>
+    <div id="ably-cap-banner" style="display:none;justify-content:space-between;align-items:center;gap:8px;padding:5px 8px;margin:2px 0;background:rgba(239,68,68,0.16);border:1px solid var(--danger,#ef4444);border-radius:6px;">
+      <span style="font-size:9px;color:var(--danger,#ef4444);font-weight:800;">⛔ Daily Ably cap reached — publishing STOPPED to prevent runaway cost. Check for a bug before resuming.</span>
+      <button class="tf-btn tf-btn-danger" style="padding:2px 8px;font-size:9px;white-space:nowrap;" onclick="ablyCapResume()">Resume</button>
+    </div>
     <!-- Viewer count debug — shows last VC event received from SSN -->
     <div class="splat-bar-row" style="justify-content:center;padding:1px 0;">
       <span id="vc-debug" style="font-size:8px;color:var(--txt-dim);font-family:monospace;">vc: waiting for SSN viewer event…</span>
@@ -4666,19 +4679,88 @@ function ttbLoadCmd() {
   setTimeout(ttbPublishConfig, 0);
 })();
 
-/* ══ Ably usage counter ══
+/* ══ Ably usage counter + hard daily spend-safety cap ══
    Wraps every publish() call to track session msgs + project monthly usage.
-   Free tier = 6M msgs/month (4 hrs/day × 30 days baseline).               */
+   Free tier = 6M msgs/month (4 hrs/day × 30 days baseline).
+
+   Ably has NO built-in spend cap on paid plans — verified against their docs:
+   overage past package limits is just billed automatically, with an email
+   notification sent AFTER the fact, not a preventive block. So the only thing
+   that makes a bug (an accidental publish loop, a re-triggered mic-freq-style
+   firehose, anything) cost-bounded instead of a surprise bill is a hard stop
+   built into this code. ABLY_DAILY_PUBLISH_CAP below is that stop: it's
+   persisted to localStorage (survives a page reload/OBS source restart, unlike
+   the session-only counters above), and once crossed, EVERY publish call from
+   this page is silently dropped — no network call, no cost — until you hit
+   the Resume button or the calendar day rolls over. At Ably's $2.50/million
+   rate, 400,000/day caps worst-case message overage at ~$1.00/day. */
 let _ablyMsgCount  = 0;
 let _ablySessionStart = Date.now();
 let _ablyRecentTimestamps = []; // rolling log of publish times, pruned to the trailing hour
+
+const ABLY_DAILY_PUBLISH_CAP = 400000;
+const ABLY_CAP_LS_KEY = 'ablyDailyPublishGuard.v1';
+function _ablyCapToday() { return new Date().toISOString().slice(0, 10); }
+function _ablyCapLoad() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(ABLY_CAP_LS_KEY) || 'null'); } catch (e) {}
+  const today = _ablyCapToday();
+  if (!s || s.day !== today) s = { day: today, count: 0, tripped: false };
+  return s;
+}
+function _ablyCapSave(s) { try { localStorage.setItem(ABLY_CAP_LS_KEY, JSON.stringify(s)); } catch (e) {} }
+let _ablyCapState = _ablyCapLoad();
+function _ablyCapAllow() {
+  const today = _ablyCapToday();
+  if (_ablyCapState.day !== today) _ablyCapState = { day: today, count: 0, tripped: false }; // fresh day, fresh budget
+  if (_ablyCapState.tripped) { _updateAblyCapUI(); return false; }
+  _ablyCapState.count++;
+  if (_ablyCapState.count > ABLY_DAILY_PUBLISH_CAP) {
+    _ablyCapState.tripped = true;
+    _ablyCapSave(_ablyCapState);
+    _updateAblyCapUI();
+    console.error('[Ably Safety] Daily publish cap (' + ABLY_DAILY_PUBLISH_CAP.toLocaleString() + ') reached — all publishing halted. Investigate for a runaway loop before hitting Resume.');
+    return false;
+  }
+  _ablyCapSave(_ablyCapState);
+  _updateAblyCapUI();
+  return true;
+}
+function _updateAblyCapUI() {
+  const el = document.getElementById('ably-cap-count');
+  const banner = document.getElementById('ably-cap-banner');
+  if (el) {
+    el.textContent = _ablyCapState.count.toLocaleString() + ' / ' + ABLY_DAILY_PUBLISH_CAP.toLocaleString();
+    el.style.color = _ablyCapState.tripped ? 'var(--danger,#ef4444)' : (_ablyCapState.count / ABLY_DAILY_PUBLISH_CAP > 0.7 ? '#f59e0b' : 'var(--txt-dim)');
+  }
+  if (banner) banner.style.display = _ablyCapState.tripped ? 'flex' : 'none';
+}
+function ablyCapResume() {
+  _ablyCapState.tripped = false;
+  _ablyCapState.count = 0; // fresh budget so Resume isn't immediately re-tripped by the same count
+  _ablyCapSave(_ablyCapState);
+  _updateAblyCapUI();
+  doFlash('green');
+}
+_updateAblyCapUI();
+
 const _ablyPublishOrig = ablyChannel.publish.bind(ablyChannel);
 ablyChannel.publish = function(...args) {
   _ablyMsgCount++;
   _ablyRecentTimestamps.push(Date.now());
   _updateAblyCounter();
+  if (!_ablyCapAllow()) return Promise.resolve(); // hard safety stop — no network call, no cost
   return _ablyPublishOrig(...args);
 };
+// The dedicated New Here / Crowd Glass toggle channels are near-zero volume by
+// design, but guard them too for complete coverage under the same daily budget.
+[nhToggleChannel, cgToggleChannel].forEach(ch => {
+  const orig = ch.publish.bind(ch);
+  ch.publish = function(...args) {
+    if (!_ablyCapAllow()) return Promise.resolve();
+    return orig(...args);
+  };
+});
 function _updateAblyCounter() {
   const now = Date.now();
   const elapsedSec = Math.max(1, (now - _ablySessionStart) / 1000);
