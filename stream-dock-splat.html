@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2741,8 +2741,6 @@ body.gc-shake { animation: gcShake 0.5s ease; }
         <span id="ssn-label" style="font-size:10px;">SSN âœ—</span>
         <div class="conn-dot" id="tf-dot" style="background:#F43F5E;margin-left:6px;" title="Tikfinity WebSocket"></div>
         <span id="tf-label" style="font-size:10px;">TF âœ—</span>
-        <div class="conn-dot" id="audio-relay-dot" style="background:#555;margin-left:6px;" title="Mic â†’ Ably mic-freq"></div>
-        <span id="audio-relay-label" style="font-size:10px;color:var(--txt-dim);">ðŸŽ™âœ—</span>
       </div>
       <div class="splat-timer" id="splat-timer">--</div>
       <div class="splat-prog-wrap">
@@ -2767,18 +2765,6 @@ body.gc-shake { animation: gcShake 0.5s ease; }
     <!-- Event counter debug â€” counts key event types since page load -->
     <div class="splat-bar-row" style="justify-content:center;padding:1px 0;">
       <span id="evt-debug" style="font-size:8px;color:var(--txt-dim);font-family:monospace;">evts: â€”</span>
-    </div>
-    <!-- Mic device selector for audio relay -->
-    <div class="splat-bar-row" style="gap:5px;padding:2px 0;">
-      <span style="font-size:10px;">ðŸŽ™</span>
-      <select id="audio-device-select"
-        style="flex:1;font-size:9px;background:var(--panel);color:var(--txt);border:1px solid var(--border);border-radius:4px;padding:2px 4px;min-width:0;">
-        <option value="">â€” tap Refresh to list mics â€”</option>
-      </select>
-      <button onclick="populateAudioDevices()"
-        style="font-size:9px;padding:2px 7px;background:var(--panel);color:var(--txt);border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap;">â†º</button>
-      <button onclick="startRelayWithDevice()"
-        style="font-size:9px;padding:2px 9px;background:var(--purple);color:#fff;border:none;border-radius:4px;cursor:pointer;white-space:nowrap;">Connect</button>
     </div>
     <!-- Row 2: Primary action buttons -->
     <div class="splat-bar-row">
@@ -4088,80 +4074,9 @@ function _updateAblyCounter() {
   }
 }
 
-/* â•â• Audio relay â€” captures selected mic, publishes freq data via Ably mic-freq â•â•
-   gift-bar.html subscribes to mic-freq and uses data to drive the waveform.
-   No localhost relay server needed â€” Ably handles transport (WSS, works in TikTok Studio).
-   Usage: hit â†º to list mics, pick one, hit Connect.                         */
-let _relayInterval = null, _relayStream = null, _relayGen = 0;
-
-function _setRelayStatus(connected) {
-  const dot   = document.getElementById('audio-relay-dot');
-  const label = document.getElementById('audio-relay-label');
-  if (dot)   dot.style.background = connected ? '#3b82f6' : '#555';
-  if (label) { label.textContent = connected ? 'ðŸŽ™âœ“' : 'ðŸŽ™âœ—'; label.style.color = connected ? 'var(--green)' : 'var(--txt-dim)'; }
-}
-
-/* Enumerate audio input devices and populate the dropdown.
-   Triggers a one-shot permission prompt if not yet granted. */
-async function populateAudioDevices() {
-  const sel = document.getElementById('audio-device-select');
-  if (!sel) return;
-  try {
-    // Brief permission tap so browser unlocks device labels
-    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    tmp.getTracks().forEach(t => t.stop());
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const inputs  = devices.filter(d => d.kind === 'audioinput');
-    if (!inputs.length) { sel.innerHTML = '<option value="">No mics found</option>'; return; }
-    const prev = sel.value;
-    sel.innerHTML = inputs.map((d, i) =>
-      `<option value="${d.deviceId}">${d.label || 'Microphone ' + (i + 1)}</option>`
-    ).join('');
-    // Restore previous selection if still available
-    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-  } catch(e) {
-    sel.innerHTML = '<option value="">Permission denied</option>';
-  }
-}
-
-/* Start (or restart) the relay with the currently selected device. */
-async function startRelayWithDevice() {
-  const gen = ++_relayGen; // invalidates any in-flight reconnect loops
-  clearInterval(_relayInterval);
-  if (_relayStream) { _relayStream.getTracks().forEach(t => t.stop()); _relayStream = null; }
-  _setRelayStatus(false);
-
-  if (!navigator.mediaDevices?.getUserMedia) return;
-  const deviceId  = document.getElementById('audio-device-select')?.value || null;
-  const audioConstraint = deviceId ? { deviceId: { exact: deviceId } } : true;
-
-  let analyser, buf;
-  try {
-    const stream   = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint, video: false });
-    _relayStream   = stream;
-    const ctx      = new (window.AudioContext || window.webkitAudioContext)();
-    const src      = ctx.createMediaStreamSource(stream);
-    analyser       = ctx.createAnalyser();
-    analyser.fftSize = 64;
-    analyser.smoothingTimeConstant = 0.20;  // was 0.5 â€” much faster response
-    analyser.minDecibels = -90;             // capture quieter signals
-    analyser.maxDecibels = -10;             // full dynamic range
-    src.connect(analyser);
-    buf = new Uint8Array(analyser.frequencyBinCount);
-  } catch(e) {
-    _setRelayStatus(false);
-    return;
-  }
-
-  // Publish freq data via Ably every 100ms â€” WSS works in TikTok Studio (no mixed-content block)
-  _relayInterval = setInterval(() => {
-    if (gen !== _relayGen) { clearInterval(_relayInterval); return; }
-    if (!ablyChannel) return;
-    analyser.getByteFrequencyData(buf);
-    ablyChannel.publish('mic-freq', { f: Array.from(buf) }).catch(() => {});
-  }, 100);
-  _setRelayStatus(true);
-}
+// Mic relay to Ably mic-freq has been REMOVED (it was the dominant Ably message cost
+// and exhausted the monthly quota). gift-bar.html always runs its built-in synthetic
+// waveform now.
 
 // Cache for event-promo config pushed by overlay-control
 let _epConfig = null;

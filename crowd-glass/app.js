@@ -36,6 +36,7 @@
     ablyChannel: null,
     ablyStatus: "disabled",
     enabled: false,
+    attached: false, // true only while the shared Ably channel is attached (see connectAbly)
     autoMode: CFG.autoMode,
     stageScale: 0.75,
     crackScale: CFG.crackScale,
@@ -1049,9 +1050,16 @@
   }
 
   function announceAlive() {
-    if (state.ablyChannel) state.ablyChannel.publish("crowd-glass-alive", {}).catch(() => {});
+    if (state.attached && state.ablyChannel) state.ablyChannel.publish("crowd-glass-alive", {}).catch(() => {});
   }
 
+  // Ably delivers every message on a channel to every attached client regardless of
+  // which named events that client subscribes to — filtering by event name is
+  // client-side only and doesn't reduce delivery cost. So a real "off = zero Ably
+  // cost" toggle has to fully detach from the shared channel, not just ignore what
+  // arrives on it. A second, tiny, always-attached channel ("crowd-glass-toggle")
+  // carries only the on/off command so this overlay can hear "turn back on" while
+  // fully detached from everything else (milk-event, gift-alert, etc).
   function connectAbly() {
     if (!CFG.ablyEnabled || typeof Ably === "undefined") { state.ablyStatus = "disabled"; return; }
     try {
@@ -1061,6 +1069,30 @@
       state.ablyChannel = channel;
       state.ablyStatus = "connecting";
 
+      function attachMain() {
+        state.enabled = true;
+        stage.style.display = "";
+        if (state.attached) return; // idempotent
+        state.attached = true;
+        channel.attach().catch(() => {});
+        announceAlive();
+      }
+      function detachMain() {
+        state.enabled = false;
+        stage.style.display = "none";
+        resetGlass();
+        state.attached = false;
+        channel.detach().catch(() => {});
+      }
+      state.attachMain = attachMain;
+      state.detachMain = detachMain;
+
+      const toggleChannel = ably.channels.get("crowd-glass-toggle");
+      state.toggleChannel = toggleChannel;
+      toggleChannel.subscribe("set", (msg) => {
+        if (msg.data && msg.data.enabled) attachMain(); else detachMain();
+      });
+
       channel.subscribe("milk-event", (msg) => handleMilkEvent(msg.data));
       channel.subscribe("gift-alert", (msg) => handleGiftAlert(msg.data));
       channel.subscribe("crowd-glass-viewer-count", (msg) => handleAblyViewerCount(msg.data));
@@ -1069,7 +1101,17 @@
       channel.subscribe("crowd-glass-ping", () => announceAlive());
 
       ably.connection.on((stateChange) => { state.ablyStatus = stateChange.current; });
-      ably.connection.once("connected", () => announceAlive());
+      ably.connection.once("connected", () => {
+        // Ask the dock for current on/off state — covers reload, or the dock's
+        // setting changing while this overlay was closed.
+        toggleChannel.publish("request", {}).catch(() => {});
+        announceAlive();
+      });
+
+      // The subscribe() calls above implicitly attach `channel` — start fully
+      // detached (zero Ably cost) until the toggle channel says otherwise.
+      // state.enabled defaults to false, so this matches existing boot behavior.
+      channel.detach().catch(() => {});
     } catch (e) {
       state.ablyStatus = "error";
     }

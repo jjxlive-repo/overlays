@@ -4168,10 +4168,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const _evtWin = [];  // { time, type, plat }
 
   /* â”€â”€ audio state â”€â”€ */
-  let analyser   = null;
-  let freqData   = null;
+  // Mic capture (live and Ably-relayed) has been removed entirely — the waveform
+  // always runs on the synthetic animation in getFreqNorm() below.
   let smoothed   = new Float32Array(SEG_COUNT).fill(0);
-  let audioReady = false;
 
   /* â”€â”€ Platform energy arrays â€” injected by events, decay each frame â”€â”€ */
   let ttEnergy = new Float32Array(SEG_COUNT).fill(0); // TikTok (blue)
@@ -4204,17 +4203,6 @@ ablyChannel.subscribe('top-gifters',msg=>{
     _v3ytE = Math.min(1, _v3ytE + amount * 0.72);
     _v3FireEdgeBurst('yt', amount);
   }
-
-  /* â”€â”€ Ably audio relay â€” receives freq data from dock via mic-freq channel â”€â”€ */
-  let _wsFreqData = null;
-  let _wsFreqAge  = 0;
-  ablyChannel.subscribe('mic-freq', msg => {
-    const f = msg?.data?.f;
-    if (Array.isArray(f) && f.length > 0) {
-      _wsFreqData = new Uint8Array(f);
-      _wsFreqAge  = Date.now();
-    }
-  });
 
   /* â”€â”€ Canvas setup â€” replaces segment divs â”€â”€ */
   const meterEl = document.getElementById('hype-meter');
@@ -4306,26 +4294,12 @@ ablyChannel.subscribe('top-gifters',msg=>{
 
   /* â”€â”€ frequency bins â†’ normalised per-segment amplitudes â”€â”€ */
   function getFreqNorm(){
+    // Mic mechanic removed — always the synthetic wave.
     const out = new Float32Array(SEG_COUNT);
-    const src = (_wsFreqData && Date.now() - _wsFreqAge < 700) ? _wsFreqData
-               : (audioReady && analyser)
-                 ? (analyser.getByteFrequencyData(freqData), freqData)
-                 : null;
-    if(src){
-      const binRange = BIN_END - BIN_START;
-      for(let i = 0; i < SEG_COUNT; i++){
-        const b0 = Math.floor(BIN_START + (i / SEG_COUNT) * binRange);
-        const b1 = Math.floor(BIN_START + ((i + 1) / SEG_COUNT) * binRange);
-        let sum = 0, cnt = 0;
-        for(let b = b0; b <= b1 && b < src.length; b++){ sum += src[b]; cnt++; }
-        out[i] = cnt > 0 ? Math.min(1, (sum / cnt) / 255 * GAIN_BOOST) : 0;
-      }
-    } else {
-      const t = Date.now() / 1000;
-      for(let i = 0; i < SEG_COUNT; i++)
-        out[i] = 0.40 + 0.35 * Math.sin(t * 2.2 + i * 0.55)
-                      + 0.15 * Math.sin(t * 3.7 + i * 0.90);
-    }
+    const t = Date.now() / 1000;
+    for(let i = 0; i < SEG_COUNT; i++)
+      out[i] = 0.40 + 0.35 * Math.sin(t * 2.2 + i * 0.55)
+                    + 0.15 * Math.sin(t * 3.7 + i * 0.90);
     return out;
   }
 

@@ -2376,10 +2376,46 @@ function loadState() {
 // ═══════════════════════════════════════════════════════════════════
 // ABLY ADAPTER — listens for events published by stream-dock.html
 // ═══════════════════════════════════════════════════════════════════
+// Ably delivers every message on a channel to every attached client, regardless of
+// which named events that client has a JS handler for — subscribing to specific event
+// names is a client-side filter, not a server-side one, so it does nothing for cost.
+// The ONLY way "New Here off" actually stops costing Ably messages is to fully detach
+// from the shared channel (ABLY_CH) — which also means the Balloon Timeout Corner /
+// moderation features on this same connection go idle while toggled off, since they're
+// multiplexed on the same channel. A second, tiny, always-attached channel
+// ('new-here-toggle') carries only the on/off command so the overlay can hear "turn
+// back on" even while fully detached from everything else.
+let _nhAttached = false;
+
 function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
   const ch     = client.channels.get(ABLY_CH);
-  nhChannel = ch; // used by roster/timeout/moderation publishers
+  nhChannel = ch; // used by roster/timeout/moderation publishers (only live while attached)
+
+  function attachMain() {
+    OVERLAY_ENABLED = true;
+    document.body.style.display = 'block';
+    if (_nhAttached) return; // idempotent — ignore a repeat "on"
+    _nhAttached = true;
+    ch.attach().catch(() => {});
+    sendAlive();
+    if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {});
+    publishRosterSnapshot();
+  }
+  function detachMain() {
+    OVERLAY_ENABLED = false;
+    document.body.style.display = 'none';
+    resetOverlay();
+    _nhAttached = false;
+    ch.detach().catch(() => {});
+  }
+
+  // ── Toggle channel — always attached, near-zero traffic. Requests current state
+  // on connect (in case the dock's setting changed while this overlay was closed).
+  const toggleCh = client.channels.get('new-here-toggle');
+  toggleCh.subscribe('set', msg => {
+    if (msg.data && msg.data.enabled) attachMain(); else detachMain();
+  });
 
   // ── Balloon Timeout Corner: roster requests, timeout commands, moderation ──
   ch.subscribe('new-here-roster-request', () => { publishRosterSnapshot(); });
@@ -2474,11 +2510,9 @@ function connectAbly() {
 
   ch.subscribe('new-here-config', msg => {
     const d = msg.data || {};
-    if (d.enabled != null || d.visible != null) {
-      OVERLAY_ENABLED = d.enabled != null ? !!d.enabled : !!d.visible;
-      document.body.style.display = OVERLAY_ENABLED ? 'block' : 'none';
-      if (!OVERLAY_ENABLED) resetOverlay();
-    }
+    // Enable/disable now travels over the always-attached 'new-here-toggle' channel
+    // (see attachMain()/detachMain() above) — this channel only carries cosmetic
+    // config while attached, so on/off can't get missed by being detached.
     if (d.signScale    != null) SIGN_SCALE    = d.signScale;
     if (d.signXOffset  != null) SIGN_X_OFFSET = d.signXOffset;
     if (d.signYOffset  != null) SIGN_Y_OFFSET = d.signYOffset;
@@ -2592,12 +2626,14 @@ function connectAbly() {
     }
   });
 
-  // Respond to ping from stream-dock so it can show connection status
+  // Respond to ping from stream-dock so it can show connection status. Only meaningful
+  // (and only ever delivered) while attached — a detached overlay correctly shows as
+  // disconnected on the dock, since it genuinely isn't live on this channel.
   ch.subscribe('new-here-ping', () => {
-    ch.publish('new-here-alive', {}).catch(() => {});
+    if (_nhAttached) ch.publish('new-here-alive', {}).catch(() => {});
   });
 
-  const sendAlive = () => ch.publish('new-here-alive', {}).catch(() => {});
+  const sendAlive = () => { if (_nhAttached) ch.publish('new-here-alive', {}).catch(() => {}); };
 
   // Registered once, outside the 'connected' handler, so reconnects don't stack intervals
   const connDotEl = document.getElementById('conn-dot');
@@ -2617,18 +2653,31 @@ function connectAbly() {
   });
   client.connection.on('connected', () => {
     console.log('[Ably] connected →', ABLY_CH);
-    sendAlive();
-    if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {}); // pull the roster
-    publishRosterSnapshot(); // let the control sync the current session balloons
+    // Ask the dock for the current on/off state — covers the case where this overlay
+    // reloaded (or the dock's setting changed) while it was closed.
+    toggleCh.publish('request', {}).catch(() => {});
+    if (_nhAttached) {
+      sendAlive();
+      if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {}); // pull the roster
+      publishRosterSnapshot(); // let the control sync the current session balloons
+    }
   });
   client.connection.on('disconnected', () => console.warn('[Ably] disconnected'));
   client.connection.on('suspended',    () => console.warn('[Ably] suspended'));
   client.connection.on('failed',       (err) => console.error('[Ably] connection failed', err));
-  setInterval(() => { if (client.connection.state === 'connected') sendAlive(); }, 25000);
+  setInterval(() => { if (client.connection.state === 'connected' && _nhAttached) sendAlive(); }, 25000);
+
+  // Subscriptions above implicitly attach `ch` — start fully detached (zero Ably cost)
+  // until the toggle channel says otherwise. OVERLAY_ENABLED defaults to false, so this
+  // matches the pre-existing "hidden until the dock says on" behavior.
+  ch.detach().catch(() => {});
 
   // Debug hooks — inspect from devtools/preview via window.__nh
   window.__nh = {
-    client, ch,
+    client, ch, toggleCh,
+    get attached() { return _nhAttached; },
+    get enabled() { return OVERLAY_ENABLED; },
+    attachMain, detachMain,
     get count() { return count; },
     get figures() { return figures; },
     get queue() { return queue; },
