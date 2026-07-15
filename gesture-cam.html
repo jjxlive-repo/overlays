@@ -80,20 +80,24 @@
       <label class="gest"><input type="checkbox" id="en-finger_heart" checked> 🫰 Finger heart → hearts</label>
       <label class="gest"><input type="checkbox" id="en-clap" checked> 👏 Clap → applause</label>
       <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
-      <label class="gest"><input type="checkbox" id="en-pluck" checked> 🤏 Pinch → pluck Jamie's treat</label>
+      <label class="gest"><input type="checkbox" id="en-pluck" checked> ✊ Grab → pluck Jamie's treat</label>
     </div>
     <div class="row" style="margin-top:8px;">
-      <span class="hint">Head-down calibration:</span>
-      <button class="small" id="btnNeutral">Set NEUTRAL (look straight)</button>
-      <button class="small" id="btnBowed">Set BOWED (head down)</button>
-      <span class="stat" id="pitchStat">pitch: —</span>
+      <span class="hint">Head-down calibration (works turned toward your monitor, not just facing camera):</span>
+      <button class="small" id="btnNeutral">Set NEUTRAL (your normal position)</button>
+      <button class="small" id="btnBowed">Set BOWED (head down, same angle)</button>
+      <span class="stat" id="pitchStat">head-Y: —</span>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="hint">Live hand readout (for tuning if a gesture isn't firing) — hand 1:</span>
+      <span class="stat" id="handDebug">—</span>
     </div>
     <div class="row" style="margin-top:8px;">
       <span class="hint">Test fire:</span>
       <button class="small" onclick="testFire('finger_heart')">🫰</button>
       <button class="small" onclick="testFire('clap')">👏</button>
       <button class="small" onclick="testFire('head_down')">😔</button>
-      <button class="small" onclick="testFire('pluck')">🤏</button>
+      <button class="small" onclick="testFire('pluck')">✊</button>
     </div>
   </div>
 
@@ -146,6 +150,7 @@ const statEl = document.getElementById('stat');
 const logEl = document.getElementById('log');
 const capPill = document.getElementById('capPill');
 const pitchStat = document.getElementById('pitchStat');
+const handDebugEl = document.getElementById('handDebug');
 
 function log(msg, isEvt) {
   const d = document.createElement('div');
@@ -229,7 +234,7 @@ let handLandmarker = null, faceLandmarker = null;
     });
     faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
-      runningMode: "VIDEO", numFaces: 1, outputFacialTransformationMatrixes: true
+      runningMode: "VIDEO", numFaces: 1
     });
     statEl.textContent = 'models ready — capture a window to begin';
   } catch (e) {
@@ -276,23 +281,39 @@ window.testFire = type => {
 };
 
 // ── Head-down calibration ────────────────────────────────────────────────
-let pitchCal = { neutral: null, bowed: null };
-try { const c = JSON.parse(localStorage.getItem('gestureCam.pitch.v1') || 'null'); if (c) pitchCal = c; } catch (e) {}
-let lastPitch = null, headDownSince = 0;
-document.getElementById('btnNeutral').onclick = () => { if (lastPitch != null) { pitchCal.neutral = lastPitch; localStorage.setItem('gestureCam.pitch.v1', JSON.stringify(pitchCal)); log('neutral pitch set: ' + lastPitch.toFixed(1)); } };
-document.getElementById('btnBowed').onclick = () => { if (lastPitch != null) { pitchCal.bowed = lastPitch; localStorage.setItem('gestureCam.pitch.v1', JSON.stringify(pitchCal)); log('bowed pitch set: ' + lastPitch.toFixed(1)); } };
-// Extract pitch (deg) from MediaPipe's 4x4 facial transformation matrix (column-major).
-function matrixPitchDeg(data) {
-  // rotation row 2: [d2, d6, d10] — pitch = atan2(-r20? ] Conventions vary between
-  // builds, so we don't trust the sign or axis: calibration (neutral vs bowed
-  // samples) defines the working direction at runtime instead.
-  const pitchRad = Math.asin(Math.max(-1, Math.min(1, -data[6])));
-  return pitchRad * 180 / Math.PI;
+// Metric: nose-tip Y position normalized by inter-eye distance — NOT the raw
+// facial-transformation-matrix pitch used before. Bowing your head lowers your
+// face in the captured frame regardless of which way you're also turned, so
+// this stays reliable when you're gesturing at an angle (facing your monitor,
+// not straight at the camera) — the matrix-pitch approach could get unreliable
+// under yaw due to cross-axis coupling in the rotation decomposition. The
+// two-point calibration (set while you're already in your natural position)
+// absorbs whatever baseline angle you actually sit at.
+let poseCal = { neutral: null, bowed: null };
+try { const c = JSON.parse(localStorage.getItem('gestureCam.headY.v2') || 'null'); if (c) poseCal = c; } catch (e) {}
+let lastHeadY = null, headDownSince = 0;
+document.getElementById('btnNeutral').onclick = () => { if (lastHeadY != null) { poseCal.neutral = lastHeadY; localStorage.setItem('gestureCam.headY.v2', JSON.stringify(poseCal)); log('neutral head position set: ' + lastHeadY.toFixed(3)); } };
+document.getElementById('btnBowed').onclick = () => { if (lastHeadY != null) { poseCal.bowed = lastHeadY; localStorage.setItem('gestureCam.headY.v2', JSON.stringify(poseCal)); log('bowed head position set: ' + lastHeadY.toFixed(3)); } };
+function headYMetric(lm) {
+  const nose = lm[1], eyeA = lm[33], eyeB = lm[263]; // outer eye corners, standard face-mesh indices
+  const faceScale = Math.hypot(eyeA.x - eyeB.x, eyeA.y - eyeB.y) || 0.001;
+  return nose.y / faceScale;
 }
 
-// ── Per-hand pinch state (rising-edge pluck) ──────────────────────────────
-const PINCH_ON = 0.42, PINCH_OFF = 0.55;
-let handState = [ { pinching: false }, { pinching: false } ];
+// ── Per-hand gesture state ────────────────────────────────────────────────
+// Finger heart: thumb+index tip touching with the other three fingers curled —
+// a deliberate, specific pose, checked FIRST so a grab never double-fires it.
+// Grab (pluck): the whole hand closing around empty space — bigger and more
+// forgiving to detect from a wide-angle/off-axis camera than a precise 2-finger
+// pinch was, so it's what triggers "pluck a treat" now.
+const HEART_PINCH_ON = 0.50, HEART_PINCH_OFF = 0.65; // loosened from 0.42/0.55 — wasn't firing reliably
+const HEART_FOLD_MAX = 1.65;                          // was 1.45 — more forgiving of a not-quite-curled pinky/ring
+// Grab requires ALL FOUR fingers individually past this fold threshold — not an
+// average. An averaged ratio lets a POINT (3 of 4 fingers folded, index extended)
+// land close enough to a loose average threshold to misfire as a grab; requiring
+// every finger folded rules that out while still firing reliably for a real fist.
+const GRAB_FOLD_MAX = 1.5;
+let handState = [ { heart: false, grab: false }, { heart: false, grab: false } ];
 function fingerFoldRatio(lm, tipIdx, wrist, scale) {
   return Math.hypot(lm[tipIdx].x - wrist.x, lm[tipIdx].y - wrist.y) / scale;
 }
@@ -332,38 +353,46 @@ function loop(now) {
 
   const hands = (handResult && handResult.landmarks) || [];
 
-  // ── per-hand: pinch (pluck) + finger-heart ──
+  // ── per-hand: grab (pluck) + finger-heart ──
   const palmCenters = [];
   for (let i = 0; i < 2; i++) {
     const lm = hands[i];
-    if (!lm) { handState[i].pinching = false; continue; }
+    if (!lm) { handState[i].heart = false; handState[i].grab = false; if (i === 0) handDebugEl.textContent = '—'; continue; }
     const wrist = lm[0], midMcp = lm[9];
     const scale = Math.hypot(wrist.x - midMcp.x, wrist.y - midMcp.y) || 0.001;
     const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / scale;
     const pinchPt = mapPoint((lm[4].x + lm[8].x) / 2, (lm[4].y + lm[8].y) / 2);
-    // palm center for clap detection
     const pc = { x: (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5, y: (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5 };
+    const palmPt = mapPoint(pc.x, pc.y);
     palmCenters.push({ pc, scale });
 
-    // finger-heart vs pluck disambiguation: heart = thumb+index touching with the
-    // other three fingers CURLED (tips close to the wrist); pluck = pinch with at
-    // least one of them extended.
-    const folded = [12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < 1.45).length;
-    const touching = pinchDist < PINCH_ON;
+    // finger-heart: thumb+index touching + other 3 fingers curled (checked first —
+    // a heart pose should never also fire a grab).
+    const foldedCount = [12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < HEART_FOLD_MAX).length;
+    const heartTouching = pinchDist < HEART_PINCH_ON;
+    const wasHeart = handState[i].heart;
+    const isHeartNow = wasHeart ? (pinchDist < HEART_PINCH_OFF) : heartTouching;
+    const isHeartPose = isHeartNow && foldedCount >= 2;
+    if (heartTouching && !wasHeart && foldedCount >= 2 && enabled('finger_heart')) fire('finger_heart', pinchPt.x, pinchPt.y);
+    handState[i].heart = isHeartNow;
 
-    const was = handState[i].pinching;
-    const isP = was ? (pinchDist < PINCH_OFF) : touching;
-    if (touching && !was) {
-      if (folded >= 2) { if (enabled('finger_heart')) fire('finger_heart', pinchPt.x, pinchPt.y); }
-      else if (enabled('pluck')) fire('pluck', pinchPt.x, pinchPt.y);
-    }
-    handState[i].pinching = isP;
+    // grab: ALL FOUR fingertips individually curled toward the wrist — the whole
+    // hand closing. Per-finger count (not an averaged ratio) so a point (3 of 4
+    // folded) can't drag a loose average into the grab zone.
+    const grabFoldedCount = [8, 12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < GRAB_FOLD_MAX).length;
+    const isGrabPoseRaw = grabFoldedCount >= 4;
+    const wasGrab = handState[i].grab;
+    const isGrabNow = wasGrab ? (grabFoldedCount >= 3) : isGrabPoseRaw; // slight hysteresis on release
+    if (isGrabPoseRaw && !wasGrab && !isHeartPose && enabled('pluck')) fire('pluck', palmPt.x, palmPt.y);
+    handState[i].grab = isGrabNow;
 
-    // draw pinch dot on preview (landmarks are camBox-normalized → lift to frame first)
-    const dotF = camToFrame((lm[4].x + lm[8].x) / 2, (lm[4].y + lm[8].y) / 2);
-    pctx.fillStyle = isP ? '#4ade80' : 'rgba(255,255,255,.6)';
+    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} (heart<${HEART_PINCH_ON}) heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 (need 4)`;
+
+    // draw a dot on the preview (landmarks are camBox-normalized → lift to frame first)
+    const dotF = camToFrame(pc.x, pc.y);
+    pctx.fillStyle = isGrabNow ? '#4ade80' : (isHeartNow ? '#f472b6' : 'rgba(255,255,255,.6)');
     pctx.beginPath();
-    pctx.arc(dotF.x * pw, dotF.y * ph, isP ? 7 : 4, 0, 6.283);
+    pctx.arc(dotF.x * pw, dotF.y * ph, (isGrabNow || isHeartNow) ? 8 : 4, 0, 6.283);
     pctx.fill();
   }
 
@@ -379,24 +408,21 @@ function loop(now) {
     lastPalmDist = d;
   } else lastPalmDist = null;
 
-  // ── head down: calibrated matrix pitch, held ~500ms ──
-  if (faceResult && faceResult.facialTransformationMatrixes && faceResult.facialTransformationMatrixes[0]) {
-    lastPitch = matrixPitchDeg(faceResult.facialTransformationMatrixes[0].data);
-    pitchStat.textContent = 'pitch: ' + lastPitch.toFixed(1) + '°'
-      + (pitchCal.neutral != null ? ' (neutral ' + pitchCal.neutral.toFixed(1) + ')' : ' — calibrate!')
-      + (pitchCal.bowed != null ? ' (bowed ' + pitchCal.bowed.toFixed(1) + ')' : '');
-    if (enabled('head_down') && pitchCal.neutral != null && pitchCal.bowed != null) {
-      const dir = Math.sign(pitchCal.bowed - pitchCal.neutral) || 1;
-      const progress = (lastPitch - pitchCal.neutral) * dir;
-      const target = Math.abs(pitchCal.bowed - pitchCal.neutral) * 0.7; // 70% of the way to the calibrated bow
+  // ── head down: calibrated nose-Y position, held ~400ms ──
+  if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks[0]) {
+    const lm = faceResult.faceLandmarks[0];
+    lastHeadY = headYMetric(lm);
+    pitchStat.textContent = 'head-Y: ' + lastHeadY.toFixed(3)
+      + (poseCal.neutral != null ? ' (neutral ' + poseCal.neutral.toFixed(3) + ')' : ' — calibrate!')
+      + (poseCal.bowed != null ? ' (bowed ' + poseCal.bowed.toFixed(3) + ')' : '');
+    if (enabled('head_down') && poseCal.neutral != null && poseCal.bowed != null) {
+      const dir = Math.sign(poseCal.bowed - poseCal.neutral) || 1;
+      const progress = (lastHeadY - poseCal.neutral) * dir;
+      const target = Math.abs(poseCal.bowed - poseCal.neutral) * 0.6; // 60% of the way to the calibrated bow (was 70% — more forgiving)
       if (progress > target) {
         if (!headDownSince) headDownSince = now;
-        else if (now - headDownSince > 500) {
-          let pt = { x: OUT_W / 2, y: 500 };
-          if (faceResult.faceLandmarks && faceResult.faceLandmarks[0]) {
-            const nose = faceResult.faceLandmarks[0][1];
-            pt = mapPoint(nose.x, nose.y);
-          }
+        else if (now - headDownSince > 400) {
+          const pt = mapPoint(lm[1].x, lm[1].y);
           fire('head_down', pt.x, pt.y);
           headDownSince = 0;
         }
