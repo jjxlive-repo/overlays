@@ -108,12 +108,16 @@
 import { FilesetResolver, HandLandmarker, FaceLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
 const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
-const ABLY_CH  = 'splat-overlay';
 const OUT_W = 1080, OUT_H = 1920;
 
 // ── Ably + shared daily cap guard (same budget as stream-dock/tracker) ────
+// Gestures go out on their own DEDICATED channel ('gesture-events'), not the busy
+// shared splat-overlay channel. Ably bills every delivery to every attached
+// client, so consumers of a rare event must not be forced to attach to (and pay
+// for) the full chat/gift firehose just to hear it. This page publishes only —
+// it never subscribes to anything — so it receives (and is billed) nothing.
 const ably = new Ably.Realtime({ key: ABLY_KEY });
-const ch = ably.channels.get(ABLY_CH);
+const ch = ably.channels.get('gesture-events');
 (function installAblyDailyCapGuard(channel) {
   const CAP = 400000, LS_KEY = 'ablyDailyPublishGuard.v1';
   const today = () => new Date().toISOString().slice(0, 10);

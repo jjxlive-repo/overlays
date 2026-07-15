@@ -32,7 +32,6 @@
 <script>
 'use strict';
 const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
-const ABLY_CH  = 'splat-overlay';
 const W = 1080, H = 1920;
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 
@@ -168,8 +167,12 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // ── Ably ─────────────────────────────────────────────────────────────────
+// Subscribes ONLY to the dedicated near-silent 'gesture-events' channel — never
+// the busy shared splat-overlay channel. Ably bills every delivery to every
+// attached client, so attaching to the shared channel would make this overlay
+// pay for every chat comment/like/gift just to hear a rare gesture.
 const client = new Ably.Realtime({ key: ABLY_KEY });
-const ch = client.channels.get(ABLY_CH);
+const ch = client.channels.get('gesture-events');
 ch.subscribe('gesture-event', msg => {
   const d = msg.data || {};
   const x = Number(d.x) || W / 2, y = Number(d.y) || H / 2;
