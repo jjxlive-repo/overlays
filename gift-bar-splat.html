@@ -2952,7 +2952,9 @@ const LEAGUE_SPRINT = (() => {
     const strip = document.getElementById('mission-strip');
     const label = document.getElementById('mission-strip-text');
     if (label) label.textContent = `${gameTitle.toUpperCase()} - ${text}`;
-    if (strip) strip.classList.add('visible', 'ls-command-strip');
+    // Respect the dock's Mission Strip toggle — League Sprint ticks call this constantly
+    // and used to silently re-show a strip the dock had explicitly hidden.
+    if (strip && window._missionStripEnabled !== false) strip.classList.add('visible', 'ls-command-strip');
   }
   function setGameTitle(title) {
     const clean = String(title || '').trim();
@@ -5057,6 +5059,14 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const txt   = document.getElementById('mission-strip-text');
     if(strip && typeof d.top === 'number') strip.style.top = d.top + 'px';
     if(txt   && typeof d.text === 'string' && d.text.trim()) txt.textContent = d.text;
+    if(strip && d.visible !== undefined) {
+      // Remembered for setMissionStripText() so League Sprint's ticking can't re-show
+      // a strip the dock explicitly hid.
+      window._missionStripEnabled = !!d.visible;
+      strip.classList.toggle('visible', !!d.visible);
+      if (!d.visible) strip.classList.remove('ls-command-strip');
+    }
+    if(strip && d.commandStrip !== undefined && window._missionStripEnabled !== false) strip.classList.toggle('ls-command-strip', !!d.commandStrip);
   });
 
   ablyChannel.subscribe('milk-cta', msg => {
