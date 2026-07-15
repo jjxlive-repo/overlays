@@ -2947,8 +2947,11 @@ function initComms() {
         const d = m.data || {};
         if (d.type === 'youtube_superchat' && (+d.amount || 0) > 0) handleSuperchat(d);
       });
-      /* gesture engine: streamer pinched on camera → steal the nearest treat for them */
-      ablyChannel.subscribe('gesture-event', m => {
+      /* gesture engine: streamer pinched on camera → steal the nearest treat for
+         them. Rides the DEDICATED near-silent 'gesture-events' channel (same
+         connection, second channel) — not the busy shared channel — so gesture
+         consumers never pay Ably delivery costs for the chat/gift firehose. */
+      ably.channels.get('gesture-events').subscribe('gesture-event', m => {
         const d = m.data || {};
         if (d.type === 'pluck') pluckSteal(Number(d.x) || 540, Number(d.y) || 960);
       });
