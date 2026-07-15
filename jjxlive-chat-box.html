@@ -1389,3 +1389,61 @@ function startMockMode() {
   }
   nextChat();
   nextEvent();
+}
+
+function cycleStyle() {
+  const current = STYLE_PRESETS.indexOf(overlay.dataset.style);
+  overlay.dataset.style = STYLE_PRESETS[(current + 1) % STYLE_PRESETS.length];
+}
+
+window.addEventListener("message", event => {
+  if (!event.data) return;
+  handleIncoming(event.data);
+});
+
+document.addEventListener("keydown", event => {
+  if (param("test", "0") !== "1") return;
+  if (event.key.toLowerCase() === "c") {
+    addChatMessage({ platform: "tiktok", username: "TestChat", message: "Manual chat pop" });
+  }
+  if (event.key.toLowerCase() === "e") {
+    showEvent({ type: "gift", username: "TestEvent", text: "TestEvent sent Galaxy", value: "1,000 coins", icon: "+" });
+  }
+  if (event.key.toLowerCase() === "s") cycleStyle();
+});
+
+function connectSocialStreamSocket() {
+  if (!CONFIG.socialStream.connectWebSocket) return;
+  const session = param("session", CONFIG.socialStream.session);
+  ssnSocket = new WebSocket(`${CONFIG.socialStream.socketBase}/${encodeURIComponent(session)}/4`);
+  ssnSocket.onmessage = event => handleIncoming(event.data);
+  ssnSocket.onclose = () => window.setTimeout(connectSocialStreamSocket, 3000);
+  ssnSocket.onerror = () => {
+    try { ssnSocket.close(); } catch (_) {}
+  };
+}
+
+function connectAblyControls() {
+  if (!CONFIG.ably.enabled || !window.Ably) return;
+  try {
+    ablyClient = new Ably.Realtime(CONFIG.ably.key);
+    ablyChannel = ablyClient.channels.get(CONFIG.ably.channel);
+    ablyChannel.subscribe("jjx-chat-settings", message => {
+      applyOverlaySettings(message.data || {});
+    });
+    ablyChannel.subscribe("jjx-chat-test", message => {
+      const data = message.data || {};
+      if (data.kind === "event") showEvent(data.event || { type: "system", text: "Controller test event", icon: "!" });
+      else addChatMessage(data.chat || { platform: "tiktok", username: "Controller", message: "Controller test chat" });
+    });
+  } catch (_) {}
+}
+
+applyUrlParams();
+applyOverlaySettings(loadOverlaySettings());
+if (param("test", "0") === "1") startMockMode();
+connectSocialStreamSocket();
+connectAblyControls();
+</script>
+</body>
+</html>
