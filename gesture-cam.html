@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gesture Engine — watches the stream, fires events</title>
+<!--
+  GESTURE ENGINE — a control-room page (run it in a normal Chrome window, like the
+  dock). It never touches your camera or the TikTok camera chain at all: it screen-
+  captures the TIKTOK PROJECTOR WINDOW (you pick it in Chrome's window picker), runs
+  hand + face tracking on those pixels, and publishes tiny one-shot events over Ably:
+
+    gesture-event { type: 'finger_heart' | 'clap' | 'head_down' | 'pluck', x, y }
+
+  x/y are mapped into the standard 1080x1920 overlay space via the crop box you drag
+  over the preview (draw it around the actual stream content inside the captured
+  window, excluding any window chrome/black bars).
+
+  Consumers:
+    - gesture-fx-overlay.html  → hearts burst / applause confetti / "awww"
+    - feed-jamie-overlay.html  → 'pluck' steals the nearest bouncing treat for YOU
+
+  Cost safety: every publish is a one-shot with a per-gesture cooldown (no continuous
+  coordinate streaming — nothing like the old mic firehose), and all publishes run
+  through the same persisted daily cap guard as stream-dock/tracker.
+
+  Keep this window visible (second monitor is ideal) — Chrome throttles hidden tabs,
+  which would slow detection to a crawl.
+-->
+<style>
+  :root { --bg:#0d0a16; --panel:#171226; --border:#2c2344; --txt:#e5e1f0; --dim:#8b84a3; --acc:#a78bfa; --green:#4ade80; --danger:#ef4444; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--txt); font:13px/1.5 'Segoe UI',sans-serif; }
+  .wrap { max-width:980px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  h1 { font-size:17px; margin:0; color:var(--acc); letter-spacing:.04em; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button { background:#241b3d; color:var(--txt); border:1px solid var(--border); border-radius:8px; padding:7px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+  button.primary { background:#7c3aed; border-color:#7c3aed; color:#fff; }
+  button.small { padding:3px 9px; font-size:11px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; }
+  .panel h2 { font-size:11px; margin:0 0 8px; color:var(--dim); letter-spacing:.1em; text-transform:uppercase; }
+  #previewWrap { position:relative; width:100%; max-width:640px; }
+  #preview { width:100%; display:block; border-radius:8px; background:#000; cursor:crosshair; }
+  .hint { font-size:11px; color:var(--dim); }
+  label.gest { display:flex; align-items:center; gap:6px; background:#1d1631; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
+  label.gest input { accent-color:var(--acc); }
+  #log { font:11px/1.6 monospace; color:var(--dim); max-height:150px; overflow-y:auto; }
+  #log .evt { color:var(--green); }
+  .stat { font:11px monospace; color:var(--dim); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:800; background:#241b3d; border:1px solid var(--border); }
+  .pill.on { color:var(--green); border-color:var(--green); }
+  input[type=range] { accent-color: var(--acc); }
+</style>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>🖐 GESTURE ENGINE <span id="ablyPill" class="pill">ably: …</span> <span id="capPill" class="pill">capture: off</span></h1>
+  <div class="hint">Captures the <b>TikTok projector window</b> (not the camera — the camera chain is untouched). Keep this window visible while streaming.</div>
+
+  <div class="panel">
+    <h2>1 · Capture</h2>
+    <div class="row">
+      <button class="primary" id="btnCapture">🖥 Capture window…</button>
+      <button id="btnFullFrame" class="small">Reset boxes</button>
+      <span class="hint">After capturing, draw two boxes on the preview:</span>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label class="gest"><input type="radio" name="drawMode" value="map" checked> <span style="color:#a78bfa;">🟪 Stream picture</span> — the whole 1080×1920 output (skip window chrome/black bars)</label>
+      <label class="gest"><input type="radio" name="drawMode" value="cam"> <span style="color:#4ade80;">🟩 Camera strip</span> — just where YOU are (tracking runs zoomed on this)</label>
+    </div>
+    <div id="previewWrap" style="margin-top:10px;">
+      <canvas id="preview" width="640" height="360"></canvas>
+    </div>
+    <div class="stat" id="stat">waiting for capture…</div>
+  </div>
+
+  <div class="panel">
+    <h2>2 · Gestures</h2>
+    <div class="row">
+      <label class="gest"><input type="checkbox" id="en-finger_heart" checked> 🫰 Finger heart → hearts</label>
+      <label class="gest"><input type="checkbox" id="en-clap" checked> 👏 Clap → applause</label>
+      <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
+      <label class="gest"><input type="checkbox" id="en-pluck" checked> 🤏 Pinch → pluck Jamie's treat</label>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <span class="hint">Head-down calibration:</span>
+      <button class="small" id="btnNeutral">Set NEUTRAL (look straight)</button>
+      <button class="small" id="btnBowed">Set BOWED (head down)</button>
+      <span class="stat" id="pitchStat">pitch: —</span>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <span class="hint">Test fire:</span>
+      <button class="small" onclick="testFire('finger_heart')">🫰</button>
+      <button class="small" onclick="testFire('clap')">👏</button>
+      <button class="small" onclick="testFire('head_down')">😔</button>
+      <button class="small" onclick="testFire('pluck')">🤏</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>3 · Event log</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script type="module">
+'use strict';
+import { FilesetResolver, HandLandmarker, FaceLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+const OUT_W = 1080, OUT_H = 1920;
+
+// ── Ably + shared daily cap guard (same budget as stream-dock/tracker) ────
+const ably = new Ably.Realtime({ key: ABLY_KEY });
+const ch = ably.channels.get(ABLY_CH);
+(function installAblyDailyCapGuard(channel) {
+  const CAP = 400000, LS_KEY = 'ablyDailyPublishGuard.v1';
+  const today = () => new Date().toISOString().slice(0, 10);
+  const load = () => { let s = null; try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {} const t = today(); return (!s || s.day !== t) ? { day: t, count: 0, tripped: false } : s; };
+  const save = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) {} };
+  const orig = channel.publish.bind(channel);
+  channel.publish = function(...args) {
+    let s = load();
+    if (s.tripped) return Promise.resolve();
+    s.count++;
+    if (s.count > CAP) { s.tripped = true; save(s); console.error('[Ably Safety] Daily publish cap reached — gesture-cam publishing halted.'); return Promise.resolve(); }
+    save(s);
+    return orig(...args);
+  };
+})(ch);
+const ablyPill = document.getElementById('ablyPill');
+ably.connection.on(sc => {
+  ablyPill.textContent = 'ably: ' + sc.current;
+  ablyPill.classList.toggle('on', sc.current === 'connected');
+});
+
+// ── UI refs ───────────────────────────────────────────────────────────────
+const preview = document.getElementById('preview');
+const pctx = preview.getContext('2d');
+const statEl = document.getElementById('stat');
+const logEl = document.getElementById('log');
+const capPill = document.getElementById('capPill');
+const pitchStat = document.getElementById('pitchStat');
+
+function log(msg, isEvt) {
+  const d = document.createElement('div');
+  if (isEvt) d.className = 'evt';
+  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  logEl.prepend(d);
+  while (logEl.children.length > 60) logEl.lastChild.remove();
+}
+
+// ── Calibration boxes (normalized 0..1 within captured frame) ─────────────
+// mapBox (purple): where the full 1080x1920 stream picture sits in the captured
+//   window — defines the coordinate mapping to overlay space.
+// camBox (green): where the camera strip with YOU is — detection runs zoomed on
+//   this region so small hands in a top-strip camera layout still track reliably.
+let mapBox = { x: 0, y: 0, w: 1, h: 1 };
+let camBox = { x: 0, y: 0, w: 1, h: 0.3 };
+try { const c = JSON.parse(localStorage.getItem('gestureCam.crop.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) mapBox = c; } catch (e) {}
+try { const c = JSON.parse(localStorage.getItem('gestureCam.camBox.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) camBox = c; } catch (e) {}
+function saveBoxes() {
+  try {
+    localStorage.setItem('gestureCam.crop.v1', JSON.stringify(mapBox));
+    localStorage.setItem('gestureCam.camBox.v1', JSON.stringify(camBox));
+  } catch (e) {}
+}
+document.getElementById('btnFullFrame').onclick = () => {
+  mapBox = { x: 0, y: 0, w: 1, h: 1 };
+  camBox = { x: 0, y: 0, w: 1, h: 0.3 };
+  saveBoxes();
+  log('boxes reset (stream = full frame, camera = top strip)');
+};
+function drawMode() { return document.querySelector('input[name=drawMode]:checked').value; }
+
+let dragStart = null;
+preview.addEventListener('mousedown', e => {
+  const r = preview.getBoundingClientRect();
+  dragStart = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+});
+preview.addEventListener('mousemove', e => {
+  if (!dragStart) return;
+  const r = preview.getBoundingClientRect();
+  const cur = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  const box = {
+    x: Math.max(0, Math.min(dragStart.x, cur.x)),
+    y: Math.max(0, Math.min(dragStart.y, cur.y)),
+    w: Math.min(1, Math.abs(cur.x - dragStart.x)),
+    h: Math.min(1, Math.abs(cur.y - dragStart.y))
+  };
+  if (drawMode() === 'cam') camBox = box; else mapBox = box;
+});
+preview.addEventListener('mouseup', () => {
+  if (dragStart) {
+    const box = drawMode() === 'cam' ? camBox : mapBox;
+    if (box.w > 0.02 && box.h > 0.02) { saveBoxes(); log(`${drawMode() === 'cam' ? 'camera strip' : 'stream picture'} set: ${box.x.toFixed(2)},${box.y.toFixed(2)} ${box.w.toFixed(2)}x${box.h.toFixed(2)}`); }
+  }
+  dragStart = null;
+});
+
+// Landmarks come out normalized to the ZOOMED camBox crop → first lift them back
+// to captured-frame coords, then through mapBox into 1080x1920 overlay coords.
+function camToFrame(nx, ny) { return { x: camBox.x + nx * camBox.w, y: camBox.y + ny * camBox.h }; }
+function mapPoint(nx, ny) {
+  const f = camToFrame(nx, ny);
+  const rx = (f.x - mapBox.x) / mapBox.w, ry = (f.y - mapBox.y) / mapBox.h;
+  return { x: Math.max(0, Math.min(OUT_W, rx * OUT_W)), y: Math.max(0, Math.min(OUT_H, ry * OUT_H)) };
+}
+
+// Offscreen canvas holding the zoomed camera-strip crop that detection runs on.
+const detCanvas = document.createElement('canvas');
+const detCtx = detCanvas.getContext('2d', { willReadFrequently: true });
+const DET_W = 640; // detection resolution — camera strip scaled up to this width
+
+// ── ML models ─────────────────────────────────────────────────────────────
+let handLandmarker = null, faceLandmarker = null;
+(async function loadModels() {
+  try {
+    statEl.textContent = 'loading tracking models…';
+    const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" },
+      runningMode: "VIDEO", numHands: 2
+    });
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
+      runningMode: "VIDEO", numFaces: 1, outputFacialTransformationMatrixes: true
+    });
+    statEl.textContent = 'models ready — capture a window to begin';
+  } catch (e) {
+    statEl.textContent = '⚠ model load failed: ' + (e.message || e);
+  }
+})();
+
+// ── Screen capture ────────────────────────────────────────────────────────
+const video = document.createElement('video');
+video.autoplay = true; video.muted = true; video.playsInline = true;
+let capturing = false;
+document.getElementById('btnCapture').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+    capturing = true;
+    capPill.textContent = 'capture: LIVE';
+    capPill.classList.add('on');
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+      capturing = false;
+      capPill.textContent = 'capture: off';
+      capPill.classList.remove('on');
+      log('capture ended');
+    });
+    log('capture started');
+  } catch (e) { log('capture failed/cancelled: ' + (e.message || e)); }
+};
+
+// ── Gesture config + cooldowns ───────────────────────────────────────────
+const enabled = g => document.getElementById('en-' + g).checked;
+const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400 };
+const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0 };
+function fire(type, x, y) {
+  const now = performance.now();
+  if (now - (lastFired[type] || 0) < COOLDOWN_MS[type]) return;
+  lastFired[type] = now;
+  ch.publish('gesture-event', { type, x: Math.round(x), y: Math.round(y) }).catch(() => {});
+  log(`→ ${type} @ ${Math.round(x)},${Math.round(y)}`, true);
+}
+window.testFire = type => {
+  lastFired[type] = 0;
+  fire(type, OUT_W / 2, type === 'head_down' ? 500 : OUT_H / 2);
+};
+
+// ── Head-down calibration ────────────────────────────────────────────────
+let pitchCal = { neutral: null, bowed: null };
+try { const c = JSON.parse(localStorage.getItem('gestureCam.pitch.v1') || 'null'); if (c) pitchCal = c; } catch (e) {}
+let lastPitch = null, headDownSince = 0;
+document.getElementById('btnNeutral').onclick = () => { if (lastPitch != null) { pitchCal.neutral = lastPitch; localStorage.setItem('gestureCam.pitch.v1', JSON.stringify(pitchCal)); log('neutral pitch set: ' + lastPitch.toFixed(1)); } };
+document.getElementById('btnBowed').onclick = () => { if (lastPitch != null) { pitchCal.bowed = lastPitch; localStorage.setItem('gestureCam.pitch.v1', JSON.stringify(pitchCal)); log('bowed pitch set: ' + lastPitch.toFixed(1)); } };
+// Extract pitch (deg) from MediaPipe's 4x4 facial transformation matrix (column-major).
+function matrixPitchDeg(data) {
+  // rotation row 2: [d2, d6, d10] — pitch = atan2(-r20? ] Conventions vary between
+  // builds, so we don't trust the sign or axis: calibration (neutral vs bowed
+  // samples) defines the working direction at runtime instead.
+  const pitchRad = Math.asin(Math.max(-1, Math.min(1, -data[6])));
+  return pitchRad * 180 / Math.PI;
+}
+
+// ── Per-hand pinch state (rising-edge pluck) ──────────────────────────────
+const PINCH_ON = 0.42, PINCH_OFF = 0.55;
+let handState = [ { pinching: false }, { pinching: false } ];
+function fingerFoldRatio(lm, tipIdx, wrist, scale) {
+  return Math.hypot(lm[tipIdx].x - wrist.x, lm[tipIdx].y - wrist.y) / scale;
+}
+
+// ── Clap state ────────────────────────────────────────────────────────────
+let lastPalmDist = null;
+
+// ── Main loop ─────────────────────────────────────────────────────────────
+let lastVideoTime = -1;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (!capturing || !handLandmarker || video.readyState < 2) return;
+  if (video.currentTime === lastVideoTime) return; // no new frame
+  lastVideoTime = video.currentTime;
+
+  // preview: draw scaled captured frame + both calibration boxes
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw) return;
+  const pw = preview.width, ph = Math.round(pw * vh / vw);
+  if (preview.height !== ph) preview.height = ph;
+  pctx.drawImage(video, 0, 0, pw, ph);
+  pctx.strokeStyle = '#a78bfa'; pctx.lineWidth = 2;
+  pctx.strokeRect(mapBox.x * pw, mapBox.y * ph, mapBox.w * pw, mapBox.h * ph);
+  pctx.strokeStyle = '#4ade80';
+  pctx.strokeRect(camBox.x * pw, camBox.y * ph, camBox.w * pw, camBox.h * ph);
+
+  // zoom the camera strip into the detection canvas so hands stay big enough to
+  // track even when the camera is only a narrow band of the full stream layout
+  const sx = camBox.x * vw, sy = camBox.y * vh, sw = Math.max(2, camBox.w * vw), sh = Math.max(2, camBox.h * vh);
+  const dh = Math.max(2, Math.round(DET_W * sh / sw));
+  if (detCanvas.width !== DET_W || detCanvas.height !== dh) { detCanvas.width = DET_W; detCanvas.height = dh; }
+  detCtx.drawImage(video, sx, sy, sw, sh, 0, 0, DET_W, dh);
+
+  let handResult = null, faceResult = null;
+  try { handResult = handLandmarker.detectForVideo(detCanvas, now); } catch (e) {}
+  try { faceResult = faceLandmarker ? faceLandmarker.detectForVideo(detCanvas, now) : null; } catch (e) {}
+
+  const hands = (handResult && handResult.landmarks) || [];
+
+  // ── per-hand: pinch (pluck) + finger-heart ──
+  const palmCenters = [];
+  for (let i = 0; i < 2; i++) {
+    const lm = hands[i];
+    if (!lm) { handState[i].pinching = false; continue; }
+    const wrist = lm[0], midMcp = lm[9];
+    const scale = Math.hypot(wrist.x - midMcp.x, wrist.y - midMcp.y) || 0.001;
+    const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / scale;
+    const pinchPt = mapPoint((lm[4].x + lm[8].x) / 2, (lm[4].y + lm[8].y) / 2);
+    // palm center for clap detection
+    const pc = { x: (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5, y: (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5 };
+    palmCenters.push({ pc, scale });
+
+    // finger-heart vs pluck disambiguation: heart = thumb+index touching with the
+    // other three fingers CURLED (tips close to the wrist); pluck = pinch with at
+    // least one of them extended.
+    const folded = [12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < 1.45).length;
+    const touching = pinchDist < PINCH_ON;
+
+    const was = handState[i].pinching;
+    const isP = was ? (pinchDist < PINCH_OFF) : touching;
+    if (touching && !was) {
+      if (folded >= 2) { if (enabled('finger_heart')) fire('finger_heart', pinchPt.x, pinchPt.y); }
+      else if (enabled('pluck')) fire('pluck', pinchPt.x, pinchPt.y);
+    }
+    handState[i].pinching = isP;
+
+    // draw pinch dot on preview (landmarks are camBox-normalized → lift to frame first)
+    const dotF = camToFrame((lm[4].x + lm[8].x) / 2, (lm[4].y + lm[8].y) / 2);
+    pctx.fillStyle = isP ? '#4ade80' : 'rgba(255,255,255,.6)';
+    pctx.beginPath();
+    pctx.arc(dotF.x * pw, dotF.y * ph, isP ? 7 : 4, 0, 6.283);
+    pctx.fill();
+  }
+
+  // ── clap: both palms close together after approaching ──
+  if (palmCenters.length === 2 && enabled('clap')) {
+    const [a, b] = palmCenters;
+    const avgScale = (a.scale + b.scale) / 2 || 0.001;
+    const d = Math.hypot(a.pc.x - b.pc.x, a.pc.y - b.pc.y) / avgScale;
+    if (lastPalmDist != null && d < 1.1 && lastPalmDist - d > 0.12) {
+      const mid = mapPoint((a.pc.x + b.pc.x) / 2, (a.pc.y + b.pc.y) / 2);
+      fire('clap', mid.x, mid.y);
+    }
+    lastPalmDist = d;
+  } else lastPalmDist = null;
+
+  // ── head down: calibrated matrix pitch, held ~500ms ──
+  if (faceResult && faceResult.facialTransformationMatrixes && faceResult.facialTransformationMatrixes[0]) {
+    lastPitch = matrixPitchDeg(faceResult.facialTransformationMatrixes[0].data);
+    pitchStat.textContent = 'pitch: ' + lastPitch.toFixed(1) + '°'
+      + (pitchCal.neutral != null ? ' (neutral ' + pitchCal.neutral.toFixed(1) + ')' : ' — calibrate!')
+      + (pitchCal.bowed != null ? ' (bowed ' + pitchCal.bowed.toFixed(1) + ')' : '');
+    if (enabled('head_down') && pitchCal.neutral != null && pitchCal.bowed != null) {
+      const dir = Math.sign(pitchCal.bowed - pitchCal.neutral) || 1;
+      const progress = (lastPitch - pitchCal.neutral) * dir;
+      const target = Math.abs(pitchCal.bowed - pitchCal.neutral) * 0.7; // 70% of the way to the calibrated bow
+      if (progress > target) {
+        if (!headDownSince) headDownSince = now;
+        else if (now - headDownSince > 500) {
+          let pt = { x: OUT_W / 2, y: 500 };
+          if (faceResult.faceLandmarks && faceResult.faceLandmarks[0]) {
+            const nose = faceResult.faceLandmarks[0][1];
+            pt = mapPoint(nose.x, nose.y);
+          }
+          fire('head_down', pt.x, pt.y);
+          headDownSince = 0;
+        }
+      } else headDownSince = 0;
+    }
+  }
+
+  statEl.textContent = `hands:${hands.length} face:${faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length || 0} det:${DET_W}x${detCanvas.height}`;
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

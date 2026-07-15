@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gesture FX — Overlay</title>
+<!--
+  GESTURE FX — a transparent 1080x1920 browser source (add in TikTok Studio) that
+  renders effects for the events published by gesture-cam.html:
+
+    finger_heart → a burst of floating hearts from your hand
+    clap         → confetti + synthesized applause
+    head_down    → big "awww" + synthesized aww
+    pluck        → a small sparkle flash at the pinch point
+                   (feed-jamie-overlay.html does the actual treat steal)
+
+  Purely a subscriber — publishes nothing, costs nothing beyond its own delivery.
+  Sounds are synthesized with WebAudio (no assets). NOTE: browser sources in
+  OBS/TikTok Studio autoplay with audio permitted, but a normal Chrome tab needs
+  one click on the page before sound is allowed — that's a browser rule.
+-->
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  #conn { position: fixed; left: 8px; bottom: 8px; width: 8px; height: 8px; border-radius: 50%; background: #555; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<div id="conn"></div>
+<script>
+'use strict';
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+const W = 1080, H = 1920;
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+
+let parts = [];   // particles: hearts, confetti, sparkles
+let texts = [];   // floating text ("awww")
+
+// ── Spawners ─────────────────────────────────────────────────────────────
+function burstHearts(x, y) {
+  const glyphs = ['💖','💕','❤️','💗','💘'];
+  for (let i = 0; i < 16; i++) {
+    parts.push({
+      kind: 'glyph', glyph: glyphs[i % glyphs.length],
+      x: x + (Math.random() - 0.5) * 60, y: y + (Math.random() - 0.5) * 40,
+      vx: (Math.random() - 0.5) * 160, vy: -220 - Math.random() * 260,
+      grav: -60, // hearts drift UP and keep floating
+      size: 34 + Math.random() * 34, rot: (Math.random() - 0.5) * 0.6, rotV: (Math.random() - 0.5) * 2,
+      born: performance.now(), life: 2200 + Math.random() * 900, wobble: Math.random() * 6.28
+    });
+  }
+}
+function burstConfetti(x, y) {
+  const colors = ['#f472b6','#a78bfa','#4ade80','#fbbf24','#38bdf8','#fb7185'];
+  for (let i = 0; i < 60; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 300 + Math.random() * 600;
+    parts.push({
+      kind: 'confetti', color: colors[i % colors.length],
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 300,
+      grav: 900, size: 8 + Math.random() * 10, rot: Math.random() * 6.28, rotV: (Math.random() - 0.5) * 14,
+      born: performance.now(), life: 1600 + Math.random() * 900
+    });
+  }
+}
+function burstSparkle(x, y) {
+  for (let i = 0; i < 10; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 240;
+    parts.push({
+      kind: 'glyph', glyph: '✨',
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      grav: 240, size: 22 + Math.random() * 16, rot: 0, rotV: (Math.random() - 0.5) * 4,
+      born: performance.now(), life: 700 + Math.random() * 400, wobble: 0
+    });
+  }
+}
+function showAwww(x, y) {
+  texts.push({ text: 'awwww 🥺', x: Math.max(180, Math.min(W - 180, x)), y: Math.max(220, y), born: performance.now(), life: 2400 });
+}
+
+// ── Synth sounds (no assets) ─────────────────────────────────────────────
+let ac = null;
+function audio() { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); return ac; }
+function soundApplause() {
+  try {
+    const a = audio(), t0 = a.currentTime;
+    // a flurry of short filtered-noise claps at random offsets, two "hands" wide
+    const len = 0.05, buf = a.createBuffer(1, a.sampleRate * len, a.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2);
+    for (let c = 0; c < 14; c++) {
+      const src = a.createBufferSource(); src.buffer = buf;
+      const bp = a.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = 900 + Math.random() * 1400; bp.Q.value = 1.2;
+      const g = a.createGain(); g.gain.value = 0.16 + Math.random() * 0.12;
+      src.connect(bp).connect(g).connect(a.destination);
+      src.start(t0 + Math.random() * 0.9);
+    }
+  } catch (e) {}
+}
+function soundAwww() {
+  try {
+    const a = audio(), t0 = a.currentTime, dur = 1.1;
+    // two soft detuned oscillators gliding down with a vowel-ish lowpass = crowd "awww"
+    for (const det of [0, 7]) {
+      const o = a.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(330 + det * 4, t0);
+      o.frequency.exponentialRampToValueAtTime(200 + det * 3, t0 + dur);
+      const lp = a.createBiquadFilter(); lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(900, t0); lp.frequency.exponentialRampToValueAtTime(500, t0 + dur);
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.18);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(lp).connect(g).connect(a.destination);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+    }
+  } catch (e) {}
+}
+
+// ── Render loop ──────────────────────────────────────────────────────────
+let lastT = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  ctx.clearRect(0, 0, W, H);
+
+  parts = parts.filter(p => now - p.born < p.life);
+  for (const p of parts) {
+    const age = (now - p.born) / p.life;
+    p.vy += p.grav * dt;
+    p.x += p.vx * dt + (p.wobble != null ? Math.sin(now / 300 + p.wobble) * 40 * dt : 0);
+    p.y += p.vy * dt;
+    p.rot += p.rotV * dt;
+    ctx.save();
+    ctx.globalAlpha = age > 0.7 ? (1 - age) / 0.3 : 1;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    if (p.kind === 'glyph') {
+      ctx.font = p.size + 'px serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.glyph, 0, 0);
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+    }
+    ctx.restore();
+  }
+
+  texts = texts.filter(t => now - t.born < t.life);
+  for (const t of texts) {
+    const age = (now - t.born) / t.life;
+    ctx.save();
+    ctx.globalAlpha = age > 0.75 ? (1 - age) / 0.25 : 1;
+    ctx.font = '900 84px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    const y = t.y - age * 80;
+    ctx.strokeText(t.text, t.x, y);
+    ctx.fillStyle = '#fda4af';
+    ctx.fillText(t.text, t.x, y);
+    ctx.restore();
+  }
+}
+requestAnimationFrame(frame);
+
+// ── Ably ─────────────────────────────────────────────────────────────────
+const client = new Ably.Realtime({ key: ABLY_KEY });
+const ch = client.channels.get(ABLY_CH);
+ch.subscribe('gesture-event', msg => {
+  const d = msg.data || {};
+  const x = Number(d.x) || W / 2, y = Number(d.y) || H / 2;
+  if (d.type === 'finger_heart') burstHearts(x, y);
+  else if (d.type === 'clap') { burstConfetti(x, y); soundApplause(); }
+  else if (d.type === 'head_down') { showAwww(x, y); soundAwww(); }
+  else if (d.type === 'pluck') burstSparkle(x, y);
+});
+const dot = document.getElementById('conn');
+client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
+</script>
+</body>
+</html>
