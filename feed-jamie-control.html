@@ -342,7 +342,7 @@ const FJ_DEFAULT_CONFIG = {
     cornerJackpot: true, cornerTolerance: 30, cornerWindowMs: 150, cornerRewardMultiplier: 1, squashStretch: true
   },
   events: {
-    likesPerTreat: 50, likeQueueCap: 2, commentCooldown: 4, perUserCooldown: 10,
+    likesPerTreatEnabled: true, likesPerTreat: 50, likeQueueCap: 2, commentCooldown: 4, perUserCooldown: 10,
     genericSpawnChance: 0.05, keywordOnly: false,
     keywords: { ball: 'tennis-ball', treat: 'random-treat', toy: 'squeaky-toy', duck: 'duck', sock: 'sock', bubble: 'bubble', jamie: 'look' },
     treatWeights: { 'treat-biscuit': 45, 'treat-bone': 30, 'treat-purple-splat': 20, 'treat-heart': 5 },
@@ -356,14 +356,14 @@ const FJ_DEFAULT_CONFIG = {
     giftMappings: [],
     superchat: { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } },
     milestones: {
-      enabled: true, x: 540, y: 1790, scale: 1,
+      enabled: true, scale: 1,
       goals: [
         { id: 'goal-likes', label: 'Like Goal', counter: 'likes', target: 1000, baseValue: 0,
           action: 'heartme', autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
-          enabled: true, completed: false },
+          enabled: true, completed: false, x: 540, y: 1740 },
         { id: 'goal-comments', label: 'Comment Goal', counter: 'comments', target: 50, baseValue: 0,
           action: 'jackpot', autoEscalate: true, escalateMode: 'multiply', escalateAmount: 50, escalateFactor: 2,
-          enabled: true, completed: false }
+          enabled: true, completed: false, x: 540, y: 1840 }
       ]
     }
   },
@@ -715,6 +715,7 @@ function colorInput(parent, label, path) {
 /* E. EVENT RULES */
 (function () {
   const p = document.getElementById('events-controls');
+  toggle(p, 'Likes-per-treat enabled (turn off if using Milestone Goals instead)', 'events.likesPerTreatEnabled');
   slider(p, 'Likes per treat', 'events.likesPerTreat', 10, 1000, 5);
   slider(p, 'Like queue cap', 'events.likeQueueCap', 1, 5, 1);
   slider(p, 'Comment cooldown', 'events.commentCooldown', 0, 30, 0.5, v => v + 's');
@@ -989,9 +990,11 @@ const GOAL_ACTION_CHOICES = [...GIFT_ITEM_CHOICES, ['jackpot', '🌟 JACKPOT rea
 (function () {
   const p = document.getElementById('milestones-controls');
   toggle(p, 'Milestone goals enabled', 'events.milestones.enabled');
-  slider(p, 'Bars X', 'events.milestones.x', 0, 1080, 5);
-  slider(p, 'Bars Y', 'events.milestones.y', 0, 1920, 5);
-  slider(p, 'Bars scale', 'events.milestones.scale', 0.4, 2.5, 0.05, v => (+v).toFixed(2) + '×');
+  slider(p, 'Bar scale (applies to every goal)', 'events.milestones.scale', 0.4, 2.5, 0.05, v => (+v).toFixed(2) + '×');
+  const posNote = document.createElement('div');
+  posNote.className = 'note';
+  posNote.innerHTML = 'Each goal below has its own X/Y — position the like-goal bar and comment-goal bar anywhere independently.';
+  p.appendChild(posNote);
 })();
 function saveGoalsFromUI() {
   const rows = [...document.querySelectorAll('.goal-row')];
@@ -1007,7 +1010,9 @@ function saveGoalsFromUI() {
     escalateAmount: +r.querySelector('.goal-escalate-amount').value || 1000,
     escalateFactor: +r.querySelector('.goal-escalate-factor').value || 2,
     enabled: r.querySelector('.goal-enabled').checked,
-    completed: r._orig ? !!r._orig.completed : false
+    completed: r._orig ? !!r._orig.completed : false,
+    x: +r.querySelector('.goal-x').value || 540,
+    y: +r.querySelector('.goal-y').value || 1790
   }));
   pushConfig();
   /* deliberately no full renderGoalRows() here — rebuilding every row on every
@@ -1111,6 +1116,27 @@ function buildGoalRow(goal) {
   sub.appendChild(fac);
   row.appendChild(sub);
 
+  /* sub-row: this goal's own on-screen bar position */
+  const posSub = document.createElement('div');
+  posSub.style.cssText = 'flex-basis:100%;display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap;';
+  const posLbl = document.createElement('span');
+  posLbl.style.cssText = 'font-size:12px;color:var(--txt-dim);';
+  posLbl.textContent = 'Bar position:';
+  posSub.appendChild(posLbl);
+  const xIn = document.createElement('input');
+  xIn.type = 'number'; xIn.className = 'goal-x'; xIn.min = 0; xIn.max = 1080; xIn.step = 5; xIn.style.width = '70px';
+  xIn.title = 'X position (0-1080)';
+  xIn.value = goal.x ?? 540;
+  xIn.addEventListener('change', saveGoalsFromUI);
+  posSub.appendChild(xIn);
+  const yIn = document.createElement('input');
+  yIn.type = 'number'; yIn.className = 'goal-y'; yIn.min = 0; yIn.max = 1920; yIn.step = 5; yIn.style.width = '70px';
+  yIn.title = 'Y position (0-1920)';
+  yIn.value = goal.y ?? 1790;
+  yIn.addEventListener('change', saveGoalsFromUI);
+  posSub.appendChild(yIn);
+  row.appendChild(posSub);
+
   /* progress readout */
   const progress = document.createElement('div');
   progress.className = 'goal-progress';
@@ -1127,11 +1153,14 @@ function renderGoalRows() {
   for (const g of (CFG.events.milestones.goals || [])) holder.appendChild(buildGoalRow(g));
 }
 function addGoal() {
+  /* stagger new goals down the screen a bit so they don't land exactly on
+     top of an existing bar by default */
+  const n = document.querySelectorAll('.goal-row').length;
   document.getElementById('goal-rows').appendChild(buildGoalRow({
     id: 'goal-' + Math.random().toString(36).slice(2, 9),
     label: '', counter: 'likes', target: 1000, baseValue: 0, action: 'heartme',
     autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
-    enabled: true, completed: false
+    enabled: true, completed: false, x: 540, y: 1740 + n * 70
   }));
 }
 renderGoalRows();
