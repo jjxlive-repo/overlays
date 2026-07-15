@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hand Feed — Overlay</title>
+<!--
+  HAND FEED GAME — pinch falling treats out of the air with your real hand and
+  carry them to your mouth to "eat" them. Runs entirely in-browser (MediaPipe
+  Tasks Vision, WASM) — no server, no Ably, zero extra realtime message cost.
+
+  IMPORTANT: this overlay draws YOUR WEBCAM ITSELF (mirrored, cropped to fill
+  the 1080x1920 canvas) plus the game on top. Add it as a Browser Source in
+  OBS/TikTok Studio INSTEAD OF your normal camera source, not alongside it —
+  the point is this page owns the camera so hand tracking and the on-screen
+  game share one coordinate space with zero calibration.
+
+  Setup: open the source, pick your camera from the dropdown, hit Start. Grant
+  the camera permission prompt once. GPU acceleration recommended — this runs
+  two ML models (hand + face landmarks) every frame alongside your usual OBS
+  encoding load; drop to CPU delegate below if it's too heavy.
+
+  Pinch (thumb + index fingertip together) near a falling treat to grab it,
+  carry it to your mouth to eat it. Release without reaching your mouth to
+  toss it back into the air.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; width: 100%; height: 100%; }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  #startScreen {
+    position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: radial-gradient(ellipse at center, #1a1030 0%, #0a0612 100%);
+    color: #fff; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 24px;
+  }
+  #startScreen h1 { font-size: 26px; margin: 0; }
+  #startScreen p { font-size: 13px; opacity: .75; margin: 0; max-width: 360px; line-height: 1.5; }
+  #startScreen select, #startScreen button {
+    font-size: 15px; padding: 10px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25);
+    background: #1f1533; color: #fff; cursor: pointer;
+  }
+  #startScreen button { background: #7c3aed; font-weight: 800; border: none; }
+  #startScreen button:disabled { opacity: .5; cursor: default; }
+  #statusMsg { font-size: 12px; color: #fbbf24; min-height: 16px; }
+  #debug {
+    position: fixed; left: 8px; bottom: 8px; z-index: 40; font: 10px/1.4 monospace;
+    color: rgba(255,255,255,.55); background: rgba(0,0,0,.4); padding: 4px 7px; border-radius: 6px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<video id="video" autoplay playsinline muted style="display:none;"></video>
+<div id="debug"></div>
+
+<div id="startScreen">
+  <h1>🖐️ Hand Feed</h1>
+  <p>Pick your camera and hit Start. This page will draw your camera feed itself — add it to OBS in place of your normal camera source, not alongside it.</p>
+  <select id="camSelect"><option value="">— loading cameras… —</option></select>
+  <button id="startBtn" disabled>Loading…</button>
+  <div id="statusMsg"></div>
+</div>
+
+<script type="module">
+'use strict';
+import { FilesetResolver, HandLandmarker, FaceLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const W = 1080, H = 1920;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const video = document.getElementById('video');
+const debugEl = document.getElementById('debug');
+const statusMsg = document.getElementById('statusMsg');
+const startScreen = document.getElementById('startScreen');
+const camSelect = document.getElementById('camSelect');
+const startBtn = document.getElementById('startBtn');
+
+// ── Tunables ─────────────────────────────────────────────────────────────
+const PINCH_RATIO_ON  = 0.42;   // thumb-index distance / hand-scale below this = pinching
+const PINCH_RATIO_OFF = 0.55;   // hysteresis: must open past this to release (avoids flicker at the edge)
+const GRAB_RADIUS     = 130;    // canvas px — how close a pinch must be to a treat to grab it
+const EAT_RADIUS      = 90;     // canvas px — how close a held treat must get to the mouth to be eaten
+const GRAVITY         = 900;    // px/s^2
+const SPAWN_MS        = 1400;   // one new treat roughly this often
+const TREAT_R         = 46;     // visual radius
+const TREATS = ['🍬','🍩','🍪','🍕','🍒','🍫','🧁','🍭','🍇','🍓'];
+
+// ── Camera enumeration ───────────────────────────────────────────────────
+async function listCameras() {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+    tmp.getTracks().forEach(t => t.stop()); // just to unlock device labels
+  } catch (e) { /* permission may still be granted per-device below */ }
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cams = devices.filter(d => d.kind === 'videoinput');
+  camSelect.innerHTML = cams.length
+    ? cams.map((d, i) => `<option value="${d.deviceId}">${d.label || 'Camera ' + (i + 1)}</option>`).join('')
+    : '<option value="">No camera found</option>';
+  const last = localStorage.getItem('handFeedCamId');
+  if (last && cams.some(d => d.deviceId === last)) camSelect.value = last;
+  startBtn.disabled = cams.length === 0;
+  startBtn.textContent = cams.length ? 'Start' : 'No camera';
+}
+listCameras();
+
+// ── ML model loading (kicks off in parallel with camera pick) ────────────
+let handLandmarker = null, faceLandmarker = null, modelsReady = false;
+(async function loadModels() {
+  try {
+    statusMsg.textContent = 'Loading hand/face tracking models…';
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numHands: 2
+    });
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1
+    });
+    modelsReady = true;
+    statusMsg.textContent = '';
+  } catch (e) {
+    statusMsg.textContent = '⚠ Model load failed: ' + (e.message || e) + ' — check network access to jsdelivr/googleapis.';
+    console.error('[HandFeed] model load failed', e);
+  }
+})();
+
+// ── Start ────────────────────────────────────────────────────────────────
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  startBtn.textContent = 'Starting…';
+  try {
+    const deviceId = camSelect.value;
+    localStorage.setItem('handFeedCamId', deviceId);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: deviceId ? { deviceId: { exact: deviceId } } : true,
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    if (!modelsReady) {
+      statusMsg.textContent = 'Waiting for tracking models to finish loading…';
+      while (!modelsReady) await new Promise(r => setTimeout(r, 150));
+    }
+    startScreen.style.display = 'none';
+    requestAnimationFrame(frame);
+  } catch (e) {
+    statusMsg.textContent = '⚠ Camera failed: ' + (e.message || e);
+    startBtn.disabled = false;
+    startBtn.textContent = 'Retry';
+  }
+});
+
+// ── Video → canvas "cover" mapping (crop-to-fill, mirrored) ───────────────
+let cover = { scale: 1, dx: 0, dy: 0, vw: 0, vh: 0 };
+function updateCover() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  const scale = Math.max(W / vw, H / vh);
+  cover = { scale, dx: (W - vw * scale) / 2, dy: (H - vh * scale) / 2, vw, vh };
+}
+// Map a MediaPipe normalized point (0..1 in video space) to mirrored canvas space.
+function mapPoint(nx, ny) {
+  const vx = nx * cover.vw, vy = ny * cover.vh;
+  const cx = vx * cover.scale + cover.dx;
+  const cy = vy * cover.scale + cover.dy;
+  return { x: W - cx, y: cy }; // mirrored horizontally to match the mirrored video draw
+}
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// ── Game state ───────────────────────────────────────────────────────────
+let treats = [];       // { id, x, y, vx, vy, emoji, heldByHand }
+let hands = [null, null]; // per-hand tracked state: { pinch:{x,y}, isPinching, held }
+let score = 0;
+let lastSpawn = 0;
+let lastFrameT = performance.now();
+let eatFlashes = []; // { x, y, at }
+let _treatId = 0;
+
+function spawnTreat() {
+  treats.push({
+    id: _treatId++,
+    x: 120 + Math.random() * (W - 240),
+    y: -60,
+    vx: (Math.random() - 0.5) * 60,
+    vy: 80 + Math.random() * 60,
+    emoji: TREATS[Math.floor(Math.random() * TREATS.length)],
+    heldByHand: -1
+  });
+}
+
+function drawTreat(t) {
+  ctx.save();
+  ctx.font = `${TREAT_R * 2}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 10;
+  ctx.fillText(t.emoji, t.x, t.y);
+  ctx.restore();
+}
+
+function drawScore() {
+  ctx.save();
+  ctx.font = '800 34px "Segoe UI", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath();
+  ctx.roundRect(24, 24, 190, 56, 14);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🍬 ' + score, 44, 60);
+  ctx.restore();
+}
+
+function drawPinchDot(p, active) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, active ? 16 : 10, 0, Math.PI * 2);
+  ctx.fillStyle = active ? 'rgba(74,222,128,0.85)' : 'rgba(255,255,255,0.55)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawEatFlashes(now) {
+  eatFlashes = eatFlashes.filter(f => now - f.at < 500);
+  for (const f of eatFlashes) {
+    const t = (now - f.at) / 500;
+    ctx.save();
+    ctx.globalAlpha = 1 - t;
+    ctx.font = '900 40px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fbbf24';
+    ctx.translate(f.x, f.y - t * 60);
+    ctx.fillText('CHOMP!', 0, 0);
+    ctx.restore();
+  }
+}
+
+// Simple synthesized "chomp" — no audio asset needed.
+let audioCtx = null;
+function playChomp() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(220, t0);
+    osc.frequency.exponentialRampToValueAtTime(60, t0 + 0.12);
+    gain.gain.setValueAtTime(0.25, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0); osc.stop(t0 + 0.16);
+  } catch (e) {}
+}
+
+// ── Main loop ────────────────────────────────────────────────────────────
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (video.readyState < 2) return;
+  updateCover();
+
+  const dt = Math.min(0.05, (now - lastFrameT) / 1000);
+  lastFrameT = now;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // draw mirrored camera as background, cropped to fill 1080x1920
+  ctx.save();
+  ctx.translate(W, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, cover.dx, cover.dy, cover.vw * cover.scale, cover.vh * cover.scale);
+  ctx.restore();
+
+  // ── hand + face detection ──
+  let handResult = null, faceResult = null;
+  try { handResult = handLandmarker.detectForVideo(video, now); } catch (e) {}
+  try { faceResult = faceLandmarker.detectForVideo(video, now); } catch (e) {}
+
+  let mouth = null;
+  if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks[0]) {
+    const lm = faceResult.faceLandmarks[0];
+    const upper = lm[13], lower = lm[14], left = lm[61], right = lm[291];
+    const cx = (upper.x + lower.x + left.x + right.x) / 4;
+    const cy = (upper.y + lower.y + left.y + right.y) / 4;
+    mouth = mapPoint(cx, cy);
+  }
+
+  const activeHands = (handResult && handResult.landmarks) || [];
+  for (let i = 0; i < 2; i++) {
+    const lm = activeHands[i];
+    if (!lm) { hands[i] = null; continue; }
+    const thumb = lm[4], index = lm[8], wrist = lm[0], midMcp = lm[9];
+    const handScale = Math.hypot(wrist.x - midMcp.x, wrist.y - midMcp.y) || 0.001;
+    const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y) / handScale;
+    const pinchPoint = mapPoint((thumb.x + index.x) / 2, (thumb.y + index.y) / 2);
+    const prev = hands[i];
+    const wasPinching = prev ? prev.isPinching : false;
+    const isPinching = wasPinching ? (pinchDist < PINCH_RATIO_OFF) : (pinchDist < PINCH_RATIO_ON);
+    hands[i] = { pinch: pinchPoint, isPinching, held: prev ? prev.held : null };
+
+    if (isPinching && !hands[i].held) {
+      // try to grab the nearest free treat within range
+      let best = null, bestD = GRAB_RADIUS;
+      for (const t of treats) {
+        if (t.heldByHand !== -1) continue;
+        const d = dist(pinchPoint, t);
+        if (d < bestD) { bestD = d; best = t; }
+      }
+      if (best) { best.heldByHand = i; hands[i].held = best; }
+    } else if (!isPinching && hands[i].held) {
+      // release — toss it with whatever velocity the hand last had
+      const t = hands[i].held;
+      t.heldByHand = -1;
+      t.vx = (prev && prev._lastPinch) ? (pinchPoint.x - prev._lastPinch.x) / dt * 0.6 : 0;
+      t.vy = (prev && prev._lastPinch) ? (pinchPoint.y - prev._lastPinch.y) / dt * 0.6 : 0;
+      hands[i].held = null;
+    }
+    hands[i]._lastPinch = pinchPoint;
+
+    if (hands[i].held) {
+      hands[i].held.x = pinchPoint.x;
+      hands[i].held.y = pinchPoint.y;
+      if (mouth && dist(pinchPoint, mouth) < EAT_RADIUS) {
+        treats = treats.filter(t => t !== hands[i].held);
+        score++;
+        eatFlashes.push({ x: mouth.x, y: mouth.y, at: now });
+        playChomp();
+        hands[i].held = null;
+      }
+    }
+  }
+
+  // ── physics for free-falling (unheld) treats ──
+  for (const t of treats) {
+    if (t.heldByHand !== -1) continue;
+    t.vy += GRAVITY * dt;
+    t.x += t.vx * dt;
+    t.y += t.vy * dt;
+  }
+  treats = treats.filter(t => t.y < H + 100);
+
+  if (now - lastSpawn > SPAWN_MS) { lastSpawn = now; spawnTreat(); }
+
+  for (const t of treats) drawTreat(t);
+  for (const h of hands) if (h) drawPinchDot(h.pinch, h.isPinching);
+  drawEatFlashes(now);
+  drawScore();
+
+  debugEl.textContent = `hands:${activeHands.length} face:${mouth ? 1 : 0} treats:${treats.length} fps:${Math.round(1/dt)}`;
+}
+</script>
+</body>
+</html>
