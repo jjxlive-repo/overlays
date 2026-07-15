@@ -492,18 +492,27 @@ function renderStatus(s) {
     wn.textContent = `⚠ ${s.warnings.length} asset warning(s) — placeholder art in use. See section G.`;
   } else wn.textContent = '';
   if (s.assetAvailable) { lastAssetMap = s.assetAvailable; refreshAssetStatuses(); }
-  if (s.milestoneTotals) { window.lastMilestoneTotals = s.milestoneTotals; updateGoalProgressReadouts(); }
+  if (s.milestoneTotals) {
+    window.lastMilestoneTotals = s.milestoneTotals;
+    window.lastMilestoneGoalStates = s.milestoneGoalStates || [];
+    updateGoalProgressReadouts();
+  }
 }
 /* lightweight refresh — updates just the progress text in each goal row
    instead of rebuilding the whole editor, so it can't steal focus mid-edit */
 function updateGoalProgressReadouts() {
   const totals = window.lastMilestoneTotals || {};
+  const liveStates = window.lastMilestoneGoalStates || [];
   for (const row of document.querySelectorAll('.goal-row')) {
     const g = row._orig; if (!g) continue;
     const p = row.querySelector('.goal-progress'); if (!p) continue;
-    const target = +row.querySelector('.goal-target')?.value || g.target;
+    /* prefer the overlay's live target — auto-escalating goals move it there,
+       and the editable input only reflects whatever was last typed/saved */
+    const live = liveStates.find(s => s.id === g.id);
+    const target = live ? live.target : (+row.querySelector('.goal-target')?.value || g.target);
+    const completed = live ? live.completed : g.completed;
     const total = totals[row.querySelector('.goal-counter')?.value || g.counter] || 0;
-    p.innerHTML = g.completed
+    p.innerHTML = completed
       ? '✅ Completed (one-time goal — re-enable auto-escalate or edit the target to reuse it)'
       : `Progress: <b>${total.toLocaleString()}</b> / ${target.toLocaleString()} ${g.counter}`;
   }
