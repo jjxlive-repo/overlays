@@ -3791,8 +3791,8 @@ function handleMsg(data) {
   if (evt === 'follow' || evt === 'follower' || evt === 'new_follower')  { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter' || evt === 'joined')    { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'like' || evt === 'like_batch' || evt === 'liked')    { if (!(isTT && _tfWs?.readyState===WebSocket.OPEN)) { if(isTT)_evtCounts.tt_like++; if(isYT)_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _platH, data.chatname); _hypeSent=true; } }
-  else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); _hypeSent=true; }
-  else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); dhRelay('heart', data.chatname); _hypeSent=true; }
+  else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH, data.chatname); dhRelay('heart', data.chatname); _hypeSent=true; }
   else if ((evt === 'subscribe' || evt === 'yt_sub' || evt === 'new_subscriber' || evt === 'resub') && isYT) { publishMilk('yt_sub', 'yt', data.chatname); _hypeSent=true; }
   else if ((evt === 'member' || evt === 'membermilestone') && isYT)    { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
   // YouTube superchats, stickers, jewels, gift purchases → milk event with correct value
@@ -3875,6 +3875,12 @@ function handleMsg(data) {
     if(isTT)_evtCounts.tt_comment++; if(isYT)_evtCounts.yt_comment++; _updateEvtDebug();
     publishMilk('comment', _platH, data.chatname, data.chatmessage);
     tboRecordChatter(data.chatname, isTT ? 'tiktok' : 'youtube'); // for the Timeout control's recent list
+    // Dog House: first chat from a unique viewer this session → preview Splatty.
+    // Deduped HERE so the dog-house channel stays at ~1 message per unique chatter.
+    if (data.chatname && !_dhSeenChatters.has(data.chatname)) {
+      _dhSeenChatters.add(data.chatname);
+      dhRelay('chat', data.chatname);
+    }
   }
 
   if (isGift) {
@@ -3901,6 +3907,9 @@ function handleMsg(data) {
         message: data.chatmessage || null,
         _src: 'dock',
       }).catch(() => {});
+      // Dog House: relay every gift (low volume). amount is TikTok coins or YT
+      // dollars depending on alertType — the overlay normalizes via the type.
+      dhRelay('gift', data.chatname || 'Anonymous', { amount: alertAmount, kind: alertType, gift: giftTitle || null });
     }
   }
 
@@ -4380,6 +4389,16 @@ const ablyChannel = ably.channels.get(ABLY_CH);
 const nhToggleChannel = ably.channels.get('new-here-toggle');
 const cgToggleChannel = ably.channels.get('crowd-glass-toggle');
 const tboxToggleChannel = ably.channels.get('timeout-box-toggle');
+// Dog House overlay — dedicated low-volume channel. The dock classifies + dedupes
+// here so the overlay never attaches to the shared firehose: it relays each unique
+// chatter ONCE per session, plus Heart Mes and gifts (~1 msg per unique viewer +
+// 1 per gift). The overlay decides first-vs-repeat gift from its own state.
+const dhChannel = ably.channels.get('dog-house');
+const _dhSeenChatters = new Set();
+function dhRelay(t, u, extra) {
+  if (!u) return;
+  dhChannel.publish('dh', Object.assign({ t, u: String(u) }, extra || {})).catch(() => {});
+}
 nhToggleChannel.subscribe('request', () => {
   nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {});
 });
@@ -4762,7 +4781,7 @@ ablyChannel.publish = function(...args) {
 };
 // The dedicated New Here / Crowd Glass toggle channels are near-zero volume by
 // design, but guard them too for complete coverage under the same daily budget.
-[nhToggleChannel, cgToggleChannel].forEach(ch => {
+[nhToggleChannel, cgToggleChannel, dhChannel].forEach(ch => {
   const orig = ch.publish.bind(ch);
   ch.publish = function(...args) {
     if (!_ablyCapAllow()) return Promise.resolve();
