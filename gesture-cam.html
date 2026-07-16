@@ -84,6 +84,7 @@
       <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
       <label class="gest"><input type="checkbox" id="en-pluck" checked> ✊ Grab → pluck Jamie's treat</label>
       <label class="gest"><input type="checkbox" id="en-drop_bomb" checked> 🖐 Hold fist, open hand → drop a bomb</label>
+      <label class="gest"><input type="checkbox" id="en-pet" checked> 🐕 Open-hand stroking motion → pet Jamie</label>
       <label class="gest"><input type="checkbox" id="en-colliders" checked> ⚪ Bombs bounce off Ball Guys balls</label>
     </div>
     <div class="row" style="margin-top:8px;">
@@ -410,8 +411,8 @@ document.getElementById('btnCapture').onclick = async () => {
 
 // ── Gesture config + cooldowns ───────────────────────────────────────────
 const enabled = g => document.getElementById('en-' + g).checked;
-const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400, drop_bomb: 700 };
-const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0, drop_bomb: 0 };
+const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400, drop_bomb: 700, pet: 550 };
+const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0, drop_bomb: 0, pet: 0 };
 function fire(type, x, y) {
   if (recActive) return; // never fire events while the user is recording a pose
   const now = performance.now();
@@ -469,9 +470,31 @@ const GRAB_FOLD_MAX = 1.5;
 // framings/crops).
 const DROP_HOLD_MS = 500;
 let handState = [
-  { heart: false, grab: false, grabAt: 0, heartSince: 0, rec: { since: {}, dropHoldAt: 0 } },
-  { heart: false, grab: false, grabAt: 0, heartSince: 0, rec: { since: {}, dropHoldAt: 0 } }
+  { heart: false, grab: false, grabAt: 0, heartSince: 0, petSamples: [], rec: { since: {}, dropHoldAt: 0 } },
+  { heart: false, grab: false, grabAt: 0, heartSince: 0, petSamples: [], rec: { since: {}, dropHoldAt: 0 } }
 ];
+
+// Petting = an OPEN hand moving back and forth (a stroking motion). Detected by
+// counting direction reversals in the recent palm-position history — a distinct
+// MOTION, so it doesn't collide with the static pinch/fist/heart poses. (A big
+// open-hand wave can also trigger it; that's an acceptable overlap, and there's a
+// toggle to turn it off.)
+const PET_WINDOW_MS = 1100;   // history window for reversal counting
+const PET_MIN_REVERSALS = 3;  // back-and-forth changes needed within the window
+const PET_MIN_AMP = 0.03;     // min per-move amplitude (camBox-normalized) to count as a stroke
+function countReversals(samples, axis) {
+  let reversals = 0, lastDir = 0, lastExtreme = null;
+  for (const s of samples) {
+    const v = s[axis];
+    if (lastExtreme == null) { lastExtreme = v; continue; }
+    const d = v - lastExtreme;
+    if (Math.abs(d) < PET_MIN_AMP) continue;
+    const dir = d > 0 ? 1 : -1;
+    if (lastDir !== 0 && dir !== lastDir) reversals++;
+    lastDir = dir; lastExtreme = v;
+  }
+  return reversals;
+}
 function fingerFoldRatio(lm, tipIdx, wrist, scale) {
   return Math.hypot(lm[tipIdx].x - wrist.x, lm[tipIdx].y - wrist.y) / scale;
 }
@@ -633,7 +656,8 @@ function processCustomForHand(i, lm, palmPt, pinchPt, now) {
 // Test hook — lets the record/match/fire pipeline be driven with synthetic
 // landmark sets (no camera needed). Not used by the live path.
 window.__gestTest = {
-  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand, detectBallsFrom,
+  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand, detectBallsFrom, countReversals,
+  get PET_MIN_REVERSALS() { return PET_MIN_REVERSALS; },
   get recPoses() { return recPoses; },
   setPose(slot, frames) {
     const dims = frames[0].length;
@@ -730,6 +754,7 @@ function loop(now) {
     const lm = hands[i];
     if (!lm) {
       handState[i].heart = false; handState[i].grab = false; handState[i].heartSince = 0;
+      handState[i].petSamples.length = 0;
       handState[i].rec.since = {}; handState[i].rec.dropArmedUntil = 0;
       if (i === 0) { handDebugEl.textContent = '—'; recMatchDebugEl.textContent = '—'; }
       continue;
@@ -794,7 +819,21 @@ function loop(now) {
     }
     handState[i].grab = isGrabNow;
 
-    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} (heart<${HEART_PINCH_ON}) heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 (need 4) heldMs:${isGrabNow ? Math.round(now - handState[i].grabAt) : 0}`;
+    // pet: OPEN hand (nothing curled) stroking back and forth. Only tracks/fires
+    // for hands that aren't in a pinch/fist so it can't step on those gestures.
+    const handOpen = grabFoldedCount <= 1 && pinchDist > HEART_PINCH_OFF;
+    let petReversals = 0;
+    if (handOpen) {
+      const ps = handState[i].petSamples;
+      ps.push({ t: now, x: pc.x, y: pc.y });
+      while (ps.length && now - ps[0].t > PET_WINDOW_MS) ps.shift();
+      petReversals = Math.max(countReversals(ps, 'x'), countReversals(ps, 'y'));
+      if (petReversals >= PET_MIN_REVERSALS && enabled('pet')) fire('pet', palmPt.x, palmPt.y);
+    } else {
+      handState[i].petSamples.length = 0;
+    }
+
+    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 held:${isGrabNow ? Math.round(now - handState[i].grabAt) : 0} pet:${petReversals}/${PET_MIN_REVERSALS}`;
 
     // draw a dot on the preview (landmarks are camBox-normalized → lift to frame first)
     const dotF = camToFrame(pc.x, pc.y);

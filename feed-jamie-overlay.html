@@ -101,6 +101,14 @@
   #jamie.pose-anticipation.breathe #jamie-inner,
   #jamie.pose-celebrate.breathe #jamie-inner,
   #jamie.pose-payoff.breathe #jamie-inner { animation: none; }
+  /* being petted: happy little nuzzle wobble (on #jamie-inner so it doesn't fight
+     the inline transform #jamie carries for position/mirror) */
+  #jamie.pet-nuzzle #jamie-inner { animation: fjNuzzle .5s ease-in-out infinite !important; }
+  @keyframes fjNuzzle {
+    0%,100% { transform: rotate(0) translateY(0); }
+    25% { transform: rotate(calc(-4.5deg * var(--fj-motion))) translateY(calc(-2.5% * var(--fj-motion))); }
+    75% { transform: rotate(calc(4.5deg * var(--fj-motion))) translateY(calc(-1.5% * var(--fj-motion))); }
+  }
 
   /* placeholder SVG internal state classes (driven by container classes) */
   .fj-eyes-closed { display: none; }
@@ -1348,6 +1356,7 @@ function fjSynth(name, vol) {
     case 'squeak':   { const o = tone(900, 0, 0.22, 'sawtooth', 0.5); o.frequency.exponentialRampToValueAtTime(1400, t + 0.1); o.frequency.exponentialRampToValueAtTime(700, t + 0.22); break; }
     case 'quack':    { const o = tone(260, 0, 0.16, 'sawtooth', 0.6); o.frequency.exponentialRampToValueAtTime(180, t + 0.16); tone(240, 0.2, 0.14, 'sawtooth', 0.4); break; }
     case 'pop':      { const o = tone(600, 0, 0.07, 'sine'); o.frequency.exponentialRampToValueAtTime(1200, t + 0.06); break; }
+    case 'pet':      { const o = tone(420, 0, 0.32, 'sine', 0.45); o.frequency.exponentialRampToValueAtTime(560, t + 0.14); o.frequency.exponentialRampToValueAtTime(500, t + 0.32); break; } /* soft content coo */
     case 'jackpot':    tone(660, 0, 0.12, 'triangle'); tone(880, 0.1, 0.12, 'triangle'); tone(1320, 0.2, 0.2, 'triangle'); break;
     case 'heartMe':    tone(523, 0, 0.18, 'triangle'); tone(659, 0.12, 0.18, 'triangle'); tone(784, 0.24, 0.22, 'triangle'); tone(1047, 0.36, 0.3, 'triangle'); break;
     case 'subscribe':  tone(784, 0, 0.14, 'triangle'); tone(988, 0.1, 0.14, 'triangle'); tone(1175, 0.2, 0.28, 'triangle'); break;
@@ -1780,6 +1789,45 @@ function updateTracking(obj) {
 }
 
 /* one-shot look/miss interrupts (only from calm states) */
+/* ── Petting: the streamer "pets" Jamie via a stroking hand motion on camera
+   (gesture-cam.html publishes 'pet' pulses while the motion continues). Jamie
+   swaps to a happy face, nuzzle-wobbles, floats hearts, and coos — sustained as
+   long as the pulses keep coming, then settles back. Kept OUT of the main state
+   machine (it's a soft, interruptible overlay on IDLE/TRACKING) so it never
+   fights an active catch/Heart Me/jackpot. */
+let _petActive = false, _petUntil = 0, _petLastHeart = 0, _petLastSound = 0, _petPrevState = 'IDLE';
+function handlePet() {
+  const now = performance.now();
+  // never hijack a real celebration or a busy pose — petting is a lull activity
+  if (heartMeActive || jackpotActive) return;
+  if (!['IDLE', 'TRACKING', 'SLEEPING'].includes(J.state) && !_petActive) return;
+
+  if (J.state === 'SLEEPING') { playSeq('wake', { loop: false }); } // petting wakes him
+  _petUntil = now + 1000; // sustained window; each pulse extends it
+  if (!_petActive) {
+    _petActive = true;
+    _petPrevState = ['IDLE', 'TRACKING'].includes(J.state) ? J.state : 'IDLE';
+    clearTimeout(J.watchdog); clearTimeout(J.animTimer);
+    J.currentSeq = null;
+    jamieEl.classList.remove('breathe');
+    jamieEl.classList.add('pet-nuzzle');
+  }
+  showFrame('jamie-treat-happy.png');
+  if (now - _petLastHeart > 240) {
+    _petLastHeart = now;
+    spawnFx('heart', jamieRect.x + jamieRect.w * 0.5, jamieRect.y + jamieRect.h * 0.18, 2);
+  }
+  if (now - _petLastSound > 850) { _petLastSound = now; playSound('pet'); }
+}
+function petTick(now) {
+  if (_petActive && now > _petUntil) {
+    _petActive = false;
+    jamieEl.classList.remove('pet-nuzzle');
+    // settle back to whatever's appropriate now (objects may have arrived mid-pet)
+    if (!['PAYOFF', 'CELEBRATE'].includes(J.state)) setJamieState(objects.length ? 'TRACKING' : (_petPrevState === 'SLEEPING' ? 'IDLE' : _petPrevState));
+  }
+}
+
 function jamieOneShot(seqName, ms) {
   if (!['IDLE', 'TRACKING'].includes(J.state)) return;
   const back = J.state;
@@ -2780,6 +2828,7 @@ function tick(now) {
   lastFrame = now;
   if (dt > 0.05) dt = 0.05;  /* clamp after tab-hidden gaps */
   if (J.paused || J.hidden) return;
+  petTick(now);
   /* growth decay: shrink slowly back toward 1x (layout refresh throttled to ~1/s).
      Skip the refresh while Heart Me/Jackpot are running — they hand-manage
      jamieRect.x/jamieEl's transform (the Heart Me run-to-center-and-back
@@ -2954,6 +3003,7 @@ function initComms() {
       ably.channels.get('gesture-events').subscribe('gesture-event', m => {
         const d = m.data || {};
         if (d.type === 'pluck') pluckSteal(Number(d.x) || 540, Number(d.y) || 960);
+        else if (d.type === 'pet') handlePet();
       });
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
@@ -2982,6 +3032,8 @@ window.feedJamie = {
   spawnItem: (type, options) => spawnObject(type, options || {}),
   triggerHeartMe,
   triggerSubscribe,
+  pet: handlePet,
+  get petActive() { return _petActive; },
   setFloorY: v => { CFG.floor.y = Math.min(Math.max(+v || 500, CFG.floor.min), CFG.floor.max); applyLayout(); },
   setJamiePosition: opts => { CFG.jamie = fjDeepMerge(CFG.jamie, opts || {}); applyLayout(); },
   setPaused,
