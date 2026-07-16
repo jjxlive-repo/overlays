@@ -147,9 +147,19 @@ const REST_SPEED   = 40;    // px/s below which a ball counts as "settled" on th
 const REST_SETTLE_MS = 180; // must stay under REST_SPEED this long before the fuse starts
 
 function stepBalls(dt, now) {
-  // colliders go stale 5s after the engine's last update (its scan window closes
-  // once bombs are gone) — clear rather than bounce off ghosts of old ball layouts
-  if (colliders.length && now - collidersAt > 5000) colliders = [];
+  // Collider decay: each collider expires individually a while after detection
+  // last saw it — EXCEPT colliders under/near a live bomb, which never decay:
+  // the bomb sprite sitting on a ball is exactly what hides that ball from the
+  // engine's pixel detection, so "detection lost it" means nothing there. This
+  // is what stops the fall-through-then-rubber-band cycle.
+  const COLLIDER_TTL = 2500;
+  colliders = colliders.filter(c => {
+    if (now - c.lastSeen <= COLLIDER_TTL) return true;
+    for (const b of balls) {
+      if (!b.exploding && Math.hypot(b.x - c.x, b.y - c.y) < b.r + c.r + 80) return true;
+    }
+    return false;
+  });
   for (const b of balls) {
     if (b.exploding) continue;
     b.vy += GRAVITY * dt;
@@ -179,8 +189,13 @@ function stepBalls(dt, now) {
         const minD = b.r + c.r;
         if (dist < minD) {
           const nx = dx / dist, ny = dy / dist;
-          b.x = c.x + nx * minD;
-          b.y = c.y + ny * minD;
+          // Smooth, capped positional correction instead of a full-depth teleport —
+          // if a collider (re)appears while the bomb is deeply overlapped, the bomb
+          // eases out over a few frames rather than rubber-banding instantly.
+          const overlap = minD - dist;
+          const corr = Math.min(overlap, Math.max(10, overlap * 0.5));
+          b.x += nx * corr;
+          b.y += ny * corr;
           const vn = b.vx * nx + b.vy * ny;
           if (vn < 0) {
             // real bounce for real impacts; tiny ones absorb dead so a perched
@@ -206,7 +221,10 @@ function stepBalls(dt, now) {
       if (!b.resting && now - b.restingSince > REST_SETTLE_MS) { b.resting = true; b.restingAt = now; }
     } else {
       b.restingSince = 0;
-      b.resting = false; // knocked back into motion — fuse pauses until it settles again
+      // b.resting is intentionally NOT cleared: once the fuse is lit it stays lit
+      // and detonates on the ORIGINAL timer, even if the bomb gets jostled,
+      // bumped, or briefly dropped by a flickering collider. Only the PRE-fuse
+      // settle timer resets on motion.
     }
     if (b.resting && now - b.restingAt > FUSE_MS) explode(b, 0);
   }
@@ -398,9 +416,22 @@ ch.subscribe('bomb-config', msg => {
 });
 ch.subscribe('bomb-colliders', msg => {
   const d = msg.data || {};
-  if (Array.isArray(d.balls)) {
-    colliders = d.balls.filter(c => isFinite(c.x) && isFinite(c.y) && isFinite(c.r) && c.r > 5).slice(0, 16);
-    collidersAt = performance.now();
+  if (!Array.isArray(d.balls)) return;
+  const now = performance.now();
+  collidersAt = now;
+  // MERGE instead of replace: detection flickers (especially when a bomb sprite
+  // covers a ball), so an update that's missing a ball must not delete it —
+  // known colliders get their position refreshed, unseen ones age out via the
+  // TTL in stepBalls (and never age out while a bomb is resting on them).
+  const incoming = d.balls.filter(c => isFinite(c.x) && isFinite(c.y) && isFinite(c.r) && c.r > 5).slice(0, 16);
+  for (const inc of incoming) {
+    let best = null, bd = 70;
+    for (const c of colliders) {
+      const dd = Math.hypot(c.x - inc.x, c.y - inc.y);
+      if (dd < bd) { bd = dd; best = c; }
+    }
+    if (best) { best.x = inc.x; best.y = inc.y; best.r = inc.r; best.lastSeen = now; }
+    else if (colliders.length < 20) colliders.push({ x: inc.x, y: inc.y, r: inc.r, lastSeen: now });
   }
 });
 const dot = document.getElementById('conn');
