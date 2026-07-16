@@ -3909,7 +3909,12 @@ function handleMsg(data) {
       }).catch(() => {});
       // Dog House: relay every gift (low volume). amount is TikTok coins or YT
       // dollars depending on alertType — the overlay normalizes via the type.
-      dhRelay('gift', data.chatname || 'Anonymous', { amount: alertAmount, kind: alertType, gift: giftTitle || null });
+      // TikTok gifts are relayed from the Tikfinity handler instead (exact
+      // diamond counts) whenever TF is connected — skip them here so the same
+      // gift can't count twice.
+      if (!((isTT || ttEmbedCoins > 0) && _tfWs?.readyState === WebSocket.OPEN)) {
+        dhRelay('gift', data.chatname || 'Anonymous', { amount: alertAmount, kind: alertType, gift: giftTitle || null });
+      }
     }
   }
 
@@ -10977,6 +10982,10 @@ function _tfConnect() {
               giftName: data.giftName || 'Gift',
               coins,
             }).catch(() => {});
+            // Dog House: Tikfinity is the authoritative TikTok gift source when
+            // connected (exact diamond counts) — relay from HERE, not handleMsg
+            dhRelay('gift', data.uniqueId || data.nickname || 'Anonymous',
+                    { amount: coins, kind: 'tiktok_coins', gift: data.giftName || null });
           }
         }
         break;
