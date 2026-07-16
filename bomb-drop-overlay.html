@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bomb Drop — Overlay</title>
+<!--
+  BOMB DROP — triggered by gesture-cam.html: hold a fist up, then open your hand
+  (like releasing something you were holding), and an angry bomb drops from that
+  spot with heavy "bowling ball" weight, thuds onto a horizontal floor you set,
+  bounces off other bombs, sits blinking for a few seconds, then explodes — and
+  chain-detonates any other bomb resting nearby.
+
+  Add as a transparent 1080x1920 Browser Source. Position the floor with the
+  ?floorY= URL param (defaults to 1650, near the bottom):
+    bomb-drop-overlay.html?floorY=1600
+
+  Subscribes ONLY to the dedicated 'gesture-events' channel (see gesture-cam.html)
+  — never the busy shared channel — so this overlay costs near nothing in Ably
+  deliveries regardless of how much chat/gift traffic is flowing.
+-->
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  #conn { position: fixed; left: 8px; bottom: 8px; width: 8px; height: 8px; border-radius: 50%; background: #555; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<div id="conn"></div>
+<script>
+'use strict';
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const W = 1080, H = 1920;
+
+// ── Config (URL params) ────────────────────────────────────────────────
+const QS = new URLSearchParams(location.search);
+function qnum(k, d) { const v = parseFloat(QS.get(k)); return isFinite(v) ? v : d; }
+const FLOOR_Y   = qnum('floorY', 1650);   // the horizontal barrier bombs land on
+const FUSE_MS   = qnum('fuseMs', 3000);   // time resting before exploding
+const GRAVITY   = qnum('gravity', 2400);  // px/s^2 — heavy, fast-falling
+const CHAIN_R   = qnum('chainR', 2.0);    // explosion trigger radius, in ball-radii
+
+// ── Ball state ──────────────────────────────────────────────────────────
+let balls = [];
+let _ballId = 0;
+let booms = [];   // explosion particle bursts: { x, y, born, parts:[...] }
+let texts = [];   // "BOOM!"/"CRASH!" pop text
+
+function spawnBall(x, y) {
+  const r = 52 + Math.random() * 20; // 52-72px — heavier/bigger than a normal treat
+  balls.push({
+    id: ++_ballId,
+    x: Math.max(r, Math.min(W - r, x)), y: Math.max(r, y),
+    vx: (Math.random() - 0.5) * 90, vy: 0,
+    r, rot: Math.random() * 6.283, rotV: (Math.random() - 0.5) * 3,
+    resting: false, restingAt: 0, exploding: false,
+    faceSeed: Math.random() * 6.283,
+  });
+}
+
+// ── Explosion + chain reaction ────────────────────────────────────────
+function explode(ball, chainDepth) {
+  if (ball.exploding) return;
+  ball.exploding = true;
+  const cx = ball.x, cy = ball.y, r = ball.r;
+  spawnBoom(cx, cy, r);
+  if (Math.random() < 0.6 || chainDepth > 0) {
+    texts.push({ text: chainDepth > 0 ? 'CHAIN!' : ['BOOM!', 'CRASH!', 'KABOOM!'][Math.floor(Math.random() * 3)], x: cx, y: cy, born: performance.now(), life: 700 });
+  }
+  playBoom();
+  balls = balls.filter(b => b !== ball);
+
+  // chain reaction: any other resting/live bomb within CHAIN_R radii goes off too,
+  // staggered slightly so it visibly ripples instead of vanishing in one frame.
+  // chainScheduled (not `exploding`) claims the ball so it can't get scheduled twice
+  // by two different simultaneously-exploding neighbors — `exploding` itself only
+  // gets set inside explode() when it actually runs; setting it here too would make
+  // the deferred explode(other, ...) call below immediately no-op on its own guard.
+  const radius = r * CHAIN_R;
+  for (const other of balls) {
+    if (other.exploding || other.chainScheduled) continue;
+    const d = Math.hypot(other.x - cx, other.y - cy);
+    if (d < radius + other.r) {
+      other.chainScheduled = true;
+      setTimeout(() => explode(other, (chainDepth || 0) + 1), 90 + Math.random() * 80);
+    }
+  }
+}
+function spawnBoom(x, y, r) {
+  const boom = { x, y, born: performance.now(), parts: [] };
+  const n = 22;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
+    const sp = 260 + Math.random() * 420;
+    boom.parts.push({
+      x: 0, y: 0, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120,
+      size: 6 + Math.random() * (r * 0.35),
+      color: ['#ff6b35', '#ffbb33', '#ff3b3b', '#4a4a4a', '#fff2cc'][i % 5],
+      grav: 700, rot: Math.random() * 6.283, rotV: (Math.random() - 0.5) * 10
+    });
+  }
+  booms.push(boom);
+}
+let ac = null;
+function audio() { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); return ac; }
+function playBoom() {
+  try {
+    const a = audio(), t0 = a.currentTime;
+    const len = 0.35, buf = a.createBuffer(1, a.sampleRate * len, a.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 1.6);
+    const src = a.createBufferSource(); src.buffer = buf;
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1400, t0); lp.frequency.exponentialRampToValueAtTime(120, t0 + len);
+    const g = a.createGain(); g.gain.setValueAtTime(0.45, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + len);
+    src.connect(lp).connect(g).connect(a.destination);
+    src.start(t0);
+    // low thump underneath
+    const o = a.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, t0); o.frequency.exponentialRampToValueAtTime(35, t0 + 0.2);
+    const og = a.createGain(); og.gain.setValueAtTime(0.5, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.25);
+    o.connect(og).connect(a.destination); o.start(t0); o.stop(t0 + 0.3);
+  } catch (e) {}
+}
+
+// ── Physics ──────────────────────────────────────────────────────────────
+const RESTITUTION = 0.22;   // heavy, barely bounces
+const REST_SPEED   = 40;    // px/s below which a ball counts as "settled" on the floor
+const REST_SETTLE_MS = 180; // must stay under REST_SPEED this long before the fuse starts
+
+function stepBalls(dt, now) {
+  for (const b of balls) {
+    if (b.exploding) continue;
+    b.vy += GRAVITY * dt;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.rot += b.rotV * dt;
+
+    // walls
+    if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx) * RESTITUTION; }
+    if (b.x + b.r > W) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * RESTITUTION; }
+
+    // floor
+    if (b.y + b.r > FLOOR_Y) {
+      b.y = FLOOR_Y - b.r;
+      if (Math.abs(b.vy) > REST_SPEED) { b.vy = -Math.abs(b.vy) * RESTITUTION; b.vx *= 0.7; }
+      else { b.vy = 0; b.vx *= 0.6; }
+    }
+
+    // resting/fuse tracking
+    const settled = (b.y + b.r >= FLOOR_Y - 0.5) && Math.hypot(b.vx, b.vy) < REST_SPEED;
+    if (settled) {
+      if (!b.restingSince) b.restingSince = now;
+      if (!b.resting && now - b.restingSince > REST_SETTLE_MS) { b.resting = true; b.restingAt = now; }
+    } else {
+      b.restingSince = 0;
+      b.resting = false; // knocked back into motion — fuse pauses until it settles again
+    }
+    if (b.resting && now - b.restingAt > FUSE_MS) explode(b, 0);
+  }
+
+  // ball-to-ball collisions (relaxed push + velocity bleed, same pattern as the
+  // New Here balloon collision system — settles into a resting pile instead of
+  // jittering forever)
+  for (let i = 0; i < balls.length; i++) {
+    const a = balls[i];
+    if (a.exploding) continue;
+    for (let j = i + 1; j < balls.length; j++) {
+      const b = balls[j];
+      if (b.exploding) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 0.001;
+      const minD = a.r + b.r;
+      const overlap = minD - dist;
+      // Only treat this as an active collision worth correcting/interrupting if the
+      // overlap is more than trivial. Without this tolerance, two balls resting
+      // against each other converge to (and then hover at) a hair's-width of overlap
+      // forever — that residual contact kept re-triggering this block every frame,
+      // which perpetually reset the pre-fuse settle timer below and meant touching
+      // bombs could never finish settling long enough to ever start their fuse.
+      if (overlap > 0.5) {
+        const push = overlap / 2 * 0.7;
+        const nx = dx / dist, ny = dy / dist;
+        a.x -= nx * push; a.y -= ny * push;
+        b.x += nx * push; b.y += ny * push;
+        a.vx *= 0.6; a.vy *= 0.6; b.vx *= 0.6; b.vy *= 0.6;
+        // A bump interrupts the PRE-fuse settle timer (restart it) but must NOT
+        // touch an already-lit fuse — a bump shouldn't extinguish a countdown that's
+        // already running, only delay one that hasn't started yet.
+        if (!a.resting) a.restingSince = 0;
+        if (!b.resting) b.restingSince = 0;
+      }
+    }
+  }
+}
+
+// ── Drawing ──────────────────────────────────────────────────────────────
+function drawFloor(ctx) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.setLineDash([14, 10]);
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, FLOOR_Y); ctx.lineTo(W, FLOOR_Y); ctx.stroke();
+  ctx.restore();
+}
+function blinkPhase(b, now) {
+  if (!b.resting) return 0;
+  const t = (now - b.restingAt) / FUSE_MS; // 0..1
+  const freq = 2.2 + t * t * 14; // ramps from a slow blink to a frantic flicker
+  return (Math.sin(now / 1000 * freq * 6.283) + 1) / 2; // 0..1
+}
+function drawBomb(ctx, b, now) {
+  const t = b.resting ? (now - b.restingAt) / FUSE_MS : 0;
+  const flash = blinkPhase(b, now);
+  const jitter = t > 0.66 ? (Math.random() - 0.5) * t * 6 : 0;
+  ctx.save();
+  ctx.translate(b.x + jitter, b.y + jitter);
+  ctx.rotate(b.rot);
+
+  // shadow
+  ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(0, b.r * 0.15, b.r * 0.9, b.r * 0.22, 0, 0, 6.283); ctx.fill(); ctx.restore();
+
+  // fuse
+  ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = b.r * 0.09; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -b.r * 0.92);
+  ctx.quadraticCurveTo(b.r * 0.25, -b.r * 1.25, b.r * 0.1, -b.r * 1.5);
+  ctx.stroke();
+  const sparkOn = Math.sin(now / 90) > 0;
+  if (sparkOn) {
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath(); ctx.arc(b.r * 0.1, -b.r * 1.5, b.r * 0.14, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#ff6b35';
+    ctx.beginPath(); ctx.arc(b.r * 0.1, -b.r * 1.5, b.r * 0.07, 0, 6.283); ctx.fill();
+  }
+
+  // body — flashes toward red/white as the fuse runs down
+  const bodyCol = flash > 0.5 ? `rgba(255,${60 - t * 40},${60 - t * 40},1)` : '#26232b';
+  ctx.fillStyle = bodyCol;
+  ctx.beginPath(); ctx.arc(0, 0, b.r, 0, 6.283); ctx.fill();
+  const g = ctx.createRadialGradient(-b.r * 0.3, -b.r * 0.35, 0, -b.r * 0.3, -b.r * 0.35, b.r);
+  g.addColorStop(0, 'rgba(255,255,255,0.28)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, b.r, 0, 6.283); ctx.fill();
+
+  // angry face — brows/frown get more intense as the fuse runs down
+  const mad = 0.5 + t * 0.6;
+  ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = b.r * 0.08; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-b.r * 0.5, -b.r * 0.12 - mad * b.r * 0.12); ctx.lineTo(-b.r * 0.15, -b.r * 0.02); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(b.r * 0.5, -b.r * 0.12 - mad * b.r * 0.12); ctx.lineTo(b.r * 0.15, -b.r * 0.02); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-b.r * 0.32, b.r * 0.08, b.r * 0.09, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(b.r * 0.32, b.r * 0.08, b.r * 0.09, 0, 6.283); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-b.r * 0.32, b.r * 0.42 + mad * b.r * 0.08);
+  ctx.quadraticCurveTo(0, b.r * 0.28, b.r * 0.32, b.r * 0.42 + mad * b.r * 0.08);
+  ctx.lineWidth = b.r * 0.09; ctx.stroke();
+
+  ctx.restore();
+}
+function drawBooms(ctx, now) {
+  booms = booms.filter(bm => now - bm.born < 900);
+  for (const bm of booms) {
+    const age = (now - bm.born) / 1000;
+    ctx.save();
+    // flash ring
+    if (age < 0.15) {
+      ctx.globalAlpha = 1 - age / 0.15;
+      const rad = 40 + age * 900;
+      ctx.strokeStyle = '#ffbb33'; ctx.lineWidth = 14 * (1 - age / 0.15);
+      ctx.beginPath(); ctx.arc(bm.x, bm.y, rad, 0, 6.283); ctx.stroke();
+    }
+    for (const p of bm.parts) {
+      p.vy += p.grav * (1 / 60);
+      p.x += p.vx * (1 / 60); p.y += p.vy * (1 / 60);
+      p.rot += p.rotV * (1 / 60);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - age / 0.9);
+      ctx.translate(bm.x + p.x, bm.y + p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+}
+function drawTexts(ctx, now) {
+  texts = texts.filter(t => now - t.born < t.life);
+  for (const t of texts) {
+    const age = (now - t.born) / t.life;
+    ctx.save();
+    ctx.globalAlpha = age > 0.7 ? (1 - age) / 0.3 : 1;
+    ctx.font = '900 66px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    const y = t.y - 40 - age * 70;
+    const scale = 1 + (1 - Math.min(1, age * 4)) * 0.4;
+    ctx.translate(t.x, y); ctx.scale(scale, scale);
+    ctx.strokeText(t.text, 0, 0);
+    ctx.fillStyle = '#ffbb33';
+    ctx.fillText(t.text, 0, 0);
+    ctx.restore();
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+let lastT = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.032, (now - lastT) / 1000);
+  lastT = now;
+  ctx.clearRect(0, 0, W, H);
+  drawFloor(ctx);
+  stepBalls(dt, now);
+  for (const b of balls) if (!b.exploding) drawBomb(ctx, b, now);
+  drawBooms(ctx, now);
+  drawTexts(ctx, now);
+}
+requestAnimationFrame(frame);
+
+// ── Ably — dedicated near-silent channel only, same as gesture-fx-overlay.html ──
+const client = new Ably.Realtime({ key: ABLY_KEY });
+const ch = client.channels.get('gesture-events');
+ch.subscribe('gesture-event', msg => {
+  const d = msg.data || {};
+  if (d.type === 'drop_bomb') spawnBall(Number(d.x) || W / 2, Number(d.y) || 60);
+});
+const dot = document.getElementById('conn');
+client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
+window.__bombDrop = { get balls() { return balls; }, spawnBall, get count() { return balls.length; } };
+</script>
+</body>
+</html>
