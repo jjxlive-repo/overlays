@@ -10,7 +10,7 @@
   captures the TIKTOK PROJECTOR WINDOW (you pick it in Chrome's window picker), runs
   hand + face tracking on those pixels, and publishes tiny one-shot events over Ably:
 
-    gesture-event { type: 'finger_heart' | 'clap' | 'head_down' | 'pluck', x, y }
+    gesture-event { type: 'finger_heart' | 'clap' | 'head_down' | 'pluck' | 'drop_bomb', x, y }
 
   x/y are mapped into the standard 1080x1920 overlay space via the crop box you drag
   over the preview (draw it around the actual stream content inside the captured
@@ -19,6 +19,7 @@
   Consumers:
     - gesture-fx-overlay.html  → hearts burst / applause confetti / "awww"
     - feed-jamie-overlay.html  → 'pluck' steals the nearest bouncing treat for YOU
+    - bomb-drop-overlay.html   → 'drop_bomb' drops an angry bomb from x,y
 
   Cost safety: every publish is a one-shot with a per-gesture cooldown (no continuous
   coordinate streaming — nothing like the old mic firehose), and all publishes run
@@ -81,6 +82,7 @@
       <label class="gest"><input type="checkbox" id="en-clap" checked> 👏 Clap → applause</label>
       <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
       <label class="gest"><input type="checkbox" id="en-pluck" checked> ✊ Grab → pluck Jamie's treat</label>
+      <label class="gest"><input type="checkbox" id="en-drop_bomb" checked> 🖐 Hold fist, open hand → drop a bomb</label>
     </div>
     <div class="row" style="margin-top:8px;">
       <span class="hint">Head-down calibration (works turned toward your monitor, not just facing camera):</span>
@@ -98,6 +100,7 @@
       <button class="small" onclick="testFire('clap')">👏</button>
       <button class="small" onclick="testFire('head_down')">😔</button>
       <button class="small" onclick="testFire('pluck')">✊</button>
+      <button class="small" onclick="testFire('drop_bomb')">🖐💣</button>
     </div>
   </div>
 
@@ -266,8 +269,8 @@ document.getElementById('btnCapture').onclick = async () => {
 
 // ── Gesture config + cooldowns ───────────────────────────────────────────
 const enabled = g => document.getElementById('en-' + g).checked;
-const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400 };
-const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0 };
+const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400, drop_bomb: 700 };
+const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0, drop_bomb: 0 };
 function fire(type, x, y) {
   const now = performance.now();
   if (now - (lastFired[type] || 0) < COOLDOWN_MS[type]) return;
@@ -277,7 +280,8 @@ function fire(type, x, y) {
 }
 window.testFire = type => {
   lastFired[type] = 0;
-  fire(type, OUT_W / 2, type === 'head_down' ? 500 : OUT_H / 2);
+  const y = type === 'head_down' ? 500 : type === 'drop_bomb' ? 80 : OUT_H / 2;
+  fire(type, OUT_W / 2, y);
 };
 
 // ── Head-down calibration ────────────────────────────────────────────────
@@ -313,7 +317,14 @@ const HEART_FOLD_MAX = 1.65;                          // was 1.45 — more forgi
 // land close enough to a loose average threshold to misfire as a grab; requiring
 // every finger folded rules that out while still firing reliably for a real fist.
 const GRAB_FOLD_MAX = 1.5;
-let handState = [ { heart: false, grab: false }, { heart: false, grab: false } ];
+// Drop-a-bomb: hold a closed fist for at least this long, then open your hand —
+// the literal "holding something, then releasing it" motion. The hold-duration
+// requirement is what disambiguates this from a normal quick pluck grab (which
+// closes and releases fast); both share the same closed-fist shape, so timing is
+// the signal, not hand position (which isn't reliable across different camera
+// framings/crops).
+const DROP_HOLD_MS = 500;
+let handState = [ { heart: false, grab: false, grabAt: 0 }, { heart: false, grab: false, grabAt: 0 } ];
 function fingerFoldRatio(lm, tipIdx, wrist, scale) {
   return Math.hypot(lm[tipIdx].x - wrist.x, lm[tipIdx].y - wrist.y) / scale;
 }
@@ -384,9 +395,16 @@ function loop(now) {
     const wasGrab = handState[i].grab;
     const isGrabNow = wasGrab ? (grabFoldedCount >= 3) : isGrabPoseRaw; // slight hysteresis on release
     if (isGrabPoseRaw && !wasGrab && !isHeartPose && enabled('pluck')) fire('pluck', palmPt.x, palmPt.y);
+    if (isGrabPoseRaw && !wasGrab) handState[i].grabAt = now; // remember when the fist closed, for the hold-then-open check below
+    // drop a bomb: fist was held closed for DROP_HOLD_MS+, then the hand opened —
+    // the falling edge of grab, gated by hold duration (not position) so a quick
+    // pluck release doesn't also drop a bomb.
+    if (wasGrab && !isGrabNow && (now - handState[i].grabAt) >= DROP_HOLD_MS && enabled('drop_bomb')) {
+      fire('drop_bomb', palmPt.x, palmPt.y);
+    }
     handState[i].grab = isGrabNow;
 
-    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} (heart<${HEART_PINCH_ON}) heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 (need 4)`;
+    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} (heart<${HEART_PINCH_ON}) heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 (need 4) heldMs:${wasGrab ? Math.round(now - handState[i].grabAt) : 0}`;
 
     // draw a dot on the preview (landmarks are camBox-normalized → lift to frame first)
     const dotF = camToFrame(pc.x, pc.y);
