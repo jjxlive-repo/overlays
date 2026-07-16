@@ -87,7 +87,7 @@
       <label class="gest"><input type="checkbox" id="en-clap" checked> 👏 Clap → applause</label>
       <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
       <label class="gest"><input type="checkbox" id="en-drop_bomb" checked> 🖐 Hold fist, open hand → drop a bomb</label>
-      <label class="gest"><input type="checkbox" id="en-pet" checked> 🐕 Open-hand stroking motion → pet Jamie</label>
+      <label class="gest"><input type="checkbox" id="en-pet" checked> 🐕 Wave open hand in Jamie's corner (bottom-left) → pet him</label>
       <label class="gest"><input type="checkbox" id="en-colliders" checked> ⚪ Bombs bounce off Ball Guys balls</label>
       <label class="gest"><input type="checkbox" id="en-body_bounce" checked> 🧍 Feed Jamie treats bounce off YOU</label>
     </div>
@@ -526,21 +526,21 @@ let handState = [
   { heart: false, grab: false, grabAt: 0, heartSince: 0, petSamples: [], rec: { since: {}, dropHoldAt: 0 } }
 ];
 
-// Petting = an OPEN hand moving back and forth (a stroking motion). Detected by
-// counting direction reversals in the recent palm-position history — a distinct
-// MOTION, so it doesn't collide with the static pinch/fist/heart poses. (A big
-// open-hand wave can also trigger it; that's an acceptable overlap, and there's a
-// toggle to turn it off.)
-const PET_WINDOW_MS = 1100;   // history window for reversal counting
-const PET_MIN_REVERSALS = 3;  // back-and-forth changes needed within the window
-const PET_MIN_AMP = 0.03;     // min per-move amplitude (camBox-normalized) to count as a stroke
+// Petting = wave an OPEN hand in Jamie's corner (bottom-left of the camera frame).
+// Position-gated to that corner so it's easy to trigger and reads on camera as
+// reaching down to touch him; only fires when the hand is actually moving there.
+// PET_ZONE is in camBox-normalized coords (0..1 within the green camera box).
+const PET_WINDOW_MS = 900;    // movement-history window
+const PET_MIN_MOVE = 0.10;    // total palm travel (camBox-normalized) in the window to count as "waving"
+let PET_ZONE = { x0: 0.0, y0: 0.48, x1: 0.46, y1: 1.0 }; // bottom-left of the camera frame
 function countReversals(samples, axis) {
+  // (kept for the test hook; the live pet detector uses total-travel now)
   let reversals = 0, lastDir = 0, lastExtreme = null;
   for (const s of samples) {
     const v = s[axis];
     if (lastExtreme == null) { lastExtreme = v; continue; }
     const d = v - lastExtreme;
-    if (Math.abs(d) < PET_MIN_AMP) continue;
+    if (Math.abs(d) < 0.03) continue;
     const dir = d > 0 ? 1 : -1;
     if (lastDir !== 0 && dir !== lastDir) reversals++;
     lastDir = dir; lastExtreme = v;
@@ -709,7 +709,7 @@ function processCustomForHand(i, lm, palmPt, pinchPt, now) {
 // landmark sets (no camera needed). Not used by the live path.
 window.__gestTest = {
   featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand, detectBallsFrom, countReversals, buildBodyColliders,
-  get PET_MIN_REVERSALS() { return PET_MIN_REVERSALS; },
+  get PET_ZONE() { return PET_ZONE; }, get PET_MIN_MOVE() { return PET_MIN_MOVE; },
   get recPoses() { return recPoses; },
   setPose(slot, frames) {
     const dims = frames[0].length;
@@ -749,6 +749,13 @@ function loop(now) {
   pctx.strokeRect(camBox.x * pw, camBox.y * ph, camBox.w * pw, camBox.h * ph);
   pctx.strokeStyle = '#fb923c';
   pctx.strokeRect(gameBox.x * pw, gameBox.y * ph, gameBox.w * pw, gameBox.h * ph);
+  // pet zone (Jamie's corner) — wave an open hand here to pet him
+  if (enabled('pet')) {
+    const pzx = (camBox.x + PET_ZONE.x0 * camBox.w) * pw, pzy = (camBox.y + PET_ZONE.y0 * camBox.h) * ph;
+    const pzw = (PET_ZONE.x1 - PET_ZONE.x0) * camBox.w * pw, pzh = (PET_ZONE.y1 - PET_ZONE.y0) * camBox.h * ph;
+    pctx.strokeStyle = '#f472b6'; pctx.setLineDash([6, 5]); pctx.strokeRect(pzx, pzy, pzw, pzh); pctx.setLineDash([]);
+    pctx.fillStyle = '#f472b6'; pctx.font = '10px sans-serif'; pctx.fillText('🐕 pet zone', pzx + 4, pzy + 13);
+  }
 
   // ── Ball Guys collider scan — only while a bomb is alive, change-gated ──
   if (enabled('colliders') && now < colliderWindowUntil && now - lastBallScanAt > 250) {
@@ -888,21 +895,23 @@ function loop(now) {
     }
     handState[i].grab = isGrabNow;
 
-    // pet: OPEN hand (nothing curled) stroking back and forth. Only tracks/fires
-    // for hands that aren't in a pinch/fist so it can't step on those gestures.
+    // pet: an OPEN hand waving in Jamie's corner (bottom-left of the camera frame).
+    // Gated to that corner region so it only fires when you reach toward him, and
+    // to open hands so it can't step on the pinch/fist gestures.
     const handOpen = grabFoldedCount <= 1 && pinchDist > HEART_PINCH_OFF;
-    let petReversals = 0;
-    if (handOpen) {
+    const inPetZone = pc.x >= PET_ZONE.x0 && pc.x <= PET_ZONE.x1 && pc.y >= PET_ZONE.y0 && pc.y <= PET_ZONE.y1;
+    let petMove = 0;
+    if (handOpen && inPetZone) {
       const ps = handState[i].petSamples;
       ps.push({ t: now, x: pc.x, y: pc.y });
       while (ps.length && now - ps[0].t > PET_WINDOW_MS) ps.shift();
-      petReversals = Math.max(countReversals(ps, 'x'), countReversals(ps, 'y'));
-      if (petReversals >= PET_MIN_REVERSALS && enabled('pet')) fire('pet', palmPt.x, palmPt.y);
+      for (let k = 1; k < ps.length; k++) petMove += Math.hypot(ps[k].x - ps[k - 1].x, ps[k].y - ps[k - 1].y);
+      if (petMove > PET_MIN_MOVE && enabled('pet')) fire('pet', palmPt.x, palmPt.y);
     } else {
       handState[i].petSamples.length = 0;
     }
 
-    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 held:${isGrabNow ? Math.round(now - handState[i].grabAt) : 0} pet:${petReversals}/${PET_MIN_REVERSALS}`;
+    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} grabFold:${grabFoldedCount}/4 held:${isGrabNow ? Math.round(now - handState[i].grabAt) : 0} petZone:${inPetZone ? 'IN' : 'out'} petMove:${petMove.toFixed(2)}/${PET_MIN_MOVE}`;
 
     // draw a dot on the preview (landmarks are camBox-normalized → lift to frame first)
     const dotF = camToFrame(pc.x, pc.y);
