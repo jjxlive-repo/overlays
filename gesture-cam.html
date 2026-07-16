@@ -105,6 +105,53 @@
   </div>
 
   <div class="panel">
+    <h2>2.5 · Record YOUR gestures (overrides the built-in detector for that action)</h2>
+    <div class="hint" style="margin-bottom:8px;">
+      Click ⏺, you get a 3-second countdown, then hold the pose steady for ~1.5s while your hand is in the green camera box.
+      Your recording becomes the trigger — a pose only fires when it clearly matches YOUR recording (and clearly does NOT match your other recordings),
+      held steady for a beat. Re-record any time; ✕ goes back to the built-in detector.
+    </div>
+    <div class="row" id="recRow-finger_heart">
+      <span style="min-width:170px;">🫰 Hearts pose</span>
+      <button class="small rec-btn" data-slot="finger_heart">⏺ Record</button>
+      <button class="small rec-clear" data-slot="finger_heart">✕</button>
+      <span class="stat rec-status" data-slot="finger_heart">built-in</span>
+    </div>
+    <div class="row" id="recRow-pluck">
+      <span style="min-width:170px;">✊ Pluck pose</span>
+      <button class="small rec-btn" data-slot="pluck">⏺ Record</button>
+      <button class="small rec-clear" data-slot="pluck">✕</button>
+      <span class="stat rec-status" data-slot="pluck">built-in</span>
+    </div>
+    <div class="row" id="recRow-drop_hold">
+      <span style="min-width:170px;">💣 Bomb HOLD pose</span>
+      <button class="small rec-btn" data-slot="drop_hold">⏺ Record</button>
+      <button class="small rec-clear" data-slot="drop_hold">✕</button>
+      <span class="stat rec-status" data-slot="drop_hold">built-in (fist)</span>
+    </div>
+    <div class="row" id="recRow-drop_release">
+      <span style="min-width:170px;">💣 Bomb RELEASE pose</span>
+      <button class="small rec-btn" data-slot="drop_release">⏺ Record</button>
+      <button class="small rec-clear" data-slot="drop_release">✕</button>
+      <span class="stat rec-status" data-slot="drop_release">built-in (open hand)</span>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <span class="hint" style="min-width:170px;">Sensitivity (higher = stricter)</span>
+      <input type="range" id="recStrict" min="0.6" max="1.8" step="0.05" value="1" style="flex:1;max-width:220px;">
+      <span class="stat" id="recStrictVal">1.00</span>
+    </div>
+    <div class="row">
+      <span class="hint" style="min-width:170px;">Hold-steady time before firing</span>
+      <input type="range" id="recDwell" min="150" max="900" step="50" value="350" style="flex:1;max-width:220px;">
+      <span class="stat" id="recDwellVal">350ms</span>
+    </div>
+    <div class="row">
+      <span class="hint">Live match distances:</span>
+      <span class="stat" id="recMatchDebug">—</span>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>3 · Event log</h2>
     <div id="log"></div>
   </div>
@@ -154,6 +201,7 @@ const logEl = document.getElementById('log');
 const capPill = document.getElementById('capPill');
 const pitchStat = document.getElementById('pitchStat');
 const handDebugEl = document.getElementById('handDebug');
+const recMatchDebugEl = document.getElementById('recMatchDebug');
 
 function log(msg, isEvt) {
   const d = document.createElement('div');
@@ -272,6 +320,7 @@ const enabled = g => document.getElementById('en-' + g).checked;
 const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400, drop_bomb: 700 };
 const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0, drop_bomb: 0 };
 function fire(type, x, y) {
+  if (recActive) return; // never fire events while the user is recording a pose
   const now = performance.now();
   if (now - (lastFired[type] || 0) < COOLDOWN_MS[type]) return;
   lastFired[type] = now;
@@ -324,10 +373,187 @@ const GRAB_FOLD_MAX = 1.5;
 // the signal, not hand position (which isn't reliable across different camera
 // framings/crops).
 const DROP_HOLD_MS = 500;
-let handState = [ { heart: false, grab: false, grabAt: 0 }, { heart: false, grab: false, grabAt: 0 } ];
+let handState = [
+  { heart: false, grab: false, grabAt: 0, heartSince: 0, rec: { since: {}, dropHoldAt: 0 } },
+  { heart: false, grab: false, grabAt: 0, heartSince: 0, rec: { since: {}, dropHoldAt: 0 } }
+];
 function fingerFoldRatio(lm, tipIdx, wrist, scale) {
   return Math.hypot(lm[tipIdx].x - wrist.x, lm[tipIdx].y - wrist.y) / scale;
 }
+
+// ── Custom recorded poses ─────────────────────────────────────────────────
+// The user records THEIR OWN hand pose per action; the recording becomes the
+// trigger, replacing the generic built-in heuristic for that action. Matching
+// is nearest-template distance on a normalized landmark vector with:
+//   • an ambiguity margin — a pose fires only if it's clearly closer to its
+//     recording than to any OTHER recording ("too similar" fix), and
+//   • a dwell — the pose must match continuously for recDwell ms ("too
+//     sensitive" fix; the same dwell is now applied to built-ins too).
+const REC_LS = 'gestureCam.customPoses.v1';
+const REC_SLOTS = ['finger_heart', 'pluck', 'drop_hold', 'drop_release'];
+let recPoses = {};   // slot -> { vec, mirror, tol }
+try { const c = JSON.parse(localStorage.getItem(REC_LS) || 'null'); if (c && typeof c === 'object') recPoses = c; } catch (e) {}
+let recStrict = parseFloat(localStorage.getItem('gestureCam.recStrict') || '1') || 1;
+let recDwellMs = parseInt(localStorage.getItem('gestureCam.recDwell') || '350', 10) || 350;
+
+// Normalized pose descriptor: wrist at origin, scaled by wrist→middle-MCP,
+// rotated so wrist→middle-MCP points "up" — makes the match tolerant of where
+// the hand is, how big it is on screen, and how the wrist is angled. 40 dims.
+function featureVec(lm) {
+  const w = lm[0], m = lm[9];
+  const scale = Math.hypot(m.x - w.x, m.y - w.y) || 0.001;
+  const ang = Math.atan2(m.y - w.y, m.x - w.x);
+  const cos = Math.cos(-ang), sin = Math.sin(-ang);
+  const v = [];
+  for (let i = 1; i < 21; i++) {
+    const dx = (lm[i].x - w.x) / scale, dy = (lm[i].y - w.y) / scale;
+    v.push(dx * cos - dy * sin, dx * sin + dy * cos);
+  }
+  return v;
+}
+function mirrorLm(lm) { return lm.map(p => ({ x: -p.x, y: p.y })); }
+function poseDist(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; }
+  return Math.sqrt(s / (a.length / 2));
+}
+// Distance from a live hand to a recorded slot (checks the mirrored template too,
+// so the opposite hand still matches a pose recorded with one hand).
+function slotDist(vec, mirVec, slot) {
+  const t = recPoses[slot];
+  if (!t) return Infinity;
+  return Math.min(poseDist(vec, t.vec), poseDist(mirVec, t.vec));
+}
+// All slot distances + which slot (if any) is an unambiguous match right now.
+function matchSlots(vec, mirVec) {
+  const dists = {};
+  let best = null, bestD = Infinity, secondD = Infinity;
+  for (const s of REC_SLOTS) {
+    const d = slotDist(vec, mirVec, s);
+    dists[s] = d;
+    if (d < bestD) { secondD = bestD; bestD = d; best = s; }
+    else if (d < secondD) secondD = d;
+  }
+  const matched = {};
+  for (const s of REC_SLOTS) {
+    const t = recPoses[s];
+    if (!t) continue;
+    const within = dists[s] < t.tol / recStrict;
+    // margin rule only bites when another recording is also close — a slot must
+    // beat the runner-up clearly, or it doesn't fire at all.
+    const unambiguous = s === best ? (secondD > bestD * 1.3 || secondD === Infinity) : false;
+    matched[s] = within && unambiguous;
+  }
+  return { dists, matched };
+}
+
+// Recording flow: 3s countdown, then capture ~1.5s of frames while a hand is
+// visible; template = per-dimension mean, tolerance = spread-derived.
+let recActive = null; // { slot, startAt, frames: [] }
+const REC_COUNTDOWN_MS = 3000, REC_CAPTURE_MS = 1500, REC_MIN_FRAMES = 12;
+function recStatusEl(slot) { return document.querySelector(`.rec-status[data-slot="${slot}"]`); }
+function recUpdateStatuses() {
+  for (const s of REC_SLOTS) {
+    const el = recStatusEl(s);
+    if (!el) continue;
+    if (recActive && recActive.slot === s) continue; // live countdown text owns it
+    el.textContent = recPoses[s] ? `recorded ✓ (tol ${recPoses[s].tol.toFixed(2)})` : (s.startsWith('drop') ? 'built-in (' + (s === 'drop_hold' ? 'fist' : 'open hand') + ')' : 'built-in');
+    el.style.color = recPoses[s] ? 'var(--green)' : 'var(--dim)';
+  }
+}
+function recSave() { try { localStorage.setItem(REC_LS, JSON.stringify(recPoses)); } catch (e) {} }
+function recFinish() {
+  const { slot, frames } = recActive;
+  recActive = null;
+  if (frames.length < REC_MIN_FRAMES) {
+    log(`⏺ ${slot}: not enough hand frames captured (${frames.length}) — keep your hand inside the green box and try again`);
+    recUpdateStatuses();
+    return;
+  }
+  const dims = frames[0].length;
+  const mean = new Array(dims).fill(0);
+  for (const f of frames) for (let i = 0; i < dims; i++) mean[i] += f[i] / frames.length;
+  let spread = 0;
+  for (const f of frames) spread += poseDist(f, mean) / frames.length;
+  // tolerance: generous multiple of your own natural jitter while holding the
+  // pose, floored so a rock-steady recording doesn't produce a hair-trigger tol.
+  const tol = Math.max(0.30, spread * 3.0);
+  recPoses[slot] = { vec: mean, tol };
+  recSave();
+  recUpdateStatuses();
+  log(`⏺ ${slot} recorded (${frames.length} frames, tol ${tol.toFixed(2)})`);
+}
+document.querySelectorAll('.rec-btn').forEach(btn => btn.addEventListener('click', () => {
+  if (recActive) return;
+  recActive = { slot: btn.dataset.slot, startAt: performance.now(), frames: [] };
+  log(`⏺ recording ${btn.dataset.slot} — get your hand ready…`);
+}));
+document.querySelectorAll('.rec-clear').forEach(btn => btn.addEventListener('click', () => {
+  delete recPoses[btn.dataset.slot];
+  recSave();
+  recUpdateStatuses();
+  log(`✕ ${btn.dataset.slot} recording cleared — back to built-in`);
+}));
+const recStrictEl = document.getElementById('recStrict'), recStrictVal = document.getElementById('recStrictVal');
+const recDwellEl = document.getElementById('recDwell'), recDwellVal = document.getElementById('recDwellVal');
+recStrictEl.value = recStrict; recStrictVal.textContent = recStrict.toFixed(2);
+recDwellEl.value = recDwellMs; recDwellVal.textContent = recDwellMs + 'ms';
+recStrictEl.addEventListener('input', () => { recStrict = parseFloat(recStrictEl.value); recStrictVal.textContent = recStrict.toFixed(2); localStorage.setItem('gestureCam.recStrict', recStrict); });
+recDwellEl.addEventListener('input', () => { recDwellMs = parseInt(recDwellEl.value, 10); recDwellVal.textContent = recDwellMs + 'ms'; localStorage.setItem('gestureCam.recDwell', recDwellMs); });
+recUpdateStatuses();
+
+// Custom-pose runtime for one hand: dwell-gated firing + hold→release bomb chain.
+function processCustomForHand(i, lm, palmPt, pinchPt, now) {
+  const vec = featureVec(lm), mirVec = featureVec(mirrorLm(lm));
+  const { dists, matched } = matchSlots(vec, mirVec);
+  const hs = handState[i];
+
+  for (const slot of ['finger_heart', 'pluck']) {
+    if (!recPoses[slot]) continue;
+    if (matched[slot]) {
+      if (!hs.rec.since[slot]) hs.rec.since[slot] = now;
+      else if (now - hs.rec.since[slot] >= recDwellMs && !hs.rec['fired_' + slot]) {
+        hs.rec['fired_' + slot] = true; // re-arm only after the pose is dropped
+        if (enabled(slot === 'pluck' ? 'pluck' : slot)) fire(slot, (slot === 'finger_heart' ? pinchPt : palmPt).x, (slot === 'finger_heart' ? pinchPt : palmPt).y);
+      }
+    } else { hs.rec.since[slot] = 0; hs.rec['fired_' + slot] = false; }
+  }
+
+  // custom bomb: HOLD pose matched ≥DROP_HOLD_MS arms it; RELEASE pose within
+  // 1.5s of leaving the hold pose drops the bomb.
+  if (recPoses.drop_hold && recPoses.drop_release) {
+    if (matched.drop_hold) {
+      if (!hs.rec.since.drop_hold) hs.rec.since.drop_hold = now;
+      if (now - hs.rec.since.drop_hold >= DROP_HOLD_MS) hs.rec.dropArmedUntil = now + 1500;
+    } else hs.rec.since.drop_hold = 0;
+    if (matched.drop_release && hs.rec.dropArmedUntil && now < hs.rec.dropArmedUntil) {
+      hs.rec.dropArmedUntil = 0;
+      if (enabled('drop_bomb')) fire('drop_bomb', palmPt.x, palmPt.y);
+    }
+    if (hs.rec.dropArmedUntil && now >= hs.rec.dropArmedUntil) hs.rec.dropArmedUntil = 0;
+  }
+  return { vec, dists, matched };
+}
+
+// Test hook — lets the record/match/fire pipeline be driven with synthetic
+// landmark sets (no camera needed). Not used by the live path.
+window.__gestTest = {
+  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand,
+  get recPoses() { return recPoses; },
+  setPose(slot, frames) {
+    const dims = frames[0].length;
+    const mean = new Array(dims).fill(0);
+    for (const f of frames) for (let k = 0; k < dims; k++) mean[k] += f[k] / frames.length;
+    let spread = 0;
+    for (const f of frames) spread += poseDist(f, mean) / frames.length;
+    recPoses[slot] = { vec: mean, tol: Math.max(0.30, spread * 3.0) };
+    recSave(); recUpdateStatuses();
+    return recPoses[slot];
+  },
+  clearAll() { recPoses = {}; recSave(); recUpdateStatuses(); },
+  get handState() { return handState; },
+  get dwellMs() { return recDwellMs; }
+};
 
 // ── Clap state ────────────────────────────────────────────────────────────
 let lastPalmDist = null;
@@ -364,11 +590,30 @@ function loop(now) {
 
   const hands = (handResult && handResult.landmarks) || [];
 
-  // ── per-hand: grab (pluck) + finger-heart ──
+  // ── recording countdown/capture (uses hand 1 only) ──
+  if (recActive) {
+    const el = recStatusEl(recActive.slot);
+    const sinceStart = now - recActive.startAt;
+    if (sinceStart < REC_COUNTDOWN_MS) {
+      if (el) { el.textContent = '⏳ hold the pose in… ' + Math.ceil((REC_COUNTDOWN_MS - sinceStart) / 1000); el.style.color = '#fbbf24'; }
+    } else if (sinceStart < REC_COUNTDOWN_MS + REC_CAPTURE_MS) {
+      if (el) { el.textContent = '⏺ CAPTURING — hold it… (' + recActive.frames.length + ')'; el.style.color = 'var(--danger)'; }
+      if (hands[0]) recActive.frames.push(featureVec(hands[0]));
+    } else {
+      recFinish();
+    }
+  }
+
+  // ── per-hand: grab (pluck) + finger-heart (+ custom recorded poses) ──
   const palmCenters = [];
   for (let i = 0; i < 2; i++) {
     const lm = hands[i];
-    if (!lm) { handState[i].heart = false; handState[i].grab = false; if (i === 0) handDebugEl.textContent = '—'; continue; }
+    if (!lm) {
+      handState[i].heart = false; handState[i].grab = false; handState[i].heartSince = 0;
+      handState[i].rec.since = {}; handState[i].rec.dropArmedUntil = 0;
+      if (i === 0) { handDebugEl.textContent = '—'; recMatchDebugEl.textContent = '—'; }
+      continue;
+    }
     const wrist = lm[0], midMcp = lm[9];
     const scale = Math.hypot(wrist.x - midMcp.x, wrist.y - midMcp.y) || 0.001;
     const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / scale;
@@ -377,34 +622,59 @@ function loop(now) {
     const palmPt = mapPoint(pc.x, pc.y);
     palmCenters.push({ pc, scale });
 
-    // finger-heart: thumb+index touching + other 3 fingers curled (checked first —
-    // a heart pose should never also fire a grab).
+    // custom recorded poses first — a recording replaces the built-in for its action
+    const custom = (!recActive) ? processCustomForHand(i, lm, palmPt, pinchPt, now) : null;
+    if (i === 0 && custom) {
+      recMatchDebugEl.textContent = REC_SLOTS.filter(s => recPoses[s])
+        .map(s => `${s}:${custom.dists[s] === Infinity ? '—' : custom.dists[s].toFixed(2)}${custom.matched[s] ? '✓' : ''} (tol ${(recPoses[s].tol / recStrict).toFixed(2)})`)
+        .join('  ') || 'no recordings yet';
+    }
+
+    // finger-heart built-in (skipped when a custom recording exists for it):
+    // thumb+index touching + other 3 fingers curled, now ALSO required to hold
+    // steady for recDwellMs before firing — single-frame blips no longer fire.
     const foldedCount = [12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < HEART_FOLD_MAX).length;
     const heartTouching = pinchDist < HEART_PINCH_ON;
     const wasHeart = handState[i].heart;
     const isHeartNow = wasHeart ? (pinchDist < HEART_PINCH_OFF) : heartTouching;
     const isHeartPose = isHeartNow && foldedCount >= 2;
-    if (heartTouching && !wasHeart && foldedCount >= 2 && enabled('finger_heart')) fire('finger_heart', pinchPt.x, pinchPt.y);
+    if (!recPoses.finger_heart) {
+      if (isHeartPose) {
+        if (!handState[i].heartSince) handState[i].heartSince = now;
+        else if (now - handState[i].heartSince >= recDwellMs && !handState[i].heartFired) {
+          handState[i].heartFired = true;
+          if (enabled('finger_heart')) fire('finger_heart', pinchPt.x, pinchPt.y);
+        }
+      } else { handState[i].heartSince = 0; handState[i].heartFired = false; }
+    }
     handState[i].heart = isHeartNow;
 
-    // grab: ALL FOUR fingertips individually curled toward the wrist — the whole
-    // hand closing. Per-finger count (not an averaged ratio) so a point (3 of 4
-    // folded) can't drag a loose average into the grab zone.
+    // grab built-in (skipped when a custom pluck recording exists): all four
+    // fingertips individually curled. Pluck now fires after the fist is held
+    // steady for recDwellMs (was: instantly on close) — same over-sensitivity fix.
     const grabFoldedCount = [8, 12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < GRAB_FOLD_MAX).length;
     const isGrabPoseRaw = grabFoldedCount >= 4;
     const wasGrab = handState[i].grab;
     const isGrabNow = wasGrab ? (grabFoldedCount >= 3) : isGrabPoseRaw; // slight hysteresis on release
-    if (isGrabPoseRaw && !wasGrab && !isHeartPose && enabled('pluck')) fire('pluck', palmPt.x, palmPt.y);
-    if (isGrabPoseRaw && !wasGrab) handState[i].grabAt = now; // remember when the fist closed, for the hold-then-open check below
-    // drop a bomb: fist was held closed for DROP_HOLD_MS+, then the hand opened —
-    // the falling edge of grab, gated by hold duration (not position) so a quick
-    // pluck release doesn't also drop a bomb.
-    if (wasGrab && !isGrabNow && (now - handState[i].grabAt) >= DROP_HOLD_MS && enabled('drop_bomb')) {
-      fire('drop_bomb', palmPt.x, palmPt.y);
+    if (isGrabPoseRaw && !wasGrab) handState[i].grabAt = now;
+    if (!recPoses.pluck) {
+      if (isGrabNow && !wasGrab) handState[i].pluckPending = true;
+      if (handState[i].pluckPending && isGrabNow && (now - handState[i].grabAt) >= recDwellMs && !isHeartPose) {
+        handState[i].pluckPending = false;
+        if (enabled('pluck')) fire('pluck', palmPt.x, palmPt.y);
+      }
+      if (!isGrabNow) handState[i].pluckPending = false;
+    }
+    // drop built-in (skipped when a custom hold+release pair exists): fist held
+    // DROP_HOLD_MS+ then opened.
+    if (!(recPoses.drop_hold && recPoses.drop_release)) {
+      if (wasGrab && !isGrabNow && (now - handState[i].grabAt) >= DROP_HOLD_MS && enabled('drop_bomb')) {
+        fire('drop_bomb', palmPt.x, palmPt.y);
+      }
     }
     handState[i].grab = isGrabNow;
 
-    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} (heart<${HEART_PINCH_ON}) heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 (need 4) heldMs:${wasGrab ? Math.round(now - handState[i].grabAt) : 0}`;
+    if (i === 0) handDebugEl.textContent = `pinch:${pinchDist.toFixed(2)} (heart<${HEART_PINCH_ON}) heartFold:${foldedCount}/3 grabFold:${grabFoldedCount}/4 (need 4) heldMs:${isGrabNow ? Math.round(now - handState[i].grabAt) : 0}`;
 
     // draw a dot on the preview (landmarks are camBox-normalized → lift to frame first)
     const dotF = camToFrame(pc.x, pc.y);
