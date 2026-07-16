@@ -95,6 +95,11 @@
       <span class="stat" id="handDebug">—</span>
     </div>
     <div class="row" style="margin-top:8px;">
+      <span class="hint" style="min-width:170px;">💣 Bomb floor Y (where bombs land)</span>
+      <input type="range" id="bombFloorY" min="200" max="1900" step="10" value="1650" style="flex:1;max-width:260px;">
+      <span class="stat" id="bombFloorYVal">1650px</span>
+    </div>
+    <div class="row" style="margin-top:8px;">
       <span class="hint">Test fire:</span>
       <button class="small" onclick="testFire('finger_heart')">🫰</button>
       <button class="small" onclick="testFire('clap')">👏</button>
@@ -192,6 +197,23 @@ ably.connection.on(sc => {
   ablyPill.textContent = 'ably: ' + sc.current;
   ablyPill.classList.toggle('on', sc.current === 'connected');
 });
+
+// ── Bomb floor position — slider publishes 'bomb-config' on the same dedicated
+// channel (throttled while dragging, so a long drag is a handful of messages,
+// not hundreds); the overlay persists it, and we re-assert on every (re)connect
+// so a bomb overlay that loads after this page still ends up at the right floor.
+let bombFloorY = parseInt(localStorage.getItem('gestureCam.bombFloorY') || '1650', 10) || 1650;
+const bombFloorEl = document.getElementById('bombFloorY'), bombFloorVal = document.getElementById('bombFloorYVal');
+bombFloorEl.value = bombFloorY; bombFloorVal.textContent = bombFloorY + 'px';
+let _bombFloorTimer = null;
+function publishBombFloor() { ch.publish('bomb-config', { floorY: bombFloorY }).catch(() => {}); }
+bombFloorEl.addEventListener('input', () => {
+  bombFloorY = parseInt(bombFloorEl.value, 10);
+  bombFloorVal.textContent = bombFloorY + 'px';
+  localStorage.setItem('gestureCam.bombFloorY', bombFloorY);
+  if (!_bombFloorTimer) _bombFloorTimer = setTimeout(() => { _bombFloorTimer = null; publishBombFloor(); }, 200);
+});
+ably.connection.on('connected', () => publishBombFloor());
 
 // ── UI refs ───────────────────────────────────────────────────────────────
 const preview = document.getElementById('preview');

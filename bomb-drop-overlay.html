@@ -37,7 +37,15 @@ const W = 1080, H = 1920;
 // ── Config (URL params) ────────────────────────────────────────────────
 const QS = new URLSearchParams(location.search);
 function qnum(k, d) { const v = parseFloat(QS.get(k)); return isFinite(v) ? v : d; }
-const FLOOR_Y   = qnum('floorY', 1650);   // the horizontal barrier bombs land on
+// Floor is adjustable LIVE from gesture-cam.html's "Bomb floor Y" slider (published
+// as 'bomb-config' on the same dedicated channel) and persisted here; the ?floorY=
+// URL param wins on first load for one-off setups, same pattern as timeout-box.
+const FLOOR_LS = 'bombDrop.floorY.v1';
+let FLOOR_Y = 1650;
+try { const v = parseFloat(localStorage.getItem(FLOOR_LS)); if (isFinite(v)) FLOOR_Y = v; } catch (e) {}
+if (QS.has('floorY')) FLOOR_Y = qnum('floorY', FLOOR_Y);
+FLOOR_Y = Math.max(200, Math.min(1900, FLOOR_Y));
+let _floorCfgAt = -1e9; // last live adjustment — floor line draws brighter briefly so you can see where you're putting it
 const FUSE_MS   = qnum('fuseMs', 3000);   // time resting before exploding
 const GRAVITY   = qnum('gravity', 2400);  // px/s^2 — heavy, fast-falling
 const CHAIN_R   = qnum('chainR', 2.0);    // explosion trigger radius, in ball-radii
@@ -199,9 +207,13 @@ function stepBalls(dt, now) {
 // ── Drawing ──────────────────────────────────────────────────────────────
 function drawFloor(ctx) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  // brighten the line for a few seconds after a live slider adjustment so you can
+  // actually see where you're placing it, then fade back to barely-there
+  const sinceCfg = performance.now() - _floorCfgAt;
+  const hot = sinceCfg < 3000 ? 1 - sinceCfg / 3000 : 0;
+  ctx.strokeStyle = `rgba(255,${Math.round(255 - hot * 80)},${Math.round(255 - hot * 155)},${(0.10 + hot * 0.75).toFixed(2)})`;
   ctx.setLineDash([14, 10]);
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 3 + hot * 2;
   ctx.beginPath(); ctx.moveTo(0, FLOOR_Y); ctx.lineTo(W, FLOOR_Y); ctx.stroke();
   ctx.restore();
 }
@@ -328,9 +340,17 @@ ch.subscribe('gesture-event', msg => {
   const d = msg.data || {};
   if (d.type === 'drop_bomb') spawnBall(Number(d.x) || W / 2, Number(d.y) || 60);
 });
+ch.subscribe('bomb-config', msg => {
+  const d = msg.data || {};
+  if (isFinite(d.floorY)) {
+    FLOOR_Y = Math.max(200, Math.min(1900, +d.floorY));
+    _floorCfgAt = performance.now();
+    try { localStorage.setItem(FLOOR_LS, String(FLOOR_Y)); } catch (e) {}
+  }
+});
 const dot = document.getElementById('conn');
 client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
-window.__bombDrop = { get balls() { return balls; }, spawnBall, get count() { return balls.length; } };
+window.__bombDrop = { get balls() { return balls; }, spawnBall, get count() { return balls.length; }, get floorY() { return FLOOR_Y; } };
 </script>
 </body>
 </html>
