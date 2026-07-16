@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dog House — Control</title>
+<!--
+  BUILD JAMIE'S DOG HOUSE — control + test panel.
+  Publishes on the dedicated 'dog-house' Ably channel:
+    'dh'        test events shaped EXACTLY like stream-dock's live relay, so the
+                overlay exercises the identical code path in tests and production
+    'dh-cmd'    reset / clear / addSplatty / stage
+    'dh-config' partial CONFIG pushes (position, scale, toggles, weights)
+  Manual-click volume only — negligible Ably cost.
+-->
+<style>
+  :root { --bg:#0f0a1e; --panel:#1a1230; --panel2:#241940; --txt:#e9e2f7; --dim:#8b7fb0; --acc:#a855f7; --gold:#fbbf24; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--txt); font-family:'DM Sans','Segoe UI',sans-serif; padding:18px; max-width:720px; margin:0 auto; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  h1 .dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#ef4444; margin-left:8px; }
+  h1 .dot.connected { background:#22c55e; }
+  .sub { color:var(--dim); font-size:12px; margin-bottom:16px; }
+  .panel { background:var(--panel); border:1px solid #2d2150; border-radius:12px; padding:14px; margin-bottom:14px; }
+  h2 { font-size:13px; letter-spacing:1px; text-transform:uppercase; color:var(--acc); margin-bottom:10px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  button {
+    background:var(--panel2); color:var(--txt); border:1px solid #3a2b60; border-radius:8px;
+    padding:8px 12px; font:700 13px 'DM Sans',sans-serif; cursor:pointer;
+  }
+  button:hover { border-color:var(--acc); }
+  button.gold { border-color:var(--gold); color:var(--gold); }
+  button.danger { border-color:#ef4444; color:#f87171; }
+  input[type=text], input[type=number] {
+    background:var(--panel2); color:var(--txt); border:1px solid #3a2b60; border-radius:8px;
+    padding:8px 10px; font:600 13px 'DM Sans',sans-serif; width:170px;
+  }
+  input[type=number] { width:76px; }
+  input[type=range] { flex:1; accent-color:var(--acc); min-width:140px; }
+  label.ctl { display:flex; gap:8px; align-items:center; width:100%; font-size:13px; }
+  label.ctl span.name { width:150px; color:var(--dim); }
+  label.ctl span.val { width:64px; text-align:right; font-weight:700; }
+  label.tog { display:flex; gap:6px; align-items:center; font-size:13px; background:var(--panel2); padding:7px 10px; border-radius:8px; border:1px solid #3a2b60; cursor:pointer; }
+  .hint { color:var(--dim); font-size:11.5px; margin-top:6px; line-height:1.5; }
+</style>
+</head>
+<body>
+<h1>🏠 Build Jamie's Dog House <span class="dot" id="dot"></span></h1>
+<div class="sub">Test events use the same shapes as stream-dock's live relay — what you simulate here is exactly what a real viewer triggers.</div>
+
+<div class="panel">
+  <h2>Simulate viewer</h2>
+  <div class="row">
+    <input type="text" id="uname" value="test_viewer_1" placeholder="username">
+    <button onclick="randomName()">🎲 Random</button>
+  </div>
+  <div class="row">
+    <button onclick="sim('chat')">💬 First chat (preview)</button>
+    <button onclick="sim('heart')">💝 Heart Me</button>
+    <button class="gold" onclick="simGift(1)">🎁 Gift 1 coin</button>
+    <button class="gold" onclick="simGift(199)">🎁 Gift 199</button>
+    <button class="gold" onclick="simGift(1000)">🎁 Gift 1000</button>
+    <button class="gold" onclick="simYT(5)">📹 YT $5</button>
+  </div>
+  <div class="hint">First gift vs repeat gift is decided by the overlay from its own per-viewer state — send a gift twice from the same name to see both treatments.</div>
+</div>
+
+<div class="panel">
+  <h2>Build / session</h2>
+  <div class="row">
+    <button onclick="stageDelta(-1)">⬇ Stage −1</button>
+    <button onclick="stageDelta(1)">⬆ Stage +1 (milestone)</button>
+    <button onclick="cmd({cmd:'addSplatty', u:uname().value || 'manual_splatty'})">➕ Add Splatty</button>
+  </div>
+  <div class="row">
+    <button class="danger" onclick="if(confirm('Clear all Splatties from the yard?')) cmd({cmd:'clear'})">🧹 Clear Splatties</button>
+    <button class="danger" onclick="if(confirm('Reset the ENTIRE session — house back to stage 1, all viewers forgotten?')) { _stage=1; cmd({cmd:'reset'}); }">♻ Reset session</button>
+    <button class="danger" onclick="cmd({cmd:'emergencyClear'})">🚨 Emergency clear FX</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Choreography tests</h2>
+  <div class="row">
+    <button onclick="burst(5)">💜×5 Heart Me burst</button>
+    <button class="gold" onclick="buildRush(3)">🔨×3 First-gift rush</button>
+    <button onclick="rapidMix()">🌪 Rapid mixed queue</button>
+  </div>
+  <div class="row">
+    <button onclick="fillSpots(9)">Fill roof+front (9)</button>
+    <button onclick="fillSpots(40)">Fill ALL spots</button>
+    <button onclick="fillSpots(60)">Overflow test (60)</button>
+    <button onclick="longName()">📏 Long username</button>
+  </div>
+  <div class="hint">Burst = 3+ Heart Mes land in the queue together → door glow + staggered group entrance + one group callout instead of five sequential joins.</div>
+</div>
+
+<div class="panel">
+  <h2>Layout</h2>
+  <label class="ctl"><span class="name">X position</span><input type="range" id="cx" min="-100" max="780" value="30"><span class="val" id="cxv">30</span></label>
+  <label class="ctl"><span class="name">Y (ground line)</span><input type="range" id="cy" min="300" max="1900" value="1660"><span class="val" id="cyv">1660</span></label>
+  <label class="ctl"><span class="name">Scale</span><input type="range" id="csc" min="40" max="160" value="100"><span class="val" id="cscv">1.00</span></label>
+  <label class="ctl"><span class="name">Max Splatties</span><input type="range" id="cmax" min="5" max="80" value="40"><span class="val" id="cmaxv">40</span></label>
+  <div class="row" style="margin-top:8px;">
+    <label class="tog"><input type="checkbox" id="troof" checked> Roof spots</label>
+    <label class="tog"><input type="checkbox" id="tyard" checked> Yard spots</label>
+    <label class="tog"><input type="checkbox" id="tprev" checked> Chat previews</label>
+    <label class="tog"><input type="checkbox" id="tmeter" checked> Build meter</label>
+  </div>
+  <div class="row">
+    <label class="tog"><input type="checkbox" id="trm"> 🐢 Reduced motion</label>
+    <label class="tog"><input type="checkbox" id="tedit"> 📐 Edit mode (slot guides)</label>
+    <label class="tog"><input type="checkbox" id="tjamie" checked> 🐕 Jamie celebrates milestones</label>
+  </div>
+  <div class="hint">Edit mode shows the wrapper box, anchor point, and every placement slot (green=ground, blue=yard, orange=roof, purple=peek) — never visible when off.</div>
+</div>
+
+<div class="panel">
+  <h2>Tuning</h2>
+  <div class="row">
+    <label class="ctl" style="width:auto;"><span class="name" style="width:auto;">Points: first gift</span><input type="number" id="pfirst" value="10" min="1"></label>
+    <label class="ctl" style="width:auto;"><span class="name" style="width:auto;">Heart Me</span><input type="number" id="pheart" value="3" min="0"></label>
+    <label class="ctl" style="width:auto;"><span class="name" style="width:auto;">Repeat gift</span><input type="number" id="prepeat" value="2" min="0"></label>
+  </div>
+  <div class="row">
+    <label class="ctl" style="width:auto;"><span class="name" style="width:auto;">Per 100 coins</span><input type="number" id="pcoins" value="1" min="0"></label>
+    <label class="ctl" style="width:auto;"><span class="name" style="width:auto;">Preview max</span><input type="number" id="pvmax" value="6" min="0" max="12"></label>
+    <label class="ctl" style="width:auto;"><span class="name" style="width:auto;">Preview TTL s</span><input type="number" id="pvttl" value="45" min="10"></label>
+  </div>
+  <div class="row"><button onclick="pushConfig(true)">📤 Push full config now</button></div>
+  <div class="hint">Sliders and toggles auto-push (throttled). Config persists on the overlay side, so it survives browser-source refreshes.</div>
+</div>
+
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script>
+'use strict';
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const $ = id => document.getElementById(id);
+const uname = () => $('uname');
+const ably = new Ably.Realtime({ key: ABLY_KEY });
+const ch = ably.channels.get('dog-house');
+ably.connection.on('connected',    () => $('dot').classList.add('connected'));
+ably.connection.on('disconnected', () => $('dot').classList.remove('connected'));
+
+function sim(t) { ch.publish('dh', { t, u: uname().value || 'test_viewer' }).catch(() => {}); }
+function simGift(coins) { ch.publish('dh', { t: 'gift', u: uname().value || 'test_viewer', amount: coins, kind: 'tiktok_coins', gift: 'Test Gift' }).catch(() => {}); }
+function simYT(dollars) { ch.publish('dh', { t: 'gift', u: uname().value || 'test_viewer', amount: dollars, kind: 'youtube', gift: 'Super Chat' }).catch(() => {}); }
+function cmd(o) { ch.publish('dh-cmd', o).catch(() => {}); }
+
+const NAMES = ['pixel_pup', 'luna_barks', 'gamer_gal_99', 'doghouse_dan', 'ttv_splatfan', 'jamie_stan_1', 'woofwatcher', 'bone_collector', 'yard_king', 'treat_dealer'];
+let _nameI = 0;
+function randomName() { uname().value = NAMES[_nameI++ % NAMES.length] + '_' + ((Math.random() * 90 + 10) | 0); }
+
+let _stage = 1;
+function stageDelta(d) { _stage = Math.max(1, Math.min(8, _stage + d)); cmd({ cmd: 'stage', v: _stage }); }
+
+/* ── choreography test helpers ── */
+let _burstI = 0;
+async function burst(n) {
+  for (let i = 0; i < n; i++) {
+    ch.publish('dh', { t: 'heart', u: 'burst_fan_' + (_burstI++) }).catch(() => {});
+    await new Promise(r => setTimeout(r, 90));
+  }
+}
+async function buildRush(n) {
+  for (let i = 0; i < n; i++) {
+    ch.publish('dh', { t: 'gift', u: 'rush_gifter_' + (_burstI++), amount: 99, kind: 'tiktok_coins', gift: 'Rose' }).catch(() => {});
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+async function rapidMix() {
+  const evts = [
+    { t: 'chat', u: 'mix_chatter_' + _burstI },
+    { t: 'heart', u: 'mix_heart_a' + _burstI },
+    { t: 'gift', u: 'mix_first_' + _burstI, amount: 50, kind: 'tiktok_coins' },
+    { t: 'heart', u: 'mix_heart_b' + _burstI },
+    { t: 'gift', u: 'mix_first_' + _burstI, amount: 1500, kind: 'tiktok_coins' },
+    { t: 'heart', u: 'mix_heart_c' + _burstI },
+    { t: 'gift', u: 'mix_big_' + _burstI, amount: 2000, kind: 'tiktok_coins' },
+  ];
+  _burstI++;
+  for (const e of evts) { ch.publish('dh', e).catch(() => {}); await new Promise(r => setTimeout(r, 150)); }
+}
+async function fillSpots(n) {
+  for (let i = 0; i < n; i++) {
+    ch.publish('dh', { t: 'heart', u: 'filler_' + (_burstI++) }).catch(() => {});
+    await new Promise(r => setTimeout(r, 60));
+  }
+}
+function longName() {
+  ch.publish('dh', { t: 'heart', u: 'extremely_long_username_that_should_truncate_ok' }).catch(() => {});
+}
+
+/* ── config: persist locally, push (throttled) on change ── */
+const LS = 'dogHouseControl.cfg.v1';
+const FIELDS = ['cx', 'cy', 'csc', 'cmax', 'troof', 'tyard', 'tprev', 'tmeter', 'trm', 'tedit', 'tjamie', 'pfirst', 'pheart', 'prepeat', 'pcoins', 'pvmax', 'pvttl'];
+try {
+  const s = JSON.parse(localStorage.getItem(LS) || 'null');
+  if (s) for (const f of FIELDS) {
+    const el = $(f); if (!el || s[f] == null) continue;
+    if (el.type === 'checkbox') el.checked = s[f]; else el.value = s[f];
+  }
+} catch (e) {}
+function readCfg() {
+  return {
+    pos: { x: +$('cx').value, y: +$('cy').value },
+    scale: +$('csc').value / 100,
+    maxSplatties: +$('cmax').value,
+    roofSpots: $('troof').checked,
+    yardSpots: $('tyard').checked,
+    previews: { enabled: $('tprev').checked, max: +$('pvmax').value || 6, ttlSec: +$('pvttl').value || 45 },
+    meterVisible: $('tmeter').checked,
+    reducedMotion: $('trm').checked,
+    editMode: $('tedit').checked,
+    jamieReactions: $('tjamie').checked,
+    points: { heartMe: +$('pheart').value || 0, firstGift: +$('pfirst').value || 10, repeatGift: +$('prepeat').value || 0, per100Coins: +$('pcoins').value || 0, perDollar: 1 },
+  };
+}
+function saveLocal() {
+  const o = {};
+  for (const f of FIELDS) { const el = $(f); o[f] = el.type === 'checkbox' ? el.checked : el.value; }
+  try { localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {}
+}
+let _pushT = null;
+function pushConfig(now) {
+  saveLocal(); syncLabels();
+  if (now) { ch.publish('dh-config', { cfg: readCfg() }).catch(() => {}); return; }
+  if (!_pushT) _pushT = setTimeout(() => { _pushT = null; ch.publish('dh-config', { cfg: readCfg() }).catch(() => {}); }, 250);
+}
+function syncLabels() {
+  $('cxv').textContent = $('cx').value;
+  $('cyv').textContent = $('cy').value;
+  $('cscv').textContent = (+$('csc').value / 100).toFixed(2);
+  $('cmaxv').textContent = $('cmax').value;
+}
+for (const f of FIELDS) $(f).addEventListener('input', () => pushConfig(false));
+syncLabels();
+</script>
+</body>
+</html>

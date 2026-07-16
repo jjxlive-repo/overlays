@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Build Jamie's Dog House — Overlay</title>
+<!--
+  BUILD JAMIE'S DOG HOUSE — community-building overlay (1080x1920 browser source).
+
+  Viewers earn a place in Jamie's yard:
+    first chat  → temporary gray "preview" Splatty (capped, TTL) — "this could be you"
+    Heart Me    → 5-phase join: heart pulse ack → color-fill activation → move-in →
+                  placement bounce + neighbor reactions → callout   (JOIN moment)
+    first gift  → FIRST GIFT badge → builder prop → travel to house → hammer taps
+                  with structure shake → stage reveal → return      (BUILD moment)
+    repeat gift → small/medium/large reaction pool + tiny yard decoration
+
+  The dog house grows through 8 visual stages, each revealed with its own build
+  animation (planks slide, walls rise, roof swings, sign drops, lights sequence).
+  Everything is DOM/CSS — no canvas, no rAF loop; JS runs on events plus light
+  interval schedulers that pause when the tab is hidden or a major event plays.
+
+  EVENT SEQUENCER: all big moments run through a priority queue so animations
+  never pile up. Every event gets an instant micro-acknowledgment (heart pulse /
+  spot claim in data) even while its full animation waits. 3+ queued Heart Mes
+  collapse into a burst ("N NEW SPLATTIES MOVED IN!") with staggered entrances.
+
+  ABLY COST: attaches ONLY to the dedicated low-volume 'dog-house' channel.
+  stream-dock does classification + per-user dedup before relaying (~1 msg per
+  unique chatter + 1 per Heart Me/gift). This overlay must NEVER attach to the
+  shared 'splat-overlay' firehose — Ably bills every delivery to every attached
+  client regardless of event-name filters.
+
+  Messages on 'dog-house':
+    'dh'        {t:'chat'|'heart'|'gift', u, amount?, kind?, gift?}
+    'dh-cmd'    {cmd:'reset'|'clear'|'addSplatty'|'stage'|'emergencyClear', u?, v?}
+    'dh-config' {cfg:{...partial CONFIG...}}
+
+  ART ASSETS: illustrated sticker art lives in assets/splatty-house-assets/
+  splatty-house/ (project root): 8 doghouse stages sharing one footprint
+  (content bottom at canvas y=1042 — measured, baked into HOUSE geometry
+  below), splatties in 6 colors x 3 poses (ground/peek/roof), construction
+  props, decorations, and a doorway-front mask used for the "resident peeks
+  out the door" idle. The overlay probes for the art on load and swaps it in;
+  if the folder is missing it falls back to the built-in vector art.
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
+  body { font-family: 'DM Sans', 'Segoe UI', sans-serif; pointer-events: none; }
+
+  #module {
+    position: absolute; left: 0; top: 0;
+    transform: translate(var(--mx, 30px), var(--my, 1660px)) scale(var(--msc, 1));
+    transform-origin: bottom left;
+    width: 0; height: 0;
+  }
+
+  /* ── dog house ─────────────────────────────────────────────────────── */
+  #house { position: absolute; left: 0; bottom: 0; width: 300px; height: 280px; z-index: 10; transform-origin: 50% 100%; }
+  #house svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  /* stage art: full 1200-canvas img, geometry set by JS so the measured
+     footprint (canvas y=1042) lands exactly on the module ground line */
+  #house img.stage-img { position: absolute; display: none; max-width: none; }
+  #house img.stage-img.fade { animation: stageFade .55s ease; }
+  @keyframes stageFade { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
+  #house.idle-sway { animation: idleSway 2.2s ease-in-out; }
+  @keyframes idleSway { 0%,100% { transform: rotate(0); } 30% { transform: rotate(.7deg); } 70% { transform: rotate(-.5deg); } }
+  .st { opacity: 0; }
+  .st.on { opacity: 1; }
+  #house.celebrate { animation: houseBounce .7s ease; }
+  @keyframes houseBounce {
+    0% { transform: scale(1); } 30% { transform: scale(1.06) rotate(-1deg); }
+    55% { transform: scale(.98) rotate(.6deg); } 100% { transform: scale(1); }
+  }
+  #house.shake { animation: houseShake .28s ease; }
+  @keyframes houseShake {
+    0%,100% { transform: translateX(0); } 30% { transform: translateX(-3px) rotate(-.5deg); }
+    65% { transform: translateX(3px) rotate(.4deg); }
+  }
+
+  /* per-stage build reveal animations — playful, with overshoot + settle */
+  .st { transform-box: fill-box; transform-origin: 50% 100%; }
+  .st.b2 { animation: bFrame .9s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes bFrame { 0% { transform: translateX(-46px); opacity: 0; } 60% { transform: translateX(7px); opacity: 1; } 80% { transform: translateX(-3px); } 100% { transform: translateX(0); } }
+  .st.b3 { animation: bWall 1s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes bWall { 0% { transform: translateY(52px); opacity: 0; } 55% { transform: translateY(-9px); opacity: 1; } 78% { transform: translateY(4px); } 100% { transform: translateY(0); } }
+  .st.b4 { transform-origin: 50% 0; animation: bRoof 1.1s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes bRoof { 0% { transform: rotate(-9deg) translateY(-34px); opacity: 0; } 55% { transform: rotate(2.5deg) translateY(3px); opacity: 1; } 80% { transform: rotate(-1deg); } 100% { transform: rotate(0) translateY(0); } }
+  .st.b5 { transform-origin: 50% 0; animation: bSign .95s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes bSign { 0% { transform: translateY(-58px); opacity: 0; } 45% { transform: translateY(4px) rotate(5deg); opacity: 1; } 68% { transform: rotate(-3.5deg); } 86% { transform: rotate(1.6deg); } 100% { transform: rotate(0); } }
+  .st.b6 { animation: bYard .85s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes bYard { 0% { transform: scale(.4) translateY(16px); opacity: 0; } 65% { transform: scale(1.09); opacity: 1; } 100% { transform: scale(1) translateY(0); } }
+  .st.b7 { animation: bFence .85s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes bFence { 0% { transform: translateX(30px) scale(.5); opacity: 0; } 65% { transform: translateX(-5px) scale(1.06); opacity: 1; } 100% { transform: translateX(0) scale(1); } }
+  .st.b8 { animation: bLights 1.4s ease; }
+  @keyframes bLights { 0% { opacity: 0; filter: brightness(.4); } 40% { opacity: 1; filter: brightness(.6); } 60% { filter: brightness(1.7); } 75% { filter: brightness(.9); } 90% { filter: brightness(1.4); } 100% { filter: brightness(1); } }
+
+  /* environmental idles */
+  #st5.sign-swing { transform-origin: 50% 0; animation: signSwing 1.6s ease-in-out; }
+  @keyframes signSwing { 0%,100% { transform: rotate(0); } 30% { transform: rotate(2.6deg); } 70% { transform: rotate(-2deg); } }
+  #st8.light-flicker { animation: lightFlicker 1.2s ease; }
+  @keyframes lightFlicker { 0%,100% { filter: brightness(1); } 30% { filter: brightness(1.8); } 50% { filter: brightness(.8); } 65% { filter: brightness(1.5); } }
+  #st6.bowl-shine { animation: bowlShine 1.3s ease; }
+  @keyframes bowlShine { 0%,100% { filter: brightness(1); } 45% { filter: brightness(1.5) saturate(1.3); } }
+  #door-eyes {
+    position: absolute; left: 128px; bottom: 26px; width: 44px; height: 20px; z-index: 11;
+    opacity: 0; transition: opacity .5s ease; pointer-events: none;
+  }
+  #door-eyes::before, #door-eyes::after {
+    content: ''; position: absolute; top: 0; width: 12px; height: 14px; border-radius: 50%;
+    background: #fff;
+  }
+  #door-eyes::before { left: 5px; } #door-eyes::after { right: 5px; }
+  #door-eyes.peek { opacity: .9; }
+
+  /* ── build meter ───────────────────────────────────────────────────── */
+  #meter {
+    position: absolute; left: 10px; bottom: -26px; width: 280px; height: 14px; z-index: 12;
+    background: rgba(20, 12, 40, .55); border: 2px solid rgba(255,255,255,.25);
+    border-radius: 8px; overflow: hidden;
+  }
+  #meter-fill { height: 100%; width: 0%; border-radius: 6px; background: linear-gradient(90deg, #A855F7, #f0abfc); transition: width .5s ease; }
+  #meter-label {
+    position: absolute; left: 10px; bottom: -48px; width: 280px; text-align: center; z-index: 12;
+    font: 800 15px 'DM Sans', sans-serif; color: #fff; white-space: nowrap;
+    text-shadow: 0 1px 0 rgba(0,0,0,.85), 0 2px 5px rgba(0,0,0,.6); letter-spacing: .3px;
+  }
+
+  /* ── splatties ─────────────────────────────────────────────────────── */
+  .splatty {
+    position: absolute; width: 60px; height: 60px; margin-left: -30px;
+    bottom: 0; will-change: transform, opacity;
+  }
+  .splatty.travel { transition: left var(--tdur, .9s) cubic-bezier(.2,1.2,.4,1), bottom var(--tdur, .9s) cubic-bezier(.2,1.2,.4,1); }
+  .splatty .inner { width: 100%; height: 100%; transform-origin: 50% 100%; position: relative; }
+  .splatty svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  /* pose sprites are 1200-canvas PNGs with padding — JS sets width/left/bottom
+     from measured content bounds so the blob fills the 60px element exactly */
+  .splatty img.sp-img { position: absolute; max-width: none; }
+  .splatty .inner.bobbing { animation: bob var(--bobDur, 2.6s) ease-in-out var(--bobDelay, 0s) infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) scale(1,1); } 50% { transform: translateY(-3px) scale(.985,1.015); } }
+  .splatty .eyes { animation: blink 5.2s step-end var(--blinkDelay, 0s) infinite; transform-origin: 50% 60%; }
+  @keyframes blink { 0%,94%,100% { transform: scaleY(1); } 95%,98% { transform: scaleY(.08); } }
+
+  .splatty.preview { filter: grayscale(1) brightness(1.15); opacity: .6; }
+  .splatty.preview::after { content: '💤'; position: absolute; top: -15px; right: -7px; font-size: 15px; opacity: .85; }
+  .splatty.activating { animation: activate .7s ease; filter: none; opacity: 1; }
+  .splatty.activating::after { content: none; }
+  @keyframes activate {
+    0% { filter: grayscale(1) brightness(1.6); transform: scale(.82, 1.12); }
+    45% { filter: grayscale(.3) brightness(1.35); transform: scale(1.14, .88); }
+    100% { filter: none; transform: scale(1); }
+  }
+  .splatty.fade-in { animation: fadeIn .5s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .splatty.drop-in .inner { animation: dropIn .8s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes dropIn { 0% { transform: translateY(-84px); opacity: 0; } 60% { transform: translateY(7px) scale(1.06,.9); opacity: 1; } 80% { transform: translateY(-3px) scale(.97,1.05); } 100% { transform: translateY(0) scale(1); } }
+  .splatty.hop-travel .inner { animation: hopTravel .32s ease-in-out 0s 3; }
+  @keyframes hopTravel { 0%,100% { transform: translateY(0) scale(1,1); } 40% { transform: translateY(-13px) scale(.94,1.08); } 85% { transform: translateY(1px) scale(1.07,.92); } }
+  .splatty.settle .inner { animation: settle .5s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes settle { 0% { transform: scale(1.12,.85); } 55% { transform: scale(.94,1.08); } 100% { transform: scale(1,1); } }
+  .splatty.leave { transition: opacity .7s ease, left .8s ease-in, bottom .8s ease-in; opacity: 0; }
+
+  /* one-shot reactions (applied to .inner so they stack with travel) */
+  .inner.act-hop { animation: actHop .5s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes actHop { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-14px) scale(.95,1.06); } 78% { transform: translateY(1px) scale(1.06,.93); } }
+  .inner.act-cheer { animation: actCheer .42s ease 0s 3; }
+  @keyframes actCheer { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-12px) rotate(5deg); } }
+  .inner.act-wave { animation: actWave .9s ease; }
+  @keyframes actWave { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 60% { transform: rotate(7deg); } }
+  .inner.act-look { animation: actLook 1.6s ease; }
+  @keyframes actLook { 0%,100% { transform: translateX(0); } 30% { transform: translateX(-4px) rotate(-4deg); } 70% { transform: translateX(4px) rotate(4deg); } }
+  .inner.act-lean { animation: actLean 1.4s ease; }
+  @keyframes actLean { 0%,100% { transform: rotate(0); } 45% { transform: rotate(7deg) translateX(3px); } }
+  .inner.act-wiggle { animation: actWiggle .7s ease; }
+  @keyframes actWiggle { 0%,100% { transform: rotate(0) scale(1,1); } 25% { transform: rotate(-5deg) scale(1.04,.96); } 65% { transform: rotate(5deg) scale(.96,1.04); } }
+  .inner.act-duck { animation: actDuck .8s ease; }
+  @keyframes actDuck { 0%,100% { transform: scale(1,1); } 35% { transform: scale(1.12,.72) translateY(6px); } }
+  .inner.act-tap { animation: actTap .3s ease; }
+  @keyframes actTap { 0% { transform: rotate(0); } 40% { transform: rotate(-14deg) translateY(-4px); } 75% { transform: rotate(6deg) translateY(2px); } 100% { transform: rotate(0); } }
+  .splatty.glow svg, .splatty.glow img.sp-img { filter: drop-shadow(0 0 8px rgba(240,171,252,.95)); }
+  .splatty.aura::before {
+    content: ''; position: absolute; inset: -9px; border-radius: 50%;
+    border: 3px solid rgba(251,191,36,.85); animation: aura 1s ease-in-out infinite;
+  }
+  @keyframes aura { 0%,100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.12); opacity: .5; } }
+
+  .splatty .tag {
+    position: absolute; left: 50%; top: -24px; transform: translateX(-50%);
+    background: rgba(20,12,40,.8); color: #fff; font: 800 17px 'DM Sans', sans-serif;
+    padding: 2px 9px; border-radius: 9px; white-space: nowrap; max-width: 150px;
+    overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 1px 0 rgba(0,0,0,.7);
+    opacity: 0; transition: opacity .35s ease;
+  }
+  .splatty .tag.show { opacity: 1; }
+  .splatty .badge {
+    position: absolute; left: 50%; top: -46px; transform: translateX(-50%);
+    background: linear-gradient(180deg, #fbbf24, #d97706); color: #241300;
+    font: 900 15px 'DM Sans', sans-serif; padding: 2px 9px; border-radius: 9px;
+    border: 2px solid #fff7e0; white-space: nowrap;
+    animation: popBadge .4s cubic-bezier(.2,1.2,.4,1);
+  }
+  @keyframes popBadge { 0% { transform: translateX(-50%) scale(0); } 70% { transform: translateX(-50%) scale(1.15); } 100% { transform: translateX(-50%) scale(1); } }
+  .splatty .prop { position: absolute; right: -12px; top: -8px; font-size: 22px; animation: popBadge .35s ease; }
+  .splatty.peek-clip { clip-path: inset(0 0 42% 0); }
+
+  #crowd-chip {
+    position: absolute; left: 96px; bottom: 62px; display: none; z-index: 11;
+    background: rgba(20,12,40,.8); border: 2px solid rgba(168,85,247,.7);
+    color: #fff; font: 900 16px 'DM Sans', sans-serif; padding: 3px 11px; border-radius: 12px;
+    white-space: nowrap; text-shadow: 0 1px 0 rgba(0,0,0,.7);
+  }
+
+  /* ── transient fx ──────────────────────────────────────────────────── */
+  .plank {
+    position: absolute; width: 48px; height: 11px; border-radius: 3px; z-index: 45;
+    background: linear-gradient(#c98f52, #a9713a); border: 2px solid #6b4423;
+    will-change: transform, opacity;
+    transition: left 1s ease-in-out, bottom 1s ease-in-out;
+  }
+  .plank.art { width: 64px; height: 20px; border: none; border-radius: 0; background: none; }
+  .plank.art img { width: 100%; height: 100%; object-fit: contain; }
+  .splatty .prop img { width: 32px; height: 32px; object-fit: contain; display: block; }
+  #door-peeker { position: absolute; z-index: 11; opacity: 0; transition: opacity .5s ease, bottom .6s ease; pointer-events: none; }
+  #door-peeker img { max-width: none; position: absolute; }
+  #door-mask { position: absolute; z-index: 12; display: none; pointer-events: none; max-width: none; }
+  /* Jamie celebrate sticker — pops in beside the house on milestones/large gifts */
+  #jamie-react { position: absolute; z-index: 34; opacity: 0; pointer-events: none; transform-origin: 50% 100%; }
+  #jamie-react img { max-width: none; position: absolute; }
+  #jamie-react.show { animation: jamiePop 2.6s cubic-bezier(.2,1.2,.4,1); }
+  @keyframes jamiePop {
+    0% { opacity: 0; transform: scale(.3) translateY(20px); }
+    12% { opacity: 1; transform: scale(1.08) translateY(-4px); }
+    20% { transform: scale(1) translateY(0) rotate(0); }
+    32% { transform: rotate(-4deg); } 44% { transform: rotate(3.5deg); }
+    56% { transform: rotate(-2.5deg); } 68% { transform: rotate(2deg) ; }
+    82% { opacity: 1; transform: rotate(0) scale(1); }
+    100% { opacity: 0; transform: scale(.9) translateY(8px); }
+  }
+  .sparkle { position: absolute; font-size: 21px; animation: spark .9s ease forwards; z-index: 46; }
+  @keyframes spark { 0% { transform: translateY(0) scale(.6); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-48px) scale(1.15); opacity: 0; } }
+  .heart-pulse { position: absolute; font-size: 26px; z-index: 46; animation: heartPulse .8s ease forwards; }
+  @keyframes heartPulse { 0% { transform: scale(.3); opacity: 0; } 35% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(1) translateY(-22px); opacity: 0; } }
+  .dust { position: absolute; font-size: 18px; z-index: 44; animation: dust .7s ease forwards; }
+  @keyframes dust { 0% { transform: scale(.4); opacity: .9; } 100% { transform: scale(1.7) translateY(-8px); opacity: 0; } }
+  .deco { position: absolute; font-size: 20px; animation: popBadge .5s cubic-bezier(.2,1.2,.4,1); z-index: 8; }
+  .bone-toss { position: absolute; font-size: 20px; z-index: 46; animation: boneToss 1.2s ease-in forwards; }
+  @keyframes boneToss {
+    0% { transform: translate(0,0) rotate(0); opacity: 1; }
+    50% { transform: translate(60px,-70px) rotate(180deg); }
+    100% { transform: translate(120px,6px) rotate(390deg); opacity: 0; }
+  }
+  #door-glow {
+    position: absolute; left: 113px; bottom: 18px; width: 74px; height: 72px; z-index: 9;
+    background: radial-gradient(ellipse at 50% 90%, rgba(253,224,71,.85), transparent 70%);
+    opacity: 0; transition: opacity .5s ease; border-radius: 50% 50% 0 0;
+  }
+  #door-glow.on { opacity: 1; }
+
+  /* ── callout ───────────────────────────────────────────────────────── */
+  #callout {
+    position: absolute; left: 260px; bottom: 305px; transform: translateX(-50%) scale(0); z-index: 60;
+    background: rgba(20,12,40,.87); border: 2.5px solid #A855F7; border-radius: 14px;
+    color: #fff; font: 800 21px 'DM Sans', sans-serif; padding: 9px 17px;
+    width: max-content; max-width: 440px; text-align: center; line-height: 1.3;
+    text-shadow: 0 1px 0 rgba(0,0,0,.8);
+  }
+  #callout.show { animation: coIn .38s cubic-bezier(.2,1.2,.4,1) forwards; }
+  @keyframes coIn { 0% { transform: translateX(-50%) scale(.86); opacity: 0; } 60% { transform: translateX(-50%) scale(1.05); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+  #callout.out { animation: coOut .45s ease-in forwards; }
+  @keyframes coOut { 0% { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; } 100% { transform: translateX(-50%) scale(.96) translateY(-14px); opacity: 0; } }
+  #callout.first-gift { border-color: #fbbf24; box-shadow: 0 0 18px rgba(251,191,36,.5); }
+  #callout.milestone { border-color: #f0abfc; box-shadow: 0 0 18px rgba(240,171,252,.55); font-size: 24px; }
+  #callout .u { color: #f0abfc; }
+
+  /* ── edit mode guides (never in live output unless enabled) ────────── */
+  #edit-guides { display: none; }
+  #module.edit #edit-guides { display: block; }
+  #edit-wrap { position: absolute; left: -50px; bottom: -155px; width: 720px; height: 520px; border: 2px dashed rgba(168,85,247,.8); z-index: 90; }
+  #edit-anchor { position: absolute; left: -6px; bottom: -6px; width: 12px; height: 12px; background: #f43f5e; border-radius: 50%; z-index: 91; }
+  .slot-dot {
+    position: absolute; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+    border: 2px solid #fff; z-index: 92; font: 700 9px sans-serif; color: #fff; text-align: center; line-height: 11px;
+  }
+  .slot-dot.ground { background: #22c55e; } .slot-dot.yard { background: #3b82f6; }
+  .slot-dot.roof { background: #f59e0b; } .slot-dot.peek { background: #a855f7; }
+
+  #conn-dot { position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; opacity: .5; }
+  #conn-dot.connected { background: #22c55e; }
+</style>
+</head>
+<body>
+<div id="conn-dot"></div>
+<div id="module">
+  <div id="house">
+    <svg id="house-svg" viewBox="0 0 300 280" xmlns="http://www.w3.org/2000/svg">
+      <g id="st1" class="st">
+        <ellipse cx="150" cy="266" rx="132" ry="16" fill="#7c5c3e" opacity=".85"/>
+        <ellipse cx="150" cy="263" rx="118" ry="12" fill="#96744e"/>
+        <circle cx="70" cy="264" r="4" fill="#6b4e33"/><circle cx="218" cy="267" r="5" fill="#6b4e33"/>
+        <circle cx="150" cy="270" r="3.5" fill="#6b4e33"/>
+        <g transform="translate(196,236)">
+          <rect x="0" y="0" width="42" height="9" rx="3" fill="#a9713a" stroke="#6b4423" stroke-width="2.5"/>
+          <rect x="5" y="-8" width="42" height="9" rx="3" fill="#c98f52" stroke="#6b4423" stroke-width="2.5" transform="rotate(-7 26 -3)"/>
+        </g>
+        <path d="M60 250 L60 130 L150 70 L240 130 L240 250" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="8 9" opacity=".35"/>
+        <g transform="translate(120,206)">
+          <rect x="14" y="8" width="6" height="30" fill="#a9713a" stroke="#6b4423" stroke-width="2"/>
+          <rect x="-6" y="-6" width="46" height="20" rx="6" fill="#fef3c7" stroke="#6b4423" stroke-width="2.5"/>
+          <text x="17" y="8" text-anchor="middle" font-family="'DM Sans',sans-serif" font-weight="900" font-size="9.5" fill="#6b4423">SOON!</text>
+        </g>
+      </g>
+      <g id="st2" class="st">
+        <rect x="58" y="128" width="12" height="132" rx="3" fill="#a9713a" stroke="#6b4423" stroke-width="3"/>
+        <rect x="230" y="128" width="12" height="132" rx="3" fill="#a9713a" stroke="#6b4423" stroke-width="3"/>
+        <path d="M56 136 L150 72 L244 136" fill="none" stroke="#a9713a" stroke-width="12" stroke-linecap="round"/>
+        <path d="M56 136 L150 72 L244 136" fill="none" stroke="#6b4423" stroke-width="3" opacity=".6"/>
+      </g>
+      <g id="st3" class="st">
+        <rect x="62" y="132" width="176" height="128" fill="#c98f52" stroke="#6b4423" stroke-width="4" rx="4"/>
+        <line x1="62" y1="165" x2="238" y2="165" stroke="#a9713a" stroke-width="2.5"/>
+        <line x1="62" y1="198" x2="238" y2="198" stroke="#a9713a" stroke-width="2.5"/>
+        <line x1="62" y1="231" x2="238" y2="231" stroke="#a9713a" stroke-width="2.5"/>
+        <path d="M113 260 L113 190 Q150 158 187 190 L187 260 Z" fill="#3b2650" stroke="#2a1e3f" stroke-width="4"/>
+      </g>
+      <g id="st4" class="st">
+        <path d="M44 140 L150 62 L256 140 L232 140 L150 82 L68 140 Z" fill="#8b5cf6" stroke="#4c1d95" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M44 140 L150 62 L256 140" fill="none" stroke="#4c1d95" stroke-width="5" stroke-linecap="round"/>
+        <rect x="140" y="52" width="20" height="14" rx="4" fill="#8b5cf6" stroke="#4c1d95" stroke-width="3"/>
+      </g>
+      <g id="st5" class="st">
+        <rect x="104" y="142" width="92" height="30" rx="9" fill="#fef3c7" stroke="#6b4423" stroke-width="3.5"/>
+        <text x="150" y="164" text-anchor="middle" font-family="'DM Sans',sans-serif" font-weight="900" font-size="20" fill="#4c1d95">JAMIE</text>
+        <g transform="translate(88,150) scale(.55)">
+          <path d="M8 10 Q0 10 0 4 Q0 -2 6 0 Q8 -4 12 0 L28 0 Q30 -4 34 0 Q40 -2 40 4 Q40 10 32 10 Q30 14 26 10 L14 10 Q10 14 8 10Z" fill="#fff" stroke="#6b4423" stroke-width="3"/>
+        </g>
+      </g>
+      <g id="st6" class="st">
+        <ellipse cx="150" cy="268" rx="52" ry="8" fill="#A855F7" opacity=".55"/>
+        <path d="M256 252 q4 -14 22 -14 q18 0 22 14 z" fill="#3b82f6" stroke="#1e3a8a" stroke-width="3.5"/>
+        <ellipse cx="278" cy="252" rx="22" ry="5" fill="#60a5fa" stroke="#1e3a8a" stroke-width="3"/>
+        <g transform="translate(24,244) scale(.72)">
+          <path d="M8 10 Q0 10 0 4 Q0 -2 6 0 Q8 -4 12 0 L28 0 Q30 -4 34 0 Q40 -2 40 4 Q40 10 32 10 Q30 14 26 10 L14 10 Q10 14 8 10Z" fill="#fff" stroke="#94a3b8" stroke-width="3"/>
+        </g>
+      </g>
+      <g id="st7" class="st">
+        <g fill="#c9a06a">
+          <rect x="-14" y="216" width="9" height="46" rx="3" stroke="#6b4423" stroke-width="2.5"/>
+          <rect x="6"  y="212" width="9" height="50" rx="3" stroke="#6b4423" stroke-width="2.5"/>
+          <rect x="26" y="216" width="9" height="46" rx="3" stroke="#6b4423" stroke-width="2.5"/>
+          <rect x="-18" y="224" width="58" height="7" rx="3" stroke="#6b4423" stroke-width="2.5"/>
+          <rect x="-18" y="244" width="58" height="7" rx="3" stroke="#6b4423" stroke-width="2.5"/>
+        </g>
+        <g font-size="17"><text x="248" y="270">🌼</text><text x="270" y="228">🌷</text><text x="36" y="206">🌻</text></g>
+      </g>
+      <g id="st8" class="st">
+        <path d="M52 142 Q100 168 150 150 Q200 132 252 144" fill="none" stroke="#4c1d95" stroke-width="2.5"/>
+        <g fill="#fde047">
+          <circle cx="76" cy="153" r="5"/><circle cx="112" cy="159" r="5"/><circle cx="150" cy="152" r="5"/>
+          <circle cx="188" cy="143" r="5"/><circle cx="224" cy="141" r="5"/>
+        </g>
+        <g fill="#fde047" opacity=".45">
+          <circle cx="76" cy="153" r="9"/><circle cx="112" cy="159" r="9"/><circle cx="150" cy="152" r="9"/>
+          <circle cx="188" cy="143" r="9"/><circle cx="224" cy="141" r="9"/>
+        </g>
+        <circle cx="88" cy="184" r="12" fill="#fef08a" stroke="#6b4423" stroke-width="3.5"/>
+        <line x1="88" y1="172" x2="88" y2="196" stroke="#6b4423" stroke-width="2.5"/>
+        <line x1="76" y1="184" x2="100" y2="184" stroke="#6b4423" stroke-width="2.5"/>
+      </g>
+    </svg>
+    <img class="stage-img" id="house-img" alt="">
+  </div>
+  <div id="door-glow"></div>
+  <div id="door-eyes"></div>
+  <div id="door-peeker"></div>
+  <img id="door-mask" alt="">
+  <div id="jamie-react"></div>
+  <div id="meter"><div id="meter-fill"></div></div>
+  <div id="meter-label">🏠 BUILD JAMIE'S DOG HOUSE</div>
+  <div id="crowd-chip"></div>
+  <div id="splat-layer"></div>
+  <div id="fx-layer"></div>
+  <div id="callout"></div>
+  <div id="edit-guides"><div id="edit-wrap"></div><div id="edit-anchor"></div><div id="slot-dots"></div></div>
+</div>
+
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script>
+'use strict';
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ── CONFIG ── */
+const CFG_LS = 'dogHouse.cfg.v1';
+const DEFAULT_CFG = {
+  pos: { x: 30, y: 1660 },
+  scale: 1,
+  maxSplatties: 40,
+  roofSpots: true,
+  yardSpots: true,
+  previews: { enabled: true, max: 6, ttlSec: 45 },
+  points: { heartMe: 3, firstGift: 10, repeatGift: 2, per100Coins: 1, perDollar: 1 },
+  stageThresholds: [4, 10, 18, 28, 40, 55, 75],
+  calloutSec: 2.4,
+  repeatCalloutMinCoins: 100,
+  mediumGiftCoins: 100, largeGiftCoins: 1000, largeGiftDollars: 20,
+  meterVisible: true,
+  jamieReactions: true, // celebrate sticker on milestones/large gifts (art mode only)
+  reducedMotion: false,
+  editMode: false,
+  sounds: { enabled: false, volume: 0.6, urls: {} }, // heartMeJoin, firstGift, buildComplete, milestone, largeGift, doorOpen
+  assets: { basePath: 'assets/splatty-house-assets/splatty-house/' },
+};
+function deepMerge(dst, src) {
+  for (const k in src) {
+    if (src[k] && typeof src[k] === 'object' && !Array.isArray(src[k]) && dst[k] && typeof dst[k] === 'object') deepMerge(dst[k], src[k]);
+    else dst[k] = src[k];
+  }
+  return dst;
+}
+let CFG = JSON.parse(JSON.stringify(DEFAULT_CFG));
+try { const s = JSON.parse(localStorage.getItem(CFG_LS) || 'null'); if (s) deepMerge(CFG, s); } catch (e) {}
+// asset location is a code concern, not a user setting — never let a stale
+// persisted config point at a moved/renamed art folder
+CFG.assets = JSON.parse(JSON.stringify(DEFAULT_CFG.assets));
+function saveCfg() { try { localStorage.setItem(CFG_LS, JSON.stringify(CFG)); } catch (e) {} }
+function applyCfg() {
+  const m = $('module');
+  m.style.setProperty('--mx', CFG.pos.x + 'px');
+  m.style.setProperty('--my', CFG.pos.y + 'px');
+  m.style.setProperty('--msc', CFG.scale);
+  m.classList.toggle('edit', !!CFG.editMode);
+  $('meter').style.display = CFG.meterVisible ? 'block' : 'none';
+  $('meter-label').style.display = CFG.meterVisible ? 'block' : 'none';
+  if (CFG.editMode) renderSlotDots();
+}
+
+/* ── illustrated sticker art (assets/splatty-house-assets/splatty-house/) ──
+   All sprites are 1200x1200 PNGs with transparent padding. Content bounds
+   were measured from the alpha channel and baked in below so every sprite
+   anchors to the module's ground line pixel-perfectly. artMode flips on
+   when the stage-00 probe loads; vector art is the fallback. */
+let artMode = false;
+const ART = {
+  base: CFG.assets.basePath,
+  // house: footprint x160→1048 (w 888), content bottom at canvas y 1042 → the
+  // full canvas renders at HOUSE_W/888 scale, offset so footprint spans 0→300
+  // and canvas-1042 lands on ground (y=0)
+  houseScale: 300 / 888,
+  stageFile: n => `doghouse-stages/doghouse-stage-0${n - 1}-${['empty-yard','foundation','frame','walls','roof','jamie-sign','yard-upgrades','complete'][n - 1]}.png`,
+  // splatty poses: measured content box {bx, bw, y2(bottom)} in the 1200 canvas
+  poses: {
+    ground: { bx: 310, bw: 600, y2: 802 },
+    peek:   { bx: 325, bw: 567, y2: 808 },
+    roof:   { bx: 305, bw: 612, y2: 820 },
+  },
+  colors: ['aqua', 'gold', 'lime', 'orange', 'pink', 'purple'],
+  props: ['build-hammer', 'build-paintbrush', 'build-roof-tile', 'build-bone-sign', 'build-dog-bowl'],
+  // yard-drop decorations: {file, bx, bw, y2} for bottom-anchored rendering
+  decos: [
+    { f: 'decor-tennis-ball',     bx: 312, bw: 584, y2: 898 },
+    { f: 'decor-rubber-duck',     bx: 342, bw: 688, y2: 878 },
+    { f: 'decor-blue-squeaky-toy',bx: 322, bw: 564, y2: 848 },
+    { f: 'decor-flower-pot',      bx: 352, bw: 504, y2: 908 },
+    { f: 'decor-food-bowl',       bx: 262, bw: 684, y2: 848 },
+    { f: 'decor-water-bowl',      bx: 262, bw: 684, y2: 848 },
+    { f: 'decor-welcome-mat',     bx: 202, bw: 804, y2: 828 },
+    { f: 'decor-yard-flag',       bx: 362, bw: 530, y2: 958 },
+    { f: 'decor-mailbox',         bx: 342, bw: 524, y2: 978 },
+    { f: 'decor-purple-blanket',  bx: 242, bw: 724, y2: 918 },
+    { f: 'decor-window-box',      bx: 252, bw: 704, y2: 808 },
+  ],
+  // jamie-doghouse-celebrate.png: 1161x1355 canvas, content [96,44 → 1032,1294]
+  jamie: { file: 'jamie-poses/jamie-doghouse-celebrate.png', cw: 1161, bx: 96, bw: 936, y2: 1294, bh: 1250 },
+};
+function houseImgGeometry(el) { // shared by stage img + doorway mask
+  const s = ART.houseScale, size = 1200 * s;
+  el.style.width = size + 'px'; el.style.height = size + 'px';
+  el.style.left = (-160 * s) + 'px';
+  el.style.bottom = (-(1200 - 1042) * s) + 'px';
+}
+(function probeAssets() {
+  const probe = new Image();
+  probe.onload = () => {
+    artMode = true;
+    for (let i = 2; i <= 8; i++) { const pre = new Image(); pre.src = ART.base + ART.stageFile(i); } // warm cache so reveals never flicker
+    houseImgGeometry($('house-img'));
+    const mask = $('door-mask');
+    mask.src = ART.base + 'foreground-masks/doghouse-doorway-front.png';
+    houseImgGeometry(mask);
+    // door overlays sit at the art door (canvas x460-742, bottom y876)
+    $('door-glow').style.bottom = '52px';
+    $('door-eyes').style.bottom = '70px';
+    syncHouseArt();
+    rerenderSplatties();
+  };
+  probe.src = ART.base + ART.stageFile(1);
+})();
+function syncHouseArt() {
+  const img = $('house-img'), svg = $('house-svg');
+  if (artMode) {
+    img.src = ART.base + ART.stageFile(shownStage);
+    img.style.display = 'block'; svg.style.display = 'none';
+    img.classList.remove('fade'); void img.offsetWidth; img.classList.add('fade');
+  } else { img.style.display = 'none'; svg.style.display = 'block'; }
+}
+function spriteImgHTML(color, pose, boxPx) {
+  const p = ART.poses[pose], s = boxPx / p.bw;
+  return `<img class="sp-img" src="${ART.base}splatties/splatty-${color}-${pose}.png"
+    style="width:${Math.round(1200 * s)}px; left:${Math.round(-p.bx * s)}px; bottom:${Math.round(-(1200 - p.y2) * s)}px;">`;
+}
+function splattyColor(u) { return ART.colors[(hashStr(u) * 13) % ART.colors.length]; }
+function poseForSpot(spotIdx) {
+  const kind = spotIdx >= 0 && SPOTS[spotIdx] ? SPOTS[spotIdx].kind : 'ground';
+  return kind === 'roof' ? 'roof' : kind === 'peek' ? 'peek' : 'ground';
+}
+
+/* ── sound hooks (optional, throttled) ── */
+const _sndLast = {};
+function playSound(name) {
+  if (!CFG.sounds.enabled) return;
+  const url = CFG.sounds.urls[name]; if (!url) return;
+  const now = Date.now();
+  if (now - (_sndLast[name] || 0) < 1200) return;
+  _sndLast[name] = now;
+  try { const a = new Audio(url); a.volume = CFG.sounds.volume; a.play().catch(() => {}); } catch (e) {}
+}
+
+/* ── session state ── */
+const ST_LS = 'dogHouse.session.v1';
+let S = {
+  viewers: {}, points: 0, stage: 1,
+  totals: { contributors: 0, heartMes: 0, firstGifters: 0, splatties: 0 },
+};
+try { const s = JSON.parse(localStorage.getItem(ST_LS) || 'null'); if (s && s.viewers) S = s; } catch (e) {}
+let _dirty = false;
+function markDirty() { _dirty = true; }
+function saveState() { if (!_dirty) return; _dirty = false; try { localStorage.setItem(ST_LS, JSON.stringify(S)); } catch (e) {} }
+function viewer(u) {
+  if (!S.viewers[u]) S.viewers[u] = { previewed: false, joined: false, gifted: false, giftCount: 0, coins: 0, spot: -1, joinedAt: 0 };
+  return S.viewers[u];
+}
+
+/* ── stages ── */
+let shownStage = 1; // visual stage (lags S.stage until the reveal animation runs)
+const STAGE_NAMES = [null, null, 'FRAME IS UP!', 'WALLS BUILT!', 'ROOF UNLOCKED!',
+                     "JAMIE'S SIGN ADDED!", 'YARD ESSENTIALS PLACED!', 'YARD DECORATED!', "JAMIE'S DOG HOUSE IS COMPLETE! 🎉"];
+function stageForPoints(p) {
+  let st = 1;
+  for (let i = 0; i < CFG.stageThresholds.length; i++) if (p >= CFG.stageThresholds[i]) st = i + 2;
+  return st;
+}
+function renderMeter() {
+  const prev = CFG.stageThresholds[S.stage - 2] ?? 0;
+  const next = CFG.stageThresholds[S.stage - 1];
+  const fill = next == null ? 100 : Math.min(100, Math.round(100 * (S.points - prev) / (next - prev)));
+  $('meter-fill').style.width = fill + '%';
+  $('meter-label').textContent = next == null
+    ? `🏠 JAMIE'S DOG HOUSE · ${S.totals.contributors} builders`
+    : `🏠 BUILD JAMIE'S DOG HOUSE · ${S.stage}/8`;
+}
+function showStagesInstant(to) { // no animation — restore/reset path
+  shownStage = to;
+  for (let i = 1; i <= 8; i++) { const g = $('st' + i); g.classList.toggle('on', i <= to); g.classList.remove('b' + i); }
+  syncHouseArt();
+}
+async function revealStage(n) { // one stage, with its build animation
+  shownStage = n;
+  if (artMode) { syncHouseArt(); $('house').classList.add('celebrate'); setTimeout(() => $('house').classList.remove('celebrate'), 750); }
+  else {
+    const g = $('st' + n);
+    g.classList.add('on', 'b' + n);
+    setTimeout(() => g.classList.remove('b' + n), 1600);
+  }
+  dustAt(150 + (Math.random() * 80 - 40), 30);
+  playSound('buildComplete');
+  await sleep(artMode ? 750 : 950);
+}
+
+/* ── spots ── */
+const SPOTS = [
+  // front ring first — 62-66px gaps so 60px splatties sit shoulder-to-shoulder without piling
+  { x: 336, y: 0,   kind: 'ground' }, { x: 400, y: 0,   kind: 'ground' },
+  { x: 464, y: 0,   kind: 'ground' }, { x: 528, y: 0,   kind: 'ground' },
+  { x: 368, y: -22, kind: 'yard'   }, { x: 432, y: -24, kind: 'yard' },
+  // roof spots hug the slopes and stay clear of the JAMIE sign (x78-220, y230+ in art)
+  { x: 105, y: 168, kind: 'roof', minStage: 4 }, { x: 195, y: 168, kind: 'roof', minStage: 4 },
+  { x: 56,  y: 175, kind: 'roof', minStage: 4 },
+  { x: -14, y: 60,  kind: 'peek', minStage: 3 }, { x: 314, y: 60, kind: 'peek', minStage: 3 },
+  { x: 496, y: -24, kind: 'yard' }, { x: 304, y: -22, kind: 'yard' },
+  { x: 244, y: 175, kind: 'roof', minStage: 4 }, { x: 150, y: -46, kind: 'yard' },
+  { x: -20, y: 0,   kind: 'ground' }, { x: 560, y: -22, kind: 'yard' },
+  { x: 336, y: -46, kind: 'yard' }, { x: 400, y: -48, kind: 'yard' }, { x: 464, y: -48, kind: 'yard' },
+  { x: 528, y: -46, kind: 'yard' }, { x: 592, y: 0,   kind: 'ground' }, { x: 272, y: -46, kind: 'yard' },
+  { x: 368, y: -70, kind: 'yard' }, { x: 432, y: -72, kind: 'yard' }, { x: 496, y: -70, kind: 'yard' },
+  { x: 304, y: -68, kind: 'yard' }, { x: 560, y: -68, kind: 'yard' }, { x: 624, y: -22, kind: 'yard' },
+  { x: 400, y: -94, kind: 'yard' }, { x: 464, y: -94, kind: 'yard' }, { x: 336, y: -92, kind: 'yard' },
+  { x: 528, y: -92, kind: 'yard' }, { x: 592, y: -46, kind: 'yard' }, { x: 432, y: -116, kind: 'yard' },
+  { x: 368, y: -114, kind: 'yard' }, { x: 496, y: -114, kind: 'yard' }, { x: 624, y: -68, kind: 'yard' },
+  { x: 400, y: -138, kind: 'yard' }, { x: 464, y: -138, kind: 'yard' },
+];
+const spotTaken = new Array(SPOTS.length).fill(false);
+function spotAllowed(sp) {
+  if (sp.minStage && S.stage < sp.minStage) return false;
+  if (sp.kind === 'roof' && !CFG.roofSpots) return false;
+  if (sp.kind === 'yard' && !CFG.yardSpots) return false;
+  return true;
+}
+function claimSpot(preferRoof) {
+  if (preferRoof && CFG.roofSpots && S.stage >= 4) {
+    for (let i = 0; i < SPOTS.length; i++) if (!spotTaken[i] && SPOTS[i].kind === 'roof' && spotAllowed(SPOTS[i])) { spotTaken[i] = true; return i; }
+  }
+  for (let i = 0; i < SPOTS.length; i++) if (!spotTaken[i] && spotAllowed(SPOTS[i])) { spotTaken[i] = true; return i; }
+  return -1;
+}
+function renderSlotDots() {
+  const wrap = $('slot-dots'); wrap.innerHTML = '';
+  SPOTS.forEach((sp, i) => {
+    const d = document.createElement('div');
+    d.className = 'slot-dot ' + sp.kind;
+    d.style.left = sp.x + 'px'; d.style.bottom = (sp.y - 7) + 'px';
+    d.textContent = i;
+    wrap.appendChild(d);
+  });
+}
+
+/* ── splatty rendering ── */
+function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffff; return h; }
+const BLOB_PATHS = [
+  'M32 6 Q50 4 56 22 Q62 40 50 52 Q40 62 24 58 Q6 54 6 36 Q6 16 20 9 Q26 6 32 6Z',
+  'M30 5 Q48 2 57 18 Q64 32 56 46 Q48 60 30 60 Q12 60 6 44 Q1 30 10 16 Q18 6 30 5Z',
+  'M34 4 Q52 8 58 26 Q62 42 48 54 Q34 64 18 56 Q4 48 6 30 Q8 12 22 6 Q28 3 34 4Z',
+];
+function splattySVG(u, hue) {
+  const h = hashStr(u) * 7; // decorrelate variant picks from sequential names too
+  const path = BLOB_PATHS[h % BLOB_PATHS.length];
+  const eyeDx = 7 + (h >> 4) % 3;
+  const mouth = (h >> 6) % 2
+    ? '<path d="M27 40 Q32 45 37 40" fill="none" stroke="#2a1e3f" stroke-width="2.6" stroke-linecap="round"/>'
+    : '<ellipse cx="32" cy="41" rx="3.6" ry="4.6" fill="#2a1e3f"/>';
+  return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <path d="${path}" fill="hsl(${hue},72%,62%)" stroke="#2a1e3f" stroke-width="3.5"/>
+    <path d="${path}" fill="rgba(255,255,255,.22)" transform="translate(-2,-3) scale(.55)" transform-origin="32 32"/>
+    <g class="eyes">
+      <circle cx="${32 - eyeDx}" cy="29" r="6" fill="#fff"/><circle cx="${32 + eyeDx}" cy="29" r="6" fill="#fff"/>
+      <circle cx="${32 - eyeDx + 1.5}" cy="30" r="3" fill="#2a1e3f"/><circle cx="${32 + eyeDx + 1.5}" cy="30" r="3" fill="#2a1e3f"/>
+    </g>${mouth}</svg>`;
+}
+const splatEls = {};
+const previewOrder = [];
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function splattyArtHTML(u, pose) {
+  return artMode ? spriteImgHTML(splattyColor(u), pose, 60) : splattySVG(u, (hashStr(u) * 47) % 360);
+}
+function makeSplatty(u, opts = {}) {
+  const h = hashStr(u);
+  const el = document.createElement('div');
+  el.className = 'splatty' + (opts.preview ? ' preview' : '');
+  el.style.setProperty('--bobDur', (2.2 + (h % 100) / 70) + 's');
+  el.style.setProperty('--bobDelay', ((h % 17) / 10) + 's');
+  el.style.setProperty('--blinkDelay', ((h % 43) / 10) + 's');
+  el._pose = opts.pose || 'ground';
+  el.innerHTML = `<div class="inner bobbing">${splattyArtHTML(u, el._pose)}</div><div class="tag">${escapeHtml(u)}</div>`;
+  $('splat-layer').appendChild(el);
+  splatEls[u] = el;
+  return el;
+}
+function setPose(u, pose) { // swap sprite when a splatty lands on a different spot kind
+  const el = splatEls[u]; if (!el || !artMode || el._pose === pose) return;
+  el._pose = pose;
+  const inn = el.querySelector('.inner');
+  const old = inn.querySelector('.sp-img, svg');
+  if (old) old.outerHTML = splattyArtHTML(u, pose);
+}
+function rerenderSplatties() { // one-time re-render when art finishes probing after restore
+  for (const u in splatEls) {
+    const el = splatEls[u];
+    const inn = el.querySelector('.inner');
+    const old = inn.querySelector('.sp-img, svg');
+    if (old) old.outerHTML = splattyArtHTML(u, el._pose || 'ground');
+  }
+}
+function inner(u) { const el = splatEls[u]; return el && el.querySelector('.inner'); }
+function showTag(u, ms) {
+  const el = splatEls[u]; if (!el) return;
+  const tag = el.querySelector('.tag'); tag.classList.add('show');
+  clearTimeout(tag._t); tag._t = setTimeout(() => tag.classList.remove('show'), ms);
+}
+function setPos(u, x, y, instant) {
+  const el = splatEls[u]; if (!el) return;
+  if (instant) { el.classList.remove('travel'); }
+  el.style.left = x + 'px';
+  el.style.bottom = y + 'px';
+  if (instant) void el.offsetWidth;
+}
+function applySpotStyle(u, spotIdx) {
+  const el = splatEls[u]; if (!el) return;
+  const sp = SPOTS[spotIdx];
+  // depth: peek(1) < house(10) < roof(20) < ground(32) < yard rows — lower rows
+  // (more negative y) are closer to the viewer, so they stack higher
+  el.style.zIndex = sp.kind === 'peek' ? 1 : sp.kind === 'roof' ? 20 : sp.kind === 'yard' ? (32 - Math.round(sp.y / 2)) : 32;
+  // vector art needs a clip to fake the half-body peek; the illustrated peek
+  // pose is already a flat-bottomed half blob, so no clip in art mode
+  el.classList.toggle('peek-clip', sp.kind === 'peek' && !artMode);
+  setPose(u, poseForSpot(spotIdx));
+}
+function removeSplatty(u) {
+  const el = splatEls[u]; if (!el) return;
+  el.remove(); delete splatEls[u];
+}
+/* one-shot inner action with auto-cleanup */
+const activeIdles = new Set();
+function act(u, cls, dur) {
+  const inn = inner(u); if (!inn) return;
+  inn.classList.remove(cls); void inn.offsetWidth;
+  inn.classList.add(cls);
+  setTimeout(() => inn.classList.remove(cls), dur);
+}
+/* entrance variants — randomized by spot kind, reduced-motion aware */
+async function entrance(u, spotIdx) {
+  const sp = SPOTS[spotIdx];
+  const el = splatEls[u]; if (!el) return;
+  applySpotStyle(u, spotIdx);
+  if (CFG.reducedMotion) {
+    setPos(u, sp.x, sp.y, true);
+    el.classList.add('fade-in');
+    setTimeout(() => el.classList.remove('fade-in'), 550);
+    await sleep(350);
+    return;
+  }
+  if (sp.kind === 'roof') {                       // slide/drop down onto the roof
+    setPos(u, sp.x, sp.y, true);
+    el.classList.add('drop-in');
+    await sleep(800);
+    el.classList.remove('drop-in');
+  } else if (sp.kind === 'peek') {                // fade up from behind the house
+    setPos(u, sp.x, sp.y - 24, true);
+    el.style.opacity = '0';
+    void el.offsetWidth;
+    el.style.transition = 'opacity .5s ease, bottom .6s ease';
+    el.style.opacity = '1';
+    el.style.bottom = sp.y + 'px';
+    await sleep(650);
+    el.style.transition = ''; el.style.opacity = '';
+  } else {                                        // hop in from a screen edge
+    const variants = [ { x: -90, y: 0 }, { x: 620, y: 0 }, { x: sp.x, y: -70 } ];
+    const v = variants[hashStr(u + 'e') % variants.length];
+    setPos(u, v.x, v.y, true);
+    el.style.setProperty('--tdur', '.95s');
+    el.classList.add('travel', 'hop-travel');
+    void el.offsetWidth;
+    setPos(u, sp.x, sp.y);
+    await sleep(980);
+    el.classList.remove('travel', 'hop-travel');
+    el.classList.add('settle');
+    setTimeout(() => el.classList.remove('settle'), 550);
+  }
+}
+/* neighbors react to a newcomer / build event — nearest 2-3 only, varied */
+function neighborReact(spotIdx, mode) {
+  const sp = SPOTS[spotIdx]; if (!sp) return;
+  const near = [];
+  for (const u in splatEls) {
+    const v = S.viewers[u];
+    if (!v || v.spot < 0 || v.spot === spotIdx) continue;
+    near.push({ u, d: Math.abs(SPOTS[v.spot].x - sp.x) + Math.abs(SPOTS[v.spot].y - sp.y) });
+  }
+  near.sort((a, b) => a.d - b.d);
+  const pool = mode === 'duck' ? ['act-duck', 'act-duck', 'act-look'] : ['act-hop', 'act-wave', 'act-look'];
+  near.slice(0, 3).forEach((n, i) => setTimeout(() => act(n.u, pool[i % pool.length], 1000), 120 + i * 160));
+}
+let crowdOverflow = 0;
+function updateCrowdChip() {
+  const chip = $('crowd-chip');
+  chip.style.display = crowdOverflow > 0 ? 'block' : 'none';
+  chip.textContent = `+${crowdOverflow} INSIDE 🏠`;
+}
+
+/* ── transient fx ── */
+function fxEl(cls, txt, x, y, ttl) {
+  const s = document.createElement('div');
+  s.className = cls; if (txt) s.textContent = txt;
+  s.style.left = x + 'px'; s.style.bottom = y + 'px';
+  $('fx-layer').appendChild(s);
+  setTimeout(() => s.remove(), ttl);
+  return s;
+}
+function sparkleAt(x, y, n = 5) {
+  const chars = ['✨', '⭐', '💜', '🔨', '🦴'];
+  for (let i = 0; i < Math.min(n, 8); i++) {
+    const s = fxEl('sparkle', chars[(Math.random() * chars.length) | 0], x - 20 + Math.random() * 60, y + Math.random() * 30, 1400);
+    s.style.animationDelay = (Math.random() * .25) + 's';
+  }
+}
+function dustAt(x, y) { fxEl('dust', '💨', x, y, 800); }
+function heartPulseAt(x, y) { fxEl('heart-pulse', '💜', x, y, 900); }
+const DECO_CHARS = ['🦴', '🌼', '🎾', '🐾', '🌷'];
+let decoCount = 0;
+function dropDeco() {
+  if (decoCount >= 10) return;
+  decoCount++;
+  const x = -20 + Math.random() * 550, y = Math.random() * 14 - 20;
+  if (artMode) {
+    const d = ART.decos[(Math.random() * ART.decos.length) | 0];
+    const s = 46 / d.bw;
+    const el = fxEl('deco', '', x, y, 3600000);
+    el.style.width = '46px'; el.style.height = '46px';
+    el.innerHTML = `<img src="${ART.base}decorations/${d.f}.png"
+      style="position:absolute; max-width:none; width:${Math.round(1200 * s)}px; left:${Math.round(-d.bx * s)}px; bottom:${Math.round(-(1200 - d.y2) * s)}px;">`;
+  } else {
+    fxEl('deco', DECO_CHARS[(Math.random() * DECO_CHARS.length) | 0], x, y, 3600000);
+  }
+}
+
+/* ── callout ── */
+let calloutBusy = false;
+async function callout(html, cls) { // sequenced by callers (the task queue), so no internal queue needed
+  while (calloutBusy) await sleep(120);
+  calloutBusy = true;
+  const el = $('callout');
+  el.className = cls || '';
+  el.innerHTML = html;
+  el.classList.add('show');
+  await sleep(CFG.calloutSec * 1000);
+  el.classList.remove('show'); el.classList.add('out');
+  await sleep(460);
+  el.classList.remove('out');
+  calloutBusy = false;
+}
+
+/* ══ EVENT SEQUENCER — priority queue, burst grouping, micro-acks ══
+   Priorities: 1 completion · 2 firstGift · 3 milestone · 4 heartJoin · 5 largeGift
+   Data/state updates happen at event arrival; the queue only owns presentation. */
+const seq = { q: [], running: false };
+let majorActive = false;
+function enqueue(pri, kind, payload) {
+  seq.q.push({ pri, kind, payload, t: performance.now() });
+  seq.q.sort((a, b) => a.pri - b.pri || a.t - b.t);
+  pump();
+}
+async function pump() {
+  if (seq.running) return;
+  seq.running = true;
+  while (seq.q.length) {
+    const task = seq.q.shift();
+    majorActive = true;
+    try { await runTask(task); } catch (e) { console.warn('[dh] task error', e); }
+  }
+  majorActive = false;
+  seq.running = false;
+}
+async function runTask(task) {
+  if (task.kind === 'join') {
+    // burst grouping: collapse this + all other queued joins when 3+ are waiting
+    const more = seq.q.filter(t => t.kind === 'join');
+    if (more.length >= 2) {
+      seq.q = seq.q.filter(t => t.kind !== 'join');
+      await joinBurst([task.payload, ...more.map(t => t.payload)]);
+      return;
+    }
+    await joinSequence(task.payload);
+  }
+  else if (task.kind === 'firstGift') await firstGiftSequence(task.payload);
+  else if (task.kind === 'milestone') await milestoneSequence(task.payload);
+  else if (task.kind === 'largeGift') await largeGiftSequence(task.payload);
+  else if (task.kind === 'callout') await callout(task.payload.html, task.payload.cls);
+}
+
+/* ── HEART ME: 5-phase join ── */
+async function joinSequence(p) {
+  const { u } = p;
+  const v = viewer(u);
+  const sp = v.spot >= 0 ? SPOTS[v.spot] : null;
+  playSound('heartMeJoin');
+  let el = splatEls[u];
+  if (el && el.classList.contains('preview')) {
+    // Phase 2a — activate the existing preview in place
+    heartPulseAt(parseFloat(el.style.left || 0), parseFloat(el.style.bottom || 0) + 56);
+    el.classList.remove('preview');
+    el.classList.add('activating');
+    sparkleAt(parseFloat(el.style.left || 0), parseFloat(el.style.bottom || 0) + 20, 3);
+    await sleep(720);
+    el.classList.remove('activating');
+    // Phase 3 — move-in to the assigned spot
+    if (sp) {
+      applySpotStyle(u, v.spot);
+      el.style.setProperty('--tdur', '.9s');
+      el.classList.add('travel', 'hop-travel');
+      void el.offsetWidth;
+      setPos(u, sp.x, sp.y);
+      await sleep(940);
+      el.classList.remove('travel', 'hop-travel');
+      el.classList.add('settle');
+      setTimeout(() => el.classList.remove('settle'), 550);
+    }
+  } else if (!el) {
+    // Phase 2b — heart lands, splatty pops out of it
+    if (sp) {
+      heartPulseAt(sp.x, sp.y + 30);
+      await sleep(320);
+      el = makeSplatty(u);
+      await entrance(u, v.spot);
+    } else { crowdOverflow++; updateCrowdChip(); }
+  }
+  // Phase 4 — placement: bounce + tag + neighbors
+  if (sp) {
+    heartPulseAt(sp.x, sp.y + 62);
+    showTag(u, 2400);
+    neighborReact(v.spot, 'greet');
+  }
+  // Phase 5 — callout
+  await callout(`<span class="u">${escapeHtml(u)}</span> joined Jamie's yard! 💜`);
+}
+/* burst variant — door glow, staggered arrivals, one group callout */
+async function joinBurst(list) {
+  playSound('doorOpen');
+  $('door-glow').classList.add('on');
+  const arrivals = list.filter(p => { const v = viewer(p.u); return v.spot >= 0 && !splatEls[p.u]; });
+  const converts = list.filter(p => splatEls[p.u]);
+  for (const p of converts) {
+    const el = splatEls[p.u];
+    el.classList.remove('preview'); el.classList.add('activating');
+    setTimeout(() => el.classList.remove('activating'), 750);
+  }
+  await sleep(350);
+  for (let i = 0; i < arrivals.length; i++) {
+    const p = arrivals[i], v = viewer(p.u);
+    makeSplatty(p.u);
+    entrance(p.u, v.spot); // deliberately not awaited — staggered parallel arrivals
+    showTag(p.u, 4000);
+    await sleep(170);
+  }
+  for (const p of converts) {
+    const v = viewer(p.u);
+    if (v.spot >= 0) {
+      const el = splatEls[p.u], sp = SPOTS[v.spot];
+      applySpotStyle(p.u, v.spot);
+      el.classList.add('travel'); void el.offsetWidth;
+      setPos(p.u, sp.x, sp.y);
+      showTag(p.u, 4000);
+      await sleep(140);
+    }
+  }
+  await sleep(700);
+  $('door-glow').classList.remove('on');
+  await callout(`${list.length} NEW SPLATTIES MOVED IN! 💜`, 'milestone');
+}
+
+/* ── FIRST GIFT: badge → prop → travel → hammer taps → return ── */
+const BUILD_PROPS = ['🔨', '⛏', '🪚', '🖌', '🪜'];
+async function firstGiftSequence(p) {
+  const { u } = p;
+  const v = viewer(u);
+  playSound('firstGift');
+  let el = splatEls[u];
+  if (!el && v.spot >= 0) { el = makeSplatty(u); await entrance(u, v.spot); }
+  if (el && el.classList.contains('preview')) { el.classList.remove('preview'); el.classList.add('activating'); await sleep(700); el.classList.remove('activating'); }
+  if (!el) { // over capacity — still give the moment a face
+    sparkleAt(150, 140, 6);
+    await callout(`🔨 FIRST GIFT! <span class="u">${escapeHtml(u)}</span> helped build Jamie's house!`, 'first-gift');
+    return;
+  }
+  const sp = v.spot >= 0 ? SPOTS[v.spot] : { x: 430, y: 0, kind: 'ground' };
+  // Phase 1+2 — badge + builder prop
+  const badge = document.createElement('div'); badge.className = 'badge'; badge.textContent = 'FIRST GIFT';
+  el.appendChild(badge);
+  const prop = document.createElement('div'); prop.className = 'prop';
+  if (artMode) prop.innerHTML = `<img src="${ART.base}construction-props/${ART.props[hashStr(u) % ART.props.length]}.png">`;
+  else prop.textContent = BUILD_PROPS[hashStr(u) % BUILD_PROPS.length];
+  el.appendChild(prop);
+  act(u, 'act-duck', 700); // compress under the prop's weight
+  showTag(u, 5200);
+  await sleep(420);
+  if (CFG.reducedMotion) {
+    // short version: plank fades to house, shake, sparkles
+    sparkleAt(150, 130, 5);
+    $('house').classList.add('shake'); setTimeout(() => $('house').classList.remove('shake'), 350);
+  } else {
+    // Phase 3 — travel to the build point (curved feel via hop-travel)
+    const buildPt = { x: 224, y: 4 };
+    el.style.setProperty('--tdur', '.75s');
+    el.classList.add('travel', 'hop-travel');
+    void el.offsetWidth;
+    setPos(u, buildPt.x, buildPt.y);
+    await sleep(790);
+    el.classList.remove('hop-travel');
+    // Phase 4 — plank bumps into place + two hammer taps with structure shake
+    const plank = document.createElement('div');
+    plank.className = 'plank' + (artMode ? ' art' : '');
+    if (artMode) plank.innerHTML = `<img src="${ART.base}construction-props/build-plank.png">`;
+    plank.style.left = (buildPt.x - 60) + 'px'; plank.style.bottom = '46px';
+    $('fx-layer').appendChild(plank);
+    requestAnimationFrame(() => requestAnimationFrame(() => { plank.style.left = '126px'; plank.style.bottom = '118px'; }));
+    await sleep(620);
+    for (let i = 0; i < 2; i++) {
+      act(u, 'act-tap', 320);
+      playSound('hammerTap');
+      const house = $('house');
+      house.classList.remove('shake'); void house.offsetWidth; house.classList.add('shake');
+      dustAt(150, 120);
+      await sleep(360);
+    }
+    $('house').classList.remove('shake');
+    plank.style.transition = 'opacity .3s'; plank.style.opacity = '0';
+    setTimeout(() => plank.remove(), 350);
+    sparkleAt(150, 130, 6);
+    neighborReact(v.spot, 'duck');
+  }
+  // Phase 5 — stage reveal happens via queued milestone task right after this one
+  // Phase 6 — callout
+  await callout(`🔨 FIRST GIFT! <span class="u">${escapeHtml(u)}</span> helped build Jamie's house!`, 'first-gift');
+  // Phase 7 — return home, drop the prop
+  if (!CFG.reducedMotion && v.spot >= 0) {
+    el.classList.add('travel'); void el.offsetWidth;
+    setPos(u, sp.x, sp.y);
+    await sleep(760);
+    el.classList.remove('travel');
+    el.classList.add('settle'); setTimeout(() => el.classList.remove('settle'), 550);
+  }
+  badge.remove(); prop.remove();
+}
+
+/* ── MILESTONE: sequential stage reveals + callout ── */
+async function milestoneSequence(p) {
+  playSound('milestone');
+  for (let n = shownStage + 1; n <= p.to; n++) {
+    await revealStage(n);
+    if (STAGE_NAMES[n]) await callout(STAGE_NAMES[n], 'milestone');
+  }
+  if (p.to >= 8) { // completion: group hop
+    const users = Object.keys(splatEls);
+    users.forEach((u, i) => setTimeout(() => act(u, 'act-hop', 600), (i % 6) * 90));
+    sparkleAt(150, 200, 8);
+  }
+  jamieCelebrate();
+  renderMeter();
+}
+
+/* ── LARGE GIFT: yard-wide celebration ── */
+async function largeGiftSequence(p) {
+  playSound('largeGift');
+  const { u } = p;
+  const el = splatEls[u];
+  if (el) { el.classList.add('aura', 'glow'); showTag(u, 5000); }
+  $('door-glow').classList.add('on');
+  if (shownStage >= 8) { const g = $('st8'); g.classList.add('light-flicker'); setTimeout(() => g.classList.remove('light-flicker'), 1300); }
+  // varied reactions across a handful of splatties
+  const users = Object.keys(splatEls).filter(x => x !== u).slice(0, 5);
+  const pool = ['act-cheer', 'act-hop', 'act-duck', 'act-wave', 'act-look'];
+  users.forEach((x, i) => setTimeout(() => act(x, pool[i % pool.length], 1300), i * 150));
+  fxEl('bone-toss', '🦴', 40, 120, 1300);
+  jamieCelebrate();
+  await callout(`💛 <span class="u">${escapeHtml(u)}</span> sent a HUGE gift for Jamie!`, 'first-gift');
+  await sleep(400);
+  $('door-glow').classList.remove('on');
+  if (el) el.classList.remove('aura', 'glow');
+}
+
+/* ── points / progress (data layer — instant) ── */
+function addPoints(n) {
+  if (n <= 0) return;
+  S.points += n;
+  const newStage = stageForPoints(S.points);
+  if (newStage > S.stage) {
+    S.stage = newStage;
+    enqueue(newStage >= 8 ? 1 : 3, 'milestone', { to: newStage });
+  }
+  renderMeter();
+  markDirty();
+}
+
+/* ── event handlers (data instantly; presentation queued; micro-ack now) ── */
+const previewTimers = {};
+function onChat(u) {
+  const v = viewer(u);
+  if (v.joined || v.previewed || !CFG.previews.enabled) return;
+  if (previewOrder.length >= CFG.previews.max) {
+    const evict = previewOrder.shift();
+    if (evict && splatEls[evict] && !viewer(evict).joined) { removeSplatty(evict); delete previewTimers[evict]; }
+  }
+  v.previewed = true;
+  previewOrder.push(u);
+  previewTimers[u] = Date.now() + CFG.previews.ttlSec * 1000;
+  const el = makeSplatty(u, { preview: true });
+  setPos(u, 540 + previewOrder.length * 50, 0, true);
+  el.classList.add('fade-in');
+  setTimeout(() => el.classList.remove('fade-in'), 550);
+  showTag(u, 2200);
+  markDirty();
+}
+function activateData(u, preferRoof) { // data-only join; presentation handled by queue
+  const v = viewer(u);
+  if (v.joined) return false;
+  v.joined = true; v.joinedAt = Date.now();
+  S.totals.contributors++;
+  const i = previewOrder.indexOf(u); if (i >= 0) previewOrder.splice(i, 1);
+  delete previewTimers[u];
+  if (S.totals.splatties >= CFG.maxSplatties) { v.spot = -1; }
+  else {
+    v.spot = claimSpot(preferRoof);
+    if (v.spot >= 0) S.totals.splatties++;
+  }
+  markDirty();
+  return true;
+}
+function onHeart(u) {
+  const wasNew = activateData(u, false);
+  S.totals.heartMes++;
+  const v = viewer(u);
+  if (wasNew) {
+    // micro-ack now, full sequence when the queue gets to it
+    const el = splatEls[u];
+    if (el) heartPulseAt(parseFloat(el.style.left || 0), parseFloat(el.style.bottom || 0) + 58);
+    else if (v.spot >= 0) heartPulseAt(SPOTS[v.spot].x, SPOTS[v.spot].y + 40);
+    if (v.spot < 0) { crowdOverflow++; updateCrowdChip(); }
+    enqueue(4, 'join', { u });
+  } else {
+    act(u, 'act-cheer', 1400); showTag(u, 3000);
+  }
+  addPoints(CFG.points.heartMe);
+  markDirty();
+}
+function onGift(u, amount, kind) {
+  const v = viewer(u);
+  const isYT = kind === 'youtube' || kind === 'superchat' || kind === 'yt_superchat';
+  const coins = isYT ? 0 : (amount || 0);
+  const dollars = isYT ? (amount || 0) : 0;
+  const valuePts = Math.floor((coins / 100) * CFG.points.per100Coins + dollars * CFG.points.perDollar);
+  v.giftCount++; v.coins += coins;
+  const isLarge = coins >= CFG.largeGiftCoins || dollars >= CFG.largeGiftDollars;
+  if (!v.gifted) {
+    v.gifted = true;
+    S.totals.firstGifters++;
+    const joinedNow = activateData(u, true); // roof priority for first-gifters
+    if (!joinedNow && v.spot < 0) { /* already in overflow */ }
+    else if (!joinedNow) { /* already placed via heart — keep spot */ }
+    if (v.spot < 0 && joinedNow) { crowdOverflow++; updateCrowdChip(); }
+    sparkleAt(v.spot >= 0 ? SPOTS[v.spot].x : 150, 40, 3); // micro-ack
+    enqueue(2, 'firstGift', { u });
+    addPoints(CFG.points.firstGift + valuePts);
+  } else {
+    addPoints(CFG.points.repeatGift + valuePts);
+    if (isLarge) { enqueue(5, 'largeGift', { u }); }
+    else {
+      // small/medium repeat — immediate lightweight reaction, no queue
+      dropDeco();
+      const pool = ['act-cheer', 'act-hop', 'act-wave', 'act-wiggle'];
+      act(u, pool[hashStr(u + v.giftCount) % pool.length], 1400);
+      const el = splatEls[u];
+      if (el) { el.classList.add('glow'); showTag(u, 3200); setTimeout(() => el.classList.remove('glow'), 2600); }
+      if (coins >= CFG.repeatCalloutMinCoins || dollars >= 2) {
+        enqueue(6, 'callout', { html: `<span class="u">${escapeHtml(u)}</span> added to Jamie's dog house! 🦴` });
+      }
+      if (coins >= CFG.mediumGiftCoins) {
+        $('door-glow').classList.add('on');
+        setTimeout(() => $('door-glow').classList.remove('on'), 1400);
+        if (viewer(u).spot >= 0) neighborReact(viewer(u).spot, 'greet');
+      }
+    }
+  }
+  markDirty();
+}
+
+/* ── idle schedulers — staggered, capped, pause during majors/hidden ── */
+setInterval(() => { // splatty idles: ~1 every few seconds, max 2 concurrent
+  if (majorActive || document.hidden || CFG.reducedMotion || CFG.editMode) return;
+  if (activeIdles.size >= 2 || Math.random() > .55) return;
+  const users = Object.keys(splatEls).filter(u => !viewer(u).previewed || viewer(u).joined);
+  if (!users.length) return;
+  const u = users[(Math.random() * users.length) | 0];
+  if (activeIdles.has(u)) return;
+  activeIdles.add(u);
+  const pool = ['act-hop', 'act-look', 'act-lean', 'act-wiggle', 'act-wave'];
+  act(u, pool[(Math.random() * pool.length) | 0], 1600);
+  setTimeout(() => activeIdles.delete(u), 1700);
+}, 3000);
+(function envIdleLoop() { // dog-house idles: one every 12–25s
+  const delay = 12000 + Math.random() * 13000;
+  setTimeout(() => {
+    if (!majorActive && !document.hidden && !CFG.reducedMotion && !CFG.editMode) {
+      const opts = [];
+      if (artMode) {
+        if (shownStage >= 4) opts.push(doorPeekIdle, doorPeekIdle); // favorite — weighted double
+        opts.push(() => { const h = $('house'); h.classList.add('idle-sway'); setTimeout(() => h.classList.remove('idle-sway'), 2300); });
+      } else {
+        if (shownStage >= 5) opts.push(() => { const g = $('st5'); g.classList.add('sign-swing'); setTimeout(() => g.classList.remove('sign-swing'), 1700); });
+        if (shownStage >= 8) opts.push(() => { const g = $('st8'); g.classList.add('light-flicker'); setTimeout(() => g.classList.remove('light-flicker'), 1300); });
+        if (shownStage >= 6) opts.push(() => { const g = $('st6'); g.classList.add('bowl-shine'); setTimeout(() => g.classList.remove('bowl-shine'), 1400); });
+        if (shownStage >= 3) opts.push(() => { const e = $('door-eyes'); e.classList.add('peek'); setTimeout(() => e.classList.remove('peek'), 1800); });
+      }
+      opts.push(() => dustAt(40 + Math.random() * 220, 6));
+      if (opts.length) opts[(Math.random() * opts.length) | 0]();
+    }
+    envIdleLoop();
+  }, delay);
+})();
+
+/* ── door peek idle (art mode): a resident pops up inside the doorway,
+   tucked behind the doorway-front mask so it reads as "inside the house" ── */
+let _doorPeekBusy = false;
+function doorPeekIdle() {
+  if (_doorPeekBusy) return;
+  _doorPeekBusy = true;
+  const residents = Object.keys(splatEls).filter(u => viewer(u).joined);
+  const color = residents.length ? splattyColor(residents[(Math.random() * residents.length) | 0])
+                                 : ART.colors[(Math.random() * ART.colors.length) | 0];
+  const pk = $('door-peeker'), mask = $('door-mask');
+  pk.style.width = '64px'; pk.style.height = '64px';
+  pk.style.left = '117px'; pk.style.bottom = '42px';
+  pk.innerHTML = spriteImgHTML(color, 'peek', 64);
+  mask.style.display = 'block';
+  requestAnimationFrame(() => { pk.style.opacity = '1'; pk.style.bottom = '54px'; });
+  setTimeout(() => { pk.style.opacity = '0'; pk.style.bottom = '42px'; }, 2200);
+  setTimeout(() => { mask.style.display = 'none'; pk.innerHTML = ''; _doorPeekBusy = false; }, 2900);
+}
+
+/* ── Jamie celebrate (art mode): the celebrate sticker pops in beside the
+   house, wiggles, and fades — reserved for milestones and large gifts so it
+   stays special. Toggle with CFG.jamieReactions if it clashes with live Jamie. ── */
+let _jamieBusy = false;
+function jamieCelebrate() {
+  if (!artMode || !CFG.jamieReactions || CFG.reducedMotion || _jamieBusy) return;
+  _jamieBusy = true;
+  const j = ART.jamie, boxH = 170, s = boxH / j.bh;
+  const el = $('jamie-react');
+  el.style.width = Math.round(j.bw * s) + 'px';
+  el.style.height = boxH + 'px';
+  el.style.left = '318px'; el.style.bottom = '0px';
+  el.innerHTML = `<img src="${ART.base}${j.file}"
+    style="width:${Math.round(j.cw * s)}px; left:${Math.round(-j.bx * s)}px; bottom:${Math.round(-(1355 - j.y2) * s)}px;">`;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  setTimeout(() => { el.classList.remove('show'); el.innerHTML = ''; _jamieBusy = false; }, 2700);
+}
+
+/* ── control commands ── */
+async function resetSession(animated) {
+  seq.q.length = 0;
+  if (animated && !CFG.reducedMotion) {
+    // soft reset: everyone looks surprised, then heads into/behind the house
+    const users = Object.keys(splatEls);
+    users.forEach((u, i) => setTimeout(() => act(u, 'act-look', 800), i * 40));
+    await sleep(600);
+    users.forEach((u, i) => {
+      const el = splatEls[u];
+      setTimeout(() => { el.classList.add('leave'); setPos(u, 150, 20); }, i * 60);
+    });
+    await sleep(900 + users.length * 60);
+  }
+  for (const u in splatEls) removeSplatty(u);
+  $('fx-layer').innerHTML = '';
+  $('callout').className = '';
+  S = { viewers: {}, points: 0, stage: 1, totals: { contributors: 0, heartMes: 0, firstGifters: 0, splatties: 0 } };
+  spotTaken.fill(false);
+  previewOrder.length = 0;
+  for (const k in previewTimers) delete previewTimers[k];
+  crowdOverflow = 0; decoCount = 0;
+  updateCrowdChip();
+  showStagesInstant(1);
+  renderMeter();
+  markDirty(); saveState();
+}
+async function clearSplatties() {
+  playSound('doorOpen');
+  $('door-glow').classList.add('on');
+  const users = Object.keys(splatEls);
+  users.forEach((u, i) => {
+    const el = splatEls[u];
+    setTimeout(() => { el.classList.add('leave'); setPos(u, 150, 20); }, i * 70);
+  });
+  await sleep(800 + users.length * 70);
+  $('door-glow').classList.remove('on');
+  for (const u in splatEls) removeSplatty(u);
+  for (const u in S.viewers) { S.viewers[u].spot = -1; S.viewers[u].joined = false; S.viewers[u].previewed = false; }
+  spotTaken.fill(false);
+  previewOrder.length = 0;
+  S.totals.splatties = 0;
+  crowdOverflow = 0; updateCrowdChip();
+  markDirty();
+}
+function emergencyClear() {
+  seq.q.length = 0;
+  $('fx-layer').innerHTML = '';
+  $('door-glow').classList.remove('on');
+  const co = $('callout'); co.className = ''; co.innerHTML = '';
+  calloutBusy = false;
+  for (const u in splatEls) {
+    const el = splatEls[u];
+    el.querySelectorAll('.badge, .prop').forEach(n => n.remove());
+    el.classList.remove('aura', 'glow', 'activating', 'travel', 'hop-travel');
+    const v = viewer(u);
+    if (v.spot >= 0) setPos(u, SPOTS[v.spot].x, SPOTS[v.spot].y, true);
+  }
+}
+
+/* ── restore persisted session ── */
+function restore() {
+  S.stage = stageForPoints(S.points);
+  showStagesInstant(S.stage);
+  renderMeter();
+  let placed = 0;
+  for (const u in S.viewers) {
+    const v = S.viewers[u];
+    v.previewed = false;
+    if (!v.joined) continue;
+    if (placed >= CFG.maxSplatties) { v.spot = -1; crowdOverflow++; continue; }
+    const idx = (v.spot >= 0 && !spotTaken[v.spot]) ? (spotTaken[v.spot] = true, v.spot) : claimSpot(v.gifted);
+    v.spot = idx;
+    if (idx < 0) { crowdOverflow++; continue; }
+    makeSplatty(u);
+    setPos(u, SPOTS[idx].x, SPOTS[idx].y, true);
+    applySpotStyle(u, idx);
+    placed++;
+  }
+  S.totals.splatties = placed;
+  updateCrowdChip();
+}
+
+/* ── housekeeping ── */
+setInterval(() => {
+  const now = Date.now();
+  for (const u in previewTimers) {
+    if (now > previewTimers[u] && !viewer(u).joined) {
+      const el = splatEls[u];
+      if (el) { el.classList.add('leave'); setTimeout(() => removeSplatty(u), 750); }
+      delete previewTimers[u];
+      const i = previewOrder.indexOf(u); if (i >= 0) previewOrder.splice(i, 1);
+    }
+  }
+  saveState();
+}, 1000);
+
+/* ── Ably — dedicated 'dog-house' channel ONLY ── */
+const ably = new Ably.Realtime({ key: ABLY_KEY });
+const ch = ably.channels.get('dog-house');
+ch.subscribe('dh', m => {
+  const d = m.data || {};
+  const u = String(d.u || '').slice(0, 40);
+  if (!u) return;
+  if (d.t === 'chat') onChat(u);
+  else if (d.t === 'heart') onHeart(u);
+  else if (d.t === 'gift') onGift(u, +d.amount || 0, d.kind || 'tiktok_coins');
+});
+ch.subscribe('dh-cmd', m => {
+  const d = m.data || {};
+  if (d.cmd === 'reset') resetSession(true);
+  else if (d.cmd === 'clear') clearSplatties();
+  else if (d.cmd === 'emergencyClear') emergencyClear();
+  else if (d.cmd === 'addSplatty' && d.u) { const u = String(d.u).slice(0, 40); if (activateData(u, false)) enqueue(4, 'join', { u }); }
+  else if (d.cmd === 'stage' && isFinite(d.v)) {
+    const target = Math.max(1, Math.min(8, Math.round(d.v)));
+    S.points = target <= 1 ? 0 : CFG.stageThresholds[target - 2];
+    if (target > S.stage) { S.stage = target; enqueue(target >= 8 ? 1 : 3, 'milestone', { to: target }); }
+    else { S.stage = target; showStagesInstant(target); }
+    renderMeter(); markDirty();
+  }
+});
+ch.subscribe('dh-config', m => {
+  const d = m.data || {};
+  if (d.cfg && typeof d.cfg === 'object') {
+    deepMerge(CFG, d.cfg);
+    saveCfg(); applyCfg(); renderMeter();
+  }
+});
+ably.connection.on('connected',    () => { $('conn-dot').classList.add('connected'); if (ch.state !== 'attached') ch.attach().catch(() => {}); });
+ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
+// Browser sources can be frozen/restored on scene switches (bfcache) — Ably
+// closes its connection on freeze and does NOT reconnect on restore. Reconnect
+// explicitly so the overlay never sits silently deaf after a restore.
+window.addEventListener('pageshow', e => { if (e.persisted && ably.connection.state !== 'connected') ably.connect(); });
+
+applyCfg();
+restore();
+</script>
+</body>
+</html>
