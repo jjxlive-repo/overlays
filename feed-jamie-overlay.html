@@ -3047,15 +3047,21 @@ function initComms() {
         const d = m.data || {};
         if (d.type === 'pet') handlePet();
       });
+      /* body-colliders/fj-active are high-frequency while Feed Jamie is active, so
+         they live on their OWN channel ('jamie-signals') rather than 'gesture-events'.
+         Ably bills every message to every attached client regardless of which event
+         name it subscribed to, so if this rode the shared channel, gesture-fx-overlay
+         and bomb-drop-overlay would be billed for it too despite never reading it. */
+      const jamieCh = ably.channels.get('jamie-signals');
       // Body colliders — the streamer's body shape (head/torso/arms), detected by
       // gesture-cam.html via pose landmarks. Treats bounce off these (see stepObject).
-      gestureCh.subscribe('body-colliders', m => {
+      jamieCh.subscribe('body-colliders', m => {
         const d = m.data || {};
         if (Array.isArray(d.parts)) { bodyParts = d.parts; bodyPartsAt = performance.now(); }
       });
       // Tell gesture-cam we have treats on screen so it only scans/publishes the
       // body while there's something to bounce (gated, keeps Ably cost down).
-      _bodyPingCh = gestureCh;
+      _bodyPingCh = jamieCh;
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
       ably.connection.on('suspended',    () => $('conn-dot').classList.remove('connected'));

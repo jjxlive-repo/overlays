@@ -38,7 +38,7 @@ const W = 1080, H = 1920;
 const QS = new URLSearchParams(location.search);
 function qnum(k, d) { const v = parseFloat(QS.get(k)); return isFinite(v) ? v : d; }
 // Floor is adjustable LIVE from gesture-cam.html's "Bomb floor Y" slider (published
-// as 'bomb-config' on the same dedicated channel) and persisted here; the ?floorY=
+// as 'bomb-config' on the 'ball-signals' channel) and persisted here; the ?floorY=
 // URL param wins on first load for one-off setups, same pattern as timeout-box.
 const FLOOR_LS = 'bombDrop.floorY.v1';
 let FLOOR_Y = 1650;
@@ -399,14 +399,20 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-// ── Ably — dedicated near-silent channel only, same as gesture-fx-overlay.html ──
+// ── Ably — dedicated near-silent channels only, same as gesture-fx-overlay.html ──
+// bomb-colliders/bomb-config are bursty while a bomb is alive, so they live on
+// their own channel ('ball-signals') rather than the shared 'gesture-events'.
+// Ably bills every message to every attached client regardless of which event
+// name it subscribed to, so sharing would make gesture-fx-overlay and
+// feed-jamie-overlay pay for traffic they never read.
 const client = new Ably.Realtime({ key: ABLY_KEY });
 const ch = client.channels.get('gesture-events');
+const ballCh = client.channels.get('ball-signals');
 ch.subscribe('gesture-event', msg => {
   const d = msg.data || {};
   if (d.type === 'drop_bomb') spawnBall(Number(d.x) || W / 2, Number(d.y) || 60);
 });
-ch.subscribe('bomb-config', msg => {
+ballCh.subscribe('bomb-config', msg => {
   const d = msg.data || {};
   if (isFinite(d.floorY)) {
     FLOOR_Y = Math.max(200, Math.min(1900, +d.floorY));
@@ -414,7 +420,7 @@ ch.subscribe('bomb-config', msg => {
     try { localStorage.setItem(FLOOR_LS, String(FLOOR_Y)); } catch (e) {}
   }
 });
-ch.subscribe('bomb-colliders', msg => {
+ballCh.subscribe('bomb-colliders', msg => {
   const d = msg.data || {};
   if (!Array.isArray(d.balls)) return;
   const now = performance.now();
