@@ -68,6 +68,7 @@
     <div class="row" style="margin-top:6px;">
       <label class="gest"><input type="radio" name="drawMode" value="map" checked> <span style="color:#a78bfa;">🟪 Stream picture</span> — the whole 1080×1920 output (skip window chrome/black bars)</label>
       <label class="gest"><input type="radio" name="drawMode" value="cam"> <span style="color:#4ade80;">🟩 Camera strip</span> — just where YOU are (tracking runs zoomed on this)</label>
+      <label class="gest"><input type="radio" name="drawMode" value="game"> <span style="color:#fb923c;">🟧 Ball Guys area</span> — the game region (bombs bounce off balls detected here)</label>
     </div>
     <div id="previewWrap" style="margin-top:10px;">
       <canvas id="preview" width="640" height="360"></canvas>
@@ -83,6 +84,7 @@
       <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
       <label class="gest"><input type="checkbox" id="en-pluck" checked> ✊ Grab → pluck Jamie's treat</label>
       <label class="gest"><input type="checkbox" id="en-drop_bomb" checked> 🖐 Hold fist, open hand → drop a bomb</label>
+      <label class="gest"><input type="checkbox" id="en-colliders" checked> ⚪ Bombs bounce off Ball Guys balls</label>
     </div>
     <div class="row" style="margin-top:8px;">
       <span class="hint">Head-down calibration (works turned toward your monitor, not just facing camera):</span>
@@ -240,19 +242,23 @@ function log(msg, isEvt) {
 //   this region so small hands in a top-strip camera layout still track reliably.
 let mapBox = { x: 0, y: 0, w: 1, h: 1 };
 let camBox = { x: 0, y: 0, w: 1, h: 0.3 };
+let gameBox = { x: 0, y: 0.3, w: 1, h: 0.55 }; // Ball Guys region — ball detection runs here
 try { const c = JSON.parse(localStorage.getItem('gestureCam.crop.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) mapBox = c; } catch (e) {}
 try { const c = JSON.parse(localStorage.getItem('gestureCam.camBox.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) camBox = c; } catch (e) {}
+try { const c = JSON.parse(localStorage.getItem('gestureCam.gameBox.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) gameBox = c; } catch (e) {}
 function saveBoxes() {
   try {
     localStorage.setItem('gestureCam.crop.v1', JSON.stringify(mapBox));
     localStorage.setItem('gestureCam.camBox.v1', JSON.stringify(camBox));
+    localStorage.setItem('gestureCam.gameBox.v1', JSON.stringify(gameBox));
   } catch (e) {}
 }
 document.getElementById('btnFullFrame').onclick = () => {
   mapBox = { x: 0, y: 0, w: 1, h: 1 };
   camBox = { x: 0, y: 0, w: 1, h: 0.3 };
+  gameBox = { x: 0, y: 0.3, w: 1, h: 0.55 };
   saveBoxes();
-  log('boxes reset (stream = full frame, camera = top strip)');
+  log('boxes reset (stream = full frame, camera = top strip, game = middle band)');
 };
 function drawMode() { return document.querySelector('input[name=drawMode]:checked').value; }
 
@@ -271,12 +277,13 @@ preview.addEventListener('mousemove', e => {
     w: Math.min(1, Math.abs(cur.x - dragStart.x)),
     h: Math.min(1, Math.abs(cur.y - dragStart.y))
   };
-  if (drawMode() === 'cam') camBox = box; else mapBox = box;
+  if (drawMode() === 'cam') camBox = box; else if (drawMode() === 'game') gameBox = box; else mapBox = box;
 });
 preview.addEventListener('mouseup', () => {
   if (dragStart) {
-    const box = drawMode() === 'cam' ? camBox : mapBox;
-    if (box.w > 0.02 && box.h > 0.02) { saveBoxes(); log(`${drawMode() === 'cam' ? 'camera strip' : 'stream picture'} set: ${box.x.toFixed(2)},${box.y.toFixed(2)} ${box.w.toFixed(2)}x${box.h.toFixed(2)}`); }
+    const mode = drawMode();
+    const box = mode === 'cam' ? camBox : mode === 'game' ? gameBox : mapBox;
+    if (box.w > 0.02 && box.h > 0.02) { saveBoxes(); log(`${mode === 'cam' ? 'camera strip' : mode === 'game' ? 'Ball Guys area' : 'stream picture'} set: ${box.x.toFixed(2)},${box.y.toFixed(2)} ${box.w.toFixed(2)}x${box.h.toFixed(2)}`); }
   }
   dragStart = null;
 });
@@ -284,10 +291,74 @@ preview.addEventListener('mouseup', () => {
 // Landmarks come out normalized to the ZOOMED camBox crop → first lift them back
 // to captured-frame coords, then through mapBox into 1080x1920 overlay coords.
 function camToFrame(nx, ny) { return { x: camBox.x + nx * camBox.w, y: camBox.y + ny * camBox.h }; }
-function mapPoint(nx, ny) {
-  const f = camToFrame(nx, ny);
-  const rx = (f.x - mapBox.x) / mapBox.w, ry = (f.y - mapBox.y) / mapBox.h;
+function frameToOut(fx, fy) {
+  const rx = (fx - mapBox.x) / mapBox.w, ry = (fy - mapBox.y) / mapBox.h;
   return { x: Math.max(0, Math.min(OUT_W, rx * OUT_W)), y: Math.max(0, Math.min(OUT_H, ry * OUT_H)) };
+}
+function mapPoint(nx, ny) { const f = camToFrame(nx, ny); return frameToOut(f.x, f.y); }
+
+// ── Ball Guys ball detection (bombs bounce off what this finds) ──────────
+// TikTok's Ball Guys game is TikTok-rendered content — no API, no DOM, nothing to
+// query — but this page already captures the projector pixels, so the balls are
+// found VISUALLY: downscale the game region, classify pixels as ball-candidate
+// (saturated color, or bright white for the white ball — the black outlines around
+// every ball isolate it from the white paper background), take connected
+// components, and keep the disc-shaped ones. Runs only while bombs are alive
+// (a drop_bomb opens a 12s window) and publishes only when the set actually
+// changed — so a typical drop costs a handful of messages, not a stream.
+const ballScanCanvas = document.createElement('canvas');
+const ballScanCtx = ballScanCanvas.getContext('2d', { willReadFrequently: true });
+const BALL_SCAN_W = 144;
+function detectBallsFrom(source, sx, sy, sw, sh) {
+  const dw = BALL_SCAN_W, dhh = Math.max(8, Math.round(dw * sh / sw));
+  if (ballScanCanvas.width !== dw || ballScanCanvas.height !== dhh) { ballScanCanvas.width = dw; ballScanCanvas.height = dhh; }
+  ballScanCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dhh);
+  const img = ballScanCtx.getImageData(0, 0, dw, dhh).data;
+  const cls = new Uint8Array(dw * dhh);
+  for (let p = 0, q = 0; p < img.length; p += 4, q++) {
+    const r = img[p], g = img[p + 1], b = img[p + 2];
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if ((mx - mn > 55 && mx > 90) || (mn > 205 && mx - mn < 28)) cls[q] = 1;
+  }
+  const seen = new Uint8Array(dw * dhh);
+  const balls = [], stack = [];
+  for (let start = 0; start < cls.length; start++) {
+    if (!cls[start] || seen[start]) continue;
+    let n = 0, sxp = 0, syp = 0, minX = 1e9, maxX = -1, minY = 1e9, maxY = -1, touches = false;
+    stack.length = 0; stack.push(start); seen[start] = 1;
+    while (stack.length) {
+      const q = stack.pop(); n++;
+      const x = q % dw, y = (q / dw) | 0;
+      sxp += x; syp += y;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (x === 0 || y === 0 || x === dw - 1 || y === dhh - 1) touches = true;
+      if (x > 0 && cls[q - 1] && !seen[q - 1]) { seen[q - 1] = 1; stack.push(q - 1); }
+      if (x < dw - 1 && cls[q + 1] && !seen[q + 1]) { seen[q + 1] = 1; stack.push(q + 1); }
+      if (y > 0 && cls[q - dw] && !seen[q - dw]) { seen[q - dw] = 1; stack.push(q - dw); }
+      if (y < dhh - 1 && cls[q + dw] && !seen[q + dw]) { seen[q + dw] = 1; stack.push(q + dw); }
+    }
+    if (touches) continue; // background / anything bleeding past the region edge
+    const w = maxX - minX + 1, h = maxY - minY + 1;
+    if (w < 6 || h < 6) continue;                       // specks, eyes
+    const aspect = w / h;
+    if (aspect < 0.6 || aspect > 1.7) continue;          // not round-ish
+    const rEst = (w + h) / 4;
+    const fill = n / (Math.PI * rEst * rEst);
+    if (fill < 0.45 || fill > 1.35) continue;            // basket lines, doodle text
+    balls.push({ cx: (sxp / n) / dw, cy: (syp / n) / dhh, r: rEst / dw });
+  }
+  balls.sort((A, B) => B.r - A.r);
+  return balls.slice(0, 12);
+}
+let colliderWindowUntil = 0, lastBallScanAt = 0, lastColliderPubAt = 0, lastColliderSet = null;
+function colliderSetChanged(out) {
+  if (!lastColliderSet || lastColliderSet.length !== out.length) return true;
+  for (let i = 0; i < out.length; i++) {
+    const a = out[i], b = lastColliderSet[i];
+    if (Math.abs(a.x - b.x) > 12 || Math.abs(a.y - b.y) > 12 || Math.abs(a.r - b.r) > 10) return true;
+  }
+  return false;
 }
 
 // Offscreen canvas holding the zoomed camera-strip crop that detection runs on.
@@ -348,6 +419,8 @@ function fire(type, x, y) {
   lastFired[type] = now;
   ch.publish('gesture-event', { type, x: Math.round(x), y: Math.round(y) }).catch(() => {});
   log(`→ ${type} @ ${Math.round(x)},${Math.round(y)}`, true);
+  // a live bomb opens the Ball Guys collider-scan window (see detectBallsFrom)
+  if (type === 'drop_bomb') colliderWindowUntil = performance.now() + 12000;
 }
 window.testFire = type => {
   lastFired[type] = 0;
@@ -560,7 +633,7 @@ function processCustomForHand(i, lm, palmPt, pinchPt, now) {
 // Test hook — lets the record/match/fire pipeline be driven with synthetic
 // landmark sets (no camera needed). Not used by the live path.
 window.__gestTest = {
-  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand,
+  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand, detectBallsFrom,
   get recPoses() { return recPoses; },
   setPose(slot, frames) {
     const dims = frames[0].length;
@@ -598,6 +671,31 @@ function loop(now) {
   pctx.strokeRect(mapBox.x * pw, mapBox.y * ph, mapBox.w * pw, mapBox.h * ph);
   pctx.strokeStyle = '#4ade80';
   pctx.strokeRect(camBox.x * pw, camBox.y * ph, camBox.w * pw, camBox.h * ph);
+  pctx.strokeStyle = '#fb923c';
+  pctx.strokeRect(gameBox.x * pw, gameBox.y * ph, gameBox.w * pw, gameBox.h * ph);
+
+  // ── Ball Guys collider scan — only while a bomb is alive, change-gated ──
+  if (enabled('colliders') && now < colliderWindowUntil && now - lastBallScanAt > 250) {
+    lastBallScanAt = now;
+    const found = detectBallsFrom(video, gameBox.x * vw, gameBox.y * vh, Math.max(2, gameBox.w * vw), Math.max(2, gameBox.h * vh));
+    const rScale = (gameBox.w / mapBox.w) * OUT_W;
+    const out = found.map(b => {
+      const o = frameToOut(gameBox.x + b.cx * gameBox.w, gameBox.y + b.cy * gameBox.h);
+      return { x: Math.round(o.x), y: Math.round(o.y), r: Math.round(b.r * rScale) };
+    }).filter(b => b.r > 20);
+    if (colliderSetChanged(out) || now - lastColliderPubAt > 1500) {
+      lastColliderPubAt = now;
+      lastColliderSet = out;
+      ch.publish('bomb-colliders', { balls: out }).catch(() => {});
+    }
+    // show what was detected on the preview
+    pctx.strokeStyle = '#fb923c'; pctx.lineWidth = 2;
+    for (const b of found) {
+      pctx.beginPath();
+      pctx.arc((gameBox.x + b.cx * gameBox.w) * pw, (gameBox.y + b.cy * gameBox.h) * ph, b.r * gameBox.w * pw, 0, 6.283);
+      pctx.stroke();
+    }
+  }
 
   // zoom the camera strip into the detection canvas so hands stay big enough to
   // track even when the camera is only a narrow band of the full stream layout

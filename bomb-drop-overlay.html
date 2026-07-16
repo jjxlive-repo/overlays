@@ -50,6 +50,14 @@ const FUSE_MS   = qnum('fuseMs', 3000);   // time resting before exploding
 const GRAVITY   = qnum('gravity', 2400);  // px/s^2 — heavy, fast-falling
 const CHAIN_R   = qnum('chainR', 2.0);    // explosion trigger radius, in ball-radii
 
+// ── Ball Guys colliders — invisible circles matching TikTok's on-screen balls,
+// detected visually and published by gesture-cam.html ('bomb-colliders' on the
+// same dedicated channel, only while bombs are alive). Bombs bounce and roll
+// off them; a bomb can come to rest ON TOP of a ball and run its fuse there.
+// ?debugColliders=1 draws them for tuning.
+let colliders = [], collidersAt = -1e9;
+const DEBUG_COLLIDERS = QS.get('debugColliders') === '1';
+
 // ── Ball state ──────────────────────────────────────────────────────────
 let balls = [];
 let _ballId = 0;
@@ -139,6 +147,9 @@ const REST_SPEED   = 40;    // px/s below which a ball counts as "settled" on th
 const REST_SETTLE_MS = 180; // must stay under REST_SPEED this long before the fuse starts
 
 function stepBalls(dt, now) {
+  // colliders go stale 5s after the engine's last update (its scan window closes
+  // once bombs are gone) — clear rather than bounce off ghosts of old ball layouts
+  if (colliders.length && now - collidersAt > 5000) colliders = [];
   for (const b of balls) {
     if (b.exploding) continue;
     b.vy += GRAVITY * dt;
@@ -157,8 +168,39 @@ function stepBalls(dt, now) {
       else { b.vy = 0; b.vx *= 0.6; }
     }
 
+    // Ball Guys colliders — bounce/roll off TikTok's balls (static, immovable).
+    // A collider pushing up from below counts as support, so a bomb can perch
+    // on top of the ball pile and run its fuse there instead of never settling.
+    b.onSupport = false;
+    if (colliders.length) {
+      for (const c of colliders) {
+        const dx = b.x - c.x, dy = b.y - c.y;
+        const dist = Math.hypot(dx, dy) || 0.001;
+        const minD = b.r + c.r;
+        if (dist < minD) {
+          const nx = dx / dist, ny = dy / dist;
+          b.x = c.x + nx * minD;
+          b.y = c.y + ny * minD;
+          const vn = b.vx * nx + b.vy * ny;
+          if (vn < 0) {
+            // real bounce for real impacts; tiny ones absorb dead so a perched
+            // bomb doesn't micro-bounce forever against the gravity it re-gains
+            // each frame and can actually reach resting speed
+            const rest = -vn > 140 ? 0.35 : 0;
+            b.vx -= (1 + rest) * vn * nx;
+            b.vy -= (1 + rest) * vn * ny;
+            b.vx *= 0.92; b.vy *= 0.92;
+          }
+          if (ny < -0.45) {
+            b.onSupport = true;
+            if (Math.hypot(b.vx, b.vy) < 70) { b.vx *= 0.8; b.vy = Math.min(b.vy, 0); }
+          }
+        }
+      }
+    }
+
     // resting/fuse tracking
-    const settled = (b.y + b.r >= FLOOR_Y - 0.5) && Math.hypot(b.vx, b.vy) < REST_SPEED;
+    const settled = (b.y + b.r >= FLOOR_Y - 0.5 || b.onSupport) && Math.hypot(b.vx, b.vy) < REST_SPEED;
     if (settled) {
       if (!b.restingSince) b.restingSince = now;
       if (!b.resting && now - b.restingSince > REST_SETTLE_MS) { b.resting = true; b.restingAt = now; }
@@ -326,6 +368,12 @@ function frame(now) {
   lastT = now;
   ctx.clearRect(0, 0, W, H);
   drawFloor(ctx);
+  if (DEBUG_COLLIDERS) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(251,146,60,0.8)'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]);
+    for (const c of colliders) { ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, 6.283); ctx.stroke(); }
+    ctx.restore();
+  }
   stepBalls(dt, now);
   for (const b of balls) if (!b.exploding) drawBomb(ctx, b, now);
   drawBooms(ctx, now);
@@ -348,9 +396,16 @@ ch.subscribe('bomb-config', msg => {
     try { localStorage.setItem(FLOOR_LS, String(FLOOR_Y)); } catch (e) {}
   }
 });
+ch.subscribe('bomb-colliders', msg => {
+  const d = msg.data || {};
+  if (Array.isArray(d.balls)) {
+    colliders = d.balls.filter(c => isFinite(c.x) && isFinite(c.y) && isFinite(c.r) && c.r > 5).slice(0, 16);
+    collidersAt = performance.now();
+  }
+});
 const dot = document.getElementById('conn');
 client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
-window.__bombDrop = { get balls() { return balls; }, spawnBall, get count() { return balls.length; }, get floorY() { return FLOOR_Y; } };
+window.__bombDrop = { get balls() { return balls; }, spawnBall, get count() { return balls.length; }, get floorY() { return FLOOR_Y; }, get colliders() { return colliders; } };
 </script>
 </body>
 </html>
