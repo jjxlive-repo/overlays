@@ -1841,6 +1841,18 @@ function jamieOneShot(seqName, ms) {
 const objectsLayer = $('stage');
 let objects = [];
 let objectSeq = 0;
+// Body colliders (streamer's body shape) published by gesture-cam; treats bounce
+// off these. Expire if updates stop (person left frame / gesture-cam closed).
+let bodyParts = [], bodyPartsAt = -1e9, _bodyPingCh = null, _lastBodyPing = 0;
+const BODY_PARTS_TTL = 2500;
+// Closest point on segment (x1,y1)-(x2,y2) to point (px,py) — for capsule collision.
+function closestOnSeg(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy || 1e-6;
+  let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { x: x1 + t * dx, y: y1 + t * dy };
+}
 let lastMissAt = 0;
 
 function rand(min, max) { return min + Math.random() * (max - min); }
@@ -1986,6 +1998,30 @@ function stepObject(obj, dt, now) {
   else if (obj.x + obj.w >= 1080) { obj.x = 1080 - obj.w; obj.vx = -Math.abs(obj.vx); hBounce = true; }
   if (obj.y <= 0)              { obj.y = 0;              obj.vy = Math.abs(obj.vy);  vBounce = true; }
   else if (obj.y + obj.h >= floorY) { obj.y = floorY - obj.h; obj.vy = -Math.abs(obj.vy); vBounce = true; }
+
+  /* bounce off the streamer's body colliders (head circle / limb+torso capsules).
+     Each part is treated as a static, immovable rounded shape: push the treat out
+     along the surface normal and reflect its velocity. Only treats up in the
+     camera region ever touch these, so this is cheap for the rest. */
+  if (bodyParts.length && now - bodyPartsAt < BODY_PARTS_TTL) {
+    const cx = obj.x + obj.w / 2, cy = obj.y + obj.h / 2, rr = obj.radius;
+    for (const p of bodyParts) {
+      let nearX, nearY, minD;
+      if (p.t === 'c') { nearX = p.x; nearY = p.y; minD = rr + p.r; }
+      else { const cp = closestOnSeg(cx, cy, p.x1, p.y1, p.x2, p.y2); nearX = cp.x; nearY = cp.y; minD = rr + p.r; }
+      const dx = cx - nearX, dy = cy - nearY;
+      const dist = Math.hypot(dx, dy) || 0.001;
+      if (dist < minD) {
+        const nx = dx / dist, ny = dy / dist;
+        const push = minD - dist;
+        obj.x += nx * push; obj.y += ny * push;
+        const vn = obj.vx * nx + obj.vy * ny;
+        if (vn < 0) { obj.vx -= 1.7 * vn * nx; obj.vy -= 1.7 * vn * ny; } // reflect (0.7 restitution)
+        if (now - obj.lastBounceAt > 80) { obj.lastBounceAt = now; if (CFG.movement.squashStretch) obj.squash = 1; playSound(obj.def.bounceSound || 'bounce'); }
+        enforceMinDirection(obj);
+      }
+    }
+  }
 
   if (hBounce || vBounce) {
     /* debounce double-trigger jitter */
@@ -2829,6 +2865,12 @@ function tick(now) {
   if (dt > 0.05) dt = 0.05;  /* clamp after tab-hidden gaps */
   if (J.paused || J.hidden) return;
   petTick(now);
+  // ping gesture-cam ~every 2s while we have treats, so it only scans/publishes
+  // the body-colliders while there's actually something to bounce off it
+  if (objects.length && _bodyPingCh && now - _lastBodyPing > 2000) {
+    _lastBodyPing = now;
+    _bodyPingCh.publish('fj-active', {}).catch(() => {});
+  }
   /* growth decay: shrink slowly back toward 1x (layout refresh throttled to ~1/s).
      Skip the refresh while Heart Me/Jackpot are running — they hand-manage
      jamieRect.x/jamieEl's transform (the Heart Me run-to-center-and-back
@@ -3000,11 +3042,20 @@ function initComms() {
          them. Rides the DEDICATED near-silent 'gesture-events' channel (same
          connection, second channel) — not the busy shared channel — so gesture
          consumers never pay Ably delivery costs for the chat/gift firehose. */
-      ably.channels.get('gesture-events').subscribe('gesture-event', m => {
+      const gestureCh = ably.channels.get('gesture-events');
+      gestureCh.subscribe('gesture-event', m => {
         const d = m.data || {};
-        if (d.type === 'pluck') pluckSteal(Number(d.x) || 540, Number(d.y) || 960);
-        else if (d.type === 'pet') handlePet();
+        if (d.type === 'pet') handlePet();
       });
+      // Body colliders — the streamer's body shape (head/torso/arms), detected by
+      // gesture-cam.html via pose landmarks. Treats bounce off these (see stepObject).
+      gestureCh.subscribe('body-colliders', m => {
+        const d = m.data || {};
+        if (Array.isArray(d.parts)) { bodyParts = d.parts; bodyPartsAt = performance.now(); }
+      });
+      // Tell gesture-cam we have treats on screen so it only scans/publishes the
+      // body while there's something to bounce (gated, keeps Ably cost down).
+      _bodyPingCh = gestureCh;
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
       ably.connection.on('suspended',    () => $('conn-dot').classList.remove('connected'));
@@ -3034,6 +3085,8 @@ window.feedJamie = {
   triggerSubscribe,
   pet: handlePet,
   get petActive() { return _petActive; },
+  get bodyParts() { return bodyParts; },
+  _setBodyParts(parts) { bodyParts = parts; bodyPartsAt = performance.now(); },
   setFloorY: v => { CFG.floor.y = Math.min(Math.max(+v || 500, CFG.floor.min), CFG.floor.max); applyLayout(); },
   setJamiePosition: opts => { CFG.jamie = fjDeepMerge(CFG.jamie, opts || {}); applyLayout(); },
   setPaused,
