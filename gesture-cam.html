@@ -20,10 +20,15 @@
   over the preview (draw it around the actual stream content inside the captured
   window, excluding any window chrome/black bars).
 
-  Consumers:
-    - gesture-fx-overlay.html  → hearts burst / applause confetti / "awww"
-    - feed-jamie-overlay.html  → 'pet' (stroke) reaction; treats bounce off your body
-    - bomb-drop-overlay.html   → 'drop_bomb' drops an angry bomb; bombs bounce off balls
+  Three separate Ably channels, split by consumer (Ably bills every message to
+  every ATTACHED client regardless of event name, so a high-frequency stream
+  must not share a channel with an overlay that doesn't use it):
+    - 'gesture-events' → gesture-event{type} — rare one-shots, cheap to share.
+        consumers: gesture-fx-overlay.html, feed-jamie-overlay.html, bomb-drop-overlay.html
+    - 'jamie-signals'  → body-colliders, fj-active — high-frequency while Feed Jamie is active.
+        consumer: feed-jamie-overlay.html ONLY
+    - 'ball-signals'   → bomb-colliders, bomb-config — bursty while a bomb is alive.
+        consumer: bomb-drop-overlay.html ONLY
 
   Cost safety: every publish is a one-shot with a per-gesture cooldown (no continuous
   coordinate streaming — nothing like the old mic firehose), and all publishes run
@@ -170,13 +175,25 @@ const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
 const OUT_W = 1080, OUT_H = 1920;
 
 // ── Ably + shared daily cap guard (same budget as stream-dock/tracker) ────
-// Gestures go out on their own DEDICATED channel ('gesture-events'), not the busy
-// shared splat-overlay channel. Ably bills every delivery to every attached
-// client, so consumers of a rare event must not be forced to attach to (and pay
-// for) the full chat/gift firehose just to hear it. This page publishes only —
-// it never subscribes to anything — so it receives (and is billed) nothing.
+// Gestures go out on dedicated channels, not the busy shared splat-overlay
+// channel. Ably bills every message to every ATTACHED client regardless of
+// which event name that client subscribed to (subscribe-by-name filters
+// client-side only, per Ably's own billing docs) — so a high-frequency
+// stream must live on a channel that only its one real consumer attaches
+// to, or every other overlay on the shared channel pays for it too even
+// though it never reads it. Split accordingly:
+//   'gesture-events' — rare, cooldown-gated one-shot events (finger_heart/
+//                       clap/head_down/pluck/pet/drop_bomb). Cheap enough
+//                       that all three overlays sharing it doesn't matter.
+//   'jamie-signals'  — body-colliders + fj-active. High-frequency while
+//                       Feed Jamie is active; only feed-jamie-overlay.html
+//                       attaches to this one.
+//   'ball-signals'   — bomb-colliders + bomb-config. Only bomb-drop-overlay.html
+//                       attaches to this one.
 const ably = new Ably.Realtime({ key: ABLY_KEY });
 const ch = ably.channels.get('gesture-events');
+const jamieCh = ably.channels.get('jamie-signals');
+const ballCh = ably.channels.get('ball-signals');
 (function installAblyDailyCapGuard(channel) {
   const CAP = 400000, LS_KEY = 'ablyDailyPublishGuard.v1';
   const today = () => new Date().toISOString().slice(0, 10);
@@ -198,15 +215,15 @@ ably.connection.on(sc => {
   ablyPill.classList.toggle('on', sc.current === 'connected');
 });
 
-// ── Bomb floor position — slider publishes 'bomb-config' on the same dedicated
-// channel (throttled while dragging, so a long drag is a handful of messages,
+// ── Bomb floor position — slider publishes 'bomb-config' on 'ball-signals'
+// (throttled while dragging, so a long drag is a handful of messages,
 // not hundreds); the overlay persists it, and we re-assert on every (re)connect
 // so a bomb overlay that loads after this page still ends up at the right floor.
 let bombFloorY = parseInt(localStorage.getItem('gestureCam.bombFloorY') || '1650', 10) || 1650;
 const bombFloorEl = document.getElementById('bombFloorY'), bombFloorVal = document.getElementById('bombFloorYVal');
 bombFloorEl.value = bombFloorY; bombFloorVal.textContent = bombFloorY + 'px';
 let _bombFloorTimer = null;
-function publishBombFloor() { ch.publish('bomb-config', { floorY: bombFloorY }).catch(() => {}); }
+function publishBombFloor() { ballCh.publish('bomb-config', { floorY: bombFloorY }).catch(() => {}); }
 bombFloorEl.addEventListener('input', () => {
   bombFloorY = parseInt(bombFloorEl.value, 10);
   bombFloorVal.textContent = bombFloorY + 'px';
@@ -218,7 +235,7 @@ ably.connection.on('connected', () => publishBombFloor());
 // Feed Jamie pings 'fj-active' while it has treats on screen; that opens a short
 // window during which we scan the body and publish body-colliders. When Feed
 // Jamie is closed or empty, no pings arrive → no body scanning, no cost.
-ch.subscribe('fj-active', () => { bodyWindowUntil = performance.now() + 4000; });
+jamieCh.subscribe('fj-active', () => { bodyWindowUntil = performance.now() + 4000; });
 
 // ── UI refs ───────────────────────────────────────────────────────────────
 const preview = document.getElementById('preview');
@@ -463,6 +480,19 @@ document.getElementById('btnCapture').onclick = async () => {
 
 // ── Gesture config + cooldowns ───────────────────────────────────────────
 const enabled = g => document.getElementById('en-' + g).checked;
+// Toggle checkboxes persist across reloads/reopens — without this every one
+// defaults back to checked (the HTML `checked` attribute) each time the page
+// loads, silently re-enabling anything you'd turned off last session.
+const TOGGLE_IDS = ['finger_heart', 'clap', 'head_down', 'drop_bomb', 'pet', 'colliders', 'body_bounce'];
+const TOGGLES_LS = 'gestureCam.toggles.v1';
+try {
+  const saved = JSON.parse(localStorage.getItem(TOGGLES_LS) || 'null');
+  if (saved) for (const g of TOGGLE_IDS) if (typeof saved[g] === 'boolean') document.getElementById('en-' + g).checked = saved[g];
+} catch (e) {}
+for (const g of TOGGLE_IDS) document.getElementById('en-' + g).addEventListener('change', () => {
+  const out = {}; for (const k of TOGGLE_IDS) out[k] = enabled(k);
+  try { localStorage.setItem(TOGGLES_LS, JSON.stringify(out)); } catch (e) {}
+});
 const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, drop_bomb: 700, pet: 550 };
 const lastFired = { finger_heart: 0, clap: 0, head_down: 0, drop_bomb: 0, pet: 0 };
 function fire(type, x, y) {
@@ -769,7 +799,7 @@ function loop(now) {
     if (colliderSetChanged(out) || now - lastColliderPubAt > 1500) {
       lastColliderPubAt = now;
       lastColliderSet = out;
-      ch.publish('bomb-colliders', { balls: out }).catch(() => {});
+      ballCh.publish('bomb-colliders', { balls: out }).catch(() => {});
     }
     // show what was detected on the preview
     pctx.strokeStyle = '#fb923c'; pctx.lineWidth = 2;
@@ -804,7 +834,7 @@ function loop(now) {
     if (bodyPartsChanged(parts) || now - lastBodyPubAt > 1200) {
       lastBodyPubAt = now;
       lastBodyParts = parts;
-      ch.publish('body-colliders', { parts }).catch(() => {});
+      jamieCh.publish('body-colliders', { parts }).catch(() => {});
     }
     // preview feedback: dot the tracked body landmarks (camBox-normalized → preview px)
     if (lm) {
