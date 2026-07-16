@@ -10,7 +10,11 @@
   captures the TIKTOK PROJECTOR WINDOW (you pick it in Chrome's window picker), runs
   hand + face tracking on those pixels, and publishes tiny one-shot events over Ably:
 
-    gesture-event { type: 'finger_heart' | 'clap' | 'head_down' | 'pluck' | 'drop_bomb', x, y }
+    gesture-event { type: 'finger_heart' | 'clap' | 'head_down' | 'drop_bomb' | 'pet', x, y }
+
+  It also detects the balls in TikTok's Ball Guys game ('bomb-colliders') and YOUR
+  body shape via pose landmarks ('body-colliders') so on-screen objects can bounce
+  off both — see the collider sections below.
 
   x/y are mapped into the standard 1080x1920 overlay space via the crop box you drag
   over the preview (draw it around the actual stream content inside the captured
@@ -18,8 +22,8 @@
 
   Consumers:
     - gesture-fx-overlay.html  → hearts burst / applause confetti / "awww"
-    - feed-jamie-overlay.html  → 'pluck' steals the nearest bouncing treat for YOU
-    - bomb-drop-overlay.html   → 'drop_bomb' drops an angry bomb from x,y
+    - feed-jamie-overlay.html  → 'pet' (stroke) reaction; treats bounce off your body
+    - bomb-drop-overlay.html   → 'drop_bomb' drops an angry bomb; bombs bounce off balls
 
   Cost safety: every publish is a one-shot with a per-gesture cooldown (no continuous
   coordinate streaming — nothing like the old mic firehose), and all publishes run
@@ -82,10 +86,10 @@
       <label class="gest"><input type="checkbox" id="en-finger_heart" checked> 🫰 Finger heart → hearts</label>
       <label class="gest"><input type="checkbox" id="en-clap" checked> 👏 Clap → applause</label>
       <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
-      <label class="gest"><input type="checkbox" id="en-pluck" checked> ✊ Grab → pluck Jamie's treat</label>
       <label class="gest"><input type="checkbox" id="en-drop_bomb" checked> 🖐 Hold fist, open hand → drop a bomb</label>
       <label class="gest"><input type="checkbox" id="en-pet" checked> 🐕 Open-hand stroking motion → pet Jamie</label>
       <label class="gest"><input type="checkbox" id="en-colliders" checked> ⚪ Bombs bounce off Ball Guys balls</label>
+      <label class="gest"><input type="checkbox" id="en-body_bounce" checked> 🧍 Feed Jamie treats bounce off YOU</label>
     </div>
     <div class="row" style="margin-top:8px;">
       <span class="hint">Head-down calibration (works turned toward your monitor, not just facing camera):</span>
@@ -107,7 +111,6 @@
       <button class="small" onclick="testFire('finger_heart')">🫰</button>
       <button class="small" onclick="testFire('clap')">👏</button>
       <button class="small" onclick="testFire('head_down')">😔</button>
-      <button class="small" onclick="testFire('pluck')">✊</button>
       <button class="small" onclick="testFire('drop_bomb')">🖐💣</button>
     </div>
   </div>
@@ -124,12 +127,6 @@
       <button class="small rec-btn" data-slot="finger_heart">⏺ Record</button>
       <button class="small rec-clear" data-slot="finger_heart">✕</button>
       <span class="stat rec-status" data-slot="finger_heart">built-in</span>
-    </div>
-    <div class="row" id="recRow-pluck">
-      <span style="min-width:170px;">✊ Pluck pose</span>
-      <button class="small rec-btn" data-slot="pluck">⏺ Record</button>
-      <button class="small rec-clear" data-slot="pluck">✕</button>
-      <span class="stat rec-status" data-slot="pluck">built-in</span>
     </div>
     <div class="row" id="recRow-drop_hold">
       <span style="min-width:170px;">💣 Bomb HOLD pose</span>
@@ -167,7 +164,7 @@
 
 <script type="module">
 'use strict';
-import { FilesetResolver, HandLandmarker, FaceLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+import { FilesetResolver, HandLandmarker, FaceLandmarker, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
 const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
 const OUT_W = 1080, OUT_H = 1920;
@@ -217,6 +214,11 @@ bombFloorEl.addEventListener('input', () => {
   if (!_bombFloorTimer) _bombFloorTimer = setTimeout(() => { _bombFloorTimer = null; publishBombFloor(); }, 200);
 });
 ably.connection.on('connected', () => publishBombFloor());
+
+// Feed Jamie pings 'fj-active' while it has treats on screen; that opens a short
+// window during which we scan the body and publish body-colliders. When Feed
+// Jamie is closed or empty, no pings arrive → no body scanning, no cost.
+ch.subscribe('fj-active', () => { bodyWindowUntil = performance.now() + 4000; });
 
 // ── UI refs ───────────────────────────────────────────────────────────────
 const preview = document.getElementById('preview');
@@ -362,13 +364,56 @@ function colliderSetChanged(out) {
   return false;
 }
 
+// ── Body colliders (Feed Jamie treats bounce off YOU) ────────────────────
+// Built from pose landmarks: a head circle, a shoulders bar, a torso capsule,
+// and arm capsules — an approximation of your body (head/torso/arms), not a
+// pixel-perfect outline, but it reads correctly as "treats bounce off me".
+// Only published while Feed Jamie says it has treats on screen ('fj-active'
+// ping opens a window), throttled + change-gated, so it isn't a constant
+// stream. Parts: circle {t:'c',x,y,r} or capsule {t:'l',x1,y1,x2,y2,r}.
+let bodyWindowUntil = 0, lastBodyScanAt = 0, lastBodyPubAt = 0, lastBodyParts = null;
+function mapPose(p) { const f = camToFrame(p.x, p.y); return frameToOut(f.x, f.y); }
+function buildBodyColliders(lm) {
+  const vis = i => lm[i] && (lm[i].visibility == null || lm[i].visibility > 0.4);
+  if (!vis(11) || !vis(12)) return []; // shoulders are the anchor + scale — need both
+  const P = i => mapPose(lm[i]);
+  const sL = P(11), sR = P(12);
+  const shoulderMid = { x: (sL.x + sR.x) / 2, y: (sL.y + sR.y) / 2 };
+  const sw = Math.hypot(sL.x - sR.x, sL.y - sR.y) || 80;
+  const cap = (a, b, r) => ({ t: 'l', x1: Math.round(a.x), y1: Math.round(a.y), x2: Math.round(b.x), y2: Math.round(b.y), r: Math.round(r) });
+  const parts = [];
+  // head
+  if (vis(7) && vis(8)) { const eL = P(7), eR = P(8); parts.push({ t: 'c', x: Math.round((eL.x + eR.x) / 2), y: Math.round((eL.y + eR.y) / 2), r: Math.round(Math.max(sw * 0.30, Math.hypot(eL.x - eR.x, eL.y - eR.y) * 0.8)) }); }
+  else if (vis(0)) { const n = P(0); parts.push({ t: 'c', x: Math.round(n.x), y: Math.round(n.y), r: Math.round(sw * 0.34) }); }
+  parts.push(cap(sL, sR, sw * 0.30));                                   // shoulders bar
+  let hipMid;                                                           // torso
+  if (vis(23) && vis(24)) { const hL = P(23), hR = P(24); hipMid = { x: (hL.x + hR.x) / 2, y: (hL.y + hR.y) / 2 }; }
+  else hipMid = { x: shoulderMid.x, y: shoulderMid.y + sw * 1.4 };      // hips off-frame → project down
+  parts.push(cap(shoulderMid, hipMid, sw * 0.44));
+  if (vis(13)) parts.push(cap(sL, P(13), sw * 0.16));                   // upper arms
+  if (vis(14)) parts.push(cap(sR, P(14), sw * 0.16));
+  if (vis(13) && vis(15)) parts.push(cap(P(13), P(15), sw * 0.13));     // forearms
+  if (vis(14) && vis(16)) parts.push(cap(P(14), P(16), sw * 0.13));
+  return parts;
+}
+function bodyPartsChanged(parts) {
+  if (!lastBodyParts || lastBodyParts.length !== parts.length) return true;
+  for (let i = 0; i < parts.length; i++) {
+    const a = parts[i], b = lastBodyParts[i];
+    if (a.t !== b.t) return true;
+    if (a.t === 'c') { if (Math.abs(a.x - b.x) > 14 || Math.abs(a.y - b.y) > 14 || Math.abs(a.r - b.r) > 12) return true; }
+    else if (Math.abs(a.x1 - b.x1) > 14 || Math.abs(a.y1 - b.y1) > 14 || Math.abs(a.x2 - b.x2) > 14 || Math.abs(a.y2 - b.y2) > 14) return true;
+  }
+  return false;
+}
+
 // Offscreen canvas holding the zoomed camera-strip crop that detection runs on.
 const detCanvas = document.createElement('canvas');
 const detCtx = detCanvas.getContext('2d', { willReadFrequently: true });
 const DET_W = 640; // detection resolution — camera strip scaled up to this width
 
 // ── ML models ─────────────────────────────────────────────────────────────
-let handLandmarker = null, faceLandmarker = null;
+let handLandmarker = null, faceLandmarker = null, poseLandmarker = null;
 (async function loadModels() {
   try {
     statEl.textContent = 'loading tracking models…';
@@ -380,6 +425,13 @@ let handLandmarker = null, faceLandmarker = null;
     faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
       runningMode: "VIDEO", numFaces: 1
+    });
+    // Pose landmarker builds the body colliders that Feed Jamie's treats bounce
+    // off (head circle + torso + arm capsules). Lite model — cheapest, plenty for
+    // an upper-body webcam framing.
+    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task", delegate: "GPU" },
+      runningMode: "VIDEO", numPoses: 1
     });
     statEl.textContent = 'models ready — capture a window to begin';
   } catch (e) {
@@ -411,8 +463,8 @@ document.getElementById('btnCapture').onclick = async () => {
 
 // ── Gesture config + cooldowns ───────────────────────────────────────────
 const enabled = g => document.getElementById('en-' + g).checked;
-const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, pluck: 400, drop_bomb: 700, pet: 550 };
-const lastFired = { finger_heart: 0, clap: 0, head_down: 0, pluck: 0, drop_bomb: 0, pet: 0 };
+const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, drop_bomb: 700, pet: 550 };
+const lastFired = { finger_heart: 0, clap: 0, head_down: 0, drop_bomb: 0, pet: 0 };
 function fire(type, x, y) {
   if (recActive) return; // never fire events while the user is recording a pose
   const now = performance.now();
@@ -508,7 +560,7 @@ function fingerFoldRatio(lm, tipIdx, wrist, scale) {
 //   • a dwell — the pose must match continuously for recDwell ms ("too
 //     sensitive" fix; the same dwell is now applied to built-ins too).
 const REC_LS = 'gestureCam.customPoses.v1';
-const REC_SLOTS = ['finger_heart', 'pluck', 'drop_hold', 'drop_release'];
+const REC_SLOTS = ['finger_heart', 'drop_hold', 'drop_release'];
 let recPoses = {};   // slot -> { vec, mirror, tol }
 try { const c = JSON.parse(localStorage.getItem(REC_LS) || 'null'); if (c && typeof c === 'object') recPoses = c; } catch (e) {}
 let recStrict = parseFloat(localStorage.getItem('gestureCam.recStrict') || '1') || 1;
@@ -626,13 +678,13 @@ function processCustomForHand(i, lm, palmPt, pinchPt, now) {
   const { dists, matched } = matchSlots(vec, mirVec);
   const hs = handState[i];
 
-  for (const slot of ['finger_heart', 'pluck']) {
+  for (const slot of ['finger_heart']) {
     if (!recPoses[slot]) continue;
     if (matched[slot]) {
       if (!hs.rec.since[slot]) hs.rec.since[slot] = now;
       else if (now - hs.rec.since[slot] >= recDwellMs && !hs.rec['fired_' + slot]) {
         hs.rec['fired_' + slot] = true; // re-arm only after the pose is dropped
-        if (enabled(slot === 'pluck' ? 'pluck' : slot)) fire(slot, (slot === 'finger_heart' ? pinchPt : palmPt).x, (slot === 'finger_heart' ? pinchPt : palmPt).y);
+        if (enabled(slot)) fire(slot, pinchPt.x, pinchPt.y);
       }
     } else { hs.rec.since[slot] = 0; hs.rec['fired_' + slot] = false; }
   }
@@ -656,7 +708,7 @@ function processCustomForHand(i, lm, palmPt, pinchPt, now) {
 // Test hook — lets the record/match/fire pipeline be driven with synthetic
 // landmark sets (no camera needed). Not used by the live path.
 window.__gestTest = {
-  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand, detectBallsFrom, countReversals,
+  featureVec, mirrorLm, poseDist, matchSlots, processCustomForHand, detectBallsFrom, countReversals, buildBodyColliders,
   get PET_MIN_REVERSALS() { return PET_MIN_REVERSALS; },
   get recPoses() { return recPoses; },
   setPose(slot, frames) {
@@ -734,6 +786,32 @@ function loop(now) {
 
   const hands = (handResult && handResult.landmarks) || [];
 
+  // ── Body colliders — pose runs only while Feed Jamie has treats (fj-active
+  // window) AND the toggle is on, throttled + change-gated so it isn't a stream ──
+  if (enabled('body_bounce') && poseLandmarker && now < bodyWindowUntil && now - lastBodyScanAt > 130) {
+    lastBodyScanAt = now;
+    let poseResult = null;
+    try { poseResult = poseLandmarker.detectForVideo(detCanvas, now); } catch (e) {}
+    const lm = poseResult && poseResult.landmarks && poseResult.landmarks[0];
+    const parts = lm ? buildBodyColliders(lm) : [];
+    if (bodyPartsChanged(parts) || now - lastBodyPubAt > 1200) {
+      lastBodyPubAt = now;
+      lastBodyParts = parts;
+      ch.publish('body-colliders', { parts }).catch(() => {});
+    }
+    // preview feedback: dot the tracked body landmarks (camBox-normalized → preview px)
+    if (lm) {
+      pctx.fillStyle = '#22d3ee';
+      for (const i of [0, 11, 12, 13, 14, 15, 16, 23, 24]) {
+        if (lm[i] && (lm[i].visibility == null || lm[i].visibility > 0.4)) {
+          pctx.beginPath();
+          pctx.arc((camBox.x + lm[i].x * camBox.w) * pw, (camBox.y + lm[i].y * camBox.h) * ph, 4, 0, 6.283);
+          pctx.fill();
+        }
+      }
+    }
+  }
+
   // ── recording countdown/capture (uses hand 1 only) ──
   if (recActive) {
     const el = recStatusEl(recActive.slot);
@@ -794,22 +872,13 @@ function loop(now) {
     }
     handState[i].heart = isHeartNow;
 
-    // grab built-in (skipped when a custom pluck recording exists): all four
-    // fingertips individually curled. Pluck now fires after the fist is held
-    // steady for recDwellMs (was: instantly on close) — same over-sensitivity fix.
+    // grab tracking (used only by the bomb's hold→open now that pluck is gone):
+    // all four fingertips individually curled = a closed fist.
     const grabFoldedCount = [8, 12, 16, 20].filter(t => fingerFoldRatio(lm, t, wrist, scale) < GRAB_FOLD_MAX).length;
     const isGrabPoseRaw = grabFoldedCount >= 4;
     const wasGrab = handState[i].grab;
     const isGrabNow = wasGrab ? (grabFoldedCount >= 3) : isGrabPoseRaw; // slight hysteresis on release
     if (isGrabPoseRaw && !wasGrab) handState[i].grabAt = now;
-    if (!recPoses.pluck) {
-      if (isGrabNow && !wasGrab) handState[i].pluckPending = true;
-      if (handState[i].pluckPending && isGrabNow && (now - handState[i].grabAt) >= recDwellMs && !isHeartPose) {
-        handState[i].pluckPending = false;
-        if (enabled('pluck')) fire('pluck', palmPt.x, palmPt.y);
-      }
-      if (!isGrabNow) handState[i].pluckPending = false;
-    }
     // drop built-in (skipped when a custom hold+release pair exists): fist held
     // DROP_HOLD_MS+ then opened.
     if (!(recPoses.drop_hold && recPoses.drop_release)) {
