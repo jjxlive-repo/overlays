@@ -338,6 +338,7 @@ const FJ_DEFAULT_CONFIG = {
   },
   events: {
     likesPerTreatEnabled: true, likesPerTreat: 50, likeQueueCap: 2,
+    sleepEnabled: true, sleepAfterSec: 240,
     commentCooldown: 4, perUserCooldown: 10,
     genericSpawnChance: 0.05, keywordOnly: false,
     keywords: {
@@ -491,6 +492,8 @@ function fjValidateConfig() {
   c.movement.showerMaxObjects = Math.min(Math.max(Math.round(+c.movement.showerMaxObjects || 8), 3), 22);
   c.events.likesPerTreatEnabled = c.events.likesPerTreatEnabled !== false;
   c.events.likesPerTreat = Math.min(Math.max(Math.round(+c.events.likesPerTreat || 50), 10), 1000);
+  c.events.sleepEnabled = c.events.sleepEnabled !== false;
+  c.events.sleepAfterSec = Math.min(Math.max(Math.round(+c.events.sleepAfterSec || 240), 30), 3600);
   c.jamie.width = Math.min(Math.max(+c.jamie.width || 260, 80), 600);
   if (!['ellipse', 'rect'].includes(c.reachZone.shape)) c.reachZone.shape = 'ellipse';
   if (!['off', 'low', 'medium'].includes(c.visuals.particleLevel)) c.visuals.particleLevel = 'low';
@@ -1802,6 +1805,7 @@ function handlePet() {
   if (heartMeActive || jackpotActive) return;
   if (!['IDLE', 'TRACKING', 'SLEEPING'].includes(J.state) && !_petActive) return;
 
+  lastEngagementAt = now; // petting counts as engagement, same as any other event
   if (J.state === 'SLEEPING') { playSeq('wake', { loop: false }); } // petting wakes him
   _petUntil = now + 1000; // sustained window; each pulse extends it
   if (!_petActive) {
@@ -1809,7 +1813,7 @@ function handlePet() {
     _petPrevState = ['IDLE', 'TRACKING'].includes(J.state) ? J.state : 'IDLE';
     clearTimeout(J.watchdog); clearTimeout(J.animTimer);
     J.currentSeq = null;
-    jamieEl.classList.remove('breathe');
+    jamieEl.classList.remove('breathe', 'pose-sleep');
     jamieEl.classList.add('pet-nuzzle');
   }
   showFrame('jamie-treat-happy.png');
@@ -1933,12 +1937,22 @@ function spawnObject(itemType, opts = {}) {
     assetPath: def.file
   };
   objects.push(obj);
-  if (['IDLE', 'SLEEPING'].includes(J.state)) {
-    if (J.state === 'SLEEPING') { playSeq('wake', { loop: false }); setTimeout(() => setJamieState('TRACKING'), 420); }
-    else setJamieState('TRACKING');
-  }
+  if (J.state === 'SLEEPING') wakeIfSleeping();
+  else if (J.state === 'IDLE') setJamieState('TRACKING');
   publishStatus();
   return obj;
+}
+/* shared wake path for any engagement (likes, comments, gifts, heartme, spawns, manual WAKE).
+   Guarded so overlapping triggers within the wake animation's window don't restart it. */
+let wakingUp = false;
+function wakeIfSleeping() {
+  if (J.state !== 'SLEEPING' || wakingUp) return;
+  wakingUp = true;
+  playSeq('wake', { loop: false });
+  setTimeout(() => {
+    wakingUp = false;
+    if (J.state === 'SLEEPING') setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  }, 420);
 }
 function removeObject(obj) {
   obj.el.remove();
@@ -2271,6 +2285,7 @@ let likeAccumulator = 0;
 let lastCommentAt = 0;
 const userCommentAt = {};
 let lastEventInfo = '—';
+let lastEngagementAt = performance.now();
 
 function sanitizeName(name) {
   const s = String(name || '').replace(/[<>&"'`]/g, '').trim();
@@ -2289,6 +2304,8 @@ function handleEvent(evt) {
   const type = String(evt.type || '').toLowerCase();
   const username = evt.username || null;
   lastEventInfo = type + (username ? ' @' + sanitizeName(username) : '');
+  lastEngagementAt = performance.now();
+  wakeIfSleeping();
   switch (type) {
     case 'like': {
       const likeN = Math.max(1, Math.round(+evt.count || 1));
@@ -2376,7 +2393,7 @@ function heartMeBegin() {
   $('like-meter').style.opacity = 0;
   clearTimeout(J.watchdog); clearTimeout(J.animTimer);
   J.currentSeq = null;
-  jamieEl.classList.remove('breathe');
+  jamieEl.classList.remove('breathe', 'pose-sleep');
   poseMirror = null;
   applyLayout(); /* clean baseline position/transform before the variant starts */
   J.state = 'CELEBRATE'; J.stateSince = performance.now();
@@ -2554,7 +2571,7 @@ function triggerJackpot(username, rawGiftName = '', opts = {}) {
   $('like-meter').style.opacity = 0;
   clearTimeout(J.watchdog); clearTimeout(J.animTimer);
   J.currentSeq = null;
-  jamieEl.classList.remove('breathe');
+  jamieEl.classList.remove('breathe', 'pose-sleep');
   jamieEl.classList.add('pose-celebrate', 'ph-happy');
   jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
   poseMirror = null; // celebrations always use Jamie's real, un-mirrored art
@@ -2886,6 +2903,10 @@ function tick(now) {
       if (!heartMeActive && !jackpotActive) applyLayout();
     }
   }
+  if (CFG.events.sleepEnabled && J.state === 'IDLE' && !objects.length && !_petActive &&
+      (now - lastEngagementAt) > CFG.events.sleepAfterSec * 1000) {
+    setJamieState('SLEEPING');
+  }
   const active = objects.filter(o => !o.captured);
   for (const o of objects) stepObject(o, dt, now);
   if (J.state === 'TRACKING' && active.length) {
@@ -2972,7 +2993,7 @@ function processMessage(msg) {
     case 'FORCE_TIMEOUT': { const o = objects.find(x => !x.captured); if (o) o.createdAt = performance.now() - o.maxLifetime - 1; break; }
     case 'FORCE_JACKPOT': { const o = objects.find(x => !x.captured); if (o) cornerJackpot(o); break; }
     case 'SLEEP': if (['IDLE', 'TRACKING'].includes(J.state)) setJamieState('SLEEPING'); break;
-    case 'WAKE': if (J.state === 'SLEEPING') { playSeq('wake', { loop: false }); setTimeout(() => setJamieState(objects.length ? 'TRACKING' : 'IDLE'), 420); } break;
+    case 'WAKE': wakeIfSleeping(); break;
   }
 }
 let statusTimer = null, statusDirty = false;
