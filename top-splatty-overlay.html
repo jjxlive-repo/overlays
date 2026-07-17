@@ -141,7 +141,7 @@
     text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 8px rgba(0,0,0,.4);
   }
   .info .ts-title {
-    font-size: 24px; letter-spacing: 3px; color: #FFD25A;
+    font-size: 28px; letter-spacing: 3px; color: #FFD25A;
     text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 10px rgba(0,0,0,.45);
     margin-top: -2px;
   }
@@ -154,8 +154,9 @@
   .info .amount { position: relative; margin: 2px auto 0; }
   .info .amount img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
   .info .amount span {
-    position: relative; z-index: 2; font-size: 34px; color: #FFF6D8;
+    position: relative; z-index: 2; font-size: 26px; color: #FFF6D8;
     text-shadow: 0 2px 0 rgba(0,0,0,.55);
+    white-space: nowrap;   /* "15,500 COINS" stays on one line */
   }
   .info .ribbon { position: relative; margin: 4px auto 0; }
   .info .ribbon img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
@@ -296,6 +297,16 @@ const CONFIG = {
     2: [28, 45, 13, 9, 5],
     3: [14, 38, 18, 16, 14],
     4: [4, 28, 21, 23, 24],
+  },
+
+  /* ── Lane callout toggles (controller-adjustable, persisted) ── */
+  CALLOUTS: {
+    gift: true,      // "JOE SENT 5,000 COINS"
+    chance: true,    // the WHIFF/TOSS spinner strip
+    outcome: true,   // "JOE BONKED YOUTUBE" / "AIR BALL"
+    steal: true,     // "JOE STOLE TIKTOK TOP SPLATTY" / "ALL HAIL JOE"
+    compare: true,   // "TIKTOK IS AHEAD" / "NECK AND NECK"
+    hype: true,      // periodic idle bait lines
   },
 
   /* ── Throne ribbon (the line under name+amount) ──
@@ -746,6 +757,7 @@ function loadPersisted() {
     if (cfgOverride.seamY) CONFIG.SEAM_Y = cfgOverride.seamY;
     if (cfgOverride.uiScale) CONFIG.UI_SCALE = cfgOverride.uiScale;
     if (cfgOverride.ribbon && cfgOverride.ribbon.mode) CONFIG.RIBBON = cfgOverride.ribbon;
+    if (cfgOverride.callouts) Object.assign(CONFIG.CALLOUTS, cfgOverride.callouts);
   } catch (e) {}
 }
 
@@ -814,8 +826,8 @@ function buildSide(side) {
       <img class="crown-img" alt="" style="display:none">
     </div>
     <div class="info">
-      <div class="badge"><img alt=""><span>${SIDES[side].label}</span></div>
-      <div class="ts-title">TOP SPLATTY</div>
+      <div class="badge" style="display:none"><img alt=""><span>${SIDES[side].label}</span></div>
+      <div class="ts-title">${isLeft ? 'YT' : 'TT'} TOP SPLATTY</div>
       <div class="gname">—</div>
       <div class="amount"><img alt=""><span>—</span></div>
       <div class="ribbon"><img alt=""><span>SEND ANYTHING TO CLAIM IT</span></div>
@@ -1029,7 +1041,7 @@ function updateHeights(silent) {
     E.shadow.style.opacity = lift < 0 ? 0.35 : 0.55;
     E.shadow.style.transform = `scale(${lift < 0 ? 0.85 : 1})`;
   }
-  if (!silent && leader !== lastLeader && (Date.now() - lastCompareAt) / 1000 > CONFIG.COMPARE_MIN_GAP_S) {
+  if (!silent && CONFIG.CALLOUTS.compare && leader !== lastLeader && (Date.now() - lastCompareAt) / 1000 > CONFIG.COMPARE_MIN_GAP_S) {
     lastCompareAt = Date.now();
     const lines = leader === 'even'
       ? ['NECK AND NECK', 'DEAD EVEN — SOMEBODY MOVE']
@@ -1363,8 +1375,9 @@ function giftReceived(side, name, nativeAmount, usd, pic) {
 
 async function runGiftFlow(item, overload) {
   const { side, name, nativeAmount, tier, isHolder } = item;
+  const C = CONFIG.CALLOUTS;
   const amtTxt = side === 'tiktok' ? `${Math.round(nativeAmount).toLocaleString()} COINS` : `$${nativeAmount.toFixed(2)}`;
-  await announce(`${name.toUpperCase()} SENT ${amtTxt}`, 'gift',
+  if (C.gift) await announce(`${name.toUpperCase()} SENT ${amtTxt}`, 'gift',
     tier >= 3 ? CONFIG.ANNOUNCE_BIG_MS : CONFIG.ANNOUNCE_GIFT_MS);
 
   if (overload) {   // spam relief: totals already counted, skip the theatrics
@@ -1374,30 +1387,31 @@ async function runGiftFlow(item, overload) {
 
   let idx = chanceRoll(tier);
   if (isHolder && idx === 0) idx = 1;      // the champ flexing never fully whiffs
-  await showChanceStrip(idx);
+  if (C.chance) await showChanceStrip(idx);
 
   const opp = side === 'youtube' ? 'TIKTOK' : 'YOUTUBE';
   const NAME = name.toUpperCase();
+  const say = (text, kind, ms) => { if (C.outcome) announce(text, kind, ms); };
   switch (idx) {
     case 0:
       await performThrow(side, { tier, whiff: true });
-      announce(pick([`${NAME} WHIFFED IT`, 'AIR BALL', 'NOT EVEN CLOSE']), 'whiff', 1500);
+      say(pick([`${NAME} WHIFFED IT`, 'AIR BALL', 'NOT EVEN CLOSE']), 'whiff', 1500);
       break;
     case 1:
       await performThrow(side, { tier });
-      announce(pick([`${NAME} HIT ${opp}`, `${NAME} FIRED ONE OVER`, `${opp} CAUGHT ONE`]), 'throw', 1700);
+      say(pick([`${NAME} HIT ${opp}`, `${NAME} FIRED ONE OVER`, `${opp} CAUGHT ONE`]), 'throw', 1700);
       break;
     case 2:
       await performThrow(side, { tier, count: 2 });
-      announce(pick([`${NAME} DOUBLED UP`, `TWO SHOTS FROM ${NAME}`]), 'throw', 1700);
+      say(pick([`${NAME} DOUBLED UP`, `TWO SHOTS FROM ${NAME}`]), 'throw', 1700);
       break;
     case 3:
       await performThrow(side, { tier: Math.max(tier, 3), big: true });
-      announce(pick([`${NAME} BONKED ${opp}`, `BIG BONK BY ${NAME}`, `${opp} FELT THAT ONE`]), 'throw', 1900);
+      say(pick([`${NAME} BONKED ${opp}`, `BIG BONK BY ${NAME}`, `${opp} FELT THAT ONE`]), 'throw', 1900);
       break;
     case 4:
       await performThrow(side, { tier: Math.max(tier, 3), objKind: Math.random() < .5 ? 'tomato' : 'pie' });
-      announce(pick([`${NAME} SPLATTED ${opp}`, `DIRECT SPLAT BY ${NAME}`]), 'throw', 1900);
+      say(pick([`${NAME} SPLATTED ${opp}`, `DIRECT SPLAT BY ${NAME}`]), 'throw', 1900);
       break;
   }
   if (isHolder && idx >= 1) {
@@ -1414,7 +1428,7 @@ async function runStealFlow(item) {
 
   if (hadOld && a) {
     a.busy = true;
-    announce(pick([
+    if (CONFIG.CALLOUTS.steal) announce(pick([
       `${NAME} STOLE ${plat} TOP SPLATTY`,
       `${NAME} KNOCKED ${(oldName || '').toUpperCase()} OFF`,
       `${(oldName || '').toUpperCase()} GOT TOO COMFORTABLE`,
@@ -1429,7 +1443,7 @@ async function runStealFlow(item) {
     E.charWrap.classList.remove(fallCls);
     E.charWrap.classList.add('hidden-char');
   } else {
-    announce(`NEW ${plat} TOP SPLATTY`, 'steal', 2400);
+    if (CONFIG.CALLOUTS.steal) announce(`NEW ${plat} TOP SPLATTY`, 'steal', 2400);
   }
 
   /* arrival */
@@ -1446,7 +1460,7 @@ async function runStealFlow(item) {
     E.charWrap.classList.remove('arrive');
     a.idle();
   }
-  announce(pick([
+  if (CONFIG.CALLOUTS.steal) announce(pick([
     `${NAME} IS THE NEW ${plat} TOP SPLATTY`,
     `ALL HAIL ${NAME}`,
     `SEND ${side === 'tiktok' ? '1 MORE' : '$0.01 MORE'} TO KNOCK ${NAME} OFF`,
@@ -1455,6 +1469,7 @@ async function runStealFlow(item) {
 
 /* ── periodic bait lines when the lane is quiet ── */
 setInterval(() => {
+  if (!CONFIG.CALLOUTS.hype) return;
   if (laneQueue.length || lanePumping) return;
   const occupied = ['youtube', 'tiktok'].filter(s => state.top[s]);
   if (!occupied.length) return;
@@ -1564,6 +1579,16 @@ function onCommand(d) {
     case 'debug':
       document.body.classList.toggle('debug', !!d.on);
       break;
+    case 'callouts':
+      /* d: {key, on} for one toggle, or {set:{...}} for several */
+      if (d.set && typeof d.set === 'object') {
+        for (const k of Object.keys(CONFIG.CALLOUTS))
+          if (k in d.set) CONFIG.CALLOUTS[k] = !!d.set[k];
+      } else if (d.key in CONFIG.CALLOUTS) {
+        CONFIG.CALLOUTS[d.key] = !!d.on;
+      }
+      cfgOverride.callouts = CONFIG.CALLOUTS; persistCfg();
+      break;
     case 'ribbon':
       /* d: {mode:'off'|'steal'|'custom', text} — the line under name+amount */
       if (['off', 'steal', 'custom'].includes(d.mode)) {
@@ -1643,7 +1668,7 @@ function doPublishStatus() {
     youtube: state.top.youtube && { name: state.top.youtube.name, total: state.top.youtube.total },
     roster: { tiktok: rosterOf('tiktok'), youtube: rosterOf('youtube') },
     seamY: CONFIG.SEAM_Y, uiScale: CONFIG.UI_SCALE,
-    ribbon: CONFIG.RIBBON,
+    ribbon: CONFIG.RIBBON, callouts: CONFIG.CALLOUTS,
     missingAssets: missingCount, totalAssets: totalCount,
   };
   const str = JSON.stringify(payload);

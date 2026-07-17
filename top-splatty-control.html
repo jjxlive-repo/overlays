@@ -83,6 +83,16 @@
   .throne .amt { color: var(--light); font-size: 15px; }
   .meta { color: var(--light); font-size: 12px; margin-top: 10px; }
 
+  .co-toggle {
+    display: flex; flex-direction: column; gap: 2px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    padding: 10px 14px; border-radius: 10px;
+    background: rgba(10,2,20,.5); border: 1px solid rgba(192,132,252,.25);
+    min-width: 200px;
+  }
+  .co-toggle input { accent-color: var(--bright); width: 17px; height: 17px; margin-right: 6px; }
+  .co-toggle span { font-weight: 400; font-size: 12px; color: rgba(192,132,252,.75); }
+
   .roster {
     border-radius: 12px; background: rgba(10,2,20,.5);
     border: 1px solid rgba(192,132,252,.25); overflow: hidden;
@@ -191,6 +201,20 @@
         <input type="text" id="ribbon-text" maxlength="48" placeholder="e.g. BEAT {next} TO TAKE THE THRONE"></div>
       <button class="ghost" onclick="setRibbon('custom')">USE CUSTOM</button>
     </div>
+  </div>
+
+  <div class="card full">
+    <h2>LANE CALLOUTS — turn off anything that feels too busy</h2>
+    <div class="btn-row" id="callout-toggles" style="gap:16px">
+      <label class="co-toggle"><input type="checkbox" data-co="gift" checked> Gift announcements <span>"JOE SENT 5,000 COINS"</span></label>
+      <label class="co-toggle"><input type="checkbox" data-co="chance" checked> Chance-roll strip <span>the WHIFF/TOSS spinner</span></label>
+      <label class="co-toggle"><input type="checkbox" data-co="outcome" checked> Throw results <span>"JOE BONKED YOUTUBE" · "AIR BALL"</span></label>
+      <label class="co-toggle"><input type="checkbox" data-co="steal" checked> Dethrone callouts <span>"JOE STOLE TIKTOK TOP SPLATTY"</span></label>
+      <label class="co-toggle"><input type="checkbox" data-co="compare" checked> Score comparison <span>"TIKTOK IS AHEAD" · "NECK AND NECK"</span></label>
+      <label class="co-toggle"><input type="checkbox" data-co="hype" checked> Idle bait lines <span>"YOU GONNA LET JOE STAY UP THERE?"</span></label>
+    </div>
+    <div class="hint">Animations still play either way — these only control the text banners in the lane.
+      Your custom ANNOUNCE messages always show.</div>
   </div>
 
   <div class="card">
@@ -319,6 +343,11 @@ function ytJewels(jewels) {
   });
 }
 
+/* callout toggles */
+document.querySelectorAll('#callout-toggles input[data-co]').forEach(cb => {
+  cb.addEventListener('change', () => cmd({ cmd: 'callouts', key: cb.dataset.co, on: cb.checked }));
+});
+
 function setRibbon(mode) {
   const text = $('ribbon-text').value.trim();
   if (mode === 'custom' && !text) { alert('Type the custom line first.'); return; }
@@ -427,6 +456,11 @@ function onStatus(d) {
   }
   $('st-meta').textContent =
     `overlay: seam ${d.seamY}px · scale ${d.uiScale} · art ${d.totalAssets - d.missingAssets}/${d.totalAssets} real (${d.missingAssets} placeholders) · ${new Date().toLocaleTimeString()}`;
+  if (d.callouts) {
+    document.querySelectorAll('#callout-toggles input[data-co]').forEach(cb => {
+      if (cb.dataset.co in d.callouts && document.activeElement !== cb) cb.checked = !!d.callouts[cb.dataset.co];
+    });
+  }
   if (d.ribbon) {
     $('ribbon-state').textContent = d.ribbon.mode === 'off' ? 'hidden'
       : d.ribbon.mode === 'custom' ? `custom: "${d.ribbon.custom}"` : 'steal bait';
