@@ -83,6 +83,10 @@
   .throne .amt { color: var(--light); font-size: 15px; }
   .meta { color: var(--light); font-size: 12px; margin-top: 10px; }
 
+  select.rd {
+    font-size: 15px; border-radius: 8px; background: rgba(10,2,20,.6);
+    color: var(--white); border: 1px solid rgba(192,132,252,.4); padding: 8px;
+  }
   .co-toggle {
     display: flex; flex-direction: column; gap: 2px;
     font-size: 15px; font-weight: 700; cursor: pointer;
@@ -131,29 +135,19 @@
 <div class="grid">
 
   <div class="card yt">
-    <h2>▶ YOUTUBE TEST GIFTS (left throne)</h2>
+    <h2>▶ YOUTUBE TEST GIFTS — jewels only (left throne)</h2>
     <div class="btn-row">
-      <button onclick="ytGift(2)">$2</button>
-      <button onclick="ytGift(5)">$5</button>
-      <button onclick="ytGift(20)">$20</button>
-      <button onclick="ytGift(50)">$50</button>
-      <button class="big" onclick="ytGift(100)">$100</button>
-    </div>
-    <div class="inline">
-      <div><label>Custom $</label><input type="number" id="yt-amt" value="7.50" step="0.01" min="0.01"></div>
-      <button onclick="ytGift(+document.getElementById('yt-amt').value)">SEND</button>
-    </div>
-    <label style="margin-top:10px">Jewels (counted at $0.005/jewel, same as stream-dock)</label>
-    <div class="btn-row">
+      <button onclick="ytJewels(50)">💎 50</button>
       <button onclick="ytJewels(200)">💎 200</button>
       <button onclick="ytJewels(1000)">💎 1 000</button>
-      <button onclick="ytJewels(5000)">💎 5 000</button>
+      <button class="big" onclick="ytJewels(5000)">💎 5 000</button>
     </div>
     <div class="inline">
       <div><label>Custom jewels</label><input type="number" id="yt-jewels" value="400" step="1" min="1"></div>
       <button onclick="ytJewels(+document.getElementById('yt-jewels').value)">SEND</button>
     </div>
-    <div class="hint">Keys: <kbd>Q</kbd> $2 · <kbd>W</kbd> $5 · <kbd>E</kbd> $20 · <kbd>R</kbd> $100</div>
+    <div class="hint">Superchats are DISABLED on the overlay — the YT throne runs on jewels alone,
+      and no $ ever renders. Keys: <kbd>Q</kbd> 50 · <kbd>W</kbd> 200 · <kbd>E</kbd> 1 000 · <kbd>R</kbd> 5 000</div>
   </div>
 
   <div class="card tt">
@@ -191,16 +185,39 @@
       <button class="ghost" onclick="cmd({cmd:'debug', on: dbg = !dbg})">DEBUG OVERLAY</button>
       <button class="ghost" onclick="cmd({cmd:'sfx', on: sfxOn = !sfxOn})">SFX ON/OFF</button>
     </div>
-    <label style="margin-top:14px">Throne text — the line under name + amount (current: <b id="ribbon-state">?</b>)</label>
-    <div class="btn-row">
-      <button class="ghost" onclick="setRibbon('off')">HIDDEN</button>
-      <button class="ghost" onclick="setRibbon('steal')">"SEND X TO STEAL IT"</button>
+  </div>
+
+  <div class="card">
+    <h2>REDESIGN</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div><label>YT splatty skin</label>
+        <select id="skin-yt" class="rd" data-rd="skin">
+          <option value="auto">Auto (red)</option><option value="yt">Force red</option>
+          <option value="tt">Force teal</option><option value="generic">Generic art</option>
+        </select></div>
+      <div><label>TT splatty skin</label>
+        <select id="skin-tt" class="rd" data-rd="skin">
+          <option value="auto">Auto (teal)</option><option value="tt">Force teal</option>
+          <option value="yt">Force red</option><option value="generic">Generic art</option>
+        </select></div>
     </div>
-    <div class="inline" style="margin-top:8px">
-      <div><label>Custom line — placeholders: {next} {name} {amount}</label>
-        <input type="text" id="ribbon-text" maxlength="48" placeholder="e.g. BEAT {next} TO TAKE THE THRONE"></div>
-      <button class="ghost" onclick="setRibbon('custom')">USE CUSTOM</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+      <div style="width:130px"><label>Ticket rotation (s)</label>
+        <input type="number" id="rd-rot" value="6" min="2" max="60" step="1"></div>
+      <div style="width:130px"><label>!steal cooldown (s)</label>
+        <input type="number" id="rd-cd" value="30" min="0" max="600" step="5"></div>
+      <div style="width:130px"><label>Idle dim after (s)</label>
+        <input type="number" id="rd-idle-s" value="60" min="10" max="600" step="10"></div>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;cursor:pointer">
+      <input type="checkbox" id="rd-idle" checked style="accent-color:var(--bright);width:17px;height:17px">
+      Dim challenger tickets when the lane goes quiet
+    </label>
+    <div class="btn-row" style="margin-top:10px">
+      <button onclick="sendRedesign()">APPLY</button>
+    </div>
+    <div class="hint">Chat commands live on the overlay: <b>!steal</b> shows that viewer's own total on the
+      ticket for 5s · <b>!throne</b> wakes the overlay and refreshes both tickets.</div>
   </div>
 
   <div class="card full">
@@ -261,7 +278,7 @@
       <div style="flex:1;min-width:180px"><label>Viewer name</label>
         <input type="text" id="fix-name" list="fix-names" placeholder="username"><datalist id="fix-names"></datalist>
       </div>
-      <div style="width:140px"><label>Amount (coins or $)</label>
+      <div style="width:140px"><label>Amount (coins / jewels)</label>
         <input type="number" id="fix-amt" placeholder="amount" min="0" step="any">
       </div>
     </div>
@@ -327,13 +344,6 @@ function ttGift(coins) {
     type: 'tiktok_coins', platform: 'tiktok', _src: 'ts-test',
   });
 }
-function ytGift(dollars) {
-  if (!(dollars > 0)) return;
-  publish(giftChannel, CONFIG.GIFT_ALERT, {
-    name: senderName(), amount: +dollars,
-    type: 'youtube_superchat', platform: 'youtube', _src: 'ts-test',
-  });
-}
 function ytJewels(jewels) {
   if (!(jewels > 0)) return;
   /* amount = jewel COUNT, exactly how stream-dock publishes jeweldonation */
@@ -343,16 +353,21 @@ function ytJewels(jewels) {
   });
 }
 
+function sendRedesign() {
+  cmd({
+    cmd: 'redesign',
+    rotationS: +$('rd-rot').value,
+    stealCdS: +$('rd-cd').value,
+    idleDim: $('rd-idle').checked,
+    idleAfterS: +$('rd-idle-s').value,
+    skin: { youtube: $('skin-yt').value, tiktok: $('skin-tt').value },
+  });
+}
+
 /* callout toggles */
 document.querySelectorAll('#callout-toggles input[data-co]').forEach(cb => {
   cb.addEventListener('change', () => cmd({ cmd: 'callouts', key: cb.dataset.co, on: cb.checked }));
 });
-
-function setRibbon(mode) {
-  const text = $('ribbon-text').value.trim();
-  if (mode === 'custom' && !text) { alert('Type the custom line first.'); return; }
-  cmd({ cmd: 'ribbon', mode, text });
-}
 
 function sendAnn() {
   const t = $('ann').value.trim();
@@ -382,7 +397,7 @@ function fixSetExact() {
 function fixMakeTop() {
   const f = fixFields();
   if (!f.name) { alert('Enter a viewer name.'); return; }
-  if (!(f.amount > 0)) { alert('Enter their total (coins or $).'); return; }
+  if (!(f.amount > 0)) { alert('Enter their total (coins / jewels).'); return; }
   cmd({ cmd: 'set-top', platform: f.platform, name: f.name, amount: f.amount, animate: f.animate });
 }
 function fixRemoveViewer() {
@@ -416,15 +431,15 @@ document.addEventListener('keydown', e => {
   else if (k === '2') ttGift(99);
   else if (k === '3') ttGift(1000);
   else if (k === '4') ttGift(5000);
-  else if (k === 'q') ytGift(2);
-  else if (k === 'w') ytGift(5);
-  else if (k === 'e') ytGift(20);
-  else if (k === 'r') ytGift(100);
+  else if (k === 'q') ytJewels(50);
+  else if (k === 'w') ytJewels(200);
+  else if (k === 'e') ytJewels(1000);
+  else if (k === 'r') ytJewels(5000);
 });
 
 /* status mirror */
 function fmtTotal(platform, total) {
-  return platform === 'tiktok' ? Math.round(total).toLocaleString() + ' c' : '$' + (+total).toFixed(2);
+  return Math.round(total).toLocaleString() + (platform === 'tiktok' ? ' c' : ' 💎');
 }
 function renderRoster(platform, rows, topName) {
   const box = $(platform === 'tiktok' ? 'roster-tt' : 'roster-yt');
@@ -445,7 +460,7 @@ function renderRoster(platform, rows, topName) {
 function onStatus(d) {
   d = d || {};
   $('st-yt-name').textContent = d.youtube ? d.youtube.name : '— OPEN —';
-  $('st-yt-amt').textContent = d.youtube ? '$' + (+d.youtube.total).toFixed(2) : 'no top gifter yet';
+  $('st-yt-amt').textContent = d.youtube ? Math.round(d.youtube.total).toLocaleString() + ' jewels' : 'no top gifter yet';
   $('st-tt-name').textContent = d.tiktok ? d.tiktok.name : '— OPEN —';
   $('st-tt-amt').textContent = d.tiktok ? Math.round(d.tiktok.total).toLocaleString() + ' coins' : 'no top gifter yet';
   if (d.roster) {
@@ -461,9 +476,16 @@ function onStatus(d) {
       if (cb.dataset.co in d.callouts && document.activeElement !== cb) cb.checked = !!d.callouts[cb.dataset.co];
     });
   }
-  if (d.ribbon) {
-    $('ribbon-state').textContent = d.ribbon.mode === 'off' ? 'hidden'
-      : d.ribbon.mode === 'custom' ? `custom: "${d.ribbon.custom}"` : 'steal bait';
+  if (d.redesign) {
+    const rd = d.redesign, act = document.activeElement;
+    if (act !== $('rd-rot')) $('rd-rot').value = rd.rotationS;
+    if (act !== $('rd-cd')) $('rd-cd').value = rd.stealCdS;
+    if (act !== $('rd-idle-s')) $('rd-idle-s').value = rd.idleAfterS;
+    $('rd-idle').checked = !!rd.idleDim;
+    if (rd.skin) {
+      if (act !== $('skin-yt')) $('skin-yt').value = rd.skin.youtube || 'auto';
+      if (act !== $('skin-tt')) $('skin-tt').value = rd.skin.tiktok || 'auto';
+    }
   }
   if (d.seamY && document.activeElement !== $('seam')) { $('seam').value = d.seamY; $('seam-val').textContent = d.seamY; }
   if (d.uiScale && document.activeElement !== $('scale')) { $('scale').value = d.uiScale; $('scale-val').textContent = (+d.uiScale).toFixed(2); }

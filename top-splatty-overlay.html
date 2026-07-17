@@ -35,24 +35,27 @@
   }
   #conn-dot.connected { background: #35d97b; }
 
-  /* ── battle lane ── */
-  #lane-base {
-    position: absolute; z-index: 5;
-    width: 1080px; pointer-events: none;
+  /* ── thin seam rail (pure CSS — no PNG) ── */
+  #rail {
+    position: absolute; left: 0; width: 1080px; z-index: 5;
+    background: linear-gradient(180deg, #7FE8F2 0%, #4CC3F7 55%, #2b9fd4 100%);
+    border-top: 4px solid #1A0A2A; border-bottom: 4px solid #1A0A2A;
+    box-shadow: 0 3px 0 rgba(26,10,42,.35);
+    pointer-events: none;
   }
-  .lane-cap { position: absolute; z-index: 6; pointer-events: none; }
 
   /* ── sides ── */
-  .side { position: absolute; z-index: 8; width: 340px; }
-  .ped-shadow {
-    position: absolute; z-index: 8; opacity: .55;
-    transition: transform .8s cubic-bezier(.34,1.2,.64,1), opacity .8s;
-  }
+  .side { position: absolute; z-index: 8; }
   .ped-wrap {
     position: absolute; z-index: 10;
     transition: transform .8s cubic-bezier(.34,1.2,.64,1);
   }
-  .ped-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .ped-img {
+    position: absolute; object-fit: contain;
+    transition: filter .5s, opacity .5s;
+  }
+  .ped-wrap.open .ped-img { filter: grayscale(.9) brightness(.75); opacity: .8; }
+  .ped-wrap.open .crown-img { opacity: .45; filter: saturate(.4); }
 
   .char-wrap {
     position: absolute; z-index: 12;
@@ -64,9 +67,9 @@
   .char-img { position: absolute; top: 15.5%; left: 0; width: 100%; height: 100%; }
   .char-flip .char-img { transform: scaleX(-1); }
 
-  /* real art keeps its aspect ratio; backing plates/ribbons stretch to fill */
-  .char-img, .proj, .fx, .ped-img, .lane-cap, .crown-img,
-  .pfp-ring-img, .splat-decal, #chance .chance-pointer { object-fit: contain; }
+  /* real art keeps its aspect ratio */
+  .char-img, .proj, .fx, .ped-img, .crown-img,
+  .splat-decal, #chance .chance-pointer { object-fit: contain; }
 
   /* squash-and-shake states applied on the wrap so frames keep playing */
   .char-wrap.wobble { animation: tsWobble .7s ease-out; }
@@ -118,12 +121,98 @@
     50% { transform: translateY(-7px) rotate(4deg); }
   }
 
-  .pfp-med { position: absolute; z-index: 13; pointer-events: none; }  /* held in front of the mascot */
-  .pfp-med .pfp-img {
-    position: absolute; border-radius: 50%;
-    object-fit: cover; background: #3B0764;
+  /* ── champ plate (name · amount · icon) — sits on the rail under the throne ── */
+  .plate {
+    position: absolute; z-index: 14;
+    display: flex; align-items: center; gap: 7px;
+    background: #FFF6D8;
+    border: 3.5px solid var(--side-edge, #7B2FBE);
+    border-radius: 999px;
+    padding: 0 14px;
+    box-shadow: 0 3px 0 rgba(26,10,42,.4);
+    transition: border-color .3s, box-shadow .3s;
   }
-  .pfp-med .pfp-ring-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .plate .p-name {
+    overflow: hidden; white-space: nowrap; flex: 0 1 auto; max-width: 104px;
+    font-size: 21px; color: var(--side-edge, #7B2FBE); line-height: 1;
+  }
+  .plate .p-amt {
+    margin-left: auto; font-size: 23px; color: #1A0A2A; line-height: 1;
+    white-space: nowrap;
+  }
+  .plate .p-icon { width: 21px; height: 21px; object-fit: contain; flex: none; }
+  .plate.gold-flash {
+    border-color: #FFD25A;
+    box-shadow: 0 0 16px rgba(255,210,90,.95), 0 3px 0 rgba(26,10,42,.4);
+  }
+
+  /* marquee — only when the name overflows (JS sets --dist + .scroll) */
+  .m-scroll { display: inline-block; }
+  .scroll .m-scroll { animation: tsMarquee 5.5s ease-in-out infinite alternate; }
+  @keyframes tsMarquee { from { transform: translateX(0); } to { transform: translateX(var(--dist, -40px)); } }
+
+  /* ── challenger ticket — hangs off the rail's bottom edge ── */
+  .ticket {
+    position: absolute; z-index: 13;
+    display: flex; align-items: center; gap: 6px;
+    background: #2a1148;
+    border: 3px solid var(--side-edge, #7B2FBE);
+    border-radius: 999px;
+    padding: 0 11px;
+    box-shadow: 0 2px 0 rgba(26,10,42,.4);
+    transition: filter .6s, border-color .6s;
+  }
+  .ticket .t-name {
+    overflow: hidden; white-space: nowrap; max-width: 86px;
+    font-size: 15px; color: #E9DEFB; line-height: 1;
+  }
+  .ticket .t-amt { margin-left: auto; font-size: 16px; color: #FFF6D8; white-space: nowrap; line-height: 1; }
+  .ticket .t-icon { width: 15px; height: 15px; object-fit: contain; flex: none; }
+  .ticket .t-crown { font-size: 13px; line-height: 1; flex: none; }
+  .ticket.dim { filter: grayscale(1) brightness(.72); border-color: #4a4356; }
+  .ticket.empty { visibility: hidden; }
+  .ticket.steal-hold { border-color: #FFD25A; }
+
+  /* ── empty-throne tag ── */
+  .open-tag {
+    position: absolute; z-index: 14; text-align: center;
+    background: rgba(26,10,42,.78);
+    border: 2.5px dashed #C084FC; border-radius: 14px;
+    color: #E9DEFB; font-size: 17px; letter-spacing: 1.5px;
+    padding: 5px 10px 7px; line-height: 1.15;
+  }
+  .open-tag small { display: block; font-size: 12px; letter-spacing: .5px; color: #C084FC; }
+
+  /* ── STOLE IT! burst ── */
+  .steal-burst {
+    position: absolute; z-index: 26;
+    background: #FFD25A; color: #1A0A2A;
+    border: 3.5px solid #1A0A2A; border-radius: 999px;
+    font-size: 24px; letter-spacing: 1px; padding: 5px 16px;
+    white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transform-origin: 50% 100%;
+  }
+  .steal-burst.show { animation: tsBurst 1.8s cubic-bezier(.34,1.56,.64,1) forwards; }
+  @keyframes tsBurst {
+    0% { opacity: 0; transform: scale(.4) rotate(-8deg); }
+    14% { opacity: 1; transform: scale(1.15) rotate(3deg); }
+    24% { transform: scale(1) rotate(-2deg); }
+    82% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(.85) translateY(-14px); }
+  }
+
+  .plate.bump { animation: tsBump .45s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tsBump { 0%{transform:scale(1)} 40%{transform:scale(1.14)} 100%{transform:scale(1)} }
+
+  /* crown hop during a crown transfer */
+  .crown-img.transfer { animation: tsCrownHop .9s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tsCrownHop {
+    0% { transform: translateY(-70px) rotate(-50deg); opacity: 0; }
+    55% { transform: translateY(6px) rotate(8deg); opacity: 1; }
+    75% { transform: translateY(-4px) rotate(-4deg); }
+    100% { transform: translateY(0) rotate(-6deg); }
+  }
 
   .splat-decal {
     position: absolute; z-index: 13; pointer-events: none;
@@ -131,49 +220,9 @@
   }
   .splat-decal.show { opacity: .92; }
 
-  /* ── info block ── */
-  .info { position: absolute; z-index: 15; text-align: center; }
-  .info .badge { position: relative; margin: 0 auto; }
-  .info .badge img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  .info .badge span {
-    position: relative; z-index: 2;
-    font-size: 30px; color: #FAF5FF; letter-spacing: 1.5px;
-    text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 8px rgba(0,0,0,.4);
-  }
-  .info .ts-title {
-    font-size: 28px; letter-spacing: 3px; color: #FFD25A;
-    text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 10px rgba(0,0,0,.45);
-    margin-top: -2px;
-  }
-  .info .gname {
-    font-size: 36px; color: #FAF5FF; line-height: 1.02;
-    text-shadow: 0 3px 0 rgba(0,0,0,.6), 0 0 12px rgba(59,7,100,.8);
-    max-width: 330px; margin: 0 auto;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .info .amount { position: relative; margin: 2px auto 0; }
-  .info .amount img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  .info .amount span {
-    position: relative; z-index: 2; font-size: 26px; color: #FFF6D8;
-    text-shadow: 0 2px 0 rgba(0,0,0,.55);
-    white-space: nowrap;   /* "15,500 COINS" stays on one line */
-  }
-  .info .ribbon { position: relative; margin: 4px auto 0; }
-  .info .ribbon img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  .info .ribbon span {
-    position: relative; z-index: 2; font-size: 23px; color: #FAF5FF;
-    letter-spacing: .5px; text-shadow: 0 2px 0 rgba(0,0,0,.6);
-  }
-  .info .badge span, .info .amount span, .info .ribbon span {
-    display: flex; align-items: center; justify-content: center;
-    width: 100%; height: 100%;
-  }
-  .info.bump .amount { animation: tsBump .45s cubic-bezier(.34,1.56,.64,1); }
-  @keyframes tsBump { 0%{transform:scale(1)} 40%{transform:scale(1.22)} 100%{transform:scale(1)} }
-
-  /* ── lane announcements ── */
+  /* ── lane announcements — CSS pill in the center gap, above the rail ── */
   #announce {
-    position: absolute; z-index: 30; width: 660px;
+    position: absolute; z-index: 30;
     display: flex; align-items: center; justify-content: center;
     pointer-events: none; opacity: 0;
   }
@@ -185,32 +234,53 @@
     88% { opacity: 1; transform: scale(1); }
     100% { opacity: 0; transform: scale(.92) translateY(-10px); }
   }
-  #announce .ann-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
   #announce .ann-text {
-    position: relative; z-index: 2; text-align: center;
-    font-size: 40px; line-height: 1; color: #FAF5FF; letter-spacing: 1px;
-    padding: 0 46px;
-    text-shadow: 0 3px 0 rgba(0,0,0,.6), 0 0 14px rgba(59,7,100,.9);
+    text-align: center;
+    background: rgba(26,10,42,.88);
+    border: 3px solid #C084FC; border-radius: 999px;
+    padding: 7px 22px 9px;
+    font-size: 27px; line-height: 1.05; color: #FAF5FF; letter-spacing: 1px;
+    max-width: 100%;
   }
-  #announce.kind-steal .ann-text { color: #FFE277; font-size: 46px; }
+  #announce.kind-steal .ann-text { color: #FFE277; border-color: #FFD25A; font-size: 30px; }
   #announce.kind-compare .ann-text { color: #9FE8FF; }
   #announce.kind-whiff .ann-text { color: #C9BFD8; }
 
-  /* ── chance strip ── */
+  /* ── chance spinner — 3-slot reel in the center gap, on the rail ── */
   #chance {
     position: absolute; z-index: 32; opacity: 0; pointer-events: none;
   }
   #chance.show { opacity: 1; animation: tsChanceIn .18s ease-out; }
   @keyframes tsChanceIn { from { transform: scale(.7); } to { transform: scale(1); } }
-  #chance .chance-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  #chance .chance-pointer { position: absolute; z-index: 3; }
-  #chance .chance-text {
-    position: absolute; z-index: 2; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 52px; letter-spacing: 3px; color: #FAF5FF;
-    text-shadow: 0 3px 0 rgba(0,0,0,.65);
+  #chance .chance-caption {
+    position: absolute; left: 0; right: 0; text-align: center;
+    font-size: 17px; color: #FAF5FF; letter-spacing: .5px;
+    text-shadow: 0 2px 0 rgba(26,10,42,.8), 0 0 8px rgba(26,10,42,.6);
+    white-space: nowrap;
   }
-  #chance.landed .chance-text { animation: tsLanded .35s cubic-bezier(.34,1.56,.64,1); color: #FFE277; }
+  #chance .chance-reel {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: stretch; justify-content: center; gap: 0;
+    background: linear-gradient(180deg, #efe0ff, #d9bcff);
+    border: 3.5px solid #1A0A2A; border-radius: 16px;
+    overflow: hidden;
+  }
+  #chance .chance-reel-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+  #chance .slot {
+    position: relative; z-index: 2; flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; letter-spacing: 1px; color: #8a76ad;
+    white-space: nowrap; overflow: hidden; padding: 0 4px;
+  }
+  #chance .slot.mid {
+    flex: 1.5; font-size: 24px; color: #7B2FBE;
+    background: rgba(255,255,255,.65);
+    border-left: 2.5px solid #1A0A2A; border-right: 2.5px solid #1A0A2A;
+  }
+  #chance .chance-pointer {
+    position: absolute; z-index: 3; object-fit: contain;
+  }
+  #chance.landed .slot.mid { animation: tsLanded .35s cubic-bezier(.34,1.56,.64,1); color: #c8342c; }
   @keyframes tsLanded { 0%{transform:scale(.7)} 55%{transform:scale(1.25)} 100%{transform:scale(1)} }
 
   /* ── projectiles / fx ── */
@@ -235,9 +305,7 @@
 </head>
 <body>
 <div id="scene">
-  <img id="lane-base" alt="">
-  <img class="lane-cap" id="lane-cap-left" alt="">
-  <img class="lane-cap" id="lane-cap-right" alt="">
+  <div id="rail"></div>
 
   <div id="side-youtube" class="side"></div>
   <div id="side-tiktok" class="side"></div>
@@ -246,14 +314,18 @@
   <div id="fx-layer"></div>
 
   <div id="announce">
-    <img class="ann-bg" alt="">
     <div class="ann-text"></div>
   </div>
 
   <div id="chance">
-    <img class="chance-bg" alt="">
+    <div class="chance-caption"></div>
+    <div class="chance-reel">
+      <img class="chance-reel-bg" alt="">
+      <div class="slot pre"></div>
+      <div class="slot mid">…</div>
+      <div class="slot post"></div>
+    </div>
     <img class="chance-pointer" alt="">
-    <div class="chance-text">…</div>
   </div>
 
   <div id="debug-seam"></div>
@@ -280,13 +352,17 @@ const CONFIG = {
   /* ── Layout ── */
   SEAM_Y: 940,            // px from top where camera bottom meets game top (controller-adjustable)
   UI_SCALE: 1.0,          // scales pedestals/characters/info blocks (controller-adjustable)
-  MAX_LIFT: 52,           // px each pedestal rises/sinks for the height comparison (~104px max gap)
+  MAX_LIFT: 24,           // px each throne cluster rises/sinks for the height comparison
   NECK_AND_NECK: 0.12,    // if normalized totals are within 12% → treat as even
 
-  /* ── Value normalization (hidden score for cross-platform compare) ── */
+  /* ── Value normalization (hidden score for cross-platform compare only —
+        USD is NEVER rendered on screen) ── */
   COIN_TO_USD: 0.005,     // TikTok coin → USD-ish
-  JEWEL_TO_USD: 0.005,    // YouTube jewel → USD (matches stream-dock's $0.005/jewel convention;
-                          // superchat amounts are already dollars)
+  JEWEL_TO_USD: 0.005,    // YouTube jewel → USD-ish
+  /* YouTube side is locked to jewels. Superchats are IGNORED by default so no
+     dollar value ever appears; flip to true to count them (converted to
+     jewel-equivalents at $0.005/jewel so units stay consistent). */
+  YT_SUPERCHATS: false,
 
   /* ── Gift tiers, thresholds in normalized USD of the single gift ── */
   TIERS: { t2: 0.5, t3: 5, t4: 25 },
@@ -309,10 +385,15 @@ const CONFIG = {
     hype: true,      // periodic idle bait lines
   },
 
-  /* ── Throne ribbon (the line under name+amount) ──
-     mode: 'off' (hidden) | 'steal' ("SEND X TO STEAL IT") | 'custom'
-     custom text may use {next} {name} {amount} placeholders */
-  RIBBON: { mode: 'off', custom: '' },
+  /* ── Redesign knobs (controller-adjustable, persisted) ── */
+  ROTATION_S: 6,          // challenger ticket rotation period
+  STEAL_SHOW_S: 5,        // how long a !steal requester owns the ticket
+  STEAL_CD_S: 30,         // per-user !steal cooldown
+  IDLE_DIM: true,         // grey the tickets when the lane goes quiet
+  IDLE_AFTER_S: 60,       // quiet seconds before dimming
+  SKIN: { youtube: 'auto', tiktok: 'auto' },  // auto | yt | tt | generic
+  CMD_STEAL: '!steal',
+  CMD_THRONE: '!throne',
 
   /* ── Timing ── */
   ANNOUNCE_GIFT_MS: 1700,
@@ -340,8 +421,9 @@ const CONFIG = {
   GIFT_ALERT: 'gift-alert',       // stream-dock's existing gift broadcast
 };
 
-const LS_STATE = 'topSplatty.state.v1';
-const LS_CFG   = 'topSplatty.cfg.v1';
+/* v2: YouTube totals are stored in JEWELS (v1 stored dollars) */
+const LS_STATE = 'topSplatty.state.v2';
+const LS_CFG   = 'topSplatty.cfg.v2';
 
 /* ── sides ── */
 const SIDES = {
@@ -384,23 +466,26 @@ const FX = {
   flash: ['fx/fx-flash-01'],
 };
 
+/* generic fallbacks still in use; the rest of the old UI package is retired
+   (lane, caps, rings, badges, plates, ribbon, shadow, chance strip) */
 const UI_ASSETS = {
-  laneBase:    'ui/top-splatty-lane-base',
-  laneCapL:    'ui/top-splatty-lane-left-cap',
-  laneCapR:    'ui/top-splatty-lane-right-cap',
   pedestalL:   'ui/top-splatty-pedestal-left',
   pedestalR:   'ui/top-splatty-pedestal-right',
-  pfpRingL:    'ui/top-splatty-pfp-ring-left',
-  pfpRingR:    'ui/top-splatty-pfp-ring-right',
   crown:       'ui/top-splatty-crown',
-  amountPlate: 'ui/top-splatty-amount-plate',
-  ribbon:      'ui/top-splatty-challenge-ribbon',
-  badgeL:      'ui/top-splatty-platform-badge-left',
-  badgeR:      'ui/top-splatty-platform-badge-right',
-  shadow:      'ui/top-splatty-pedestal-shadow',
-  chanceStrip: 'chance/chance-strip-base',
   chancePtr:   'chance/chance-pointer',
 };
+
+/* redesign art — probed with graceful fallbacks until the new package lands */
+const REDESIGN_PATHS = {
+  throneYt: 'ui/throne-yt',
+  throneTt: 'ui/throne-tt',
+  iconYt:   'ui/icon-jewel',
+  iconTt:   'ui/icon-coin',
+  reel:     'chance/spinner-reel',
+  reelPtr:  'chance/spinner-pointer',
+};
+const optSrc = {};          // resolved redesign art (absent key = use fallback)
+const sideFrames = { yt: {}, tt: {} };   // generic frame path → per-skin src
 
 /* ── placeholder painters (used only when a PNG 404s) ── */
 const P = { violet:'#8B5CF6', deep:'#3B0764', bright:'#A855F7', light:'#C084FC', cream:'#FFF6D8', gold:'#FFC93E', orange:'#FF9F45', blue:'#4CC3F7', cyan:'#7FE8F2', ink:'#1A0A2A' };
@@ -737,6 +822,76 @@ function allAssetPaths() {
   return [...out];
 }
 
+/* ── redesign art probing (no placeholder fallback — absence means "use old art") ── */
+function probeOptional(key, path) {
+  return new Promise((res) => {
+    const url = CONFIG.ASSET_BASE + path + '.png';
+    const img = new Image();
+    img.onload = () => { optSrc[key] = url; res(); };
+    img.onerror = () => res();
+    img.src = url;
+  });
+}
+/* per-skin character frames: character/splatty-idle-01 → …-idle-yt-01 / …-idle-tt-01 */
+function probeSideFrame(skin, genericPath) {
+  return new Promise((res) => {
+    const m = genericPath.match(/^(character\/splatty-.+)-(\d\d)$/);
+    if (!m) return res();
+    const url = `${CONFIG.ASSET_BASE}${m[1]}-${skin}-${m[2]}.png`;
+    const img = new Image();
+    img.onload = () => { sideFrames[skin][genericPath] = url; res(); };
+    img.onerror = () => res();
+    img.src = url;
+  });
+}
+function allRedesignProbes() {
+  const jobs = Object.entries(REDESIGN_PATHS).map(([k, p]) => probeOptional(k, p));
+  const frames = new Set(); Object.values(SEQ_FRAMES).forEach(a => a.forEach(p => frames.add(p)));
+  for (const f of frames) { jobs.push(probeSideFrame('yt', f)); jobs.push(probeSideFrame('tt', f)); }
+  return jobs;
+}
+
+/* skin selection: auto → platform skin; explicit yt/tt/generic override */
+function skinFor(side) {
+  const v = (CONFIG.SKIN || {})[side] || 'auto';
+  if (v === 'auto') return side === 'youtube' ? 'yt' : 'tt';
+  return v === 'generic' ? null : v;
+}
+function frameSrc(side, path) {
+  const sk = skinFor(side);
+  if (sk && sideFrames[sk] && sideFrames[sk][path]) return sideFrames[sk][path];
+  return assetSrc[path];
+}
+function iconSrcFor(side) {
+  const key = side === 'youtube' ? 'iconYt' : 'iconTt';
+  if (optSrc[key]) return optSrc[key];
+  return side === 'youtube' ? phIcon('gem') : phIcon('coin');
+}
+const _phIconCache = {};
+function phIcon(kind) {
+  if (_phIconCache[kind]) return _phIconCache[kind];
+  _phIconCache[kind] = phCanvas(96, 96, (x) => {
+    x.strokeStyle = P.ink; x.lineWidth = 7;
+    if (kind === 'gem') {
+      x.fillStyle = '#ff5da2';
+      x.beginPath();
+      x.moveTo(48, 10); x.lineTo(82, 38); x.lineTo(48, 88); x.lineTo(14, 38); x.closePath();
+      x.fill(); x.stroke();
+      x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = 4;
+      x.beginPath(); x.moveTo(30, 38); x.lineTo(48, 24); x.lineTo(66, 38); x.stroke();
+    } else {
+      x.fillStyle = '#FFD25A';
+      x.beginPath(); x.arc(48, 48, 38, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#9be9f2';
+      x.beginPath(); x.arc(48, 48, 26, 0, 7); x.fill();
+      x.strokeStyle = P.ink; x.lineWidth = 5;
+      x.beginPath(); x.moveTo(44, 60); x.lineTo(44, 36); x.lineTo(58, 33); x.lineTo(58, 56); x.stroke();
+      x.beginPath(); x.arc(41, 61, 5, 0, 7); x.fill(); x.beginPath(); x.arc(55, 57, 5, 0, 7); x.fill();
+    }
+  });
+  return _phIconCache[kind];
+}
+
 /* ════════════════════════════════════════════════════════════════
    2. STATE
    ════════════════════════════════════════════════════════════════ */
@@ -756,17 +911,22 @@ function loadPersisted() {
     cfgOverride = JSON.parse(localStorage.getItem(LS_CFG)) || {};
     if (cfgOverride.seamY) CONFIG.SEAM_Y = cfgOverride.seamY;
     if (cfgOverride.uiScale) CONFIG.UI_SCALE = cfgOverride.uiScale;
-    if (cfgOverride.ribbon && cfgOverride.ribbon.mode) CONFIG.RIBBON = cfgOverride.ribbon;
     if (cfgOverride.callouts) Object.assign(CONFIG.CALLOUTS, cfgOverride.callouts);
+    if (cfgOverride.rotationS) CONFIG.ROTATION_S = cfgOverride.rotationS;
+    if (cfgOverride.stealCdS != null) CONFIG.STEAL_CD_S = cfgOverride.stealCdS;
+    if (cfgOverride.idleDim != null) CONFIG.IDLE_DIM = cfgOverride.idleDim;
+    if (cfgOverride.idleAfterS) CONFIG.IDLE_AFTER_S = cfgOverride.idleAfterS;
+    if (cfgOverride.skin) Object.assign(CONFIG.SKIN, cfgOverride.skin);
   } catch (e) {}
 }
 
 const keyOf = (n) => (n || '').trim().toLowerCase();
 
+/* both sides now store native platform units: coins (TT) / jewels (YT) */
 function normTotal(side) {
   const t = state.top[side];
   if (!t) return 0;
-  return side === 'tiktok' ? t.total * CONFIG.COIN_TO_USD : t.total;
+  return t.total * (side === 'tiktok' ? CONFIG.COIN_TO_USD : CONFIG.JEWEL_TO_USD);
 }
 function tierOfUsd(usd) {
   if (usd >= CONFIG.TIERS.t4) return 4;
@@ -774,32 +934,11 @@ function tierOfUsd(usd) {
   if (usd >= CONFIG.TIERS.t2) return 2;
   return 1;
 }
+/* bare number — the currency is conveyed by the icon next to it, never words/$ */
 function fmtAmount(side, total) {
-  return side === 'tiktok' ? `${Math.round(total).toLocaleString()} COINS` : `$${total.toFixed(2)}`;
+  return Math.round(total).toLocaleString();
 }
-function fmtChallenge(side, total) {
-  if (!state.top[side]) return 'SEND ANYTHING TO CLAIM IT';
-  return side === 'tiktok'
-    ? `SEND ${Math.round(total + 1).toLocaleString()} TO STEAL IT`
-    : `SEND $${(total + 0.01).toFixed(2)} TO STEAL IT`;
-}
-function fmtNext(side, total) {
-  return side === 'tiktok' ? Math.round(total + 1).toLocaleString() : '$' + (total + 0.01).toFixed(2);
-}
-/* ribbon text per CONFIG.RIBBON; returns null when the ribbon is hidden */
-function ribbonText(side) {
-  const rb = CONFIG.RIBBON || { mode: 'steal' };
-  if (rb.mode === 'off') return null;
-  const t = state.top[side];
-  if (rb.mode === 'custom') {
-    return String(rb.custom || '')
-      .replace(/\{next\}/gi, t ? fmtNext(side, t.total) : '')
-      .replace(/\{name\}/gi, t ? t.name : '')
-      .replace(/\{amount\}/gi, t ? fmtAmount(side, t.total) : '')
-      .slice(0, 48) || null;
-  }
-  return t ? fmtChallenge(side, t.total) : 'SEND ANYTHING TO CLAIM IT';
-}
+function currencyWord(side) { return side === 'tiktok' ? 'COINS' : 'JEWELS'; }
 
 /* ════════════════════════════════════════════════════════════════
    3. DOM BUILD + LAYOUT
@@ -811,48 +950,65 @@ const sideEls = {};
 function buildSide(side) {
   const isLeft = side === 'youtube';
   const root = $(`side-${side}`);
+  root.style.setProperty('--side-edge', isLeft ? '#c8342c' : '#7B2FBE');
   root.innerHTML = `
-    <img class="ped-shadow" alt="">
     <div class="ped-wrap">
       <img class="ped-img" alt="">
       <div class="char-wrap ${isLeft ? '' : 'char-flip'} hidden-char">
         <img class="char-img" alt="">
-        <div class="pfp-med">
-          <img class="pfp-img" alt="">
-          <img class="pfp-ring-img" alt="">
-        </div>
         <img class="splat-decal" alt="">
       </div>
       <img class="crown-img" alt="" style="display:none">
+      <div class="plate">
+        <span class="p-name"><span class="m-scroll">—</span></span>
+        <span class="p-amt">0</span>
+        <img class="p-icon" alt="">
+      </div>
+      <div class="open-tag">THRONE OPEN<small>gift to claim it 👑</small></div>
+      <div class="steal-burst">STOLE IT!</div>
     </div>
-    <div class="info">
-      <div class="badge" style="display:none"><img alt=""><span>${SIDES[side].label}</span></div>
-      <div class="ts-title">${isLeft ? 'YT' : 'TT'} TOP SPLATTY</div>
-      <div class="gname">—</div>
-      <div class="amount"><img alt=""><span>—</span></div>
-      <div class="ribbon"><img alt=""><span>SEND ANYTHING TO CLAIM IT</span></div>
+    <div class="ticket empty">
+      <span class="t-name"><span class="m-scroll">—</span></span>
+      <span class="t-amt">0</span>
+      <img class="t-icon" alt="">
+      <span class="t-crown">👑</span>
     </div>`;
   sideEls[side] = {
     root,
-    shadow: root.querySelector('.ped-shadow'),
     pedWrap: root.querySelector('.ped-wrap'),
     pedImg: root.querySelector('.ped-img'),
     charWrap: root.querySelector('.char-wrap'),
     charImg: root.querySelector('.char-img'),
-    pfpMed: root.querySelector('.pfp-med'),
-    pfpImg: root.querySelector('.pfp-img'),
-    pfpRing: root.querySelector('.pfp-ring-img'),
     decal: root.querySelector('.splat-decal'),
     crown: root.querySelector('.crown-img'),
-    info: root.querySelector('.info'),
-    badgeImg: root.querySelector('.badge img'),
-    nameEl: root.querySelector('.gname'),
-    amountImg: root.querySelector('.amount img'),
-    amountTxt: root.querySelector('.amount span'),
-    ribbonImg: root.querySelector('.ribbon img'),
-    ribbonTxt: root.querySelector('.ribbon span'),
+    plate: root.querySelector('.plate'),
+    plateName: root.querySelector('.p-name'),
+    plateScroll: root.querySelector('.p-name .m-scroll'),
+    plateAmt: root.querySelector('.p-amt'),
+    plateIcon: root.querySelector('.p-icon'),
+    openTag: root.querySelector('.open-tag'),
+    stealBurst: root.querySelector('.steal-burst'),
+    ticket: root.querySelector('.ticket'),
+    ticketName: root.querySelector('.t-name'),
+    ticketScroll: root.querySelector('.t-name .m-scroll'),
+    ticketAmt: root.querySelector('.t-amt'),
+    ticketIcon: root.querySelector('.t-icon'),
     lift: 0,
   };
+}
+
+/* marquee helper — scroll only when the name overflows its window */
+function applyMarquee(containerEl, scrollEl, text) {
+  if (scrollEl.textContent === text) return;   // same name — leave a running marquee alone
+  scrollEl.textContent = text;
+  containerEl.classList.remove('scroll');
+  setTimeout(() => {           // setTimeout, not rAF — must work in throttled tabs
+    const over = scrollEl.scrollWidth - containerEl.clientWidth;
+    if (over > 4) {
+      scrollEl.style.setProperty('--dist', `-${over + 6}px`);
+      containerEl.classList.add('scroll');
+    }
+  }, 30);
 }
 
 /* geometry cache recomputed on layout changes */
@@ -860,96 +1016,103 @@ const G = {};
 function applyLayout() {
   const s = CONFIG.UI_SCALE, seam = CONFIG.SEAM_Y;
   G.seam = seam;
-  G.pedW = 210 * s; G.pedH = 210 * s;
-  G.charH = 300 * s; G.charW = 300 * s;   // mascot canvas has margins; sprite is ~50% of it
-  G.standFrac = 0.54;          // character feet on the throne SEAT (the oval platform mid-pedestal)
-  G.sideW = 340 * s;
-  G.edge = 10;
-  G.laneH = 130;
+  G.railH = 34;
+  G.railTop = seam - 30;                      // rail bottom lands ~4px past the seam
+  G.thrW = 130 * s; G.thrH = 130 * s;         // branded throne
+  G.charH = 185 * s; G.charW = 185 * s;       // mascot canvas has margins; sprite ~50%
+  G.standFrac = 0.54;                         // feet on the throne seat
+  G.plateW = 205 * s; G.plateH = 42 * s;
+  G.clusterW = Math.max(G.plateW, G.thrW) + 10;
+  G.clusterH = 300 * s;
+  G.leftX = 6;                                // far-left cluster
+  G.rightX = 1080 * 0.72 - G.clusterW - 18;   // right cluster clear of the chat column (right 28%)
+  G.tickW = 195 * s; G.tickH = 31 * s;
 
-  // lane
-  const lane = $('lane-base');
-  lane.style.top = (seam - G.laneH / 2) + 'px';
-  lane.style.left = '0px';
-  lane.style.height = G.laneH + 'px';
-  const capW = 200, capH = 150;
-  const capL = $('lane-cap-left'), capR = $('lane-cap-right');
-  capL.style.width = capW + 'px'; capL.style.height = capH + 'px';
-  capL.style.left = '-6px'; capL.style.top = (seam - capH / 2) + 'px';
-  capR.style.width = capW + 'px'; capR.style.height = capH + 'px';
-  capR.style.left = (1080 - capW + 6) + 'px'; capR.style.top = (seam - capH / 2) + 'px';
+  // rail
+  const rail = $('rail');
+  rail.style.top = G.railTop + 'px';
+  rail.style.height = (G.railH - 8) + 'px';   // borders add the other 8px
 
-  // announce + chance boxes centered on seam
+  // in-cluster vertical stack (ped-wrap local coords)
+  G.plateTopIn = G.clusterH - G.plateH;
+  G.thrTopIn = G.plateTopIn - G.thrH + 12 * s;   // throne base tucks behind the plate
+  G.standYIn = G.thrTopIn + G.thrH * G.standFrac;
+
+  // center gap between the two clusters (for announce + spinner)
+  const gapL = G.leftX + G.clusterW, gapR = G.rightX;
+  G.gapCX = (gapL + gapR) / 2;
+  G.gapW = Math.max(240, gapR - gapL - 24);
+
+  // announce pill — floats above the rail in the gap
   const ann = $('announce');
-  ann.style.left = (540 - 330) + 'px'; ann.style.top = (seam - 62) + 'px';
-  ann.style.height = '124px';
+  ann.style.width = Math.min(G.gapW + 120, 520) + 'px';
+  ann.style.left = (G.gapCX - Math.min(G.gapW + 120, 520) / 2) + 'px';
+  ann.style.top = (G.railTop - 118) + 'px';
+  ann.style.height = '64px';
+
+  // chance spinner — overlaps the rail top in the gap
   const ch = $('chance');
-  const chW = 620, chH = 124;
-  ch.style.width = chW + 'px'; ch.style.height = chH + 'px';
-  ch.style.left = (540 - chW / 2) + 'px'; ch.style.top = (seam - chH / 2) + 'px';
+  const chW = Math.min(G.gapW, 330), chH = 56, capH = 26;
+  G.chW = chW;
+  ch.style.width = chW + 'px'; ch.style.height = (chH + capH + 8) + 'px';
+  ch.style.left = (G.gapCX - chW / 2) + 'px';
+  ch.style.top = (G.railTop - chH - capH + 18) + 'px';
+  ch.querySelector('.chance-caption').style.top = '0px';
+  const reel = ch.querySelector('.chance-reel');
+  reel.style.height = chH + 'px';
   const ptr = ch.querySelector('.chance-pointer');
-  ptr.style.width = '52px'; ptr.style.height = '52px';
-  ptr.style.left = (chW / 2 - 26) + 'px'; ptr.style.top = '-40px';
+  ptr.style.width = '30px'; ptr.style.height = '26px';
+  ptr.style.left = (chW / 2 - 15) + 'px';
+  ptr.style.top = (capH - 6) + 'px';
 
   for (const side of ['youtube', 'tiktok']) {
     const E = sideEls[side], isLeft = side === 'youtube';
-    const rootX = isLeft ? G.edge : 1080 - G.edge - G.sideW;
+    const rootX = isLeft ? G.leftX : G.rightX;
     E.root.style.left = rootX + 'px';
     E.root.style.top = '0px';
-    E.root.style.width = G.sideW + 'px';
+    E.root.style.width = G.clusterW + 'px';
 
-    const pedX = (G.sideW - G.pedW) / 2;
-    const pedTop = seam - G.pedH * 0.62;          // pedestal straddles the seam
-    E.pedWrap.style.left = pedX + 'px';
-    E.pedWrap.style.top = pedTop + 'px';
-    E.pedWrap.style.width = G.pedW + 'px';
-    E.pedWrap.style.height = G.pedH + 'px';
+    // lifting cluster: bottom edge = plate bottom, overlapping the rail top
+    E.pedWrap.style.left = '0px';
+    E.pedWrap.style.top = (G.railTop + 14 - G.clusterH) + 'px';
+    E.pedWrap.style.width = G.clusterW + 'px';
+    E.pedWrap.style.height = G.clusterH + 'px';
 
-    // shadow stays put at base height while pedestal lifts
-    const shW = 240 * s, shH = 90 * s;
-    E.shadow.style.width = shW + 'px'; E.shadow.style.height = shH + 'px';
-    E.shadow.style.left = (pedX + G.pedW / 2 - shW / 2 + rootX - rootX) + 'px';
-    E.shadow.style.left = (pedX + (G.pedW - shW) / 2) + 'px';
-    E.shadow.style.top = (pedTop + G.pedH - shH * .55) + 'px';
+    E.pedImg.style.width = G.thrW + 'px';
+    E.pedImg.style.height = G.thrH + 'px';
+    E.pedImg.style.left = ((G.clusterW - G.thrW) / 2) + 'px';
+    E.pedImg.style.top = G.thrTopIn + 'px';
 
-    // character: feet anchored to stand point inside ped-wrap coords
-    const standY = G.pedH * G.standFrac;
     E.charWrap.style.width = G.charW + 'px';
     E.charWrap.style.height = G.charH + 'px';
-    E.charWrap.style.left = ((G.pedW - G.charW) / 2) + 'px';
-    E.charWrap.style.top = (standY - G.charH) + 'px';
+    E.charWrap.style.left = ((G.clusterW - G.charW) / 2) + 'px';
+    E.charWrap.style.top = (G.standYIn - G.charH) + 'px';
 
-    // pfp medallion held in front of the mascot's belly — below the face
-    // (face band is ~47–72% down the char box; belly is ~84%)
-    const pfpD = 72 * s, ringPad = pfpD * .16, medD = pfpD + ringPad * 2;
-    E.pfpMed.style.width = medD + 'px';
-    E.pfpMed.style.height = medD + 'px';
-    E.pfpMed.style.left = ((G.charW - medD) / 2) + 'px';
-    E.pfpMed.style.top = (G.charH * 0.88 - medD / 2) + 'px';
-    E.pfpImg.style.width = pfpD + 'px'; E.pfpImg.style.height = pfpD + 'px';
-    E.pfpImg.style.left = ringPad + 'px'; E.pfpImg.style.top = ringPad + 'px';
-
-    // splat decal covers torso
     E.decal.style.width = (G.charW * .6) + 'px'; E.decal.style.height = (G.charW * .6) + 'px';
     E.decal.style.left = (G.charW * .2) + 'px'; E.decal.style.top = (G.charH * .45) + 'px';
 
-    // crown floats above head (head top ≈ 49% down the char box for idle pose)
-    const crW = 74 * s, crH = 53 * s;
+    const crW = 52 * s, crH = 38 * s;
     E.crown.style.width = crW + 'px'; E.crown.style.height = crH + 'px';
-    E.crown.style.left = ((G.pedW - crW) / 2) + 'px';
-    E.crown.style.top = (standY - G.charH * 0.54 - crH) + 'px';
+    E.crown.style.left = ((G.clusterW - crW) / 2) + 'px';
+    E.crown.style.top = (G.standYIn - G.charH * 0.54 - crH) + 'px';
 
-    // info block below the pedestal
-    const info = E.info;
-    info.style.left = '0px';
-    info.style.top = (seam + G.pedH * 0.42) + 'px';
-    info.style.width = G.sideW + 'px';
-    const badge = info.querySelector('.badge');
-    badge.style.width = (188 * s) + 'px'; badge.style.height = (58 * s) + 'px';
-    const amount = info.querySelector('.amount');
-    amount.style.width = (252 * s) + 'px'; amount.style.height = (60 * s) + 'px';
-    const ribbon = info.querySelector('.ribbon');
-    ribbon.style.width = (330 * s) + 'px'; ribbon.style.height = (56 * s) + 'px';
+    E.plate.style.width = G.plateW + 'px';
+    E.plate.style.height = G.plateH + 'px';
+    E.plate.style.left = ((G.clusterW - G.plateW) / 2) + 'px';
+    E.plate.style.top = G.plateTopIn + 'px';
+
+    E.openTag.style.left = ((G.clusterW - 170 * s) / 2) + 'px';
+    E.openTag.style.width = (170 * s) + 'px';
+    E.openTag.style.top = (G.plateTopIn - 26 * s) + 'px';
+
+    E.stealBurst.style.left = ((G.clusterW - 150) / 2) + 'px';
+    E.stealBurst.style.top = (G.thrTopIn - G.charH * 0.7 - 44) + 'px';
+
+    // ticket hangs off the rail's bottom edge (does NOT lift)
+    E.ticket.style.width = G.tickW + 'px';
+    E.ticket.style.height = G.tickH + 'px';
+    E.ticket.style.left = ((G.clusterW - G.tickW) / 2) + 'px';
+    E.ticket.style.top = (G.railTop + G.railH - 6) + 'px';
   }
 
   $('debug-seam').style.top = (seam - 1) + 'px';
@@ -957,63 +1120,47 @@ function applyLayout() {
 }
 
 function assignArt() {
-  $('lane-base').src = assetSrc[UI_ASSETS.laneBase];
-  $('lane-cap-left').src = assetSrc[UI_ASSETS.laneCapL];
-  $('lane-cap-right').src = assetSrc[UI_ASSETS.laneCapR];
-  $('announce').querySelector('.ann-bg').src = assetSrc[UI_ASSETS.ribbon];
   const ch = $('chance');
-  ch.querySelector('.chance-bg').src = assetSrc[UI_ASSETS.chanceStrip];
-  ch.querySelector('.chance-pointer').src = assetSrc[UI_ASSETS.chancePtr];
+  const reelBg = ch.querySelector('.chance-reel-bg');
+  if (optSrc.reel) { reelBg.src = optSrc.reel; reelBg.style.display = ''; }
+  else reelBg.style.display = 'none';           // CSS gradient face shows instead
+  ch.querySelector('.chance-pointer').src = optSrc.reelPtr || assetSrc[UI_ASSETS.chancePtr];
   for (const side of ['youtube', 'tiktok']) {
     const E = sideEls[side], isLeft = side === 'youtube';
-    E.pedImg.src = assetSrc[isLeft ? UI_ASSETS.pedestalL : UI_ASSETS.pedestalR];
-    E.shadow.src = assetSrc[UI_ASSETS.shadow];
-    E.pfpRing.src = assetSrc[isLeft ? UI_ASSETS.pfpRingL : UI_ASSETS.pfpRingR];
+    E.pedImg.src = (isLeft ? optSrc.throneYt : optSrc.throneTt)
+      || assetSrc[isLeft ? UI_ASSETS.pedestalL : UI_ASSETS.pedestalR];
     E.crown.src = assetSrc[UI_ASSETS.crown];
-    E.badgeImg.src = assetSrc[isLeft ? UI_ASSETS.badgeL : UI_ASSETS.badgeR];
-    E.amountImg.src = assetSrc[UI_ASSETS.amountPlate];
-    E.ribbonImg.src = assetSrc[UI_ASSETS.ribbon];
+    E.plateIcon.src = iconSrcFor(side);
+    E.ticketIcon.src = iconSrcFor(side);
   }
 }
 
-/* generated fallback avatar when the gift payload has no profile pic */
-function avatarFor(name) {
-  const ramps = [['#1e3a5c', '#5aabff'], ['#3a1a1a', '#ff9f45'], ['#1a3a24', '#5aff9e'],
-                 ['#3a2a14', '#ffb84a'], ['#2a1a3a', '#c47bff'], ['#1a3636', '#5af0ee']];
-  let h = 0; for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
-  const [bg, fg] = ramps[h % ramps.length];
-  return phCanvas(160, 160, (x) => {
-    x.fillStyle = bg; x.beginPath(); x.arc(80, 80, 80, 0, 7); x.fill();
-    x.fillStyle = fg; x.font = 'bold 74px "DM Sans", sans-serif';
-    x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.fillText((name || '?').trim().charAt(0).toUpperCase(), 80, 88);
-  });
+/* refresh visuals after a skin override change */
+function applySkins() {
+  for (const side of ['youtube', 'tiktok']) {
+    const a = actors[side];
+    if (a && state.top[side] && !a.busy) a.idle();
+  }
 }
 
 /* ── side identity + numbers refresh ── */
 function updateSideInfo(side, bump) {
   const E = sideEls[side], t = state.top[side];
-  const rt = ribbonText(side);
-  const ribbonEl = E.ribbonTxt.parentElement;
-  ribbonEl.style.display = rt === null ? 'none' : '';
-  if (rt !== null) E.ribbonTxt.textContent = rt;
+  E.pedWrap.classList.toggle('open', !t);
+  E.openTag.style.display = t ? 'none' : '';
+  E.plate.style.display = t ? '' : 'none';
+  E.crown.style.display = '';   // faint crown stays over an open throne (CSS .open)
   if (t) {
     E.charWrap.classList.remove('hidden-char');
-    E.crown.style.display = '';
-    E.nameEl.textContent = t.name;
-    E.amountTxt.textContent = fmtAmount(side, t.total);
-    E.pfpImg.src = t.pic || avatarFor(t.name);
-    E.pfpMed.style.display = '';
+    applyMarquee(E.plateName, E.plateScroll, t.name);
+    E.plateAmt.textContent = fmtAmount(side, t.total);
   } else {
     E.charWrap.classList.add('hidden-char');
-    E.pfpMed.style.display = 'none';
-    E.crown.style.display = 'none';
-    E.nameEl.textContent = '— OPEN —';
-    E.amountTxt.textContent = '0';
   }
   if (bump) {
-    E.info.classList.remove('bump'); void E.info.offsetWidth; E.info.classList.add('bump');
+    E.plate.classList.remove('bump'); void E.plate.offsetWidth; E.plate.classList.add('bump');
   }
+  refreshTicket(side);
   publishStatus();
 }
 
@@ -1038,8 +1185,6 @@ function updateHeights(silent) {
     const E = sideEls[side], lift = liftFor(side);
     E.lift = lift;
     E.pedWrap.style.transform = `translateY(${lift}px)`;
-    E.shadow.style.opacity = lift < 0 ? 0.35 : 0.55;
-    E.shadow.style.transform = `scale(${lift < 0 ? 0.85 : 1})`;
   }
   if (!silent && CONFIG.CALLOUTS.compare && leader !== lastLeader && (Date.now() - lastCompareAt) / 1000 > CONFIG.COMPARE_MIN_GAP_S) {
     lastCompareAt = Date.now();
@@ -1075,7 +1220,7 @@ class Actor {
     return new Promise((resolve) => {
       let i = 0, played = 0;
       const step = () => {
-        this.img.src = assetSrc[frames[i]];
+        this.img.src = frameSrc(this.side, frames[i]);
         i++;
         if (i >= frames.length) {
           i = 0; played++;
@@ -1141,18 +1286,24 @@ function chanceRoll(tier) {
   for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
   return 1;
 }
-function showChanceStrip(resultIdx) {
+function showChanceStrip(resultIdx, gifterName) {
   return new Promise((res) => {
-    const el = $('chance'), txt = el.querySelector('.chance-text');
+    const el = $('chance');
+    const pre = el.querySelector('.slot.pre'), mid = el.querySelector('.slot.mid'), post = el.querySelector('.slot.post');
+    el.querySelector('.chance-caption').textContent = gifterName ? `${gifterName} spun a gift…` : 'gift spin…';
+    const setSlots = (i) => {
+      const n = CHANCE_LABELS.length;
+      pre.textContent = CHANCE_LABELS[((i - 1) % n + n) % n];
+      mid.textContent = CHANCE_LABELS[((i % n) + n) % n];
+      post.textContent = CHANCE_LABELS[(i + 1) % n];
+    };
     el.classList.add('show'); el.classList.remove('landed');
-    let t = 0;
-    const spin = setInterval(() => {
-      txt.textContent = CHANCE_LABELS[t++ % CHANCE_LABELS.length];
-      sfx('tick');
-    }, 90);
+    let t = Math.floor(Math.random() * CHANCE_LABELS.length);
+    setSlots(t);
+    const spin = setInterval(() => { setSlots(++t); sfx('tick'); }, 90);
     setTimeout(() => {
       clearInterval(spin);
-      txt.textContent = CHANCE_LABELS[resultIdx];
+      setSlots(resultIdx);
       el.classList.add('landed');
       sfx(resultIdx === 0 ? 'whiff' : 'land');
       setTimeout(() => { el.classList.remove('show', 'landed'); res(); }, CONFIG.CHANCE_HOLD_MS);
@@ -1183,18 +1334,16 @@ async function pumpLane() {
 function sideCharCenter(side) {
   const E = sideEls[side];
   const rootX = parseFloat(E.root.style.left);
-  const pedX = parseFloat(E.pedWrap.style.left);
-  const pedTop = parseFloat(E.pedWrap.style.top) + (E.lift || 0);
-  const standY = G.pedH * G.standFrac;
+  const wrapTop = parseFloat(E.pedWrap.style.top) + (E.lift || 0);
   return {
-    x: rootX + pedX + G.pedW / 2,
-    y: pedTop + standY - G.charH * 0.26,   // torso height (art has top margin)
-    handY: pedTop + standY - G.charH * 0.30,
+    x: rootX + G.clusterW / 2,
+    y: wrapTop + G.standYIn - G.charH * 0.26,   // torso height (art has top margin)
+    handY: wrapTop + G.standYIn - G.charH * 0.30,
   };
 }
 
-/* throwable art fills ~55% of its canvas, so display sizes run larger */
-function tierProjSize(tier) { return [0, 80, 110, 150, 200][tier] || 80; }
+/* throwable art fills ~55% of its canvas; sized to the smaller clusters */
+function tierProjSize(tier) { return [0, 56, 76, 104, 140][tier] || 56; }
 
 function spawnFx(kind, x, y, size) {
   const frames = FX[kind];
@@ -1342,6 +1491,7 @@ function recomputeTop(side, { animate = false } = {}) {
 
 function giftReceived(side, name, nativeAmount, usd, pic) {
   if (!SIDES[side] || !(nativeAmount > 0)) return;
+  wakeIdle();
   const k = keyOf(name);
   const g = state.gifters[side][k] || (state.gifters[side][k] = { name, total: 0, pic: null });
   g.total += nativeAmount;
@@ -1376,7 +1526,7 @@ function giftReceived(side, name, nativeAmount, usd, pic) {
 async function runGiftFlow(item, overload) {
   const { side, name, nativeAmount, tier, isHolder } = item;
   const C = CONFIG.CALLOUTS;
-  const amtTxt = side === 'tiktok' ? `${Math.round(nativeAmount).toLocaleString()} COINS` : `$${nativeAmount.toFixed(2)}`;
+  const amtTxt = `${Math.round(nativeAmount).toLocaleString()} ${currencyWord(side)}`;
   if (C.gift) await announce(`${name.toUpperCase()} SENT ${amtTxt}`, 'gift',
     tier >= 3 ? CONFIG.ANNOUNCE_BIG_MS : CONFIG.ANNOUNCE_GIFT_MS);
 
@@ -1387,7 +1537,7 @@ async function runGiftFlow(item, overload) {
 
   let idx = chanceRoll(tier);
   if (isHolder && idx === 0) idx = 1;      // the champ flexing never fully whiffs
-  if (C.chance) await showChanceStrip(idx);
+  if (C.chance) await showChanceStrip(idx, name);
 
   const opp = side === 'youtube' ? 'TIKTOK' : 'YOUTUBE';
   const NAME = name.toUpperCase();
@@ -1446,24 +1596,33 @@ async function runStealFlow(item) {
     if (CONFIG.CALLOUTS.steal) announce(`NEW ${plat} TOP SPLATTY`, 'steal', 2400);
   }
 
-  /* arrival */
+  /* arrival — crown hops onto the new champ, plate flashes gold, STOLE IT! */
   updateSideInfo(side);
   E.decal.classList.remove('show');
   E.charWrap.classList.remove('hidden-char');
   E.charWrap.classList.add('arrive');
+  E.crown.classList.remove('transfer'); void E.crown.offsetWidth; E.crown.classList.add('transfer');
+  E.plate.classList.add('gold-flash');
+  setTimeout(() => E.plate.classList.remove('gold-flash'), 2400);
+  if (hadOld && CONFIG.CALLOUTS.steal) {
+    E.stealBurst.classList.remove('show'); void E.stealBurst.offsetWidth;
+    E.stealBurst.classList.add('show');
+    setTimeout(() => E.stealBurst.classList.remove('show'), 1900);
+  }
   const c = sideCharCenter(side);
-  spawnFx('flash', c.x, c.y, 320);
+  spawnFx('flash', c.x, c.y, 220);
   sfx('fanfare');
   if (a) {
     a.busy = true;
     await a.play('victory', { fps: 4 });
     E.charWrap.classList.remove('arrive');
+    E.crown.classList.remove('transfer');
     a.idle();
   }
   if (CONFIG.CALLOUTS.steal) announce(pick([
     `${NAME} IS THE NEW ${plat} TOP SPLATTY`,
     `ALL HAIL ${NAME}`,
-    `SEND ${side === 'tiktok' ? '1 MORE' : '$0.01 MORE'} TO KNOCK ${NAME} OFF`,
+    `SEND 1 MORE TO KNOCK ${NAME} OFF`,
   ]), 'steal', 2400);
 }
 
@@ -1480,12 +1639,102 @@ setInterval(() => {
     `YOU GONNA LET ${t.name.toUpperCase()} STAY UP THERE?`,
     `${SIDES[side].label} TOP SPLATTY IS GETTING COMFY`,
   ];
-  if ((CONFIG.RIBBON || {}).mode === 'steal') lines.push(fmtChallenge(side, t.total));
+  lines.push(`SEND ${fmtAmount(side, t.total + 1)} ${currencyWord(side)} TO STEAL ${SIDES[side].label}`);
   laneQueue.push({ kind: 'hype', text: pick(lines), ms: 2400 });
   pumpLane();
   const a = actors[side];
   if (a && !a.busy) { a.busy = true; a.play('taunt', { fps: 3.6 }).then(() => a.idle()); }
 }, CONFIG.HYPE_EVERY_S * 1000);
+
+/* ════════════════════════════════════════════════════════════════
+   7b. CHALLENGER TICKETS, CHAT COMMANDS (!steal / !throne), IDLE DIM
+   ════════════════════════════════════════════════════════════════ */
+
+const ticketState = {
+  youtube: { idx: 0, holdRow: null, holdUntil: 0 },
+  tiktok:  { idx: 0, holdRow: null, holdUntil: 0 },
+};
+const stealCooldowns = {};        // viewer key → last !steal timestamp
+let lastActivityAt = Date.now();
+
+function wakeIdle() {
+  lastActivityAt = Date.now();
+  ['youtube', 'tiktok'].forEach(s => sideEls[s] && sideEls[s].ticket.classList.remove('dim'));
+}
+
+/* the next ~2 gifters chasing the crown on a side (champ excluded) */
+function challengersFor(side) {
+  const top = state.top[side];
+  return Object.values(state.gifters[side])
+    .filter(g => !top || keyOf(g.name) !== keyOf(top.name))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 2);
+}
+
+function renderTicket(side, row) {
+  const E = sideEls[side];
+  if (!row) { E.ticket.classList.add('empty'); return; }
+  E.ticket.classList.remove('empty');
+  applyMarquee(E.ticketName, E.ticketScroll, row.name);
+  E.ticketAmt.textContent = fmtAmount(side, row.total);
+}
+
+function refreshTicket(side) {
+  const ts = ticketState[side], E = sideEls[side];
+  if (ts.holdRow && Date.now() < ts.holdUntil) { renderTicket(side, ts.holdRow); return; }
+  if (ts.holdRow) { ts.holdRow = null; E.ticket.classList.remove('steal-hold'); }
+  const rows = challengersFor(side);
+  renderTicket(side, rows.length ? rows[ts.idx % rows.length] : null);
+}
+
+/* rotation loop — self-rescheduling so ROTATION_S changes apply live;
+   pauses while the lane director is resolving a gift */
+(function rotateTick() {
+  setTimeout(() => {
+    if (!lanePumping) {
+      for (const side of ['youtube', 'tiktok']) {
+        const ts = ticketState[side];
+        if (!(ts.holdRow && Date.now() < ts.holdUntil)) ts.idx++;
+        if (sideEls[side]) refreshTicket(side);
+      }
+    }
+    rotateTick();
+  }, Math.max(2, CONFIG.ROTATION_S) * 1000);
+})();
+
+/* idle dim — tickets mute to grey (opaque) when the lane goes quiet */
+setInterval(() => {
+  const idle = CONFIG.IDLE_DIM && (Date.now() - lastActivityAt) / 1000 > CONFIG.IDLE_AFTER_S;
+  ['youtube', 'tiktok'].forEach(s => sideEls[s] && sideEls[s].ticket.classList.toggle('dim', idle));
+}, 3000);
+
+/* chat commands ride stream-dock's existing milk-event comment relay */
+function onChat(d) {
+  if (!d || d.type !== 'comment') return;
+  const text = String(d.message || '').trim().toLowerCase();
+  if (!text.startsWith('!')) return;
+  const user = String(d.username || '').replace(/^@/, '').trim();
+  const plat = (d.platform || '').toLowerCase();
+  const side = plat === 'youtube' ? 'youtube' : plat === 'tiktok' ? 'tiktok' : null;
+
+  if (text.startsWith(CONFIG.CMD_THRONE)) {
+    wakeIdle();
+    ['youtube', 'tiktok'].forEach(refreshTicket);
+    return;
+  }
+  if (text.startsWith(CONFIG.CMD_STEAL) && side && user) {
+    const k = keyOf(user), now = Date.now();
+    if (stealCooldowns[k] && now - stealCooldowns[k] < CONFIG.STEAL_CD_S * 1000) return;
+    stealCooldowns[k] = now;
+    wakeIdle();
+    const rec = state.gifters[side][k];
+    const ts = ticketState[side];
+    ts.holdRow = { name: rec ? rec.name : user, total: rec ? rec.total : 0 };
+    ts.holdUntil = now + CONFIG.STEAL_SHOW_S * 1000;
+    sideEls[side].ticket.classList.add('steal-hold');
+    renderTicket(side, ts.holdRow);
+  }
+}
 
 /* ════════════════════════════════════════════════════════════════
    8. SFX — tiny WebAudio blips (placeholder-grade, no files)
@@ -1544,9 +1793,15 @@ function onGiftAlert(d) {
   const amt = +d.amount || 0;
   if (amt <= 0) return;
   let native, usd;
-  if (side === 'tiktok') { native = amt; usd = amt * CONFIG.COIN_TO_USD; }
-  else if (type === 'youtube_jewels') { native = amt * CONFIG.JEWEL_TO_USD; usd = native; }
-  else { native = amt; usd = amt; }
+  if (side === 'tiktok') {                        // native unit: coins
+    native = amt; usd = amt * CONFIG.COIN_TO_USD;
+  } else if (type === 'youtube_jewels') {         // native unit: jewels
+    native = amt; usd = amt * CONFIG.JEWEL_TO_USD;
+  } else {                                        // superchats: off by default
+    if (!CONFIG.YT_SUPERCHATS) return;
+    native = Math.round(amt / CONFIG.JEWEL_TO_USD);   // dollars → jewel-equivalent
+    usd = amt;
+  }
   giftReceived(side, d.name || 'Anonymous', native, usd, d.profilePic || d.chatimg || d.avatar || null);
 }
 
@@ -1589,13 +1844,20 @@ function onCommand(d) {
       }
       cfgOverride.callouts = CONFIG.CALLOUTS; persistCfg();
       break;
-    case 'ribbon':
-      /* d: {mode:'off'|'steal'|'custom', text} — the line under name+amount */
-      if (['off', 'steal', 'custom'].includes(d.mode)) {
-        CONFIG.RIBBON = { mode: d.mode, custom: String(d.text || '').slice(0, 48) };
-        cfgOverride.ribbon = CONFIG.RIBBON; persistCfg();
-        ['youtube', 'tiktok'].forEach(s => updateSideInfo(s));
+    case 'redesign':
+      /* d: {rotationS?, stealCdS?, idleDim?, idleAfterS?, skin?:{youtube,tiktok}} */
+      if (+d.rotationS >= 2) { CONFIG.ROTATION_S = +d.rotationS; cfgOverride.rotationS = CONFIG.ROTATION_S; }
+      if (d.stealCdS != null && +d.stealCdS >= 0) { CONFIG.STEAL_CD_S = +d.stealCdS; cfgOverride.stealCdS = CONFIG.STEAL_CD_S; }
+      if (d.idleDim != null) { CONFIG.IDLE_DIM = !!d.idleDim; cfgOverride.idleDim = CONFIG.IDLE_DIM; }
+      if (+d.idleAfterS >= 10) { CONFIG.IDLE_AFTER_S = +d.idleAfterS; cfgOverride.idleAfterS = CONFIG.IDLE_AFTER_S; }
+      if (d.skin && typeof d.skin === 'object') {
+        for (const s of ['youtube', 'tiktok'])
+          if (['auto', 'yt', 'tt', 'generic'].includes(d.skin[s])) CONFIG.SKIN[s] = d.skin[s];
+        cfgOverride.skin = CONFIG.SKIN;
+        applySkins();
       }
+      persistCfg();
+      wakeIdle();
       break;
     case 'sfx':
       CONFIG.SFX.enabled = !!d.on;
@@ -1612,7 +1874,7 @@ function onCommand(d) {
           .filter(([kk]) => kk !== k)
           .map(([, g]) => g.total);
         const floor = others.length ? Math.max(...others) : 0;
-        const bump = d.platform === 'tiktok' ? 1 : 0.01;
+        const bump = 1;   // both platforms use whole native units (coins / jewels)
         const total = Math.max(+d.amount, floor > 0 ? floor + bump : 0);
         state.gifters[d.platform][k] = { name: d.name, total, pic: d.pic || null };
         recomputeTop(d.platform, { animate: !!d.animate });
@@ -1638,9 +1900,10 @@ function onCommand(d) {
       }
       break;
     case 'test-gift':
+      /* amount in native units: coins (tiktok) / jewels (youtube) */
       giftReceived(d.platform, d.name || 'Tester',
         +d.amount || 1,
-        d.platform === 'tiktok' ? (+d.amount || 1) * CONFIG.COIN_TO_USD : (+d.amount || 1),
+        (+d.amount || 1) * (d.platform === 'tiktok' ? CONFIG.COIN_TO_USD : CONFIG.JEWEL_TO_USD),
         d.pic || null);
       break;
     case 'demo': runDemo(); break;
@@ -1668,7 +1931,11 @@ function doPublishStatus() {
     youtube: state.top.youtube && { name: state.top.youtube.name, total: state.top.youtube.total },
     roster: { tiktok: rosterOf('tiktok'), youtube: rosterOf('youtube') },
     seamY: CONFIG.SEAM_Y, uiScale: CONFIG.UI_SCALE,
-    ribbon: CONFIG.RIBBON, callouts: CONFIG.CALLOUTS,
+    callouts: CONFIG.CALLOUTS,
+    redesign: {
+      rotationS: CONFIG.ROTATION_S, stealCdS: CONFIG.STEAL_CD_S,
+      idleDim: CONFIG.IDLE_DIM, idleAfterS: CONFIG.IDLE_AFTER_S, skin: CONFIG.SKIN,
+    },
     missingAssets: missingCount, totalAssets: totalCount,
   };
   const str = JSON.stringify(payload);
@@ -1685,6 +1952,7 @@ function connectAbly() {
     ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);   // busy shared channel
     syncChannel = ably.channels.get(CONFIG.SYNC_CHANNEL);   // quiet private channel
     ablyChannel.subscribe(CONFIG.GIFT_ALERT, m => onGiftAlert(m.data));
+    ablyChannel.subscribe('milk-event', m => onChat(m.data));   // !steal / !throne chat commands
     syncChannel.subscribe(CONFIG.MSG_IN, m => onCommand(m.data));
     ably.connection.on('connected', () => { $('conn-dot').classList.add('connected'); publishStatus(true); });
     ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
@@ -1697,15 +1965,17 @@ async function runDemo() {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   onCommand({ cmd: 'reset' });
   await wait(2800);
-  giftReceived('tiktok', 'JoeFan88', 99, 99 * CONFIG.COIN_TO_USD, null);
+  const g = (side, name, amt) => giftReceived(side, name, amt,
+    amt * (side === 'tiktok' ? CONFIG.COIN_TO_USD : CONFIG.JEWEL_TO_USD), null);
+  g('tiktok', 'JoeFan88', 99);
   await wait(1500);
-  giftReceived('youtube', 'BigMike', 5, 5, null);
+  g('youtube', 'BigMike', 1000);
   await wait(6000);
-  giftReceived('tiktok', 'SplatQueen', 1200, 6, null);
+  g('tiktok', 'SplatQueen', 1200);
   await wait(7000);
-  giftReceived('youtube', 'BigMike', 20, 20, null);
+  g('youtube', 'BigMike', 4000);
   await wait(7000);
-  giftReceived('tiktok', 'JoeFan88', 5000, 25, null);
+  g('tiktok', 'JoeFan88', 5000);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1719,7 +1989,7 @@ async function boot() {
   buildSide('tiktok');
   applyLayout();
 
-  await Promise.all(allAssetPaths().map(resolveAsset));
+  await Promise.all([...allAssetPaths().map(resolveAsset), ...allRedesignProbes()]);
   assignArt();
 
   actors.youtube = new Actor('youtube');
@@ -1738,17 +2008,20 @@ async function boot() {
     hud.textContent =
       `seam ${CONFIG.SEAM_Y}  scale ${CONFIG.UI_SCALE}\n` +
       `assets ${totalCount - missingCount}/${totalCount} real (${missingCount} placeholder)\n` +
-      `YT ${state.top.youtube ? state.top.youtube.name + ' $' + state.top.youtube.total.toFixed(2) : '—'}  ` +
+      `YT ${state.top.youtube ? state.top.youtube.name + ' ' + Math.round(state.top.youtube.total) + 'j' : '—'}  ` +
       `TT ${state.top.tiktok ? state.top.tiktok.name + ' ' + state.top.tiktok.total + 'c' : '—'}\n` +
       `queue ${laneQueue.length}`;
   }, 500);
 
-  console.log(`[TopSplatty] ready — ${totalCount - missingCount}/${totalCount} real assets, ${missingCount} placeholders`);
+  const ytSkins = Object.keys(sideFrames.yt).length, ttSkins = Object.keys(sideFrames.tt).length;
+  console.log(`[TopSplatty] ready — ${totalCount - missingCount}/${totalCount} base assets; ` +
+    `redesign art: ${Object.keys(optSrc).length}/6 ui, yt-skin ${ytSkins} frames, tt-skin ${ttSkins} frames (fallbacks active where 0)`);
 }
 
 /* public API for console testing */
 window.topSplatty = {
   gift: (platform, name, amount, pic) => onCommand({ cmd: 'test-gift', platform, name, amount, pic }),
+  chat: (platform, username, message) => onChat({ type: 'comment', platform, username, message }),
   reset: () => onCommand({ cmd: 'reset' }),
   demo: () => runDemo(),
   seam: (y) => onCommand({ cmd: 'seam', y }),
