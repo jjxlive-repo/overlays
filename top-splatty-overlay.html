@@ -62,10 +62,20 @@
     transform-origin: 50% 100%;
   }
   .char-wrap.hidden-char { display: none; }
-  /* the mascot canvas has ~15% empty margin below the feet — shift the img
-     down so the feet land on the pedestal stand point */
-  .char-img { position: absolute; top: 15.5%; left: 0; width: 100%; height: 100%; }
-  .char-flip .char-img { transform: scaleX(-1); }
+  /* new skin art is trimmed tight — bottom-anchor it in the box; the old
+     generic canvas has ~15% empty margin below the feet (.gen-art shifts it) */
+  .char-img {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    object-position: 50% 100%;
+    transform-origin: 50% 100%;
+  }
+  .char-wrap.gen-art .char-img { top: 15.5%; }
+  .char-flip .char-img { scale: -1 1; }   /* the `scale` property survives transform animations */
+  .char-wrap.single .char-img { animation: tsBreathe 2.6s ease-in-out infinite; }
+  @keyframes tsBreathe {
+    0%, 100% { transform: none; }
+    50% { transform: translateY(3px) scaleY(.965); }
+  }
 
   /* real art keeps its aspect ratio */
   .char-img, .proj, .fx, .ped-img, .crown-img,
@@ -121,29 +131,32 @@
     50% { transform: translateY(-7px) rotate(4deg); }
   }
 
-  /* ── champ plate (name · amount · icon) — sits on the rail under the throne ── */
+  /* ── champ plate — cream sticker with wonky corners, per the layout mock ── */
   .plate {
     position: absolute; z-index: 14;
-    display: flex; align-items: center; gap: 7px;
+    display: flex; align-items: center; gap: 8px;
     background: #FFF6D8;
-    border: 3.5px solid var(--side-edge, #7B2FBE);
-    border-radius: 999px;
+    border: 5px solid #1A0A2A;
+    box-shadow: 0 6px 0 rgba(26,10,42,.85);
     padding: 0 14px;
-    box-shadow: 0 3px 0 rgba(26,10,42,.4);
     transition: border-color .3s, box-shadow .3s;
   }
+  #side-youtube .plate { border-radius: 26px 14px 24px 16px; transform: rotate(-2deg); }
+  #side-tiktok  .plate { border-radius: 16px 26px 14px 24px; transform: rotate(2deg); }
   .plate .p-name {
-    overflow: hidden; white-space: nowrap; flex: 0 1 auto; max-width: 104px;
-    font-size: 21px; color: var(--side-edge, #7B2FBE); line-height: 1;
+    overflow: hidden; white-space: nowrap; flex: 1 1 auto; min-width: 0;
+    font-size: 23px; color: #3B0764; line-height: 1;
   }
   .plate .p-amt {
-    margin-left: auto; font-size: 23px; color: #1A0A2A; line-height: 1;
+    flex: none; font-size: 23px; color: var(--side-amt, #3B0764); line-height: 1;
     white-space: nowrap;
   }
-  .plate .p-icon { width: 21px; height: 21px; object-fit: contain; flex: none; }
+  .plate .p-icon { width: 24px; height: 24px; object-fit: contain; flex: none; display: block; position: relative; }
+  .p-icon.icon-jewel, .t-icon.icon-jewel { top: 3px; }    /* the two PNGs have different padding */
+  .p-icon.icon-coin,  .t-icon.icon-coin  { top: -1px; }
   .plate.gold-flash {
     border-color: #FFD25A;
-    box-shadow: 0 0 16px rgba(255,210,90,.95), 0 3px 0 rgba(26,10,42,.4);
+    box-shadow: 0 0 16px rgba(255,210,90,.95), 0 6px 0 rgba(26,10,42,.85);
   }
 
   /* marquee — only when the name overflows (JS sets --dist + .scroll) */
@@ -151,24 +164,33 @@
   .scroll .m-scroll { animation: tsMarquee 5.5s ease-in-out infinite alternate; }
   @keyframes tsMarquee { from { transform: translateX(0); } to { transform: translateX(var(--dist, -40px)); } }
 
-  /* ── challenger ticket — hangs off the rail's bottom edge ── */
+  /* ── challenger ticket — dark bar with a %-to-steal fill, per the mock ── */
   .ticket {
     position: absolute; z-index: 13;
-    display: flex; align-items: center; gap: 6px;
-    background: #2a1148;
-    border: 3px solid var(--side-edge, #7B2FBE);
-    border-radius: 999px;
-    padding: 0 11px;
-    box-shadow: 0 2px 0 rgba(26,10,42,.4);
+    background: #2A0845;
+    border: 4px solid var(--side-edge, #7B2FBE);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 5px 0 rgba(26,10,42,.55);
     transition: filter .6s, border-color .6s;
   }
-  .ticket .t-name {
-    overflow: hidden; white-space: nowrap; max-width: 86px;
-    font-size: 15px; color: #E9DEFB; line-height: 1;
+  .ticket .t-fill {
+    position: absolute; left: 0; top: 0; height: 100%;
+    background: var(--side-fill, rgba(123,47,190,.5));
+    transition: width .7s cubic-bezier(.2,.9,.3,1);
   }
-  .ticket .t-amt { margin-left: auto; font-size: 16px; color: #FFF6D8; white-space: nowrap; line-height: 1; }
-  .ticket .t-icon { width: 15px; height: 15px; object-fit: contain; flex: none; }
-  .ticket .t-crown { font-size: 13px; line-height: 1; flex: none; }
+  .ticket .t-row {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; gap: 7px;
+    padding: 0 11px;
+  }
+  .ticket .t-name {
+    overflow: hidden; white-space: nowrap; flex: 1 1 auto; min-width: 0;
+    font-size: 16px; color: var(--tick-name, #E9DEFB); line-height: 1;
+  }
+  .ticket .t-amt { flex: none; font-size: 19px; color: #FFF6D8; white-space: nowrap; line-height: 1; }
+  .ticket .t-icon { width: 22px; height: 22px; object-fit: contain; flex: none; display: block; position: relative; }
+  .ticket .t-crown { font-size: 14px; line-height: 1; flex: none; }
   .ticket.dim { filter: grayscale(1) brightness(.72); border-color: #4a4356; }
   .ticket.empty { visibility: hidden; }
   .ticket.steal-hold { border-color: #FFD25A; }
@@ -254,8 +276,8 @@
   @keyframes tsChanceIn { from { transform: scale(.7); } to { transform: scale(1); } }
   #chance .chance-caption {
     position: absolute; left: 0; right: 0; text-align: center;
-    font-size: 17px; color: #FAF5FF; letter-spacing: .5px;
-    text-shadow: 0 2px 0 rgba(26,10,42,.8), 0 0 8px rgba(26,10,42,.6);
+    font-size: 19px; color: #FFF6D8; letter-spacing: .5px;
+    text-shadow: 0 2px 0 #1A0A2A, 0 0 10px rgba(0,0,0,.8);
     white-space: nowrap;
   }
   #chance .chance-reel {
@@ -265,6 +287,8 @@
     border: 3.5px solid #1A0A2A; border-radius: 16px;
     overflow: hidden;
   }
+  #chance .chance-reel.has-art { background: none; border: none; border-radius: 0; }
+  #chance .chance-reel.has-art .slot.mid { background: none; border-left: none; border-right: none; }
   #chance .chance-reel-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
   #chance .slot {
     position: relative; z-index: 2; flex: 1;
@@ -451,19 +475,21 @@ const SEQ_FRAMES = {
   victory: ['character/splatty-victory-01', 'character/splatty-victory-02', 'character/splatty-victory-03'],
 };
 
+/* redesign3 package: single flight + single impact per object */
 const THROWABLES = {
-  tomato:   { flight: 'throwables/throw-tomato-flight',   impact: ['throwables/throw-tomato-impact-01', 'throwables/throw-tomato-impact-02'],   fx: 'splat' },
-  pie:      { flight: 'throwables/throw-pie-flight',      impact: ['throwables/throw-pie-impact-01', 'throwables/throw-pie-impact-02'],         fx: 'splat' },
-  bone:     { flight: 'throwables/throw-bone-flight',     impact: ['throwables/throw-bone-impact-01', 'throwables/throw-bone-impact-02'],       fx: 'bonk' },
-  crown:    { flight: 'throwables/throw-crown-flight',    impact: ['throwables/throw-crown-impact-01', 'throwables/throw-crown-impact-02'],     fx: 'bonk' },
-  moneybag: { flight: 'throwables/throw-moneybag-flight', impact: ['throwables/throw-moneybag-impact-01', 'throwables/throw-moneybag-impact-02'], fx: 'bonk' },
+  tomato:   { flight: 'throwables/throw-tomato-flight',   impact: ['throwables/throw-tomato-impact'],   fx: 'splat' },
+  pie:      { flight: 'throwables/throw-pie-flight',      impact: ['throwables/throw-pie-impact'],      fx: 'splat' },
+  bone:     { flight: 'throwables/throw-bone-flight',     impact: ['throwables/throw-bone-impact'],     fx: 'bonk' },
+  crown:    { flight: 'throwables/throw-crown-flight',    impact: ['throwables/throw-crown-impact'],    fx: 'bonk' },
+  moneybag: { flight: 'throwables/throw-moneybag-flight', impact: ['throwables/throw-moneybag-impact'], fx: 'bonk' },
 };
 
+/* single-frame fx; confetti doubles as the victory/steal flash */
 const FX = {
-  dust:  ['fx/fx-dust-01', 'fx/fx-dust-02'],
-  bonk:  ['fx/fx-bonk-01', 'fx/fx-bonk-02'],
-  splat: ['fx/fx-splat-01', 'fx/fx-splat-02'],
-  flash: ['fx/fx-flash-01'],
+  dust:  ['fx/fx-dust'],
+  bonk:  ['fx/fx-bonk'],
+  splat: ['fx/fx-splat'],
+  flash: ['fx/fx-confetti'],
 };
 
 /* generic fallbacks still in use; the rest of the old UI package is retired
@@ -795,10 +821,12 @@ function placeholderFor(path) {
   // character frames
   const m = path.match(/character\/splatty-(.+)$/);
   if (m) return phSplatty(m[1]);
-  const t = path.match(/throwables\/throw-([a-z]+)-(flight|impact-01|impact-02)$/);
-  if (t) return phThrowable(t[1], t[2] === 'flight' ? 'flight' : t[2] === 'impact-01' ? 0 : 1);
-  const f = path.match(/fx\/fx-([a-z]+)-0([12])$/);
-  if (f) return phFx(f[1], +f[2] - 1);
+  const t = path.match(/throwables\/throw-([a-z]+)-(flight|impact)$/);
+  if (t) return phThrowable(t[1], t[2] === 'flight' ? 'flight' : 1);
+  const f = path.match(/fx\/fx-([a-z]+)$/);
+  if (f) return phFx(f[1] === 'confetti' ? 'flash' : f[1], 1);
+  const f2 = path.match(/fx\/fx-([a-z]+)-0([12])$/);
+  if (f2) return phFx(f2[1], +f2[2] - 1);
   for (const [k, v] of Object.entries(UI_ASSETS)) if (v === path) return phUi(k);
   return phUi('_');
 }
@@ -857,10 +885,15 @@ function skinFor(side) {
   if (v === 'auto') return side === 'youtube' ? 'yt' : 'tt';
   return v === 'generic' ? null : v;
 }
-function frameSrc(side, path) {
+/* whole-sequence resolution: use the skin's frames when it has ANY for this
+   pose (never mix skin + generic frames inside one sequence — colors clash) */
+function seqFor(side, name) {
   const sk = skinFor(side);
-  if (sk && sideFrames[sk] && sideFrames[sk][path]) return sideFrames[sk][path];
-  return assetSrc[path];
+  if (sk && sideFrames[sk]) {
+    const srcs = SEQ_FRAMES[name].map(p => sideFrames[sk][p]).filter(Boolean);
+    if (srcs.length) return { srcs, generic: false };
+  }
+  return { srcs: SEQ_FRAMES[name].map(p => assetSrc[p]), generic: true };
 }
 function iconSrcFor(side) {
   const key = side === 'youtube' ? 'iconYt' : 'iconTt';
@@ -950,7 +983,10 @@ const sideEls = {};
 function buildSide(side) {
   const isLeft = side === 'youtube';
   const root = $(`side-${side}`);
-  root.style.setProperty('--side-edge', isLeft ? '#c8342c' : '#7B2FBE');
+  root.style.setProperty('--side-edge', isLeft ? '#c8342c' : '#1d3f7a');
+  root.style.setProperty('--side-amt',  isLeft ? '#c8342c' : '#1d3f7a');
+  root.style.setProperty('--side-fill', isLeft ? 'rgba(200,52,44,.5)' : 'rgba(29,63,122,.5)');
+  root.style.setProperty('--tick-name', isLeft ? '#FFD9DE' : '#BFE9FF');
   root.innerHTML = `
     <div class="ped-wrap">
       <img class="ped-img" alt="">
@@ -968,10 +1004,13 @@ function buildSide(side) {
       <div class="steal-burst">STOLE IT!</div>
     </div>
     <div class="ticket empty">
-      <span class="t-name"><span class="m-scroll">—</span></span>
-      <span class="t-amt">0</span>
-      <img class="t-icon" alt="">
-      <span class="t-crown">👑</span>
+      <div class="t-fill"></div>
+      <div class="t-row">
+        <span class="t-name"><span class="m-scroll">—</span></span>
+        <span class="t-amt">0</span>
+        <img class="t-icon" alt="">
+        <span class="t-crown">👑</span>
+      </div>
     </div>`;
   sideEls[side] = {
     root,
@@ -989,6 +1028,7 @@ function buildSide(side) {
     openTag: root.querySelector('.open-tag'),
     stealBurst: root.querySelector('.steal-burst'),
     ticket: root.querySelector('.ticket'),
+    ticketFill: root.querySelector('.t-fill'),
     ticketName: root.querySelector('.t-name'),
     ticketScroll: root.querySelector('.t-name .m-scroll'),
     ticketAmt: root.querySelector('.t-amt'),
@@ -1016,27 +1056,29 @@ const G = {};
 function applyLayout() {
   const s = CONFIG.UI_SCALE, seam = CONFIG.SEAM_Y;
   G.seam = seam;
+  /* geometry from final-layout-reference.html (rail top 530 there = seam 560);
+     everything is expressed rail-relative so the seam slider still works */
   G.railH = 34;
-  G.railTop = seam - 30;                      // rail bottom lands ~4px past the seam
-  G.thrW = 130 * s; G.thrH = 130 * s;         // branded throne
-  G.charH = 185 * s; G.charW = 185 * s;       // mascot canvas has margins; sprite ~50%
-  G.standFrac = 0.54;                         // feet on the throne seat
-  G.plateW = 205 * s; G.plateH = 42 * s;
-  G.clusterW = Math.max(G.plateW, G.thrW) + 10;
-  G.clusterH = 300 * s;
-  G.leftX = 6;                                // far-left cluster
-  G.rightX = 1080 * 0.72 - G.clusterW - 18;   // right cluster clear of the chat column (right 28%)
-  G.tickW = 195 * s; G.tickH = 31 * s;
+  G.railTop = seam - 30;
+  G.thrW = 184 * s; G.thrH = 184 * s;
+  G.charW = 150 * s; G.charH = 150 * s;       // trimmed skin art, bottom-anchored
+  G.plateW = 208 * s; G.plateH = 44 * s;
+  G.tickW = 220 * s; G.tickH = 32 * s;
+  G.clusterW = 240 * s;
+  G.clusterH = 200 * s;                       // crown top → plate bottom
+  G.leftX = 0;
+  G.rightX = 780 - G.clusterW;                // TT throne right edge lands at x≈776
+  // in-cluster tops (mock absolute − crown top 342): crown 0, char 10, throne 36, plate 146
+  G.crownTopIn = 0;
+  G.charTopIn = 10 * s;
+  G.thrTopIn = 36 * s;
+  G.plateTopIn = 146 * s;
+  G.standYIn = G.charTopIn + G.charH;         // trimmed art: feet at char box bottom
 
   // rail
   const rail = $('rail');
   rail.style.top = G.railTop + 'px';
-  rail.style.height = (G.railH - 8) + 'px';   // borders add the other 8px
-
-  // in-cluster vertical stack (ped-wrap local coords)
-  G.plateTopIn = G.clusterH - G.plateH;
-  G.thrTopIn = G.plateTopIn - G.thrH + 12 * s;   // throne base tucks behind the plate
-  G.standYIn = G.thrTopIn + G.thrH * G.standFrac;
+  rail.style.height = (G.railH - 10) + 'px';  // 5px borders add the other 10px
 
   // center gap between the two clusters (for announce + spinner)
   const gapL = G.leftX + G.clusterW, gapR = G.rightX;
@@ -1045,74 +1087,76 @@ function applyLayout() {
 
   // announce pill — floats above the rail in the gap
   const ann = $('announce');
-  ann.style.width = Math.min(G.gapW + 120, 520) + 'px';
-  ann.style.left = (G.gapCX - Math.min(G.gapW + 120, 520) / 2) + 'px';
-  ann.style.top = (G.railTop - 118) + 'px';
+  const annW = Math.min(G.gapW + 140, 520);
+  ann.style.width = annW + 'px';
+  ann.style.left = (G.gapCX - annW / 2) + 'px';
+  ann.style.top = (G.railTop - 150) + 'px';
   ann.style.height = '64px';
 
-  // chance spinner — overlaps the rail top in the gap
+  // chance spinner — 260×74 reel, lower half overlapping the rail top
   const ch = $('chance');
-  const chW = Math.min(G.gapW, 330), chH = 56, capH = 26;
+  const chW = 260, chH = 74, capH = 34;
   G.chW = chW;
-  ch.style.width = chW + 'px'; ch.style.height = (chH + capH + 8) + 'px';
+  ch.style.width = chW + 'px'; ch.style.height = (chH + capH) + 'px';
   ch.style.left = (G.gapCX - chW / 2) + 'px';
-  ch.style.top = (G.railTop - chH - capH + 18) + 'px';
+  ch.style.top = (G.railTop - chH / 2 - capH) + 'px';
   ch.querySelector('.chance-caption').style.top = '0px';
   const reel = ch.querySelector('.chance-reel');
   reel.style.height = chH + 'px';
   const ptr = ch.querySelector('.chance-pointer');
-  ptr.style.width = '30px'; ptr.style.height = '26px';
-  ptr.style.left = (chW / 2 - 15) + 'px';
-  ptr.style.top = (capH - 6) + 'px';
+  ptr.style.width = '36px'; ptr.style.height = '28px';
+  ptr.style.left = (chW / 2 - 18) + 'px';
+  ptr.style.top = (capH - 8) + 'px';
 
   for (const side of ['youtube', 'tiktok']) {
     const E = sideEls[side], isLeft = side === 'youtube';
-    const rootX = isLeft ? G.leftX : G.rightX;
-    E.root.style.left = rootX + 'px';
+    E.root.style.left = (isLeft ? G.leftX : G.rightX) + 'px';
     E.root.style.top = '0px';
     E.root.style.width = G.clusterW + 'px';
 
-    // lifting cluster: bottom edge = plate bottom, overlapping the rail top
+    /* mirrored internal x: mock left-side values, flipped for the right side */
+    const mx = (x, w) => (isLeft ? x * s : G.clusterW - x * s - w);
+
     E.pedWrap.style.left = '0px';
-    E.pedWrap.style.top = (G.railTop + 14 - G.clusterH) + 'px';
+    E.pedWrap.style.top = (G.railTop - 188 * s) + 'px';
     E.pedWrap.style.width = G.clusterW + 'px';
     E.pedWrap.style.height = G.clusterH + 'px';
 
     E.pedImg.style.width = G.thrW + 'px';
     E.pedImg.style.height = G.thrH + 'px';
-    E.pedImg.style.left = ((G.clusterW - G.thrW) / 2) + 'px';
+    E.pedImg.style.left = mx(4, G.thrW) + 'px';
     E.pedImg.style.top = G.thrTopIn + 'px';
 
     E.charWrap.style.width = G.charW + 'px';
     E.charWrap.style.height = G.charH + 'px';
-    E.charWrap.style.left = ((G.clusterW - G.charW) / 2) + 'px';
-    E.charWrap.style.top = (G.standYIn - G.charH) + 'px';
+    E.charWrap.style.left = mx(22, G.charW) + 'px';
+    E.charWrap.style.top = G.charTopIn + 'px';
 
-    E.decal.style.width = (G.charW * .6) + 'px'; E.decal.style.height = (G.charW * .6) + 'px';
-    E.decal.style.left = (G.charW * .2) + 'px'; E.decal.style.top = (G.charH * .45) + 'px';
+    E.decal.style.width = (G.charW * .62) + 'px'; E.decal.style.height = (G.charW * .62) + 'px';
+    E.decal.style.left = (G.charW * .19) + 'px'; E.decal.style.top = (G.charH * .3) + 'px';
 
-    const crW = 52 * s, crH = 38 * s;
+    const crW = 54 * s, crH = 39 * s;
     E.crown.style.width = crW + 'px'; E.crown.style.height = crH + 'px';
-    E.crown.style.left = ((G.clusterW - crW) / 2) + 'px';
-    E.crown.style.top = (G.standYIn - G.charH * 0.54 - crH) + 'px';
+    E.crown.style.left = mx(74, crW) + 'px';
+    E.crown.style.top = G.crownTopIn + 'px';
 
     E.plate.style.width = G.plateW + 'px';
     E.plate.style.height = G.plateH + 'px';
-    E.plate.style.left = ((G.clusterW - G.plateW) / 2) + 'px';
+    E.plate.style.left = mx(8, G.plateW) + 'px';
     E.plate.style.top = G.plateTopIn + 'px';
 
-    E.openTag.style.left = ((G.clusterW - 170 * s) / 2) + 'px';
-    E.openTag.style.width = (170 * s) + 'px';
-    E.openTag.style.top = (G.plateTopIn - 26 * s) + 'px';
+    E.openTag.style.left = mx(12, 180 * s) + 'px';
+    E.openTag.style.width = (180 * s) + 'px';
+    E.openTag.style.top = (G.plateTopIn - 22 * s) + 'px';
 
-    E.stealBurst.style.left = ((G.clusterW - 150) / 2) + 'px';
-    E.stealBurst.style.top = (G.thrTopIn - G.charH * 0.7 - 44) + 'px';
+    E.stealBurst.style.left = mx(45, 150) + 'px';
+    E.stealBurst.style.top = (G.charTopIn - 46) + 'px';
 
     // ticket hangs off the rail's bottom edge (does NOT lift)
     E.ticket.style.width = G.tickW + 'px';
     E.ticket.style.height = G.tickH + 'px';
-    E.ticket.style.left = ((G.clusterW - G.tickW) / 2) + 'px';
-    E.ticket.style.top = (G.railTop + G.railH - 6) + 'px';
+    E.ticket.style.left = mx(18, G.tickW) + 'px';
+    E.ticket.style.top = (G.railTop + 32) + 'px';
   }
 
   $('debug-seam').style.top = (seam - 1) + 'px';
@@ -1122,16 +1166,22 @@ function applyLayout() {
 function assignArt() {
   const ch = $('chance');
   const reelBg = ch.querySelector('.chance-reel-bg');
-  if (optSrc.reel) { reelBg.src = optSrc.reel; reelBg.style.display = ''; }
-  else reelBg.style.display = 'none';           // CSS gradient face shows instead
+  const reelEl = ch.querySelector('.chance-reel');
+  if (optSrc.reel) {
+    reelBg.src = optSrc.reel; reelBg.style.display = '';
+    reelEl.classList.add('has-art');            // art carries the frame; drop the CSS face
+  } else reelBg.style.display = 'none';
   ch.querySelector('.chance-pointer').src = optSrc.reelPtr || assetSrc[UI_ASSETS.chancePtr];
   for (const side of ['youtube', 'tiktok']) {
     const E = sideEls[side], isLeft = side === 'youtube';
     E.pedImg.src = (isLeft ? optSrc.throneYt : optSrc.throneTt)
       || assetSrc[isLeft ? UI_ASSETS.pedestalL : UI_ASSETS.pedestalR];
     E.crown.src = assetSrc[UI_ASSETS.crown];
+    const iconCls = isLeft ? 'icon-jewel' : 'icon-coin';
     E.plateIcon.src = iconSrcFor(side);
+    E.plateIcon.classList.add(iconCls);
     E.ticketIcon.src = iconSrcFor(side);
+    E.ticketIcon.classList.add(iconCls);
   }
 }
 
@@ -1216,11 +1266,17 @@ class Actor {
   play(name, { fps = 5, loop = false, cycles = 1 } = {}) {
     this.stop();
     this.current = name;
-    const frames = SEQ_FRAMES[name];
+    const { srcs, generic } = seqFor(this.side, name);
+    let frames = srcs;
+    if (frames.length === 1 && !loop) frames = [frames[0], frames[0]];  // keep the beat length
+    const wrap = sideEls[this.side].charWrap;
+    wrap.classList.toggle('gen-art', generic);          // untrimmed old canvas needs the foot shift
+    wrap.classList.toggle('single', frames.length === 1 && loop);  // single-pose skins get CSS breathe
     return new Promise((resolve) => {
+      if (loop && frames.length === 1) { this.img.src = frames[0]; return; }  // static pose + CSS breathe
       let i = 0, played = 0;
       const step = () => {
-        this.img.src = frameSrc(this.side, frames[i]);
+        this.img.src = frames[i];
         i++;
         if (i >= frames.length) {
           i = 0; played++;
@@ -1410,7 +1466,7 @@ function throwProjectile(fromSide, { tier = 1, objKind = null, whiff = false } =
       imp.style.transform = `translate(${x1 - size * 0.75}px, ${y1 - size * 0.75}px)`;
       imp.src = assetSrc[obj.impact[0]];
       $('proj-layer').appendChild(imp);
-      setTimeout(() => { imp.src = assetSrc[obj.impact[1]]; }, 140);
+      if (obj.impact[1]) setTimeout(() => { imp.src = assetSrc[obj.impact[1]]; }, 140);
       setTimeout(() => { imp.style.transition = 'opacity .3s'; imp.style.opacity = 0; setTimeout(() => imp.remove(), 320); }, 420);
       spawnFx(obj.fx, x1, y1, size * (obj.fx === 'splat' ? 2.1 : 1.9));
       sfx(obj.fx === 'splat' ? 'splat' : 'bonk');
@@ -1431,7 +1487,8 @@ async function hitReaction(side, { tier = 1, splat = false } = {}) {
   void E.charWrap.offsetWidth;
   E.charWrap.classList.add(kb);
   if (splat) {
-    E.decal.src = assetSrc[THROWABLES[Math.random() < .5 ? 'tomato' : 'pie'].impact[1]];
+    const dImp = THROWABLES[Math.random() < .5 ? 'tomato' : 'pie'].impact;
+    E.decal.src = assetSrc[dImp[1] || dImp[0]];
     E.decal.classList.add('show');
     setTimeout(() => E.decal.classList.remove('show'), 2600);
   }
@@ -1677,6 +1734,12 @@ function renderTicket(side, row) {
   E.ticket.classList.remove('empty');
   applyMarquee(E.ticketName, E.ticketScroll, row.name);
   E.ticketAmt.textContent = fmtAmount(side, row.total);
+  /* fill = % of the champ's total still to go (mock: 1401/2000 shows 30%) */
+  const champ = state.top[side];
+  const pct = champ && champ.total > 0
+    ? Math.min(100, Math.max(0, (champ.total - row.total) / champ.total * 100))
+    : 0;
+  E.ticketFill.style.width = pct.toFixed(1) + '%';
 }
 
 function refreshTicket(side) {
