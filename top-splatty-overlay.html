@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Top Splatty — Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     TOP SPLATTY — two-throne battle overlay for the camera/game seam
+     1080×1920 · transparent · TikTok Studio URL overlay
+     ══════════════════════════════════════════════════════════════ */
+  html, body {
+    width: 1080px; height: 1920px;
+    margin: 0; padding: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+  #scene {
+    position: relative;
+    width: 1080px; height: 1920px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Boogaloo', cursive;
+    overflow: hidden;
+  }
+  #scene * { box-sizing: border-box; }
+  img { -webkit-user-drag: none; user-select: none; }
+
+  /* ── connection dot ── */
+  #conn-dot {
+    position: absolute; top: 14px; left: 1052px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: #666; border: 2px solid rgba(0,0,0,.35);
+    z-index: 99; transition: background .3s;
+  }
+  #conn-dot.connected { background: #35d97b; }
+
+  /* ── battle lane ── */
+  #lane-base {
+    position: absolute; z-index: 5;
+    width: 1080px; pointer-events: none;
+  }
+  .lane-cap { position: absolute; z-index: 6; pointer-events: none; }
+
+  /* ── sides ── */
+  .side { position: absolute; z-index: 8; width: 340px; }
+  .ped-shadow {
+    position: absolute; z-index: 8; opacity: .55;
+    transition: transform .8s cubic-bezier(.34,1.2,.64,1), opacity .8s;
+  }
+  .ped-wrap {
+    position: absolute; z-index: 10;
+    transition: transform .8s cubic-bezier(.34,1.2,.64,1);
+  }
+  .ped-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+  .char-wrap {
+    position: absolute; z-index: 12;
+    transform-origin: 50% 100%;
+  }
+  .char-wrap.hidden-char { display: none; }
+  /* the mascot canvas has ~15% empty margin below the feet — shift the img
+     down so the feet land on the pedestal stand point */
+  .char-img { position: absolute; top: 15.5%; left: 0; width: 100%; height: 100%; }
+  .char-flip .char-img { transform: scaleX(-1); }
+
+  /* real art keeps its aspect ratio; backing plates/ribbons stretch to fill */
+  .char-img, .proj, .fx, .ped-img, .lane-cap, .crown-img,
+  .pfp-ring-img, .splat-decal, #chance .chance-pointer { object-fit: contain; }
+
+  /* squash-and-shake states applied on the wrap so frames keep playing */
+  .char-wrap.wobble { animation: tsWobble .7s ease-out; }
+  @keyframes tsWobble {
+    0% { transform: rotate(0deg); }
+    18% { transform: rotate(-9deg) translateX(-10px); }
+    40% { transform: rotate(7deg) translateX(8px); }
+    62% { transform: rotate(-4deg) translateX(-5px); }
+    82% { transform: rotate(2deg) translateX(2px); }
+    100% { transform: rotate(0deg); }
+  }
+  .char-wrap.knockback-left  { animation: tsKbL .8s cubic-bezier(.2,.9,.3,1); }
+  .char-wrap.knockback-right { animation: tsKbR .8s cubic-bezier(.2,.9,.3,1); }
+  @keyframes tsKbL {
+    0% { transform: translateX(0) scaleY(1); }
+    22% { transform: translateX(-34px) scaleY(.82) scaleX(1.12); }
+    55% { transform: translateX(-18px) scaleY(1.06); }
+    100% { transform: translateX(0) scaleY(1); }
+  }
+  @keyframes tsKbR {
+    0% { transform: translateX(0) scaleY(1); }
+    22% { transform: translateX(34px) scaleY(.82) scaleX(1.12); }
+    55% { transform: translateX(18px) scaleY(1.06); }
+    100% { transform: translateX(0) scaleY(1); }
+  }
+  .char-wrap.fall-left  { animation: tsFallL 1s cubic-bezier(.5,0,.8,.4) forwards; }
+  .char-wrap.fall-right { animation: tsFallR 1s cubic-bezier(.5,0,.8,.4) forwards; }
+  @keyframes tsFallL {
+    0%   { transform: translate(0,0) rotate(0deg); opacity: 1; }
+    100% { transform: translate(-260px, 420px) rotate(-160deg); opacity: 0; }
+  }
+  @keyframes tsFallR {
+    0%   { transform: translate(0,0) rotate(0deg); opacity: 1; }
+    100% { transform: translate(260px, 420px) rotate(160deg); opacity: 0; }
+  }
+  .char-wrap.arrive { animation: tsArrive .65s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tsArrive {
+    0% { transform: translateY(-190px) scaleY(1.15); opacity: 0; }
+    60% { transform: translateY(0) scaleY(.8) scaleX(1.15); opacity: 1; }
+    100% { transform: translateY(0) scaleY(1); }
+  }
+
+  .crown-img {
+    position: absolute; z-index: 14; pointer-events: none;
+    animation: tsCrownBob 2.6s ease-in-out infinite;
+  }
+  @keyframes tsCrownBob {
+    0%,100% { transform: translateY(0) rotate(-6deg); }
+    50% { transform: translateY(-7px) rotate(4deg); }
+  }
+
+  .pfp-med { position: absolute; z-index: 11; pointer-events: none; }  /* above pedestal, below mascot */
+  .pfp-med .pfp-img {
+    position: absolute; border-radius: 50%;
+    object-fit: cover; background: #3B0764;
+  }
+  .pfp-med .pfp-ring-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+  .splat-decal {
+    position: absolute; z-index: 13; pointer-events: none;
+    opacity: 0; transition: opacity .5s;
+  }
+  .splat-decal.show { opacity: .92; }
+
+  /* ── info block ── */
+  .info { position: absolute; z-index: 15; text-align: center; }
+  .info .badge { position: relative; margin: 0 auto; }
+  .info .badge img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .info .badge span {
+    position: relative; z-index: 2;
+    font-size: 30px; color: #FAF5FF; letter-spacing: 1.5px;
+    text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 8px rgba(0,0,0,.4);
+  }
+  .info .ts-title {
+    font-size: 24px; letter-spacing: 3px; color: #FFD25A;
+    text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 10px rgba(0,0,0,.45);
+    margin-top: -2px;
+  }
+  .info .gname {
+    font-size: 36px; color: #FAF5FF; line-height: 1.02;
+    text-shadow: 0 3px 0 rgba(0,0,0,.6), 0 0 12px rgba(59,7,100,.8);
+    max-width: 330px; margin: 0 auto;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .info .amount { position: relative; margin: 2px auto 0; }
+  .info .amount img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .info .amount span {
+    position: relative; z-index: 2; font-size: 34px; color: #FFF6D8;
+    text-shadow: 0 2px 0 rgba(0,0,0,.55);
+  }
+  .info .ribbon { position: relative; margin: 4px auto 0; }
+  .info .ribbon img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .info .ribbon span {
+    position: relative; z-index: 2; font-size: 23px; color: #FAF5FF;
+    letter-spacing: .5px; text-shadow: 0 2px 0 rgba(0,0,0,.6);
+  }
+  .info .badge span, .info .amount span, .info .ribbon span {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%;
+  }
+  .info.bump .amount { animation: tsBump .45s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tsBump { 0%{transform:scale(1)} 40%{transform:scale(1.22)} 100%{transform:scale(1)} }
+
+  /* ── lane announcements ── */
+  #announce {
+    position: absolute; z-index: 30; width: 660px;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; opacity: 0;
+  }
+  #announce.show { animation: tsAnnounce var(--ann-ms, 2000ms) cubic-bezier(.2,.9,.3,1) forwards; }
+  @keyframes tsAnnounce {
+    0% { opacity: 0; transform: scale(.6) translateY(16px); }
+    10% { opacity: 1; transform: scale(1.06) translateY(0); }
+    15% { transform: scale(1); }
+    88% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(.92) translateY(-10px); }
+  }
+  #announce .ann-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #announce .ann-text {
+    position: relative; z-index: 2; text-align: center;
+    font-size: 40px; line-height: 1; color: #FAF5FF; letter-spacing: 1px;
+    padding: 0 46px;
+    text-shadow: 0 3px 0 rgba(0,0,0,.6), 0 0 14px rgba(59,7,100,.9);
+  }
+  #announce.kind-steal .ann-text { color: #FFE277; font-size: 46px; }
+  #announce.kind-compare .ann-text { color: #9FE8FF; }
+  #announce.kind-whiff .ann-text { color: #C9BFD8; }
+
+  /* ── chance strip ── */
+  #chance {
+    position: absolute; z-index: 32; opacity: 0; pointer-events: none;
+  }
+  #chance.show { opacity: 1; animation: tsChanceIn .18s ease-out; }
+  @keyframes tsChanceIn { from { transform: scale(.7); } to { transform: scale(1); } }
+  #chance .chance-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #chance .chance-pointer { position: absolute; z-index: 3; }
+  #chance .chance-text {
+    position: absolute; z-index: 2; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 52px; letter-spacing: 3px; color: #FAF5FF;
+    text-shadow: 0 3px 0 rgba(0,0,0,.65);
+  }
+  #chance.landed .chance-text { animation: tsLanded .35s cubic-bezier(.34,1.56,.64,1); color: #FFE277; }
+  @keyframes tsLanded { 0%{transform:scale(.7)} 55%{transform:scale(1.25)} 100%{transform:scale(1)} }
+
+  /* ── projectiles / fx ── */
+  #proj-layer { position: absolute; inset: 0; z-index: 20; pointer-events: none; overflow: visible; }
+  #fx-layer   { position: absolute; inset: 0; z-index: 22; pointer-events: none; overflow: visible; }
+  .proj { position: absolute; will-change: transform; }
+  .fx   { position: absolute; will-change: transform, opacity; }
+
+  /* ── debug ── */
+  #debug-seam {
+    position: absolute; left: 0; width: 1080px; height: 2px;
+    background: rgba(0,255,255,.6); z-index: 90; display: none;
+  }
+  #debug-hud {
+    position: absolute; top: 40px; left: 20px; z-index: 90; display: none;
+    font-family: 'DM Sans', sans-serif; font-size: 15px; color: #9FE8FF;
+    background: rgba(10,2,20,.7); padding: 8px 12px; border-radius: 8px;
+    white-space: pre;
+  }
+  body.debug #debug-seam, body.debug #debug-hud { display: block; }
+</style>
+</head>
+<body>
+<div id="scene">
+  <img id="lane-base" alt="">
+  <img class="lane-cap" id="lane-cap-left" alt="">
+  <img class="lane-cap" id="lane-cap-right" alt="">
+
+  <div id="side-youtube" class="side"></div>
+  <div id="side-tiktok" class="side"></div>
+
+  <div id="proj-layer"></div>
+  <div id="fx-layer"></div>
+
+  <div id="announce">
+    <img class="ann-bg" alt="">
+    <div class="ann-text"></div>
+  </div>
+
+  <div id="chance">
+    <img class="chance-bg" alt="">
+    <img class="chance-pointer" alt="">
+    <div class="chance-text">…</div>
+  </div>
+
+  <div id="debug-seam"></div>
+  <div id="debug-hud"></div>
+  <div id="conn-dot" title="Ably connection"></div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   TOP SPLATTY — overlay logic
+   Receives real gifts from stream-dock's 'gift-alert' Ably broadcast
+   (channel: splat-overlay) and commands from top-splatty-control.html
+   via the 'top-splatty' message name on the same channel.
+   ════════════════════════════════════════════════════════════════ */
+
+const CONFIG = {
+  /* ── Assets ──
+     Base URL of the art package. Relative path works when the overlay
+     and assets/ live in the same GitHub Pages repo. Any missing file
+     automatically falls back to a generated placeholder so the whole
+     mechanic runs before the final art is uploaded. */
+  ASSET_BASE: 'assets/top-splatty/',
+
+  /* ── Layout ── */
+  SEAM_Y: 940,            // px from top where camera bottom meets game top (controller-adjustable)
+  UI_SCALE: 1.0,          // scales pedestals/characters/info blocks (controller-adjustable)
+  MAX_LIFT: 52,           // px each pedestal rises/sinks for the height comparison (~104px max gap)
+  NECK_AND_NECK: 0.12,    // if normalized totals are within 12% → treat as even
+
+  /* ── Value normalization (hidden score for cross-platform compare) ── */
+  COIN_TO_USD: 0.005,     // TikTok coin → USD-ish
+  JEWEL_TO_USD: 0.02,     // YouTube jewel → USD-ish (superchats are already dollars)
+
+  /* ── Gift tiers, thresholds in normalized USD of the single gift ── */
+  TIERS: { t2: 0.5, t3: 5, t4: 25 },
+
+  /* ── Chance roll weights per tier: [WHIFF, TOSS, DOUBLE TOSS, BIG BONK, SPLAT HIT] ── */
+  CHANCE_WEIGHTS: {
+    1: [45, 40, 8, 5, 2],
+    2: [28, 45, 13, 9, 5],
+    3: [14, 38, 18, 16, 14],
+    4: [4, 28, 21, 23, 24],
+  },
+
+  /* ── Timing ── */
+  ANNOUNCE_GIFT_MS: 1700,
+  ANNOUNCE_BIG_MS: 2600,
+  CHANCE_SPIN_MS: 900,
+  CHANCE_HOLD_MS: 650,
+  IDLE_ACT_MIN_S: 5,      // idle flex every 5–11s
+  IDLE_ACT_MAX_S: 11,
+  HYPE_EVERY_S: 75,       // bait/taunt announcement cadence when lane is quiet
+  COMPARE_MIN_GAP_S: 20,  // min seconds between height-comparison callouts
+
+  /* ── Audio (tiny WebAudio blips — no files needed; set enabled:false to mute) ── */
+  SFX: { enabled: true, volume: 0.4 },
+
+  /* ── Ably ──
+     splat-overlay is the busy shared channel (mic-freq audio relay lives
+     there — the dominant message cost). We attach to it ONLY for gift-alert.
+     All Top Splatty command/status chatter uses its own quiet channel so it
+     never multiplies deliveries of the high-frequency traffic. */
+  ABLY_KEY: 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+  ABLY_CHANNEL: 'splat-overlay',        // gift-alert subscription only
+  SYNC_CHANNEL: 'top-splatty-sync',     // commands in, status out
+  MSG_IN: 'top-splatty',          // controller → overlay commands
+  MSG_OUT: 'top-splatty-status',  // overlay → controller state mirror
+  GIFT_ALERT: 'gift-alert',       // stream-dock's existing gift broadcast
+};
+
+const LS_STATE = 'topSplatty.state.v1';
+const LS_CFG   = 'topSplatty.cfg.v1';
+
+/* ── sides ── */
+const SIDES = {
+  youtube: { label: 'YOUTUBE', dir: 1,  accent: '#FFB84A' },  // left, throws left→right
+  tiktok:  { label: 'TIKTOK',  dir: -1, accent: '#5AD7F0' },  // right, throws right→left
+};
+
+/* ════════════════════════════════════════════════════════════════
+   1. ASSET MANIFEST + PLACEHOLDER GENERATION
+   Exact filenames from the art package. Missing files fall back to
+   canvas-drawn placeholders so everything is testable pre-art.
+   ════════════════════════════════════════════════════════════════ */
+
+const SEQ_FRAMES = {
+  idle:    ['character/splatty-idle-01', 'character/splatty-idle-02'],
+  dance:   ['character/splatty-dance-01', 'character/splatty-dance-02', 'character/splatty-dance-03', 'character/splatty-dance-04'],
+  taunt:   ['character/splatty-taunt-01', 'character/splatty-taunt-02', 'character/splatty-taunt-03'],
+  puff:    ['character/splatty-puff-01', 'character/splatty-puff-02', 'character/splatty-puff-03'],
+  windup:  ['character/splatty-throw-windup-01', 'character/splatty-throw-windup-02'],
+  release: ['character/splatty-throw-release-01'],
+  follow:  ['character/splatty-throw-follow-01'],
+  hit:     ['character/splatty-hit-01', 'character/splatty-hit-02'],
+  shock:   ['character/splatty-shock-01', 'character/splatty-shock-02'],
+  fall:    ['character/splatty-fall-01', 'character/splatty-fall-02', 'character/splatty-fall-03'],
+  victory: ['character/splatty-victory-01', 'character/splatty-victory-02', 'character/splatty-victory-03'],
+};
+
+const THROWABLES = {
+  tomato:   { flight: 'throwables/throw-tomato-flight',   impact: ['throwables/throw-tomato-impact-01', 'throwables/throw-tomato-impact-02'],   fx: 'splat' },
+  pie:      { flight: 'throwables/throw-pie-flight',      impact: ['throwables/throw-pie-impact-01', 'throwables/throw-pie-impact-02'],         fx: 'splat' },
+  bone:     { flight: 'throwables/throw-bone-flight',     impact: ['throwables/throw-bone-impact-01', 'throwables/throw-bone-impact-02'],       fx: 'bonk' },
+  crown:    { flight: 'throwables/throw-crown-flight',    impact: ['throwables/throw-crown-impact-01', 'throwables/throw-crown-impact-02'],     fx: 'bonk' },
+  moneybag: { flight: 'throwables/throw-moneybag-flight', impact: ['throwables/throw-moneybag-impact-01', 'throwables/throw-moneybag-impact-02'], fx: 'bonk' },
+};
+
+const FX = {
+  dust:  ['fx/fx-dust-01', 'fx/fx-dust-02'],
+  bonk:  ['fx/fx-bonk-01', 'fx/fx-bonk-02'],
+  splat: ['fx/fx-splat-01', 'fx/fx-splat-02'],
+  flash: ['fx/fx-flash-01'],
+};
+
+const UI_ASSETS = {
+  laneBase:    'ui/top-splatty-lane-base',
+  laneCapL:    'ui/top-splatty-lane-left-cap',
+  laneCapR:    'ui/top-splatty-lane-right-cap',
+  pedestalL:   'ui/top-splatty-pedestal-left',
+  pedestalR:   'ui/top-splatty-pedestal-right',
+  pfpRingL:    'ui/top-splatty-pfp-ring-left',
+  pfpRingR:    'ui/top-splatty-pfp-ring-right',
+  crown:       'ui/top-splatty-crown',
+  amountPlate: 'ui/top-splatty-amount-plate',
+  ribbon:      'ui/top-splatty-challenge-ribbon',
+  badgeL:      'ui/top-splatty-platform-badge-left',
+  badgeR:      'ui/top-splatty-platform-badge-right',
+  shadow:      'ui/top-splatty-pedestal-shadow',
+  chanceStrip: 'chance/chance-strip-base',
+  chancePtr:   'chance/chance-pointer',
+};
+
+/* ── placeholder painters (used only when a PNG 404s) ── */
+const P = { violet:'#8B5CF6', deep:'#3B0764', bright:'#A855F7', light:'#C084FC', cream:'#FFF6D8', gold:'#FFC93E', orange:'#FF9F45', blue:'#4CC3F7', cyan:'#7FE8F2', ink:'#1A0A2A' };
+
+function phCanvas(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); draw(x, w, h);
+  return c.toDataURL('image/png');
+}
+function rr(x, X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+
+/* blob character placeholder — pose-parameterized so the demo reads well */
+function phSplatty(pose) {
+  const M = {
+    'idle-01':{sq:0,armL:-15,armR:15,eyes:'open',mouth:'smile',lean:0},
+    'idle-02':{sq:.05,armL:-25,armR:25,eyes:'open',mouth:'smile',lean:0},
+    'dance-01':{sq:0,armL:-60,armR:40,eyes:'open',mouth:'open',lean:-8},
+    'dance-02':{sq:-.04,armL:-50,armR:-50,eyes:'open',mouth:'open',lean:0},
+    'dance-03':{sq:0,armL:40,armR:-60,eyes:'open',mouth:'open',lean:8},
+    'dance-04':{sq:-.08,armL:-70,armR:-70,eyes:'shut',mouth:'open',lean:0,hop:26},
+    'taunt-01':{sq:0,armL:-15,armR:-80,eyes:'open',mouth:'smile',lean:4},
+    'taunt-02':{sq:0,armL:-10,armR:-30,eyes:'open',mouth:'open',lean:12},
+    'taunt-03':{sq:-.03,armL:-40,armR:20,eyes:'shut',mouth:'open',lean:-10},
+    'puff-01':{sq:0,armL:-30,armR:30,eyes:'open',mouth:'smile',lean:0},
+    'puff-02':{sq:-.06,armL:-55,armR:55,eyes:'open',mouth:'smile',lean:0,puff:1.08},
+    'puff-03':{sq:-.12,armL:-80,armR:80,eyes:'shut',mouth:'smile',lean:-3,puff:1.18},
+    'throw-windup-01':{sq:.02,armL:-20,armR:60,eyes:'open',mouth:'smile',lean:-8},
+    'throw-windup-02':{sq:.06,armL:-60,armR:120,eyes:'open',mouth:'open',lean:-16},
+    'throw-release-01':{sq:-.04,armL:30,armR:-95,eyes:'open',mouth:'open',lean:14},
+    'throw-follow-01':{sq:.02,armL:40,armR:-45,eyes:'shut',mouth:'smile',lean:18},
+    'hit-01':{sq:.18,armL:70,armR:70,eyes:'shut',mouth:'frown',lean:-14},
+    'hit-02':{sq:.08,armL:-85,armR:-85,eyes:'dizzy',mouth:'frown',lean:-20},
+    'shock-01':{sq:-.05,armL:-70,armR:-70,eyes:'wide',mouth:'o',lean:0},
+    'shock-02':{sq:0,armL:-50,armR:-90,eyes:'wide',mouth:'o',lean:-22},
+    'fall-01':{sq:.04,armL:-90,armR:-40,eyes:'wide',mouth:'o',lean:-35,hop:10},
+    'fall-02':{sq:-.05,armL:-120,armR:-60,eyes:'shut',mouth:'o',lean:-90,hop:40},
+    'fall-03':{sq:.2,armL:-100,armR:-100,eyes:'shut',mouth:'frown',lean:-140,hop:20},
+    'victory-01':{sq:.14,armL:-20,armR:20,eyes:'shut',mouth:'smile',lean:0},
+    'victory-02':{sq:-.04,armL:-70,armR:-70,eyes:'open',mouth:'open',lean:0},
+    'victory-03':{sq:-.08,armL:-95,armR:15,eyes:'shut',mouth:'open',lean:-4,puff:1.1},
+  }[pose] || {sq:0,armL:-15,armR:15,eyes:'open',mouth:'smile',lean:0};
+
+  return phCanvas(1200, 1200, (x) => {
+    const cx = 600, footY = 1130 - (M.hop || 0);
+    const puff = M.puff || 1;
+    const bw = 340 * puff, bh = 380 * (1 - (M.sq || 0)) * puff;
+    const by = footY - bh; // body top
+    x.save();
+    x.translate(cx, footY);
+    x.rotate((M.lean || 0) * Math.PI / 180);
+    x.translate(-cx, -footY);
+    // feet
+    x.fillStyle = P.deep;
+    x.beginPath(); x.ellipse(cx - 95, footY - 18, 62, 34, 0, 0, 7); x.fill();
+    x.beginPath(); x.ellipse(cx + 95, footY - 18, 62, 34, 0, 0, 7); x.fill();
+    // body blob
+    x.fillStyle = P.violet; x.strokeStyle = P.ink; x.lineWidth = 12;
+    x.beginPath();
+    x.ellipse(cx, by + bh * .56, bw, bh * .56, 0, 0, 7);
+    x.fill(); x.stroke();
+    // splat nubs on head
+    x.fillStyle = P.violet;
+    [[-.55, -.02, 52], [.1, -.12, 66], [.62, .02, 46]].forEach(([fx2, fy, r]) => {
+      x.beginPath(); x.arc(cx + fx2 * bw * .8, by + bh * .1 + fy * bh, r, 0, 7); x.fill();
+      x.lineWidth = 12; x.stroke();
+    });
+    // arms
+    const armY = by + bh * .5;
+    x.strokeStyle = P.ink; x.lineWidth = 30; x.lineCap = 'round';
+    [[-1, M.armL], [1, M.armR]].forEach(([s, deg]) => {
+      const a = (deg || 0) * Math.PI / 180;
+      const ax = cx + s * bw * .92, ay = armY;
+      x.beginPath(); x.moveTo(ax - s * 20, ay);
+      x.lineTo(ax + Math.cos(a) * 120 * s * -1 + s * 90, ay + Math.sin(a) * 120);
+      x.strokeStyle = P.violet; x.lineWidth = 44; x.stroke();
+      x.strokeStyle = P.ink; x.lineWidth = 12;
+    });
+    // face
+    const ex = cx, ey = by + bh * .38;
+    x.fillStyle = P.ink;
+    if (M.eyes === 'shut') {
+      x.lineWidth = 10; x.strokeStyle = P.ink;
+      x.beginPath(); x.arc(ex - 62, ey, 26, .15 * Math.PI, .85 * Math.PI); x.stroke();
+      x.beginPath(); x.arc(ex + 62, ey, 26, .15 * Math.PI, .85 * Math.PI); x.stroke();
+    } else if (M.eyes === 'wide') {
+      x.beginPath(); x.ellipse(ex - 62, ey, 30, 38, 0, 0, 7); x.fill();
+      x.beginPath(); x.ellipse(ex + 62, ey, 30, 38, 0, 0, 7); x.fill();
+      x.fillStyle = '#fff';
+      x.beginPath(); x.arc(ex - 70, ey - 10, 9, 0, 7); x.fill();
+      x.beginPath(); x.arc(ex + 54, ey - 10, 9, 0, 7); x.fill();
+    } else if (M.eyes === 'dizzy') {
+      x.lineWidth = 9; x.strokeStyle = P.ink;
+      [[-62, 0], [62, 0]].forEach(([dx]) => {
+        x.beginPath();
+        for (let t = 0; t < 4.5; t += .3) x.lineTo(ex + dx + Math.cos(t * 2.4) * t * 6, ey + Math.sin(t * 2.4) * t * 6);
+        x.stroke();
+      });
+    } else {
+      x.beginPath(); x.ellipse(ex - 62, ey, 20, 26, 0, 0, 7); x.fill();
+      x.beginPath(); x.ellipse(ex + 62, ey, 20, 26, 0, 0, 7); x.fill();
+    }
+    // mouth
+    x.strokeStyle = P.ink; x.lineWidth = 11; x.fillStyle = P.ink;
+    const my = ey + 78;
+    if (M.mouth === 'open') { x.beginPath(); x.ellipse(ex, my, 34, 26, 0, 0, 7); x.fill(); }
+    else if (M.mouth === 'o') { x.beginPath(); x.ellipse(ex, my, 22, 30, 0, 0, 7); x.fill(); }
+    else if (M.mouth === 'frown') { x.beginPath(); x.arc(ex, my + 26, 30, 1.15 * Math.PI, 1.85 * Math.PI); x.stroke(); }
+    else { x.beginPath(); x.arc(ex, my - 12, 34, .1 * Math.PI, .9 * Math.PI); x.stroke(); }
+    // cheeks
+    x.fillStyle = 'rgba(255,159,69,.55)';
+    x.beginPath(); x.arc(ex - 120, ey + 52, 18, 0, 7); x.fill();
+    x.beginPath(); x.arc(ex + 120, ey + 52, 18, 0, 7); x.fill();
+    x.restore();
+  });
+}
+
+function phCrown(w, h) {
+  return phCanvas(w, h, (x, W, H) => {
+    x.save(); x.translate(W / 2, H / 2); x.rotate(-.06); x.translate(-W / 2, -H / 2);
+    x.fillStyle = P.gold; x.strokeStyle = P.ink; x.lineWidth = Math.max(6, W * .02);
+    const bx = W * .14, by = H * .78, bw = W * .72;
+    x.beginPath();
+    x.moveTo(bx, by);
+    x.lineTo(bx, H * .38); x.lineTo(bx + bw * .22, H * .58); x.lineTo(bx + bw * .5, H * .22);
+    x.lineTo(bx + bw * .78, H * .58); x.lineTo(bx + bw, H * .38); x.lineTo(bx + bw, by);
+    x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = P.orange;
+    [.22, .5, .78].forEach(f => { x.beginPath(); x.arc(bx + bw * f, by - H * .1, W * .045, 0, 7); x.fill(); x.stroke(); });
+  });
+}
+
+function phThrowable(kind, stage) {
+  return phCanvas(800, 800, (x) => {
+    const c = 400;
+    x.strokeStyle = P.ink; x.lineWidth = 16;
+    const splatShape = (col, r, n) => {
+      x.fillStyle = col; x.beginPath();
+      for (let i = 0; i <= n * 2; i++) {
+        const a = i * Math.PI / n, rad = i % 2 ? r : r * .62;
+        x.lineTo(c + Math.cos(a) * rad, c + Math.sin(a) * rad * .7);
+      }
+      x.closePath(); x.fill(); x.stroke();
+    };
+    if (kind === 'tomato') {
+      if (stage === 'flight') {
+        x.fillStyle = '#FF7A4D'; x.beginPath(); x.arc(c, c, 210, 0, 7); x.fill(); x.stroke();
+        x.fillStyle = '#3E9B4F'; rr(x, c - 30, 140, 60, 70, 24); x.fill(); x.stroke();
+      } else if (stage === 0) {
+        x.fillStyle = '#FF7A4D'; x.beginPath(); x.ellipse(c, c + 60, 250, 150, 0, 0, 7); x.fill(); x.stroke();
+      } else splatShape('#FF7A4D', 300, 9);
+    } else if (kind === 'pie') {
+      if (stage === 'flight') {
+        x.fillStyle = '#C9CDD6'; x.beginPath(); x.ellipse(c, c + 70, 240, 90, 0, 0, 7); x.fill(); x.stroke();
+        x.fillStyle = P.cream; x.beginPath(); x.ellipse(c, c - 10, 210, 110, 0, 0, 7); x.fill(); x.stroke();
+      } else if (stage === 0) {
+        x.fillStyle = P.cream; x.beginPath(); x.ellipse(c, c + 40, 270, 160, 0, 0, 7); x.fill(); x.stroke();
+      } else { splatShape(P.cream, 310, 8); x.fillStyle = '#C9CDD6'; x.beginPath(); x.ellipse(c, c + 60, 130, 45, .2, 0, 7); x.fill(); x.stroke(); }
+    } else if (kind === 'bone') {
+      const bone = (rot) => {
+        x.save(); x.translate(c, c); x.rotate(rot);
+        x.fillStyle = P.cream;
+        rr(x, -170, -45, 340, 90, 45); x.fill(); x.stroke();
+        [[-170, -55], [-170, 55], [170, -55], [170, 55]].forEach(([bx, by2]) => { x.beginPath(); x.arc(bx, by2, 62, 0, 7); x.fill(); x.stroke(); });
+        x.restore();
+      };
+      bone(stage === 'flight' ? -.5 : stage === 0 ? .9 : .25);
+      if (stage === 1) { x.fillStyle = P.gold; splatShape(P.gold + '00', 0, 3); }
+    } else if (kind === 'crown') {
+      x.save(); x.translate(c, c);
+      x.rotate(stage === 'flight' ? .5 : 0);
+      if (stage === 1) x.scale(1.15, .6);
+      x.translate(-c, -c); x.drawImage(phImgCache('__crown800') || makeCrown800(), 0, 0);
+      x.restore();
+    } else { // moneybag
+      x.fillStyle = '#D9A75B';
+      if (stage === 1) {
+        x.beginPath(); x.ellipse(c, c + 70, 260, 150, 0, 0, 7); x.fill(); x.stroke();
+        x.fillStyle = P.gold;
+        [[-120, -60], [40, -110], [150, -30]].forEach(([dx, dy]) => { x.beginPath(); x.arc(c + dx, c + dy, 46, 0, 7); x.fill(); x.stroke(); });
+      } else {
+        const sq = stage === 0 ? .72 : 1;
+        x.beginPath(); x.ellipse(c, c + 60 * (1 - sq) + 40, 220, 200 * sq, 0, 0, 7); x.fill(); x.stroke();
+        x.fillStyle = '#B07E33'; rr(x, c - 70, c - 210 * sq + 20, 140, 80, 30); x.fill(); x.stroke();
+      }
+    }
+  });
+}
+const _phImgs = {};
+function phImgCache(k) { return _phImgs[k]; }
+function makeCrown800() {
+  const img = new Image(); img.src = phCrown(800, 560);
+  const cv = document.createElement('canvas'); cv.width = 800; cv.height = 800;
+  const x = cv.getContext('2d');
+  const draw = () => x.drawImage(img, 0, 120);
+  if (img.complete) draw(); else img.onload = draw;
+  _phImgs['__crown800'] = cv;
+  return cv;
+}
+
+function phFx(kind, stage) {
+  return phCanvas(800, 800, (x) => {
+    const c = 400;
+    if (kind === 'dust') {
+      x.fillStyle = 'rgba(222,214,235,.9)'; x.strokeStyle = 'rgba(90,70,120,.8)'; x.lineWidth = 10;
+      const r = stage ? 150 : 90, spread = stage ? 230 : 120;
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3;
+        x.beginPath(); x.arc(c + Math.cos(a) * spread, c + Math.sin(a) * spread * .6, r - i * 8, 0, 7); x.fill(); x.stroke();
+      }
+    } else if (kind === 'bonk') {
+      const star = (sx, sy, r, col) => {
+        x.fillStyle = col; x.strokeStyle = P.ink; x.lineWidth = 12; x.beginPath();
+        for (let i = 0; i <= 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, rad = i % 2 ? r * .45 : r; x.lineTo(sx + Math.cos(a) * rad, sy + Math.sin(a) * rad); }
+        x.closePath(); x.fill(); x.stroke();
+      };
+      const d = stage ? 200 : 110;
+      star(c - d, c - d * .4, stage ? 90 : 120, P.gold);
+      star(c + d * .8, c - d * .8, stage ? 70 : 95, P.cream);
+      star(c + d * .3, c + d * .7, stage ? 60 : 80, P.orange);
+      x.strokeStyle = P.cream; x.lineWidth = 14;
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4 + .4, r1 = stage ? 250 : 160, r2 = r1 + (stage ? 90 : 60);
+        x.beginPath(); x.moveTo(c + Math.cos(a) * r1, c + Math.sin(a) * r1); x.lineTo(c + Math.cos(a) * r2, c + Math.sin(a) * r2); x.stroke();
+      }
+    } else if (kind === 'splat') {
+      x.fillStyle = P.bright; x.strokeStyle = P.deep; x.lineWidth = 12;
+      const r = stage ? 300 : 170; x.beginPath();
+      for (let i = 0; i <= 22; i++) { const a = i * Math.PI / 11, rad = i % 2 ? r : r * .58; x.lineTo(c + Math.cos(a) * rad, c + Math.sin(a) * rad); }
+      x.closePath(); x.fill(); x.stroke();
+      if (stage) { x.fillStyle = P.light; [[-.8, -.5], [.7, -.7], [.5, .8], [-.6, .7]].forEach(([fx2, fy]) => { x.beginPath(); x.arc(c + fx2 * 330, c + fy * 330, 34, 0, 7); x.fill(); }); }
+    } else { // flash
+      const g = x.createRadialGradient(c, c, 0, c, c, 380);
+      g.addColorStop(0, 'rgba(255,246,216,.95)'); g.addColorStop(.4, 'rgba(255,201,62,.75)');
+      g.addColorStop(.75, 'rgba(168,85,247,.45)'); g.addColorStop(1, 'rgba(76,195,247,0)');
+      x.fillStyle = g; x.beginPath();
+      for (let i = 0; i <= 24; i++) { const a = i * Math.PI / 12, rad = i % 2 ? 380 : 210; x.lineTo(c + Math.cos(a) * rad, c + Math.sin(a) * rad); }
+      x.closePath(); x.fill();
+    }
+  });
+}
+
+function phUi(key) {
+  const plate = (w, h, fill, edge, r) => phCanvas(w, h, (x) => {
+    x.fillStyle = fill; x.strokeStyle = edge; x.lineWidth = Math.max(6, h * .05);
+    rr(x, x.lineWidth, x.lineWidth, w - 2 * x.lineWidth, h - 2 * x.lineWidth, r); x.fill(); x.stroke();
+  });
+  switch (key) {
+    case 'laneBase': return phCanvas(2160, 260, (x) => {
+      const g = x.createLinearGradient(0, 40, 0, 220);
+      g.addColorStop(0, 'rgba(59,7,100,.92)'); g.addColorStop(.5, 'rgba(123,47,190,.55)'); g.addColorStop(1, 'rgba(59,7,100,.92)');
+      x.fillStyle = g; rr(x, 10, 46, 2140, 168, 60); x.fill();
+      x.strokeStyle = P.light; x.lineWidth = 10; rr(x, 10, 46, 2140, 168, 60); x.stroke();
+      x.fillStyle = 'rgba(192,132,252,.5)';
+      for (let i = 0; i < 26; i++) { x.beginPath(); x.arc(90 + i * 78, i % 2 ? 66 : 196, 9, 0, 7); x.fill(); }
+    });
+    case 'laneCapL': case 'laneCapR': return phCanvas(400, 300, (x) => {
+      x.fillStyle = key === 'laneCapL' ? P.orange : P.cyan; x.strokeStyle = P.ink; x.lineWidth = 12;
+      x.beginPath(); x.ellipse(200, 160, 160, 110, 0, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = P.cream; x.beginPath(); x.ellipse(200, 160, 90, 60, 0, 0, 7); x.fill(); x.stroke();
+    });
+    case 'pedestalL': case 'pedestalR': return phCanvas(1000, 1000, (x) => {
+      const top = key === 'pedestalL' ? P.orange : P.cyan;
+      const body = key === 'pedestalL' ? '#8a4a12' : '#1d3f7a';
+      x.strokeStyle = P.ink; x.lineWidth = 16;
+      x.fillStyle = body; rr(x, 190, 320, 620, 560, 60); x.fill(); x.stroke();
+      x.fillStyle = P.deep; rr(x, 250, 430, 500, 340, 40); x.fill(); x.stroke();
+      x.fillStyle = top; x.beginPath(); x.ellipse(500, 300, 400, 120, 0, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = P.cream; x.beginPath(); x.ellipse(500, 290, 300, 80, 0, 0, 7); x.fill(); x.stroke();
+    });
+    case 'pfpRingL': case 'pfpRingR': return phCanvas(700, 700, (x) => {
+      x.strokeStyle = key === 'pfpRingL' ? P.orange : P.cyan; x.lineWidth = 72;
+      x.beginPath(); x.arc(350, 350, 290, 0, 7); x.stroke();
+      x.strokeStyle = P.ink; x.lineWidth = 14;
+      x.beginPath(); x.arc(350, 350, 326, 0, 7); x.stroke();
+      x.beginPath(); x.arc(350, 350, 254, 0, 7); x.stroke();
+    });
+    case 'crown': return phCrown(700, 500);
+    case 'amountPlate': return plate(1200, 320, 'rgba(26,10,42,.88)', P.gold, 90);
+    case 'ribbon': return plate(1500, 300, 'rgba(59,7,100,.9)', P.light, 80);
+    case 'badgeL': return plate(600, 300, '#8a4a12', P.orange, 70);
+    case 'badgeR': return plate(600, 300, '#1d3f7a', P.cyan, 70);
+    case 'shadow': return phCanvas(800, 300, (x) => {
+      const g = x.createRadialGradient(400, 150, 10, 400, 150, 320);
+      g.addColorStop(0, 'rgba(10,2,20,.55)'); g.addColorStop(1, 'rgba(10,2,20,0)');
+      x.fillStyle = g; x.beginPath(); x.ellipse(400, 150, 340, 110, 0, 0, 7); x.fill();
+    });
+    case 'chanceStrip': return phCanvas(1600, 320, (x) => {
+      x.fillStyle = 'rgba(15,4,30,.94)'; x.strokeStyle = P.gold; x.lineWidth = 16;
+      rr(x, 14, 14, 1572, 292, 70); x.fill(); x.stroke();
+      x.strokeStyle = P.bright; x.lineWidth = 8; rr(x, 44, 44, 1512, 232, 50); x.stroke();
+      x.fillStyle = P.gold;
+      for (let i = 0; i < 12; i++) { x.beginPath(); x.arc(90 + i * 130, i % 2 ? 34 : 286, 11, 0, 7); x.fill(); }
+    });
+    case 'chancePtr': return phCanvas(400, 400, (x) => {
+      x.fillStyle = P.gold; x.strokeStyle = P.ink; x.lineWidth = 16;
+      x.beginPath(); x.moveTo(90, 80); x.lineTo(310, 80); x.lineTo(200, 300); x.closePath(); x.fill(); x.stroke();
+    });
+    default: return plate(400, 200, P.deep, P.light, 40);
+  }
+}
+
+/* ── asset resolver: real PNG with placeholder fallback ── */
+const assetSrc = {};        // path → resolved src (real URL or placeholder dataURL)
+let missingCount = 0, totalCount = 0;
+
+function placeholderFor(path) {
+  // character frames
+  const m = path.match(/character\/splatty-(.+)$/);
+  if (m) return phSplatty(m[1]);
+  const t = path.match(/throwables\/throw-([a-z]+)-(flight|impact-01|impact-02)$/);
+  if (t) return phThrowable(t[1], t[2] === 'flight' ? 'flight' : t[2] === 'impact-01' ? 0 : 1);
+  const f = path.match(/fx\/fx-([a-z]+)-0([12])$/);
+  if (f) return phFx(f[1], +f[2] - 1);
+  for (const [k, v] of Object.entries(UI_ASSETS)) if (v === path) return phUi(k);
+  return phUi('_');
+}
+
+function resolveAsset(path) {
+  return new Promise((res) => {
+    totalCount++;
+    const url = CONFIG.ASSET_BASE + path + '.png';
+    const img = new Image();
+    img.onload = () => { assetSrc[path] = url; res(); };
+    img.onerror = () => { assetSrc[path] = placeholderFor(path); missingCount++; res(); };
+    img.src = url;
+  });
+}
+
+function allAssetPaths() {
+  const out = new Set(Object.values(UI_ASSETS));
+  Object.values(SEQ_FRAMES).forEach(a => a.forEach(p => out.add(p)));
+  Object.values(THROWABLES).forEach(o => { out.add(o.flight); o.impact.forEach(p => out.add(p)); });
+  Object.values(FX).forEach(a => a.forEach(p => out.add(p)));
+  return [...out];
+}
+
+/* ════════════════════════════════════════════════════════════════
+   2. STATE
+   ════════════════════════════════════════════════════════════════ */
+
+let state = {
+  top: { youtube: null, tiktok: null },   // {name, pic, total}  total: coins (tt) / dollars (yt)
+  gifters: { youtube: {}, tiktok: {} },   // key → {name, total, pic}
+  lastCrownChange: { youtube: 0, tiktok: 0 },
+};
+let cfgOverride = {};   // seam/scale/debug persisted locally
+
+function persistState() { try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch (e) {} }
+function persistCfg() { try { localStorage.setItem(LS_CFG, JSON.stringify(cfgOverride)); } catch (e) {} }
+function loadPersisted() {
+  try { const s = JSON.parse(localStorage.getItem(LS_STATE)); if (s && s.top && s.gifters) state = Object.assign(state, s); } catch (e) {}
+  try {
+    cfgOverride = JSON.parse(localStorage.getItem(LS_CFG)) || {};
+    if (cfgOverride.seamY) CONFIG.SEAM_Y = cfgOverride.seamY;
+    if (cfgOverride.uiScale) CONFIG.UI_SCALE = cfgOverride.uiScale;
+  } catch (e) {}
+}
+
+const keyOf = (n) => (n || '').trim().toLowerCase();
+
+function normTotal(side) {
+  const t = state.top[side];
+  if (!t) return 0;
+  return side === 'tiktok' ? t.total * CONFIG.COIN_TO_USD : t.total;
+}
+function tierOfUsd(usd) {
+  if (usd >= CONFIG.TIERS.t4) return 4;
+  if (usd >= CONFIG.TIERS.t3) return 3;
+  if (usd >= CONFIG.TIERS.t2) return 2;
+  return 1;
+}
+function fmtAmount(side, total) {
+  return side === 'tiktok' ? `${Math.round(total).toLocaleString()} COINS` : `$${total.toFixed(2)}`;
+}
+function fmtChallenge(side, total) {
+  if (!state.top[side]) return 'SEND ANYTHING TO CLAIM IT';
+  return side === 'tiktok'
+    ? `SEND ${Math.round(total + 1).toLocaleString()} TO STEAL IT`
+    : `SEND $${(total + 0.01).toFixed(2)} TO STEAL IT`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   3. DOM BUILD + LAYOUT
+   ════════════════════════════════════════════════════════════════ */
+
+const $ = (id) => document.getElementById(id);
+const sideEls = {};
+
+function buildSide(side) {
+  const isLeft = side === 'youtube';
+  const root = $(`side-${side}`);
+  root.innerHTML = `
+    <img class="ped-shadow" alt="">
+    <div class="ped-wrap">
+      <img class="ped-img" alt="">
+      <div class="pfp-med" style="display:none">
+        <img class="pfp-img" alt="">
+        <img class="pfp-ring-img" alt="">
+      </div>
+      <div class="char-wrap ${isLeft ? '' : 'char-flip'} hidden-char">
+        <img class="char-img" alt="">
+        <img class="splat-decal" alt="">
+      </div>
+      <img class="crown-img" alt="" style="display:none">
+    </div>
+    <div class="info">
+      <div class="badge"><img alt=""><span>${SIDES[side].label}</span></div>
+      <div class="ts-title">TOP SPLATTY</div>
+      <div class="gname">—</div>
+      <div class="amount"><img alt=""><span>—</span></div>
+      <div class="ribbon"><img alt=""><span>SEND ANYTHING TO CLAIM IT</span></div>
+    </div>`;
+  sideEls[side] = {
+    root,
+    shadow: root.querySelector('.ped-shadow'),
+    pedWrap: root.querySelector('.ped-wrap'),
+    pedImg: root.querySelector('.ped-img'),
+    charWrap: root.querySelector('.char-wrap'),
+    charImg: root.querySelector('.char-img'),
+    pfpMed: root.querySelector('.pfp-med'),
+    pfpImg: root.querySelector('.pfp-img'),
+    pfpRing: root.querySelector('.pfp-ring-img'),
+    decal: root.querySelector('.splat-decal'),
+    crown: root.querySelector('.crown-img'),
+    info: root.querySelector('.info'),
+    badgeImg: root.querySelector('.badge img'),
+    nameEl: root.querySelector('.gname'),
+    amountImg: root.querySelector('.amount img'),
+    amountTxt: root.querySelector('.amount span'),
+    ribbonImg: root.querySelector('.ribbon img'),
+    ribbonTxt: root.querySelector('.ribbon span'),
+    lift: 0,
+  };
+}
+
+/* geometry cache recomputed on layout changes */
+const G = {};
+function applyLayout() {
+  const s = CONFIG.UI_SCALE, seam = CONFIG.SEAM_Y;
+  G.seam = seam;
+  G.pedW = 210 * s; G.pedH = 210 * s;
+  G.charH = 300 * s; G.charW = 300 * s;   // mascot canvas has margins; sprite is ~50% of it
+  G.standFrac = 0.24;          // character feet at this fraction down the pedestal image
+  G.sideW = 340 * s;
+  G.edge = 10;
+  G.laneH = 130;
+
+  // lane
+  const lane = $('lane-base');
+  lane.style.top = (seam - G.laneH / 2) + 'px';
+  lane.style.left = '0px';
+  lane.style.height = G.laneH + 'px';
+  const capW = 200, capH = 150;
+  const capL = $('lane-cap-left'), capR = $('lane-cap-right');
+  capL.style.width = capW + 'px'; capL.style.height = capH + 'px';
+  capL.style.left = '-6px'; capL.style.top = (seam - capH / 2) + 'px';
+  capR.style.width = capW + 'px'; capR.style.height = capH + 'px';
+  capR.style.left = (1080 - capW + 6) + 'px'; capR.style.top = (seam - capH / 2) + 'px';
+
+  // announce + chance boxes centered on seam
+  const ann = $('announce');
+  ann.style.left = (540 - 330) + 'px'; ann.style.top = (seam - 62) + 'px';
+  ann.style.height = '124px';
+  const ch = $('chance');
+  const chW = 620, chH = 124;
+  ch.style.width = chW + 'px'; ch.style.height = chH + 'px';
+  ch.style.left = (540 - chW / 2) + 'px'; ch.style.top = (seam - chH / 2) + 'px';
+  const ptr = ch.querySelector('.chance-pointer');
+  ptr.style.width = '52px'; ptr.style.height = '52px';
+  ptr.style.left = (chW / 2 - 26) + 'px'; ptr.style.top = '-40px';
+
+  for (const side of ['youtube', 'tiktok']) {
+    const E = sideEls[side], isLeft = side === 'youtube';
+    const rootX = isLeft ? G.edge : 1080 - G.edge - G.sideW;
+    E.root.style.left = rootX + 'px';
+    E.root.style.top = '0px';
+    E.root.style.width = G.sideW + 'px';
+
+    const pedX = (G.sideW - G.pedW) / 2;
+    const pedTop = seam - G.pedH * 0.62;          // pedestal straddles the seam
+    E.pedWrap.style.left = pedX + 'px';
+    E.pedWrap.style.top = pedTop + 'px';
+    E.pedWrap.style.width = G.pedW + 'px';
+    E.pedWrap.style.height = G.pedH + 'px';
+
+    // shadow stays put at base height while pedestal lifts
+    const shW = 240 * s, shH = 90 * s;
+    E.shadow.style.width = shW + 'px'; E.shadow.style.height = shH + 'px';
+    E.shadow.style.left = (pedX + G.pedW / 2 - shW / 2 + rootX - rootX) + 'px';
+    E.shadow.style.left = (pedX + (G.pedW - shW) / 2) + 'px';
+    E.shadow.style.top = (pedTop + G.pedH - shH * .55) + 'px';
+
+    // character: feet anchored to stand point inside ped-wrap coords
+    const standY = G.pedH * G.standFrac;
+    E.charWrap.style.width = G.charW + 'px';
+    E.charWrap.style.height = G.charH + 'px';
+    E.charWrap.style.left = ((G.pedW - G.charW) / 2) + 'px';
+    E.charWrap.style.top = (standY - G.charH) + 'px';
+
+    // pfp medallion sits on the pedestal front (the drum below the seat),
+    // never over the mascot's face
+    const pfpD = 84 * s, ringPad = pfpD * .16, medD = pfpD + ringPad * 2;
+    E.pfpMed.style.width = medD + 'px';
+    E.pfpMed.style.height = medD + 'px';
+    E.pfpMed.style.left = ((G.pedW - medD) / 2) + 'px';
+    E.pfpMed.style.top = (G.pedH * 0.66 - medD / 2) + 'px';
+    E.pfpImg.style.width = pfpD + 'px'; E.pfpImg.style.height = pfpD + 'px';
+    E.pfpImg.style.left = ringPad + 'px'; E.pfpImg.style.top = ringPad + 'px';
+
+    // splat decal covers torso
+    E.decal.style.width = (G.charW * .6) + 'px'; E.decal.style.height = (G.charW * .6) + 'px';
+    E.decal.style.left = (G.charW * .2) + 'px'; E.decal.style.top = (G.charH * .45) + 'px';
+
+    // crown floats above head (head top ≈ 49% down the char box for idle pose)
+    const crW = 74 * s, crH = 53 * s;
+    E.crown.style.width = crW + 'px'; E.crown.style.height = crH + 'px';
+    E.crown.style.left = ((G.pedW - crW) / 2) + 'px';
+    E.crown.style.top = (standY - G.charH * 0.54 - crH) + 'px';
+
+    // info block below the pedestal
+    const info = E.info;
+    info.style.left = '0px';
+    info.style.top = (seam + G.pedH * 0.42) + 'px';
+    info.style.width = G.sideW + 'px';
+    const badge = info.querySelector('.badge');
+    badge.style.width = (188 * s) + 'px'; badge.style.height = (58 * s) + 'px';
+    const amount = info.querySelector('.amount');
+    amount.style.width = (252 * s) + 'px'; amount.style.height = (60 * s) + 'px';
+    const ribbon = info.querySelector('.ribbon');
+    ribbon.style.width = (330 * s) + 'px'; ribbon.style.height = (56 * s) + 'px';
+  }
+
+  $('debug-seam').style.top = (seam - 1) + 'px';
+  updateHeights(true);
+}
+
+function assignArt() {
+  $('lane-base').src = assetSrc[UI_ASSETS.laneBase];
+  $('lane-cap-left').src = assetSrc[UI_ASSETS.laneCapL];
+  $('lane-cap-right').src = assetSrc[UI_ASSETS.laneCapR];
+  $('announce').querySelector('.ann-bg').src = assetSrc[UI_ASSETS.ribbon];
+  const ch = $('chance');
+  ch.querySelector('.chance-bg').src = assetSrc[UI_ASSETS.chanceStrip];
+  ch.querySelector('.chance-pointer').src = assetSrc[UI_ASSETS.chancePtr];
+  for (const side of ['youtube', 'tiktok']) {
+    const E = sideEls[side], isLeft = side === 'youtube';
+    E.pedImg.src = assetSrc[isLeft ? UI_ASSETS.pedestalL : UI_ASSETS.pedestalR];
+    E.shadow.src = assetSrc[UI_ASSETS.shadow];
+    E.pfpRing.src = assetSrc[isLeft ? UI_ASSETS.pfpRingL : UI_ASSETS.pfpRingR];
+    E.crown.src = assetSrc[UI_ASSETS.crown];
+    E.badgeImg.src = assetSrc[isLeft ? UI_ASSETS.badgeL : UI_ASSETS.badgeR];
+    E.amountImg.src = assetSrc[UI_ASSETS.amountPlate];
+    E.ribbonImg.src = assetSrc[UI_ASSETS.ribbon];
+  }
+}
+
+/* generated fallback avatar when the gift payload has no profile pic */
+function avatarFor(name) {
+  const ramps = [['#1e3a5c', '#5aabff'], ['#3a1a1a', '#ff9f45'], ['#1a3a24', '#5aff9e'],
+                 ['#3a2a14', '#ffb84a'], ['#2a1a3a', '#c47bff'], ['#1a3636', '#5af0ee']];
+  let h = 0; for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  const [bg, fg] = ramps[h % ramps.length];
+  return phCanvas(160, 160, (x) => {
+    x.fillStyle = bg; x.beginPath(); x.arc(80, 80, 80, 0, 7); x.fill();
+    x.fillStyle = fg; x.font = 'bold 74px "DM Sans", sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText((name || '?').trim().charAt(0).toUpperCase(), 80, 88);
+  });
+}
+
+/* ── side identity + numbers refresh ── */
+function updateSideInfo(side, bump) {
+  const E = sideEls[side], t = state.top[side];
+  if (t) {
+    E.charWrap.classList.remove('hidden-char');
+    E.crown.style.display = '';
+    E.nameEl.textContent = t.name;
+    E.amountTxt.textContent = fmtAmount(side, t.total);
+    E.ribbonTxt.textContent = fmtChallenge(side, t.total);
+    E.pfpImg.src = t.pic || avatarFor(t.name);
+    E.pfpMed.style.display = '';
+  } else {
+    E.charWrap.classList.add('hidden-char');
+    E.pfpMed.style.display = 'none';
+    E.crown.style.display = 'none';
+    E.nameEl.textContent = '— OPEN —';
+    E.amountTxt.textContent = '0';
+    E.ribbonTxt.textContent = 'SEND ANYTHING TO CLAIM IT';
+  }
+  if (bump) {
+    E.info.classList.remove('bump'); void E.info.offsetWidth; E.info.classList.add('bump');
+  }
+  publishStatus();
+}
+
+/* ── cross-platform height comparison ── */
+let lastLeader = null, lastCompareAt = 0;
+function updateHeights(silent) {
+  const yt = normTotal('youtube'), tt = normTotal('tiktok');
+  const max = Math.max(yt, tt);
+  let leader = 'even';
+  if (max > 0) {
+    const diff = Math.abs(yt - tt) / max;
+    if (diff > CONFIG.NECK_AND_NECK) leader = yt > tt ? 'youtube' : 'tiktok';
+  }
+  const liftFor = (side) => {
+    if (leader === 'even') return 0;
+    const win = side === leader;
+    if (max <= 0) return 0;
+    const ratio = Math.min(1, Math.abs(yt - tt) / max);
+    return (win ? -1 : 1) * CONFIG.MAX_LIFT * (0.45 + 0.55 * ratio);
+  };
+  for (const side of ['youtube', 'tiktok']) {
+    const E = sideEls[side], lift = liftFor(side);
+    E.lift = lift;
+    E.pedWrap.style.transform = `translateY(${lift}px)`;
+    E.shadow.style.opacity = lift < 0 ? 0.35 : 0.55;
+    E.shadow.style.transform = `scale(${lift < 0 ? 0.85 : 1})`;
+  }
+  if (!silent && leader !== lastLeader && (Date.now() - lastCompareAt) / 1000 > CONFIG.COMPARE_MIN_GAP_S) {
+    lastCompareAt = Date.now();
+    const lines = leader === 'even'
+      ? ['NECK AND NECK', 'DEAD EVEN — SOMEBODY MOVE']
+      : leader === 'youtube'
+        ? ['YOUTUBE IS WINNING', 'TIKTOK GOT DROPPED', 'YOUTUBE IS HIGHER']
+        : ['TIKTOK IS AHEAD', 'YOUTUBE NEEDS A HERO', 'TIKTOK IS HIGHER'];
+    laneQueue.push({ kind: 'compare', text: pick(lines), ms: 2200 });
+    pumpLane();
+  }
+  lastLeader = leader;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   4. SPRITE ANIMATION
+   ════════════════════════════════════════════════════════════════ */
+
+class Actor {
+  constructor(side) {
+    this.side = side;
+    this.img = sideEls[side].charImg;
+    this.timer = null;
+    this.current = null;
+    this.busy = false;      // true while a scripted action owns the character
+  }
+  stop() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } }
+  /* play a named sequence; resolves when done (or never, if loop) */
+  play(name, { fps = 5, loop = false, cycles = 1 } = {}) {
+    this.stop();
+    this.current = name;
+    const frames = SEQ_FRAMES[name];
+    return new Promise((resolve) => {
+      let i = 0, played = 0;
+      const step = () => {
+        this.img.src = assetSrc[frames[i]];
+        i++;
+        if (i >= frames.length) {
+          i = 0; played++;
+          if (!loop && played >= cycles) { this.timer = null; resolve(); return; }
+        }
+        this.timer = setTimeout(step, 1000 / fps);
+      };
+      step();
+    });
+  }
+  idle() { this.busy = false; this.play('idle', { fps: 2.1, loop: true }); }
+}
+const actors = { youtube: null, tiktok: null };
+
+/* idle flex scheduler — cockiness rises the longer a throne goes unchallenged */
+function scheduleIdleActs(side) {
+  const next = () => (CONFIG.IDLE_ACT_MIN_S + Math.random() * (CONFIG.IDLE_ACT_MAX_S - CONFIG.IDLE_ACT_MIN_S)) * 1000;
+  const tick = async () => {
+    const a = actors[side];
+    if (state.top[side] && a && !a.busy) {
+      const cocky = Math.min(1, (Date.now() - (state.lastCrownChange[side] || 0)) / 240000); // maxes at 4 min
+      const roll = Math.random();
+      let seq = 'idle';
+      if (roll < 0.30 + cocky * 0.25) seq = pick(['taunt', 'taunt', 'puff']);
+      else if (roll < 0.62) seq = 'dance';
+      if (seq !== 'idle' && !a.busy) {
+        a.busy = true;
+        await a.play(seq, { fps: seq === 'dance' ? 5 : 3.6, cycles: seq === 'dance' ? 2 : 1 });
+        if (!a.busy) return;    // a scripted action took over mid-flex
+        a.idle();
+      }
+    }
+    setTimeout(tick, next());
+  };
+  setTimeout(tick, next() + (side === 'tiktok' ? 2600 : 0));
+}
+
+/* ════════════════════════════════════════════════════════════════
+   5. LANE DIRECTOR — announcements + chance strip, serialized
+   ════════════════════════════════════════════════════════════════ */
+
+const laneQueue = [];
+let lanePumping = false;
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+function announce(text, kind = 'gift', ms = CONFIG.ANNOUNCE_GIFT_MS) {
+  return new Promise((res) => {
+    const el = $('announce');
+    el.className = 'kind-' + kind;
+    el.style.setProperty('--ann-ms', ms + 'ms');
+    el.querySelector('.ann-text').textContent = text;
+    void el.offsetWidth;
+    el.classList.add('show');
+    setTimeout(() => { el.classList.remove('show'); res(); }, ms);
+  });
+}
+
+const CHANCE_LABELS = ['WHIFF', 'TOSS', 'DOUBLE TOSS', 'BIG BONK', 'SPLAT HIT'];
+function chanceRoll(tier) {
+  const w = CONFIG.CHANCE_WEIGHTS[tier] || CONFIG.CHANCE_WEIGHTS[1];
+  const sum = w.reduce((a, b) => a + b, 0);
+  let r = Math.random() * sum;
+  for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
+  return 1;
+}
+function showChanceStrip(resultIdx) {
+  return new Promise((res) => {
+    const el = $('chance'), txt = el.querySelector('.chance-text');
+    el.classList.add('show'); el.classList.remove('landed');
+    let t = 0;
+    const spin = setInterval(() => {
+      txt.textContent = CHANCE_LABELS[t++ % CHANCE_LABELS.length];
+      sfx('tick');
+    }, 90);
+    setTimeout(() => {
+      clearInterval(spin);
+      txt.textContent = CHANCE_LABELS[resultIdx];
+      el.classList.add('landed');
+      sfx(resultIdx === 0 ? 'whiff' : 'land');
+      setTimeout(() => { el.classList.remove('show', 'landed'); res(); }, CONFIG.CHANCE_HOLD_MS);
+    }, CONFIG.CHANCE_SPIN_MS);
+  });
+}
+
+async function pumpLane() {
+  if (lanePumping) return;
+  lanePumping = true;
+  while (laneQueue.length) {
+    /* under spam pressure, drop chance visuals from older queued gifts */
+    const overload = laneQueue.length > 4;
+    const item = laneQueue.shift();
+    try {
+      if (item.kind === 'gift-flow') await runGiftFlow(item, overload);
+      else if (item.kind === 'steal-flow') await runStealFlow(item);
+      else await announce(item.text, item.kind, item.ms || 2000);
+    } catch (e) { console.error('lane item failed', e); }
+  }
+  lanePumping = false;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   6. THROWS, IMPACTS, FX
+   ════════════════════════════════════════════════════════════════ */
+
+function sideCharCenter(side) {
+  const E = sideEls[side];
+  const rootX = parseFloat(E.root.style.left);
+  const pedX = parseFloat(E.pedWrap.style.left);
+  const pedTop = parseFloat(E.pedWrap.style.top) + (E.lift || 0);
+  const standY = G.pedH * G.standFrac;
+  return {
+    x: rootX + pedX + G.pedW / 2,
+    y: pedTop + standY - G.charH * 0.26,   // torso height (art has top margin)
+    handY: pedTop + standY - G.charH * 0.30,
+  };
+}
+
+/* throwable art fills ~55% of its canvas, so display sizes run larger */
+function tierProjSize(tier) { return [0, 80, 110, 150, 200][tier] || 80; }
+
+function spawnFx(kind, x, y, size) {
+  const frames = FX[kind];
+  const el = document.createElement('img');
+  el.className = 'fx';
+  el.style.width = size + 'px'; el.style.height = size + 'px';
+  el.style.left = (x - size / 2) + 'px'; el.style.top = (y - size / 2) + 'px';
+  el.src = assetSrc[frames[0]];
+  $('fx-layer').appendChild(el);
+  let i = 1;
+  const iv = setInterval(() => {
+    if (i < frames.length) { el.src = assetSrc[frames[i++]]; el.style.opacity = .85; }
+    else { clearInterval(iv); el.style.transition = 'opacity .25s'; el.style.opacity = 0; setTimeout(() => el.remove(), 300); }
+  }, 150);
+}
+
+function throwProjectile(fromSide, { tier = 1, objKind = null, whiff = false } = {}) {
+  return new Promise((res) => {
+    const toSide = fromSide === 'youtube' ? 'tiktok' : 'youtube';
+    const obj = THROWABLES[objKind || pick(Object.keys(THROWABLES))];
+    const from = sideCharCenter(fromSide);
+    const to = sideCharCenter(toSide);
+    const size = tierProjSize(tier) * (0.9 + Math.random() * 0.2);
+    const el = document.createElement('img');
+    el.className = 'proj';
+    el.src = assetSrc[obj.flight];
+    el.style.width = size + 'px'; el.style.height = size + 'px';
+    $('proj-layer').appendChild(el);
+
+    const frac = whiff ? 0.34 + Math.random() * 0.1 : 1;
+    const x0 = from.x, y0 = from.handY;
+    const x1 = x0 + (to.x - x0) * frac;
+    const y1 = whiff ? G.seam + 26 : to.y;
+    const arc = whiff ? 60 : 95 + tier * 12;
+    const dur = whiff ? 620 : 660 + tier * 40;
+    const spinDir = fromSide === 'youtube' ? 1 : -1;
+    const t0 = performance.now();
+    sfx('whoosh');
+
+    /* hybrid driver: rAF for smoothness, interval as fallback so the flight
+       always completes (and the lane queue never stalls) even if rAF is
+       throttled by a hidden/occluded window */
+    let finished = false;
+    const step = () => {
+      if (finished) return;
+      const t = Math.min(1, (performance.now() - t0) / dur);
+      const x = x0 + (x1 - x0) * t;
+      const y = y0 + (y1 - y0) * t - arc * 4 * t * (1 - t);
+      el.style.transform = `translate(${x - size / 2}px, ${y - size / 2}px) rotate(${spinDir * t * 640}deg)`;
+      if (t < 1) return;
+      finished = true;
+      clearInterval(iv);
+      el.remove();
+      if (whiff) {
+        spawnFx('dust', x1, G.seam + 8, size * 1.4);
+        sfx('thud');
+        res({ toSide, landed: false });
+        return;
+      }
+      /* impact frames at the target */
+      const imp = document.createElement('img');
+      imp.className = 'proj';
+      imp.style.width = (size * 1.5) + 'px'; imp.style.height = (size * 1.5) + 'px';
+      imp.style.transform = `translate(${x1 - size * 0.75}px, ${y1 - size * 0.75}px)`;
+      imp.src = assetSrc[obj.impact[0]];
+      $('proj-layer').appendChild(imp);
+      setTimeout(() => { imp.src = assetSrc[obj.impact[1]]; }, 140);
+      setTimeout(() => { imp.style.transition = 'opacity .3s'; imp.style.opacity = 0; setTimeout(() => imp.remove(), 320); }, 420);
+      spawnFx(obj.fx, x1, y1, size * (obj.fx === 'splat' ? 2.1 : 1.9));
+      sfx(obj.fx === 'splat' ? 'splat' : 'bonk');
+      res({ toSide, landed: true, fxKind: obj.fx, x: x1, y: y1, size });
+    };
+    const iv = setInterval(step, 33);
+    const raf = () => { if (finished) return; step(); requestAnimationFrame(raf); };
+    requestAnimationFrame(raf);
+  });
+}
+
+async function hitReaction(side, { tier = 1, splat = false } = {}) {
+  const E = sideEls[side], a = actors[side];
+  if (!state.top[side] || !a) return;   // empty throne: impact fx alone is enough
+  a.busy = true;
+  const kb = tier >= 3 ? (side === 'youtube' ? 'knockback-left' : 'knockback-right') : 'wobble';
+  E.charWrap.classList.remove('wobble', 'knockback-left', 'knockback-right');
+  void E.charWrap.offsetWidth;
+  E.charWrap.classList.add(kb);
+  if (splat) {
+    E.decal.src = assetSrc[THROWABLES[Math.random() < .5 ? 'tomato' : 'pie'].impact[1]];
+    E.decal.classList.add('show');
+    setTimeout(() => E.decal.classList.remove('show'), 2600);
+  }
+  await a.play('hit', { fps: 4, cycles: 1 });
+  E.charWrap.classList.remove(kb);
+  a.idle();
+}
+
+/* full throw action from one side (windup → release → projectile → impact) */
+async function performThrow(fromSide, { tier = 1, count = 1, whiff = false, objKind = null, big = false } = {}) {
+  const a = actors[fromSide];
+  const canAnimate = !!(state.top[fromSide] && a);
+  if (canAnimate) {
+    a.busy = true;
+    await a.play('windup', { fps: 5 });
+    a.play('release', { fps: 4 });
+  }
+  for (let i = 0; i < count; i++) {
+    const kind = objKind || (big ? pick(['bone', 'moneybag', 'crown']) : null);
+    const out = await throwProjectile(fromSide, { tier: big ? Math.max(tier, 3) : tier, objKind: kind, whiff });
+    if (out.landed) hitReaction(out.toSide, { tier: big ? 4 : tier, splat: out.fxKind === 'splat' });
+    if (i < count - 1) await new Promise(rs => setTimeout(rs, 240));
+  }
+  if (canAnimate) {
+    await a.play('follow', { fps: 4 });
+    a.idle();
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   7. GIFT FLOW
+   ════════════════════════════════════════════════════════════════ */
+
+/* re-derive the throne from the roster after a manual fix.
+   animate=false → silent swap (no cinematic), for quiet corrections. */
+function recomputeTop(side, { animate = false } = {}) {
+  const all = Object.values(state.gifters[side]);
+  const best = all.length ? all.reduce((a, b) => (b.total > a.total ? b : a)) : null;
+  const cur = state.top[side];
+  if (!best) {
+    state.top[side] = null;
+  } else if (!cur || keyOf(best.name) !== keyOf(cur.name)) {
+    state.top[side] = { name: best.name, pic: best.pic || null, total: best.total };
+    state.lastCrownChange[side] = Date.now();
+    if (animate) {
+      laneQueue.push({ kind: 'steal-flow', side, name: best.name, tier: 2, hadOld: !!cur, oldName: cur?.name });
+      pumpLane();
+    }
+  } else {
+    cur.total = best.total;
+    if (best.pic) cur.pic = best.pic;
+  }
+  persistState();
+  updateSideInfo(side, true);
+  updateHeights();
+}
+
+function giftReceived(side, name, nativeAmount, usd, pic) {
+  if (!SIDES[side] || !(nativeAmount > 0)) return;
+  const k = keyOf(name);
+  const g = state.gifters[side][k] || (state.gifters[side][k] = { name, total: 0, pic: null });
+  g.total += nativeAmount;
+  g.name = name;
+  if (pic) g.pic = pic;
+
+  const top = state.top[side];
+  const isHolder = top && keyOf(top.name) === k;
+  const isSteal = !isHolder && (!top || g.total > top.total);
+  const oldTop = top ? { ...top } : null;
+
+  if (isSteal) {
+    state.top[side] = { name: g.name, pic: g.pic, total: g.total };
+    state.lastCrownChange[side] = Date.now();
+  } else if (isHolder) {
+    top.total = g.total;
+    if (g.pic) top.pic = g.pic;
+  }
+  persistState();
+  updateSideInfo(side, true);
+  updateHeights();
+
+  const tier = tierOfUsd(usd);
+  if (isSteal) {
+    laneQueue.push({ kind: 'steal-flow', side, name: g.name, tier, hadOld: !!oldTop, oldName: oldTop?.name });
+  } else {
+    laneQueue.push({ kind: 'gift-flow', side, name: g.name, nativeAmount, tier, isHolder });
+  }
+  pumpLane();
+}
+
+async function runGiftFlow(item, overload) {
+  const { side, name, nativeAmount, tier, isHolder } = item;
+  const amtTxt = side === 'tiktok' ? `${Math.round(nativeAmount).toLocaleString()} COINS` : `$${nativeAmount.toFixed(2)}`;
+  await announce(`${name.toUpperCase()} SENT ${amtTxt}`, 'gift',
+    tier >= 3 ? CONFIG.ANNOUNCE_BIG_MS : CONFIG.ANNOUNCE_GIFT_MS);
+
+  if (overload) {   // spam relief: totals already counted, skip the theatrics
+    if (tier >= 2) performThrow(side, { tier, count: 1 });
+    return;
+  }
+
+  let idx = chanceRoll(tier);
+  if (isHolder && idx === 0) idx = 1;      // the champ flexing never fully whiffs
+  await showChanceStrip(idx);
+
+  const opp = side === 'youtube' ? 'TIKTOK' : 'YOUTUBE';
+  const NAME = name.toUpperCase();
+  switch (idx) {
+    case 0:
+      await performThrow(side, { tier, whiff: true });
+      announce(pick([`${NAME} WHIFFED IT`, 'AIR BALL', 'NOT EVEN CLOSE']), 'whiff', 1500);
+      break;
+    case 1:
+      await performThrow(side, { tier });
+      announce(pick([`${NAME} HIT ${opp}`, `${NAME} FIRED ONE OVER`, `${opp} CAUGHT ONE`]), 'throw', 1700);
+      break;
+    case 2:
+      await performThrow(side, { tier, count: 2 });
+      announce(pick([`${NAME} DOUBLED UP`, `TWO SHOTS FROM ${NAME}`]), 'throw', 1700);
+      break;
+    case 3:
+      await performThrow(side, { tier: Math.max(tier, 3), big: true });
+      announce(pick([`${NAME} BONKED ${opp}`, `BIG BONK BY ${NAME}`, `${opp} FELT THAT ONE`]), 'throw', 1900);
+      break;
+    case 4:
+      await performThrow(side, { tier: Math.max(tier, 3), objKind: Math.random() < .5 ? 'tomato' : 'pie' });
+      announce(pick([`${NAME} SPLATTED ${opp}`, `DIRECT SPLAT BY ${NAME}`]), 'throw', 1900);
+      break;
+  }
+  if (isHolder && idx >= 1) {
+    const a = actors[side];
+    if (a && !a.busy) { a.busy = true; await a.play('puff', { fps: 4 }); a.idle(); }
+  }
+}
+
+async function runStealFlow(item) {
+  const { side, name, hadOld, oldName } = item;
+  const E = sideEls[side], a = actors[side];
+  const plat = SIDES[side].label;
+  const NAME = name.toUpperCase();
+
+  if (hadOld && a) {
+    a.busy = true;
+    announce(pick([
+      `${NAME} STOLE ${plat} TOP SPLATTY`,
+      `${NAME} KNOCKED ${(oldName || '').toUpperCase()} OFF`,
+      `${(oldName || '').toUpperCase()} GOT TOO COMFORTABLE`,
+    ]), 'steal', 2600);
+    sfx('alarm');
+    await a.play('shock', { fps: 4 });
+    const fallCls = side === 'youtube' ? 'fall-left' : 'fall-right';
+    E.charWrap.classList.add(fallCls);
+    a.play('fall', { fps: 4 });
+    await new Promise(r => setTimeout(r, 950));
+    spawnFx('dust', sideCharCenter(side).x, G.seam + 10, 200);
+    E.charWrap.classList.remove(fallCls);
+    E.charWrap.classList.add('hidden-char');
+  } else {
+    announce(`NEW ${plat} TOP SPLATTY`, 'steal', 2400);
+  }
+
+  /* arrival */
+  updateSideInfo(side);
+  E.decal.classList.remove('show');
+  E.charWrap.classList.remove('hidden-char');
+  E.charWrap.classList.add('arrive');
+  const c = sideCharCenter(side);
+  spawnFx('flash', c.x, c.y, 320);
+  sfx('fanfare');
+  if (a) {
+    a.busy = true;
+    await a.play('victory', { fps: 4 });
+    E.charWrap.classList.remove('arrive');
+    a.idle();
+  }
+  announce(pick([
+    `${NAME} IS THE NEW ${plat} TOP SPLATTY`,
+    `ALL HAIL ${NAME}`,
+    `SEND ${side === 'tiktok' ? '1 MORE' : '$0.01 MORE'} TO KNOCK ${NAME} OFF`,
+  ]), 'steal', 2400);
+}
+
+/* ── periodic bait lines when the lane is quiet ── */
+setInterval(() => {
+  if (laneQueue.length || lanePumping) return;
+  const occupied = ['youtube', 'tiktok'].filter(s => state.top[s]);
+  if (!occupied.length) return;
+  const side = pick(occupied);
+  const t = state.top[side];
+  const lines = [
+    `${t.name.toUpperCase()} THINKS THEY OWN ${SIDES[side].label}`,
+    fmtChallenge(side, t.total),
+    `YOU GONNA LET ${t.name.toUpperCase()} STAY UP THERE?`,
+    `${SIDES[side].label} TOP SPLATTY IS GETTING COMFY`,
+  ];
+  laneQueue.push({ kind: 'hype', text: pick(lines), ms: 2400 });
+  pumpLane();
+  const a = actors[side];
+  if (a && !a.busy) { a.busy = true; a.play('taunt', { fps: 3.6 }).then(() => a.idle()); }
+}, CONFIG.HYPE_EVERY_S * 1000);
+
+/* ════════════════════════════════════════════════════════════════
+   8. SFX — tiny WebAudio blips (placeholder-grade, no files)
+   ════════════════════════════════════════════════════════════════ */
+let AC = null;
+function ac() { if (!AC) try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} return AC; }
+function sfx(kind) {
+  if (!CONFIG.SFX.enabled) return;
+  const a = ac(); if (!a) return;
+  const t = a.currentTime, vol = CONFIG.SFX.volume;
+  const osc = (type, f0, f1, dur, v) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
+    g.gain.setValueAtTime(v * vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur);
+  };
+  const noise = (dur, v, fc) => {
+    const n = a.createBufferSource(), buf = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    n.buffer = buf;
+    const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fc;
+    const g = a.createGain(); g.gain.setValueAtTime(v * vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    n.connect(f).connect(g).connect(a.destination); n.start(t);
+  };
+  switch (kind) {
+    case 'tick': osc('square', 900, 700, .04, .12); break;
+    case 'land': osc('triangle', 300, 900, .18, .5); break;
+    case 'whiff': osc('sine', 500, 140, .3, .35); break;
+    case 'whoosh': noise(.28, .3, 1400); break;
+    case 'bonk': osc('sine', 180, 60, .22, .8); noise(.1, .25, 800); break;
+    case 'splat': noise(.24, .55, 500); osc('sine', 220, 70, .18, .4); break;
+    case 'thud': osc('sine', 140, 50, .18, .5); break;
+    case 'alarm': osc('square', 620, 620, .1, .3); setTimeout(() => osc('square', 480, 480, .12, .3), 120); break;
+    case 'fanfare': [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => osc('triangle', f, f, .22, .4), i * 110)); break;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   9. ABLY + COMMANDS + STATUS
+   ════════════════════════════════════════════════════════════════ */
+
+let ablyChannel = null, syncChannel = null;
+
+function onGiftAlert(d) {
+  d = d || {};
+  const type = (d.type || '').toLowerCase();
+  let side = (d.platform || '').toLowerCase();
+  if (side !== 'tiktok' && side !== 'youtube') {
+    if (type === 'tiktok_coins') side = 'tiktok';
+    else if (type.startsWith('youtube')) side = 'youtube';
+    else return;
+  }
+  const amt = +d.amount || 0;
+  if (amt <= 0) return;
+  let native, usd;
+  if (side === 'tiktok') { native = amt; usd = amt * CONFIG.COIN_TO_USD; }
+  else if (type === 'youtube_jewels') { native = amt * CONFIG.JEWEL_TO_USD; usd = native; }
+  else { native = amt; usd = amt; }
+  giftReceived(side, d.name || 'Anonymous', native, usd, d.profilePic || d.chatimg || d.avatar || null);
+}
+
+function onCommand(d) {
+  d = d || {};
+  switch (d.cmd) {
+    case 'reset':
+      state = { top: { youtube: null, tiktok: null }, gifters: { youtube: {}, tiktok: {} }, lastCrownChange: { youtube: 0, tiktok: 0 } };
+      persistState();
+      ['youtube', 'tiktok'].forEach(s => updateSideInfo(s));
+      updateHeights(true);
+      laneQueue.length = 0;
+      announce('FRESH THRONES — WHO WANTS IT?', 'steal', 2400);
+      break;
+    case 'reset-side':
+      if (SIDES[d.platform]) {
+        state.top[d.platform] = null;
+        state.gifters[d.platform] = {};
+        persistState(); updateSideInfo(d.platform); updateHeights(true);
+      }
+      break;
+    case 'seam':
+      CONFIG.SEAM_Y = Math.min(Math.max(+d.y || 940, 300), 1600);
+      cfgOverride.seamY = CONFIG.SEAM_Y; persistCfg(); applyLayout();
+      break;
+    case 'scale':
+      CONFIG.UI_SCALE = Math.min(Math.max(+d.v || 1, 0.6), 1.6);
+      cfgOverride.uiScale = CONFIG.UI_SCALE; persistCfg(); applyLayout();
+      break;
+    case 'debug':
+      document.body.classList.toggle('debug', !!d.on);
+      break;
+    case 'sfx':
+      CONFIG.SFX.enabled = !!d.on;
+      break;
+    case 'announce':
+      if (d.text) { laneQueue.push({ kind: 'hype', text: String(d.text).slice(0, 60), ms: 2600 }); pumpLane(); }
+      break;
+    case 'set-top':
+      /* force this viewer onto the throne; bumps their total above the roster
+         max if needed so the next real gift can't instantly re-steal it */
+      if (SIDES[d.platform] && d.name && +d.amount > 0) {
+        const k = keyOf(d.name);
+        const others = Object.entries(state.gifters[d.platform])
+          .filter(([kk]) => kk !== k)
+          .map(([, g]) => g.total);
+        const floor = others.length ? Math.max(...others) : 0;
+        const bump = d.platform === 'tiktok' ? 1 : 0.01;
+        const total = Math.max(+d.amount, floor > 0 ? floor + bump : 0);
+        state.gifters[d.platform][k] = { name: d.name, total, pic: d.pic || null };
+        recomputeTop(d.platform, { animate: !!d.animate });
+      }
+      break;
+    case 'adjust':
+      /* add/remove coins or $ for a viewer (missed gifts, refunds).
+         d: {platform, name, delta} or {platform, name, mode:'set', amount} */
+      if (SIDES[d.platform] && d.name) {
+        const k = keyOf(d.name);
+        const g = state.gifters[d.platform][k]
+          || (state.gifters[d.platform][k] = { name: d.name, total: 0, pic: null });
+        if (d.mode === 'set') g.total = Math.max(0, +d.amount || 0);
+        else g.total = Math.max(0, g.total + (+d.delta || 0));
+        if (g.total <= 0) delete state.gifters[d.platform][k];
+        recomputeTop(d.platform, { animate: !!d.animate });
+      }
+      break;
+    case 'remove-gifter':
+      if (SIDES[d.platform] && d.name) {
+        delete state.gifters[d.platform][keyOf(d.name)];
+        recomputeTop(d.platform, { animate: !!d.animate });
+      }
+      break;
+    case 'test-gift':
+      giftReceived(d.platform, d.name || 'Tester',
+        +d.amount || 1,
+        d.platform === 'tiktok' ? (+d.amount || 1) * CONFIG.COIN_TO_USD : (+d.amount || 1),
+        d.pic || null);
+      break;
+    case 'demo': runDemo(); break;
+    case 'ping': break;   // controller just opened — the forced publish below answers it
+  }
+  publishStatus(true);
+}
+
+/* status publishing is debounced AND deduped: bursts of gifts or commands
+   coalesce into one message, and identical payloads are never re-sent, so
+   an idle stream publishes nothing at all */
+let statusTimer = null, lastStatusStr = '';
+function publishStatus(force) {
+  if (force) lastStatusStr = '';           // guarantee the next payload goes out
+  if (!syncChannel || statusTimer) return;
+  statusTimer = setTimeout(doPublishStatus, force ? 250 : 2000);
+}
+function doPublishStatus() {
+  statusTimer = null;
+  const rosterOf = (side) => Object.values(state.gifters[side])
+    .sort((a, b) => b.total - a.total).slice(0, 8)
+    .map(g => ({ name: g.name, total: g.total }));
+  const payload = {
+    tiktok: state.top.tiktok && { name: state.top.tiktok.name, total: state.top.tiktok.total },
+    youtube: state.top.youtube && { name: state.top.youtube.name, total: state.top.youtube.total },
+    roster: { tiktok: rosterOf('tiktok'), youtube: rosterOf('youtube') },
+    seamY: CONFIG.SEAM_Y, uiScale: CONFIG.UI_SCALE,
+    missingAssets: missingCount, totalAssets: totalCount,
+  };
+  const str = JSON.stringify(payload);
+  if (str === lastStatusStr) return;
+  lastStatusStr = str;
+  syncChannel.publish(CONFIG.MSG_OUT, payload).catch(() => {});
+}
+
+function connectAbly() {
+  if (!window.Ably) return;
+  try {
+    /* echoMessages:false — never get billed a delivery of our own publishes */
+    const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY, echoMessages: false });
+    ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);   // busy shared channel
+    syncChannel = ably.channels.get(CONFIG.SYNC_CHANNEL);   // quiet private channel
+    ablyChannel.subscribe(CONFIG.GIFT_ALERT, m => onGiftAlert(m.data));
+    syncChannel.subscribe(CONFIG.MSG_IN, m => onCommand(m.data));
+    ably.connection.on('connected', () => { $('conn-dot').classList.add('connected'); publishStatus(true); });
+    ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
+    ably.connection.on('suspended', () => $('conn-dot').classList.remove('connected'));
+  } catch (e) { console.error('Ably init failed', e); }
+}
+
+/* ── scripted demo for testing / screenshots ── */
+async function runDemo() {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  onCommand({ cmd: 'reset' });
+  await wait(2800);
+  giftReceived('tiktok', 'JoeFan88', 99, 99 * CONFIG.COIN_TO_USD, null);
+  await wait(1500);
+  giftReceived('youtube', 'BigMike', 5, 5, null);
+  await wait(6000);
+  giftReceived('tiktok', 'SplatQueen', 1200, 6, null);
+  await wait(7000);
+  giftReceived('youtube', 'BigMike', 20, 20, null);
+  await wait(7000);
+  giftReceived('tiktok', 'JoeFan88', 5000, 25, null);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   10. BOOT
+   ════════════════════════════════════════════════════════════════ */
+
+async function boot() {
+  loadPersisted();
+  if (new URLSearchParams(location.search).get('debug') === '1') document.body.classList.add('debug');
+  buildSide('youtube');
+  buildSide('tiktok');
+  applyLayout();
+
+  await Promise.all(allAssetPaths().map(resolveAsset));
+  assignArt();
+
+  actors.youtube = new Actor('youtube');
+  actors.tiktok = new Actor('tiktok');
+  ['youtube', 'tiktok'].forEach(s => {
+    updateSideInfo(s);
+    if (state.top[s]) actors[s].idle();
+    scheduleIdleActs(s);
+  });
+  updateHeights(true);
+  connectAbly();
+
+  const hud = $('debug-hud');
+  setInterval(() => {
+    if (!document.body.classList.contains('debug')) return;
+    hud.textContent =
+      `seam ${CONFIG.SEAM_Y}  scale ${CONFIG.UI_SCALE}\n` +
+      `assets ${totalCount - missingCount}/${totalCount} real (${missingCount} placeholder)\n` +
+      `YT ${state.top.youtube ? state.top.youtube.name + ' $' + state.top.youtube.total.toFixed(2) : '—'}  ` +
+      `TT ${state.top.tiktok ? state.top.tiktok.name + ' ' + state.top.tiktok.total + 'c' : '—'}\n` +
+      `queue ${laneQueue.length}`;
+  }, 500);
+
+  console.log(`[TopSplatty] ready — ${totalCount - missingCount}/${totalCount} real assets, ${missingCount} placeholders`);
+}
+
+/* public API for console testing */
+window.topSplatty = {
+  gift: (platform, name, amount, pic) => onCommand({ cmd: 'test-gift', platform, name, amount, pic }),
+  reset: () => onCommand({ cmd: 'reset' }),
+  demo: () => runDemo(),
+  seam: (y) => onCommand({ cmd: 'seam', y }),
+  scale: (v) => onCommand({ cmd: 'scale', v }),
+  state: () => state,
+};
+
+boot();
+</script>
+</body>
+</html>

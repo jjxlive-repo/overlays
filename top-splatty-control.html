@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Top Splatty — Controller</title>
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+  :root {
+    --deep: #3B0764; --mid: #7B2FBE; --bright: #A855F7; --light: #C084FC;
+    --accent: #E879F9; --white: #FAF5FF; --danger: #F43F5E;
+    --yt: #FF9F45; --tt: #5AD7F0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: linear-gradient(160deg, #14042a, #29094f 60%, #14042a);
+    min-height: 100vh;
+    font-family: 'DM Sans', sans-serif; color: var(--white);
+  }
+  h1 {
+    font-family: 'Boogaloo', cursive; font-size: 42px; margin: 0 0 4px;
+    letter-spacing: 1px;
+  }
+  h1 .dot {
+    display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+    background: #666; margin-left: 10px; transition: background .3s;
+  }
+  h1 .dot.connected { background: #35d97b; }
+  .sub { color: var(--light); margin: 0 0 20px; font-size: 14px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; max-width: 1100px; }
+  .card {
+    background: rgba(59,7,100,.45); border: 1px solid rgba(192,132,252,.35);
+    border-radius: 16px; padding: 18px;
+  }
+  .card.full { grid-column: 1 / -1; }
+  .card h2 {
+    font-family: 'Boogaloo', cursive; font-size: 24px; margin: 0 0 12px;
+    letter-spacing: 1px; color: var(--light);
+  }
+  .card.yt h2 { color: var(--yt); }
+  .card.tt h2 { color: var(--tt); }
+
+  .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  button {
+    font-family: 'Boogaloo', cursive; font-size: 22px; letter-spacing: .5px;
+    color: var(--white); background: var(--mid);
+    border: none; border-radius: 12px; padding: 14px 20px;
+    cursor: pointer; transition: transform .08s, filter .15s;
+    min-width: 96px;
+  }
+  button:hover { filter: brightness(1.2); }
+  button:active { transform: scale(.94); }
+  .card.yt button { background: #a35714; }
+  .card.tt button { background: #14607a; }
+  button.big { font-size: 26px; padding: 18px 26px; }
+  button.danger { background: #7a1430; }
+  button.ghost { background: rgba(192,132,252,.18); }
+
+  label { font-size: 13px; color: var(--light); display: block; margin: 10px 0 4px; }
+  input[type=text], input[type=number] {
+    font-family: 'DM Sans', sans-serif; font-size: 16px;
+    background: rgba(10,2,20,.6); color: var(--white);
+    border: 1px solid rgba(192,132,252,.4); border-radius: 8px;
+    padding: 9px 12px; width: 100%;
+  }
+  input[type=range] { width: 100%; accent-color: var(--bright); }
+  .inline { display: flex; gap: 10px; align-items: flex-end; }
+  .inline > div { flex: 1; }
+
+  .status-box {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;
+  }
+  .throne {
+    border-radius: 12px; padding: 12px 14px; background: rgba(10,2,20,.5);
+    border: 1px solid rgba(192,132,252,.25);
+  }
+  .throne .plat { font-family: 'Boogaloo', cursive; font-size: 18px; letter-spacing: 1px; }
+  .throne.yt .plat { color: var(--yt); }
+  .throne.tt .plat { color: var(--tt); }
+  .throne .who { font-size: 22px; font-weight: 700; margin: 4px 0 2px; }
+  .throne .amt { color: var(--light); font-size: 15px; }
+  .meta { color: var(--light); font-size: 12px; margin-top: 10px; }
+
+  .roster {
+    border-radius: 12px; background: rgba(10,2,20,.5);
+    border: 1px solid rgba(192,132,252,.25); overflow: hidden;
+  }
+  .roster-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; cursor: pointer; font-size: 15px;
+    border-bottom: 1px solid rgba(192,132,252,.12);
+  }
+  .roster-row:last-child { border-bottom: none; }
+  .roster-row:hover { background: rgba(168,85,247,.18); }
+  .roster-row .rk { width: 20px; color: var(--light); }
+  .roster-row .nm { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .roster-row .tot { color: var(--light); }
+  .roster.yt .roster-row.is-top .nm { color: var(--yt); }
+  .roster.tt .roster-row.is-top .nm { color: var(--tt); }
+  .roster-empty { padding: 10px 12px; color: rgba(192,132,252,.6); font-size: 14px; }
+
+  .flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 50; }
+  .flash.on { animation: fl .4s ease-out; }
+  @keyframes fl { 0% { opacity: .5; } 100% { opacity: 0; } }
+  .flash.green { background: #35d97b; }
+  .flash.red { background: var(--danger); }
+
+  .hint { font-size: 12px; color: rgba(192,132,252,.7); margin-top: 8px; }
+  kbd {
+    background: rgba(10,2,20,.7); border: 1px solid rgba(192,132,252,.4);
+    border-radius: 5px; padding: 1px 7px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<h1>TOP SPLATTY — CONTROLLER <span class="dot" id="dot"></span></h1>
+<p class="sub">Test gifts fire through the real <code>gift-alert</code> pipeline — exactly what stream-dock publishes live. Overlay must be open (TikTok Studio or a browser tab) to see results.</p>
+
+<div class="grid">
+
+  <div class="card yt">
+    <h2>▶ YOUTUBE TEST GIFTS (left throne)</h2>
+    <div class="btn-row">
+      <button onclick="ytGift(2)">$2</button>
+      <button onclick="ytGift(5)">$5</button>
+      <button onclick="ytGift(20)">$20</button>
+      <button onclick="ytGift(50)">$50</button>
+      <button class="big" onclick="ytGift(100)">$100</button>
+    </div>
+    <div class="inline">
+      <div><label>Custom $</label><input type="number" id="yt-amt" value="7.50" step="0.01" min="0.01"></div>
+      <button onclick="ytGift(+document.getElementById('yt-amt').value)">SEND</button>
+    </div>
+    <div class="hint">Keys: <kbd>Q</kbd> $2 · <kbd>W</kbd> $5 · <kbd>E</kbd> $20 · <kbd>R</kbd> $100</div>
+  </div>
+
+  <div class="card tt">
+    <h2>◆ TIKTOK TEST GIFTS (right throne)</h2>
+    <div class="btn-row">
+      <button onclick="ttGift(1)">1 (Rose)</button>
+      <button onclick="ttGift(99)">99</button>
+      <button onclick="ttGift(500)">500</button>
+      <button onclick="ttGift(1000)">1 000</button>
+      <button class="big" onclick="ttGift(5000)">5 000</button>
+    </div>
+    <div class="inline">
+      <div><label>Custom coins</label><input type="number" id="tt-amt" value="250" step="1" min="1"></div>
+      <button onclick="ttGift(+document.getElementById('tt-amt').value)">SEND</button>
+    </div>
+    <div class="hint">Keys: <kbd>1</kbd> Rose · <kbd>2</kbd> 99 · <kbd>3</kbd> 1 000 · <kbd>4</kbd> 5 000</div>
+  </div>
+
+  <div class="card full">
+    <h2>SENDER NAME</h2>
+    <div class="inline">
+      <div><label>Gift sender (blank = random name each time)</label>
+        <input type="text" id="sender" placeholder="e.g. Joe123"></div>
+      <button class="ghost" onclick="document.getElementById('sender').value=''">RANDOM</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>LAYOUT</h2>
+    <label>Seam Y — where camera bottom meets game top: <b id="seam-val">940</b>px</label>
+    <input type="range" id="seam" min="400" max="1500" value="940" step="5">
+    <label>UI scale: <b id="scale-val">1.00</b></label>
+    <input type="range" id="scale" min="0.6" max="1.6" value="1" step="0.05">
+    <div class="btn-row" style="margin-top:12px">
+      <button class="ghost" onclick="cmd({cmd:'debug', on: dbg = !dbg})">DEBUG OVERLAY</button>
+      <button class="ghost" onclick="cmd({cmd:'sfx', on: sfxOn = !sfxOn})">SFX ON/OFF</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>SESSION</h2>
+    <div class="btn-row">
+      <button class="danger" onclick="if(confirm('Reset BOTH thrones and all totals?')) cmd({cmd:'reset'})">RESET ALL</button>
+      <button class="danger" onclick="if(confirm('Reset the YouTube throne?')) cmd({cmd:'reset-side', platform:'youtube'})">RESET YT</button>
+      <button class="danger" onclick="if(confirm('Reset the TikTok throne?')) cmd({cmd:'reset-side', platform:'tiktok'})">RESET TT</button>
+      <button onclick="cmd({cmd:'demo'})">RUN DEMO</button>
+    </div>
+    <div class="inline" style="margin-top:8px">
+      <div><label>Custom lane callout</label><input type="text" id="ann" placeholder="HE THINKS HE OWNS THIS SIDE"></div>
+      <button onclick="sendAnn()">ANNOUNCE</button>
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>LIVE STATE (mirrored from overlay)</h2>
+    <div class="status-box">
+      <div class="throne yt"><div class="plat">YOUTUBE TOP SPLATTY</div><div class="who" id="st-yt-name">—</div><div class="amt" id="st-yt-amt">waiting for overlay…</div></div>
+      <div class="throne tt"><div class="plat">TIKTOK TOP SPLATTY</div><div class="who" id="st-tt-name">—</div><div class="amt" id="st-tt-amt">waiting for overlay…</div></div>
+    </div>
+    <div class="status-box" style="margin-top:12px">
+      <div>
+        <label style="margin-top:0">YouTube gifters (click a row to load into the fix panel)</label>
+        <div class="roster yt" id="roster-yt"><div class="roster-empty">no gifters yet</div></div>
+      </div>
+      <div>
+        <label style="margin-top:0">TikTok gifters (click a row to load into the fix panel)</label>
+        <div class="roster tt" id="roster-tt"><div class="roster-empty">no gifters yet</div></div>
+      </div>
+    </div>
+    <div class="meta" id="st-meta">no status received yet</div>
+  </div>
+
+  <div class="card full">
+    <h2>MANUAL FIXES — missed gifts, refunds, wrong totals</h2>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div><label>Platform</label>
+        <select id="fix-plat" style="font-size:15px;border-radius:8px;background:rgba(10,2,20,.6);color:var(--white);border:1px solid rgba(192,132,252,.4);padding:10px">
+          <option value="tiktok">TikTok (coins)</option><option value="youtube">YouTube ($)</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:180px"><label>Viewer name</label>
+        <input type="text" id="fix-name" list="fix-names" placeholder="username"><datalist id="fix-names"></datalist>
+      </div>
+      <div style="width:140px"><label>Amount (coins or $)</label>
+        <input type="number" id="fix-amt" placeholder="amount" min="0" step="any">
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button onclick="fixAdjust(1)">+ ADD</button>
+      <button onclick="fixAdjust(-1)">− REMOVE</button>
+      <button class="ghost" onclick="fixSetExact()">SET EXACT TOTAL</button>
+      <button class="ghost" onclick="fixMakeTop()">👑 MAKE TOP</button>
+      <button class="danger" onclick="fixRemoveViewer()">✕ REMOVE VIEWER</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;cursor:pointer">
+      <input type="checkbox" id="fix-anim" style="accent-color:var(--bright);width:18px;height:18px">
+      Play the full dethrone animation if this fix changes who's on the throne
+      (off = silent swap — pedestal just updates)
+    </label>
+    <div class="hint">ADD replays a missed gift onto their running total. MAKE TOP forces them onto the
+      throne — if someone else in the roster has more, their total is raised just above it so the
+      next real gift can't instantly undo your fix. Removing a viewer (or zeroing their total)
+      re-crowns whoever is highest, or empties the throne if nobody's left.</div>
+  </div>
+
+</div>
+
+<div class="flash" id="flash"></div>
+
+<script>
+const CONFIG = {
+  ABLY_KEY: 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0',
+  /* splat-overlay carries the high-frequency mic-freq relay. The controller
+     PUBLISHES test gifts there but never subscribes (ably-js publish doesn't
+     attach), so it is never a delivery target for that traffic. All command/
+     status chatter lives on the quiet top-splatty-sync channel. */
+  ABLY_CHANNEL: 'splat-overlay',
+  SYNC_CHANNEL: 'top-splatty-sync',
+  MSG_CMD: 'top-splatty',
+  MSG_STATUS: 'top-splatty-status',
+  GIFT_ALERT: 'gift-alert',
+};
+
+let giftChannel = null, syncChannel = null, dbg = false, sfxOn = true;
+const $ = id => document.getElementById(id);
+
+const RANDOM_NAMES = ['Joe123', 'BigMike', 'SplatQueen', 'NoScopeNina', 'TTVghost', 'CoinGoblin', 'PixelPam', 'DuckDad', 'MegaMilly', 'SirSends'];
+const senderName = () => $('sender').value.trim() || RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
+
+function flash(color) {
+  const f = $('flash');
+  f.className = 'flash ' + color; void f.offsetWidth; f.classList.add('on');
+}
+
+function publish(channel, name, data) {
+  if (!channel) { flash('red'); return; }
+  channel.publish(name, data).then(() => flash('green')).catch(() => flash('red'));
+}
+function cmd(data) { publish(syncChannel, CONFIG.MSG_CMD, data); }
+
+/* test gifts go through the REAL gift-alert pipeline (heads-up: gift-bar,
+   feed-jamie, etc. also react to these — that's the point of a full test) */
+function ttGift(coins) {
+  if (!(coins > 0)) return;
+  publish(giftChannel, CONFIG.GIFT_ALERT, {
+    name: senderName(), amount: Math.round(coins),
+    type: 'tiktok_coins', platform: 'tiktok', _src: 'ts-test',
+  });
+}
+function ytGift(dollars) {
+  if (!(dollars > 0)) return;
+  publish(giftChannel, CONFIG.GIFT_ALERT, {
+    name: senderName(), amount: +dollars,
+    type: 'youtube_superchat', platform: 'youtube', _src: 'ts-test',
+  });
+}
+
+function sendAnn() {
+  const t = $('ann').value.trim();
+  if (t) { cmd({ cmd: 'announce', text: t }); $('ann').value = ''; }
+}
+/* ── manual fixes ── */
+function fixFields() {
+  return {
+    platform: $('fix-plat').value,
+    name: $('fix-name').value.trim(),
+    amount: +$('fix-amt').value,
+    animate: $('fix-anim').checked,
+  };
+}
+function fixAdjust(sign) {
+  const f = fixFields();
+  if (!f.name) { alert('Enter a viewer name.'); return; }
+  if (!(f.amount > 0)) { alert('Enter an amount to add/remove.'); return; }
+  cmd({ cmd: 'adjust', platform: f.platform, name: f.name, delta: sign * f.amount, animate: f.animate });
+}
+function fixSetExact() {
+  const f = fixFields();
+  if (!f.name) { alert('Enter a viewer name.'); return; }
+  if (!(f.amount >= 0)) { alert('Enter the exact total.'); return; }
+  cmd({ cmd: 'adjust', platform: f.platform, name: f.name, mode: 'set', amount: f.amount, animate: f.animate });
+}
+function fixMakeTop() {
+  const f = fixFields();
+  if (!f.name) { alert('Enter a viewer name.'); return; }
+  if (!(f.amount > 0)) { alert('Enter their total (coins or $).'); return; }
+  cmd({ cmd: 'set-top', platform: f.platform, name: f.name, amount: f.amount, animate: f.animate });
+}
+function fixRemoveViewer() {
+  const f = fixFields();
+  if (!f.name) { alert('Enter a viewer name.'); return; }
+  if (!confirm(`Remove ${f.name} from the ${f.platform} roster? The next-highest gifter takes the throne.`)) return;
+  cmd({ cmd: 'remove-gifter', platform: f.platform, name: f.name, animate: f.animate });
+}
+function fillFix(platform, name) {
+  $('fix-plat').value = platform;
+  $('fix-name').value = name;
+  $('fix-amt').focus();
+}
+
+/* sliders — debounced live publish */
+let seamT = null, scaleT = null;
+$('seam').addEventListener('input', e => {
+  $('seam-val').textContent = e.target.value;
+  clearTimeout(seamT); seamT = setTimeout(() => cmd({ cmd: 'seam', y: +e.target.value }), 300);
+});
+$('scale').addEventListener('input', e => {
+  $('scale-val').textContent = (+e.target.value).toFixed(2);
+  clearTimeout(scaleT); scaleT = setTimeout(() => cmd({ cmd: 'scale', v: +e.target.value }), 300);
+});
+
+/* keyboard shortcuts (ignored while typing in an input) */
+document.addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === '1') ttGift(1);
+  else if (k === '2') ttGift(99);
+  else if (k === '3') ttGift(1000);
+  else if (k === '4') ttGift(5000);
+  else if (k === 'q') ytGift(2);
+  else if (k === 'w') ytGift(5);
+  else if (k === 'e') ytGift(20);
+  else if (k === 'r') ytGift(100);
+});
+
+/* status mirror */
+function fmtTotal(platform, total) {
+  return platform === 'tiktok' ? Math.round(total).toLocaleString() + ' c' : '$' + (+total).toFixed(2);
+}
+function renderRoster(platform, rows, topName) {
+  const box = $(platform === 'tiktok' ? 'roster-tt' : 'roster-yt');
+  if (!rows || !rows.length) { box.innerHTML = '<div class="roster-empty">no gifters yet</div>'; return; }
+  box.innerHTML = rows.map((r, i) => {
+    const isTop = topName && r.name.toLowerCase() === topName.toLowerCase();
+    return `<div class="roster-row ${isTop ? 'is-top' : ''}" data-n="${encodeURIComponent(r.name)}">
+      <span class="rk">${isTop ? '👑' : (i + 1)}</span>
+      <span class="nm"></span>
+      <span class="tot">${fmtTotal(platform, r.total)}</span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.roster-row').forEach((el, i) => {
+    el.querySelector('.nm').textContent = rows[i].name;   // textContent — names stay inert
+    el.addEventListener('click', () => fillFix(platform, rows[i].name));
+  });
+}
+function onStatus(d) {
+  d = d || {};
+  $('st-yt-name').textContent = d.youtube ? d.youtube.name : '— OPEN —';
+  $('st-yt-amt').textContent = d.youtube ? '$' + (+d.youtube.total).toFixed(2) : 'no top gifter yet';
+  $('st-tt-name').textContent = d.tiktok ? d.tiktok.name : '— OPEN —';
+  $('st-tt-amt').textContent = d.tiktok ? Math.round(d.tiktok.total).toLocaleString() + ' coins' : 'no top gifter yet';
+  if (d.roster) {
+    renderRoster('youtube', d.roster.youtube, d.youtube && d.youtube.name);
+    renderRoster('tiktok', d.roster.tiktok, d.tiktok && d.tiktok.name);
+    $('fix-names').innerHTML = [...new Set([...(d.roster.youtube || []), ...(d.roster.tiktok || [])].map(r => r.name))]
+      .map(n => `<option value="${n.replace(/"/g, '&quot;')}">`).join('');
+  }
+  $('st-meta').textContent =
+    `overlay: seam ${d.seamY}px · scale ${d.uiScale} · art ${d.totalAssets - d.missingAssets}/${d.totalAssets} real (${d.missingAssets} placeholders) · ${new Date().toLocaleTimeString()}`;
+  if (d.seamY && document.activeElement !== $('seam')) { $('seam').value = d.seamY; $('seam-val').textContent = d.seamY; }
+  if (d.uiScale && document.activeElement !== $('scale')) { $('scale').value = d.uiScale; $('scale-val').textContent = (+d.uiScale).toFixed(2); }
+}
+
+const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY, echoMessages: false });
+giftChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);   // publish-only, never attached
+syncChannel = ably.channels.get(CONFIG.SYNC_CHANNEL);
+syncChannel.subscribe(CONFIG.MSG_STATUS, m => onStatus(m.data));
+ably.connection.on('connected', () => {
+  $('dot').classList.add('connected');
+  cmd({ cmd: 'ping' });   // ask the overlay for a fresh status snapshot
+});
+ably.connection.on('disconnected', () => $('dot').classList.remove('connected'));
+ably.connection.on('suspended', () => $('dot').classList.remove('connected'));
+</script>
+</body>
+</html>
