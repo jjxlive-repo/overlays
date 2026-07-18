@@ -202,13 +202,18 @@
     </div>
     <div class="ssn-note" id="ssn-voice-note"></div>
     <div class="ssn-warning">
-      Dropped <code>modtts</code> from your original link — I checked Social Stream Ninja's source and that flag
-      restricts <em>all</em> TTS to moderator messages only, which would have blocked members entirely.
-      <code>ttscommand=.</code> + <code>ttscommandmembersonly</code> are kept, so members typing <code>.</code> get read.
-      I couldn't confirm from source whether members-only command access also covers mods automatically —
-      test live with a mod comment (<code>. test</code>) before you go on air. If mods don't get read, SSN's
-      dock settings (gear icon → TTS tab) likely has a separate mod toggle; tell me what you find and I'll fold
-      it into this link.
+      Two fixes vs. your original link, both confirmed against Social Stream Ninja's source (dock.html /
+      tts.js): <strong>(1)</strong> swapped <code>speech=en-GB</code> for <code>lang=en-GB</code> — the
+      <code>speech</code> param flips on a master "read every incoming message" fallback that would have
+      spoken everything regardless of the <code>.</code> command or members-only setting; <code>lang</code>
+      sets the same accent without that side effect. <strong>(2)</strong> dropped <code>modtts</code> — it
+      restricts <em>all</em> TTS to moderator messages only (verified in source), which would have blocked
+      members entirely rather than including mods.
+      <br><br>
+      <strong>Mods still won't trigger the <code>.</code> command as-is</strong> — I traced the exact gate in
+      dock.html and it checks channel membership only, never moderator status, for command-triggered TTS.
+      There's no URL parameter that adds mods to it. The only way to get your mods through is to comp them a
+      paid channel membership; there's no config-only fix.
     </div>
     <button class="launch-btn" id="ssn-launch" type="button">Open SSN Dock →</button>
   </div>
@@ -293,7 +298,7 @@
 
   var SSN_PARAMS = {
     session: "usNkSpEutq",
-    speech: "en-GB",
+    lang: "en-GB",
     rate: "1.15",
     pitch: "1.2",
     volume: "0.2",
@@ -346,7 +351,7 @@
     var voice = select.value || DEFAULT_VOICE;
     var params = new URLSearchParams();
     params.set("session", SSN_PARAMS.session);
-    params.set("speech", SSN_PARAMS.speech);
+    params.set("lang", SSN_PARAMS.lang);
     params.set("voice", voice);
     params.set("rate", SSN_PARAMS.rate);
     params.set("pitch", SSN_PARAMS.pitch);
