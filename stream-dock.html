@@ -3981,12 +3981,17 @@ function handleMsg(data) {
   }
 
   if (isGift) {
+    // SSN sometimes drops data.type on gift events (see the platform-detect
+    // warning above), so isTT/isYT alone aren't reliable here — ttEmbedCoins>0
+    // means we already positively identified a TikTok gift from the chat text.
+    const giftIsTT = isTT || ttEmbedCoins > 0;
+
     // Publish gift-alert → gift-bar explosion animation
     const alertType   = ttEmbedCoins > 0 ? 'tiktok_coins' : mapAlertType(evt, isTT, isYT);
     const alertAmount = ttEmbedCoins > 0
       ? ttEmbedCoins
       : parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
-    const alertPlat   = (isTT || ttEmbedCoins > 0) ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
+    const alertPlat   = giftIsTT ? 'tiktok' : isYT ? 'youtube' : (data.type || 'direct');
     let contentImg = data.contentimg || null;
     let giftTitle  = data.gifttitle  || null;
     if (ttEmbedCoins > 0 && ttEmbedMatch) {
@@ -4009,13 +4014,21 @@ function handleMsg(data) {
       // TikTok gifts are relayed from the Tikfinity handler instead (exact
       // diamond counts) whenever TF is connected — skip them here so the same
       // gift can't count twice.
-      if (!((isTT || ttEmbedCoins > 0) && _tfWs?.readyState === WebSocket.OPEN)) {
+      if (!(giftIsTT && _tfWs?.readyState === WebSocket.OPEN)) {
         dhRelay('gift', data.chatname || 'Anonymous', { amount: alertAmount, kind: alertType, gift: giftTitle || null });
       }
     }
+
+    // Money In rail — same resolved amount/name/image as the alert above, so the
+    // two can never disagree (see design_handoff_dock_readability/README.md).
+    addMoneyRail(data, {
+      isTT: giftIsTT, isYT,
+      amount: alertAmount, giftTitle, contentImg,
+    });
+    return;
   }
 
-  addUnified(data, p, isTT, isYT, isGift);
+  addUnified(data, p, isTT, isYT);
 }
 
 /* ── avatar helpers ── */
@@ -4287,11 +4300,10 @@ function dockRebalanceChat() {
   if (!container.classList.contains('chat-two-col')) { rows.forEach(row => a.appendChild(row)); return; }
   rows.forEach((row,i) => (i % 2 === 1 ? b : a).appendChild(row));
 }
-function addUnified(data, platform, isTT, isYT, isGift) {
-  // Gifts & super chats no longer render inline — they go to the Money In rail
-  // (see design_handoff_dock_readability/README.md).
-  if (isGift) { addMoneyRail(data, isTT, isYT); return; }
-
+// Regular chat only — gifts/super chats are routed straight to addMoneyRail()
+// from handleMsg() and never reach this function (see README.md in
+// design_handoff_dock_readability/ for why).
+function addUnified(data, platform, isTT, isYT) {
   const container = document.getElementById('msgs-all');
   document.getElementById('emp-all')?.remove();
 
@@ -4401,7 +4413,14 @@ function updateMoneyHeader() {
   if (totEl) totEl.textContent = '$' + (Math.round(_moneyTotalUsd * 100) / 100);
 }
 
-function addMoneyRail(data, isTT, isYT) {
+// meta = { isTT, isYT, amount, giftTitle, contentImg } — amount/giftTitle/contentImg are
+// the SAME resolved values handleMsg() already used for the gift-alert slide-in, so the
+// rail entry and the notification can never disagree (embedded TikTok "sent Rose x3" chat
+// gifts, whose coin count/name only exist as parsed values, get threaded through here too).
+function addMoneyRail(data, meta) {
+  meta = meta || {};
+  const isTT = !!meta.isTT;
+  const isYT = !!meta.isYT;
   const list = document.getElementById('money-rail-list');
   if (!list) return;
   document.getElementById('money-rail-empty')?.remove();
@@ -4413,6 +4432,8 @@ function addMoneyRail(data, isTT, isYT) {
     : null;
   const isGifter   = badgeLevel != null && badgeLevel > 0;
   const isYTMember = isYT && !!(data.membership || data.subBadge || data.isSubscriber || data.isMember);
+  const giftTitle  = meta.giftTitle || data.gifttitle || null;
+  const amount     = meta.amount || 0;
 
   const row = document.createElement('div');
 
@@ -4444,11 +4465,10 @@ function addMoneyRail(data, isTT, isYT) {
     info.appendChild(sub);
     top.appendChild(info);
 
-    const amountUsd = parseDockAmount(data.hasDonation, data.donoValue, mapAlertType(evt, isTT, isYT), data.coins);
-    _moneyTotalUsd += (amountUsd || 0);
+    _moneyTotalUsd += amount;
     const amt = document.createElement('span');
     amt.className = 'money-card-amt';
-    amt.textContent = data.hasDonation || (amountUsd ? '$' + amountUsd.toFixed(amountUsd % 1 ? 2 : 0) : '');
+    amt.textContent = data.hasDonation || (amount ? '$' + amount.toFixed(amount % 1 ? 2 : 0) : '');
     top.appendChild(amt);
     row.appendChild(top);
 
@@ -4462,7 +4482,7 @@ function addMoneyRail(data, isTT, isYT) {
   } else {
     // TikTok coin gift — compact row.
     row.className = 'money-row';
-    row.appendChild(giftIconWrap(data, isTT, isYT, 30));
+    row.appendChild(giftIconWrap(data, isTT, isYT, 30, meta.contentImg));
 
     const info = document.createElement('div');
     info.className = 'money-row-info';
@@ -4477,14 +4497,13 @@ function addMoneyRail(data, isTT, isYT) {
 
     const giftLine = document.createElement('div');
     giftLine.className = 'money-row-gift';
-    giftLine.textContent = data.gifttitle || buildGiftSentence(data, isTT, isYT).replace(/^sent\s+/i, '');
+    giftLine.textContent = giftTitle || buildGiftSentence(data, isTT, isYT).replace(/^sent\s+/i, '');
     info.appendChild(giftLine);
     row.appendChild(info);
 
-    const coinAmt = parseDockAmount(data.hasDonation, data.donoValue, 'tiktok_coins', data.coins);
     const amt = document.createElement('div');
     amt.className = 'money-row-amt';
-    amt.textContent = coinAmt ? coinAmt.toLocaleString() : (data.hasDonation || '');
+    amt.textContent = amount ? amount.toLocaleString() : (data.hasDonation || '');
     row.appendChild(amt);
   }
 
@@ -4545,7 +4564,7 @@ function buildGiftSentence(data, isTT, isYT) {
 
 // Gift-icon circle for the Money rail's TikTok coin rows (platform ring + corner
 // badge, same as makeAv, but the circle shows the gift icon/emoji, not the user photo).
-function giftIconWrap(data, isTT, isYT, size) {
+function giftIconWrap(data, isTT, isYT, size, imgOverride) {
   size = size || 30;
   const evt = (data.event || '').toLowerCase();
 
@@ -4575,9 +4594,10 @@ function giftIconWrap(data, isTT, isYT, size) {
       : evt === 'giftpurchase' ? '🎁'
       : isYT ? '⭐' : '💝';
   };
-  if (data.contentimg) {
+  const photo = imgOverride || data.contentimg;
+  if (photo) {
     const img = document.createElement('img');
-    img.src = data.contentimg;
+    img.src = photo;
     img.onerror = fallbackEmoji;
     el.appendChild(img);
   } else {
