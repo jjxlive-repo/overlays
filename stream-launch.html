@@ -88,6 +88,76 @@
   .grid .icon { font-size: 24px; margin-bottom: 8px; }
   .grid .title { font-weight: 900; font-size: 15px; margin-bottom: 4px; color: var(--white); }
   .grid .desc { font-size: 12.5px; color: var(--light); opacity: .9; line-height: 1.4; }
+  .ssn-card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px;
+    padding: 18px 20px;
+  }
+  .ssn-card .icon { font-size: 24px; margin-bottom: 8px; }
+  .ssn-card .title { font-weight: 900; font-size: 15px; margin-bottom: 4px; color: var(--white); }
+  .ssn-card .desc { font-size: 12.5px; color: var(--light); opacity: .9; line-height: 1.4; margin-bottom: 14px; }
+  .ssn-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .ssn-controls label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--light);
+    white-space: nowrap;
+  }
+  .ssn-controls select {
+    flex: 1;
+    background: rgba(0,0,0,.3);
+    color: var(--white);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .ssn-controls button.icon-btn {
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.2);
+    color: var(--white);
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .ssn-controls button.icon-btn:hover { border-color: var(--accent); }
+  .ssn-note {
+    font-size: 11.5px;
+    color: var(--light);
+    opacity: .75;
+    line-height: 1.4;
+    margin-bottom: 14px;
+  }
+  .ssn-warning {
+    font-size: 11.5px;
+    color: var(--danger);
+    background: rgba(244,63,94,.12);
+    border: 1px solid rgba(244,63,94,.35);
+    border-radius: 8px;
+    padding: 8px 10px;
+    line-height: 1.4;
+    margin-bottom: 14px;
+  }
+  .launch-btn {
+    display: inline-block;
+    width: 100%;
+    background: linear-gradient(135deg, var(--bright), var(--mid));
+    color: var(--white);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-family: inherit;
+    font-weight: 900;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform .15s cubic-bezier(.34,1.56,.64,1), border-color .15s;
+  }
+  .launch-btn:hover { transform: translateY(-2px); border-color: var(--white); }
   footer {
     text-align: center;
     margin-top: 44px;
@@ -111,6 +181,37 @@
       <div class="desc">Master control surface — gift bar, layout panel, Crowd Glass panel, links out to everything else.</div>
     </div>
   </a>
+
+  <div class="section-label">Broadcast Tools</div>
+  <div class="grid">
+    <a class="card" href="https://studio.youtube.com/channel/UClxCpZ278otKSYDrzMSFVMQ" target="_blank" rel="noopener">
+      <div class="icon">📺</div>
+      <div class="title">YouTube Studio</div>
+      <div class="desc">Channel dashboard for the live broadcast.</div>
+    </a>
+  </div>
+
+  <div class="ssn-card" style="margin-top:14px;">
+    <div class="icon">🥷</div>
+    <div class="title">Social Stream Ninja Dock</div>
+    <div class="desc">Aggregated chat + TTS relay. Pick a voice, then launch — the link is built fresh each time.</div>
+    <div class="ssn-controls">
+      <label for="ssn-voice">TTS voice</label>
+      <select id="ssn-voice"></select>
+      <button class="icon-btn" id="ssn-refresh" type="button" title="Re-scan this browser for Google voices">↻</button>
+    </div>
+    <div class="ssn-note" id="ssn-voice-note"></div>
+    <div class="ssn-warning">
+      Dropped <code>modtts</code> from your original link — I checked Social Stream Ninja's source and that flag
+      restricts <em>all</em> TTS to moderator messages only, which would have blocked members entirely.
+      <code>ttscommand=.</code> + <code>ttscommandmembersonly</code> are kept, so members typing <code>.</code> get read.
+      I couldn't confirm from source whether members-only command access also covers mods automatically —
+      test live with a mod comment (<code>. test</code>) before you go on air. If mods don't get read, SSN's
+      dock settings (gear icon → TTS tab) likely has a separate mod toggle; tell me what you find and I'll fold
+      it into this link.
+    </div>
+    <button class="launch-btn" id="ssn-launch" type="button">Open SSN Dock →</button>
+  </div>
 
   <div class="section-label">Controllers</div>
   <div class="grid">
@@ -165,5 +266,98 @@
     in TikTok Studio — nothing to open here for those.
   </footer>
 </div>
+
+<script>
+(function () {
+  var GOOGLE_VOICE_FALLBACK = [
+    "Google US English",
+    "Google UK English Female",
+    "Google UK English Male",
+    "Google español",
+    "Google español de Estados Unidos",
+    "Google français",
+    "Google Deutsch",
+    "Google italiano",
+    "Google 日本語",
+    "Google 한국의",
+    "Google Nederlands",
+    "Google polski",
+    "Google português do Brasil",
+    "Google русский",
+    "Google 普通话（中国大陆）",
+    "Google 粤語（香港）",
+    "Google 國語（臺灣）",
+    "Google Türkçe"
+  ];
+  var DEFAULT_VOICE = "Google UK English Male";
+
+  var SSN_PARAMS = {
+    session: "usNkSpEutq",
+    speech: "en-GB",
+    rate: "1.15",
+    pitch: "1.2",
+    volume: "0.2",
+    opacity: "0.3"
+  };
+  var SSN_FLAGS = ["showviewercount", "simpletts", "simpletts2", "ttscommandmembersonly", "server", "server2"];
+
+  var select = document.getElementById("ssn-voice");
+  var note = document.getElementById("ssn-voice-note");
+  var refreshBtn = document.getElementById("ssn-refresh");
+  var launchBtn = document.getElementById("ssn-launch");
+
+  function populate(names, isLive) {
+    select.innerHTML = "";
+    names.forEach(function (name) {
+      var opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      if (name === DEFAULT_VOICE) opt.selected = true;
+      select.appendChild(opt);
+    });
+    note.textContent = isLive
+      ? "Detected " + names.length + " Google voice(s) from this browser."
+      : "No Google voices detected in this browser — showing common Chrome defaults (may not match every install). " +
+        "Open this page in the actual Chrome you stream with, then hit ↻, for an accurate list.";
+  }
+
+  function detect() {
+    if (typeof speechSynthesis === "undefined") {
+      populate(GOOGLE_VOICE_FALLBACK, false);
+      return;
+    }
+    var voices = speechSynthesis.getVoices().filter(function (v) {
+      return v.name.indexOf("Google") !== -1;
+    }).map(function (v) { return v.name; });
+    if (voices.length) {
+      populate(voices, true);
+    } else {
+      populate(GOOGLE_VOICE_FALLBACK, false);
+    }
+  }
+
+  detect();
+  if (typeof speechSynthesis !== "undefined") {
+    speechSynthesis.onvoiceschanged = detect;
+  }
+  refreshBtn.addEventListener("click", detect);
+
+  launchBtn.addEventListener("click", function () {
+    var voice = select.value || DEFAULT_VOICE;
+    var params = new URLSearchParams();
+    params.set("session", SSN_PARAMS.session);
+    params.set("speech", SSN_PARAMS.speech);
+    params.set("voice", voice);
+    params.set("rate", SSN_PARAMS.rate);
+    params.set("pitch", SSN_PARAMS.pitch);
+    params.set("volume", SSN_PARAMS.volume);
+    params.set("opacity", SSN_PARAMS.opacity);
+    var url = "https://socialstream.ninja/dock.html?" + params.toString();
+    SSN_FLAGS.forEach(function (f) { url += "&" + f; });
+    url += "&ttscommand=.";
+    window.open(url, "_blank", "noopener");
+  });
+})();
+</script>
 </body>
 </html>
