@@ -126,11 +126,24 @@ const CONFIG = {
   // collides. Upload the 30 PNGs from kegel-splatty-frames/ here as-is.
   FRAME_BASE: "https://jjxlive-repo.github.io/overlays/kegel-frames-v2/",
 
-  // Every frame holds for exactly this long before cutting to the next.
-  // Heads up: the Rep Loop is now 12 frames (was 6) and Speed Round is
-  // 6 (was 4), so at 1000ms/frame those loops run longer than before —
-  // drop this if you want the same overall pace as the old art.
-  FRAME_MS:        1000,
+  // Per-segment frame hold times, in ms. Adjustable live from the dock
+  // (stream-dock.html's Kegel Workout panel) via the 'kegel-pacing' Ably
+  // message; whatever arrives there overrides these and persists to
+  // localStorage so a refresh keeps the last-set pace.
+  //   countdown  — ready/countdown frames (Start)
+  //   reps       — the 12-frame Rep Loop
+  //   speed      — Speed Round's steady-state frames (and the intro hold)
+  //   speedFirst — Speed Round's very first squeeze frame each loop
+  //                (fastSqueeze1Start) — kept separate so it can be made
+  //                punchier/shorter than the rest of the loop
+  //   finale     — the 4 End-segment frames before "complete"
+  PACING: {
+    countdown:  1000,
+    reps:       1000,
+    speed:      700,
+    speedFirst: 400,
+    finale:     1000,
+  },
   CROSSFADE_MS:    350,
   FINALE_LINGER_MS: 6000, // how long "complete" stays up before auto-idle
 
@@ -179,6 +192,13 @@ const FRAMES = {
   complete:          "30-workout-complete.png",
 };
 function frameUrl(key) { return CONFIG.FRAME_BASE + FRAMES[key]; }
+
+// Restore any pacing the dock previously set, so a refresh mid-stream
+// doesn't silently snap back to the hardcoded defaults above.
+try {
+  const savedPacing = JSON.parse(localStorage.getItem('kwPacing') || '{}');
+  Object.assign(CONFIG.PACING, savedPacing);
+} catch (e) {}
 
 /* ═══════════════════════════════════════════
    AUDIO — real files if provided, else a small
@@ -263,15 +283,29 @@ function clearSeq() {
   _seqTimer = null;
 }
 
-/* Loop a list of frame keys forever, each held for `ms`. */
-function playLoop(list, ms) {
+/* Loop a list of frame keys forever. `msSpec` is one hold time for every
+   frame, an array of per-frame hold times (indexed in step with `list`),
+   or a function(i) => ms — the function form re-reads live config on
+   every tick, so a dock slider drag takes effect immediately without
+   needing to restart the segment (Speed Round uses this for its
+   shorter first-frame hold). */
+function playLoop(list, msSpec) {
   clearSeq();
+  const holdFor = (i) => {
+    if (typeof msSpec === 'function') return msSpec(i);
+    if (Array.isArray(msSpec)) return msSpec[i % msSpec.length];
+    return msSpec;
+  };
   let i = 0;
   setFrame(list[0]);
-  _seqTimer = setInterval(() => {
-    i = (i + 1) % list.length;
-    setFrame(list[i]);
-  }, ms);
+  const tick = () => {
+    _seqTimer = setTimeout(() => {
+      i = (i + 1) % list.length;
+      setFrame(list[i]);
+      tick();
+    }, holdFor(i));
+  };
+  tick();
 }
 
 /* Play a fixed list of {key, ms} once, in order, then call onDone. */
@@ -302,10 +336,10 @@ function cmdStart() {
   showStage();
   stage.classList.remove('armed', 'speeding');
   const seq = [
-    { key: 'ready', ms: CONFIG.FRAME_MS },
-    { key: 'c3',    ms: CONFIG.FRAME_MS },
-    { key: 'c2',    ms: CONFIG.FRAME_MS },
-    { key: 'c1',    ms: CONFIG.FRAME_MS },
+    { key: 'ready', ms: CONFIG.PACING.countdown },
+    { key: 'c3',    ms: CONFIG.PACING.countdown },
+    { key: 'c2',    ms: CONFIG.PACING.countdown },
+    { key: 'c1',    ms: CONFIG.PACING.countdown },
   ];
   let i = 0;
   function step() {
@@ -336,7 +370,7 @@ function cmdReps() {
     i = (i + 1) % loop.length;
     setFrame(loop[i]);
     if (loop[i] === 'recoverySettle') { _repCount++; updateRepPill(); }
-    _seqTimer = setTimeout(step, CONFIG.FRAME_MS);
+    _seqTimer = setTimeout(step, CONFIG.PACING.reps);
   }
   step();
 }
@@ -349,10 +383,12 @@ function cmdSpeed() {
   stage.classList.remove('armed');
   stage.classList.add('speeding');
   const loop = ['fastSqueeze1Start', 'fastSqueeze1Peak', 'fastRelease1', 'fastSqueeze2Start', 'fastSqueeze2Peak', 'fastRelease2'];
-  function startLoop() { playLoop(loop, CONFIG.FRAME_MS); }
+  // index 0 (fastSqueeze1Start, "the initial squeeze frame") gets its own
+  // shorter hold; the rest of the loop shares the steady speed pace.
+  function startLoop() { playLoop(loop, (i) => (i === 0 ? CONFIG.PACING.speedFirst : CONFIG.PACING.speed)); }
   if (wasAlreadySpeed) { startLoop(); return; }
   setFrame('speedIntro');
-  _seqTimer = setTimeout(startLoop, CONFIG.FRAME_MS);
+  _seqTimer = setTimeout(startLoop, CONFIG.PACING.speed);
 }
 
 function cmdEnd() {
@@ -363,10 +399,10 @@ function cmdEnd() {
   stage.classList.remove('armed', 'speeding');
   playHero();
   playOnce([
-    { key: 'perfectRepStart',  ms: CONFIG.FRAME_MS },
-    { key: 'perfectRep',       ms: CONFIG.FRAME_MS },
-    { key: 'finalHoldBuildup', ms: CONFIG.FRAME_MS },
-    { key: 'finalHoldPeak',    ms: CONFIG.FRAME_MS },
+    { key: 'perfectRepStart',  ms: CONFIG.PACING.finale },
+    { key: 'perfectRep',       ms: CONFIG.PACING.finale },
+    { key: 'finalHoldBuildup', ms: CONFIG.PACING.finale },
+    { key: 'finalHoldPeak',    ms: CONFIG.PACING.finale },
     { key: 'complete',         ms: CONFIG.FINALE_LINGER_MS },
   ], () => { goIdle(); });
 }
@@ -396,8 +432,19 @@ channel.subscribe('kegel-cmd', (msg) => {
   if (action) handleCmd(action);
 });
 
+// Dock pushes pacing changes here; takes effect on the very next frame of
+// whatever segment is currently playing (see playLoop's function form and
+// cmdReps's step()), no restart needed.
+channel.subscribe('kegel-pacing', (msg) => {
+  if (!msg?.data) return;
+  Object.assign(CONFIG.PACING, msg.data);
+  try { localStorage.setItem('kwPacing', JSON.stringify(CONFIG.PACING)); } catch (e) {}
+});
+
 let _aliveHeartbeat = null;
-function announceAlive() { channel.publish('kegel-alive', {}).catch(() => {}); }
+// Pacing rides along on the existing heartbeat (no extra publish traffic)
+// so the dock can sync its sliders to the overlay's actual live values.
+function announceAlive() { channel.publish('kegel-alive', { pacing: CONFIG.PACING }).catch(() => {}); }
 channel.subscribe('kegel-ping', announceAlive);
 ably.connection.once('connected', () => {
   announceAlive();

@@ -3087,6 +3087,46 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
           <div class="ctrl-sep" style="margin-top:6px;">
             <button class="ctrl-btn" style="width:100%;" onclick="kwCmd('reset')">↺ Reset / Hide</button>
           </div>
+
+          <div class="ctrl-sep" style="margin-top:6px;">
+            <span class="ctrl-lbl" style="margin-bottom:4px;">Pacing (ms per frame)</span>
+            <div class="ctrl-row" style="align-items:center;gap:6px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">Countdown</span>
+              <input type="range" id="kw-pace-countdown-slider" min="300" max="2000" step="50" value="1000"
+                style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;" oninput="kwSetPaceCountdown(this.value)">
+              <span class="ctrl-status" id="kw-pace-countdown-val" style="font-size:10px;min-width:40px;text-align:right;font-weight:600;">1000ms</span>
+            </div>
+            <div class="ctrl-row" style="align-items:center;gap:6px;margin-top:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">Rep Loop</span>
+              <input type="range" id="kw-pace-reps-slider" min="300" max="2000" step="50" value="1000"
+                style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;" oninput="kwSetPaceReps(this.value)">
+              <span class="ctrl-status" id="kw-pace-reps-val" style="font-size:10px;min-width:40px;text-align:right;font-weight:600;">1000ms</span>
+            </div>
+            <div class="ctrl-row" style="align-items:center;gap:6px;margin-top:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">Speed Round</span>
+              <input type="range" id="kw-pace-speed-slider" min="200" max="1200" step="25" value="700"
+                style="flex:1;accent-color:#fde047;height:4px;cursor:pointer;" oninput="kwSetPaceSpeed(this.value)">
+              <span class="ctrl-status" id="kw-pace-speed-val" style="font-size:10px;min-width:40px;text-align:right;font-weight:600;">700ms</span>
+            </div>
+            <div class="ctrl-row" style="align-items:center;gap:6px;margin-top:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">↳ initial squeeze</span>
+              <input type="range" id="kw-pace-speedfirst-slider" min="100" max="1200" step="25" value="400"
+                style="flex:1;accent-color:#fde047;height:4px;cursor:pointer;" oninput="kwSetPaceSpeedFirst(this.value)">
+              <span class="ctrl-status" id="kw-pace-speedfirst-val" style="font-size:10px;min-width:40px;text-align:right;font-weight:600;">400ms</span>
+            </div>
+            <div style="font-size:9px;color:var(--txt-dim);margin-top:2px;line-height:1.4;">
+              Speed Round's very first squeeze frame each loop — set shorter than the rest for a punchier kickoff.
+            </div>
+            <div class="ctrl-row" style="align-items:center;gap:6px;margin-top:4px;">
+              <span class="ctrl-lbl" style="white-space:nowrap;">Finale</span>
+              <input type="range" id="kw-pace-finale-slider" min="300" max="2000" step="50" value="1000"
+                style="flex:1;accent-color:#a855f7;height:4px;cursor:pointer;" oninput="kwSetPaceFinale(this.value)">
+              <span class="ctrl-status" id="kw-pace-finale-val" style="font-size:10px;min-width:40px;text-align:right;font-weight:600;">1000ms</span>
+            </div>
+            <div style="font-size:9px;color:var(--txt-dim);margin-top:6px;">
+              Changes apply live to whatever segment is currently playing — no need to restart it.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -4674,6 +4714,7 @@ ably.connection.once('connected', () => {
   ablyChannel.publish('kegel-ping', {}).catch(() => {});
   ablyChannel.publish('peek-ping', {}).catch(() => {});
   peekPublishConfig();
+  kwPublishPacing();
   setTimeout(() => {
     publishMissionStrip?.();
     ablyChannel.publish('new-here-config', { enabled:_dockNewHereVisible, visible:_dockNewHereVisible }).catch(() => {});
@@ -5304,7 +5345,7 @@ document.addEventListener('keydown', e => {
    as Crowd Glass above.
 ═══════════════════════════════════════════ */
 let _kwAliveTimer = null;
-function _kwMarkLive() {
+function _kwMarkLive(msg) {
   const el = document.getElementById('kw-overlay-status');
   if (el) el.innerHTML = '<span style="color:#3b82f6">● LIVE</span>';
   clearTimeout(_kwAliveTimer);
@@ -5312,11 +5353,73 @@ function _kwMarkLive() {
     const el = document.getElementById('kw-overlay-status');
     if (el) el.innerHTML = '<span style="color:#6b7280">● offline</span>';
   }, 35000);
+  // Pacing rides along on the alive heartbeat — sync sliders to whatever
+  // the overlay is actually running (covers the overlay restoring its own
+  // saved pacing from a refresh, which could be newer than what's here).
+  if (msg?.data?.pacing) {
+    Object.assign(_kwPacing, msg.data.pacing);
+    kwPacingSyncUI();
+  }
 }
 ablyChannel.subscribe('kegel-alive', _kwMarkLive);
 function kwCmd(action) {
   if (ablyChannel) ablyChannel.publish('kegel-cmd', { action }).catch(() => {});
   doFlash('purple');
+}
+
+/* ── Pacing — mirrors Peek Overlay's slider/debounce/publish pattern ── */
+const KW_PACING_DEFAULTS = { countdown: 1000, reps: 1000, speed: 700, speedFirst: 400, finale: 1000 };
+let _kwPacing = { ...KW_PACING_DEFAULTS };
+try { Object.assign(_kwPacing, JSON.parse(localStorage.getItem('kwPacing') || '{}')); } catch (e) {}
+
+function kwPacingSyncUI() {
+  const cfg = _kwPacing;
+  const setSlider = (id, val, lbl) => {
+    const s = document.getElementById(id); if (s) s.value = val;
+    const l = document.getElementById(lbl); if (l) l.textContent = val + 'ms';
+  };
+  setSlider('kw-pace-countdown-slider',  cfg.countdown,  'kw-pace-countdown-val');
+  setSlider('kw-pace-reps-slider',       cfg.reps,       'kw-pace-reps-val');
+  setSlider('kw-pace-speed-slider',      cfg.speed,      'kw-pace-speed-val');
+  setSlider('kw-pace-speedfirst-slider', cfg.speedFirst, 'kw-pace-speedfirst-val');
+  setSlider('kw-pace-finale-slider',     cfg.finale,     'kw-pace-finale-val');
+}
+kwPacingSyncUI();
+
+function kwPublishPacing() {
+  localStorage.setItem('kwPacing', JSON.stringify(_kwPacing));
+  if (ablyChannel) ablyChannel.publish('kegel-pacing', _kwPacing).catch(() => {});
+  scheduleGistSave();
+}
+let _kwPaceDebounce = null;
+function _kwDebouncedPublish() {
+  clearTimeout(_kwPaceDebounce);
+  _kwPaceDebounce = setTimeout(kwPublishPacing, 350);
+}
+function kwSetPaceCountdown(v) {
+  _kwPacing.countdown = parseInt(v, 10);
+  document.getElementById('kw-pace-countdown-val').textContent = v + 'ms';
+  _kwDebouncedPublish();
+}
+function kwSetPaceReps(v) {
+  _kwPacing.reps = parseInt(v, 10);
+  document.getElementById('kw-pace-reps-val').textContent = v + 'ms';
+  _kwDebouncedPublish();
+}
+function kwSetPaceSpeed(v) {
+  _kwPacing.speed = parseInt(v, 10);
+  document.getElementById('kw-pace-speed-val').textContent = v + 'ms';
+  _kwDebouncedPublish();
+}
+function kwSetPaceSpeedFirst(v) {
+  _kwPacing.speedFirst = parseInt(v, 10);
+  document.getElementById('kw-pace-speedfirst-val').textContent = v + 'ms';
+  _kwDebouncedPublish();
+}
+function kwSetPaceFinale(v) {
+  _kwPacing.finale = parseInt(v, 10);
+  document.getElementById('kw-pace-finale-val').textContent = v + 'ms';
+  _kwDebouncedPublish();
 }
 
 /* ═══════════════════════════════════════════
@@ -8372,6 +8475,7 @@ function gistGetConfig() {
     ttbCmd:               localStorage.getItem('ttbCmd'),
     ttbMatch:             localStorage.getItem('ttbMatch'),
     peekConfig:           localStorage.getItem('peekConfig'),
+    kwPacing:             localStorage.getItem('kwPacing'),
   };
 }
 
@@ -8679,6 +8783,14 @@ function applyGistConfig(cfg) {
     } catch(e) {}
     peekSyncUI();
     peekPublishConfig();
+  }
+
+  // --- Kegel Workout pacing ---
+  if (cfg.kwPacing != null) {
+    localStorage.setItem('kwPacing', cfg.kwPacing);
+    try { Object.assign(_kwPacing, JSON.parse(cfg.kwPacing)); } catch (e) {}
+    kwPacingSyncUI();
+    kwPublishPacing();
   }
 }
 
