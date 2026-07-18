@@ -4059,12 +4059,11 @@ function handleMsg(data) {
       }
     }
 
-    // Money In rail — same resolved amount/name/image as the alert above, so the
-    // two can never disagree (see design_handoff_dock_readability/README.md).
-    addMoneyRail(data, {
-      isTT: giftIsTT, isYT,
-      amount: alertAmount, giftTitle, contentImg,
-    });
+    // The Money In rail is populated from the 'gift-alert' subscription below —
+    // NOT here — so that gifts published by ANY source (this dock, tracker.html,
+    // Tikfinity relays) all land in the rail through one canonical path. Every
+    // gift that slides down as an alert goes through that subscription, which is
+    // exactly the set of gifts the streamer expects to see in the rail.
     return;
   }
 
@@ -4340,9 +4339,9 @@ function dockRebalanceChat() {
   if (!container.classList.contains('chat-two-col')) { rows.forEach(row => a.appendChild(row)); return; }
   rows.forEach((row,i) => (i % 2 === 1 ? b : a).appendChild(row));
 }
-// Regular chat only — gifts/super chats are routed straight to addMoneyRail()
-// from handleMsg() and never reach this function (see README.md in
-// design_handoff_dock_readability/ for why).
+// Regular chat only — gifts/super chats early-return in handleMsg() (they publish a
+// 'gift-alert', and the 'gift-alert' subscription is what feeds addMoneyRail), so they
+// never reach this function (see README.md in design_handoff_dock_readability/ for why).
 function addUnified(data, platform, isTT, isYT) {
   const container = document.getElementById('msgs-all');
   document.getElementById('emp-all')?.remove();
@@ -4505,7 +4504,7 @@ function addMoneyRail(data, meta) {
     info.appendChild(sub);
     top.appendChild(info);
 
-    _moneyTotalUsd += amount;
+    _moneyTotalUsd += (meta.usd != null ? meta.usd : amount);
     const amt = document.createElement('span');
     amt.className = 'money-card-amt';
     amt.textContent = data.hasDonation || (amount ? '$' + amount.toFixed(amount % 1 ? 2 : 0) : '');
@@ -9173,6 +9172,33 @@ function _gcHide() {
 ablyChannel.subscribe('gift-alert', msg => {
   const d = msg?.data;
   if (!d || !d.amount) return;
+
+  // Money In rail — populate for EVERY gift alert, regardless of the slide-down
+  // tier gate below. This is the one canonical path: any gift that produces an
+  // alert (from this dock, tracker.html, or a Tikfinity relay) lands in the rail.
+  // d.type is the alertType from mapAlertType(): tiktok_coins | youtube_jewels |
+  // youtube_superchat | direct_donation. d.amount is coins / jewels / USD to match.
+  try {
+    const at = String(d.type || '');
+    const isTT = d.platform === 'tiktok' || at === 'tiktok_coins';
+    const isYT = d.platform === 'youtube' || at === 'youtube_superchat' || at === 'youtube_jewels';
+    // USD contribution to the running total: coins aren't dollars (contribute 0);
+    // jewels convert at ~$0.005; super chats / direct donations are already USD.
+    const usd = at === 'tiktok_coins'  ? 0
+              : at === 'youtube_jewels' ? d.amount * 0.005
+              :                           d.amount;
+    addMoneyRail({
+      chatname:    d.name,
+      chatmessage: d.message || '',
+      hasDonation: d.giftLabel || null,
+      gifttitle:   d.giftTitle || null,
+      contentimg:  d.contentImg || null,
+      event:       at === 'youtube_jewels' ? 'jeweldonation' : '',
+      type:        d.platform || (isTT ? 'tiktok' : isYT ? 'youtube' : ''),
+      mid:         d.mid || null,
+    }, { isTT, isYT, amount: d.amount, usd, giftTitle: d.giftTitle, contentImg: d.contentImg });
+  } catch (e) { console.warn('[money-rail] failed to add gift alert', e); }
+
   const tier = gcGetTier(d.amount, d.type);
   if (tier < 0) return; // below minimum (< 1 coin)
   gcPush(d, tier);
