@@ -169,6 +169,36 @@
     <div class="body" id="sec-layout"></div>
   </details>
 
+  <!-- B2. SPLATTY SQUAD -->
+  <details class="section" open>
+    <summary>B2 · Splatty Squad — crowd, wheel &amp; Jamie's drip</summary>
+    <div class="body">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="sq-enabled" checked> Squad on</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="sq-wheel" checked> Prize wheel</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="sq-tiers" checked> Jamie drip tiers</label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+        <label>Decay $/min<br><input type="number" id="sq-decay" value="0.4" step="0.1" min="0" style="width:80px"></label>
+        <label>Wheel min coins<br><input type="number" id="sq-mincoins" value="1" step="1" min="1" style="width:80px"></label>
+        <label>Crowd X<br><input type="number" id="sq-crowdx" value="890" step="10" style="width:80px"></label>
+        <label>Wheel X<br><input type="number" id="sq-wheelx" value="540" step="10" style="width:80px"></label>
+        <label>Meter X<br><input type="number" id="sq-meterx" value="260" step="10" style="width:80px"></label>
+        <button onclick="sqApply()">APPLY</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <button onclick="send({cmd:'SQUAD_TEST_GIFT', data:{platform:'tiktok', amount:300, username:testUser()}})">🎡 Test TT 300c</button>
+        <button onclick="send({cmd:'SQUAD_TEST_GIFT', data:{platform:'youtube', amount:800, username:testUser()}})">🎡 Test YT 800💎</button>
+        <button onclick="send({cmd:'SQUAD_ADD_CARE', data:{usd: +(prompt('Add care $ (e.g. 5 = 1000 coins)','5')||0)}})">+ CARE</button>
+        <button onclick="if(confirm('Reset squad roster + Jamie tier?')) send({cmd:'SQUAD_RESET'})" style="background:#7a1430">RESET SQUAD</button>
+      </div>
+      <div id="sq-status" style="font-size:12px;opacity:.85">squad: waiting for overlay…</div>
+    </div>
+  </details>
+
   <!-- C. REACH ZONE -->
   <details class="section">
     <summary>C · Reach Zone</summary>
@@ -487,6 +517,13 @@ function renderStatus(s) {
   set('st-paused', s.paused ? 'YES ⏸' : 'no');
   set('st-hidden', s.hidden ? 'YES 🚫' : 'no');
   set('st-last', s.lastEvent || '—');
+  if (s.squad) {
+    const sq = s.squad;
+    const el = document.getElementById('sq-status');
+    if (el) el.textContent =
+      `Jamie: T${sq.tier} ${sq.tierName} · care $${sq.careUsd} (decay ${sq.decayPerMin}/min) · ` +
+      `${sq.gifterCount} gifters · top: ${sq.topTreater ? sq.topTreater.name + ' ($' + sq.topTreater.usd + ')' : '—'}`;
+  }
   const wn = document.getElementById('warnings-note');
   if (s.warnings && s.warnings.length) {
     wn.textContent = `⚠ ${s.warnings.length} asset warning(s) — placeholder art in use. See section G.`;
@@ -1370,6 +1407,25 @@ function testSoundLocal(name) {
 
 /* I. TEST EVENTS */
 const testUser = () => document.getElementById('test-user').value.trim() || 'test_viewer';
+/* Splatty Squad settings — partial config, merged overlay-side (never
+   touches the main CFG lifecycle) */
+function sqApply() {
+  send({ cmd: 'SQUAD_CONFIG', data: {
+    enabled: document.getElementById('sq-enabled').checked,
+    crowd: { x: +document.getElementById('sq-crowdx').value || 890 },
+    wheel: {
+      enabled: document.getElementById('sq-wheel').checked,
+      minCoins: Math.max(1, +document.getElementById('sq-mincoins').value || 1),
+      x: +document.getElementById('sq-wheelx').value || 540,
+    },
+    tiers: {
+      enabled: document.getElementById('sq-tiers').checked,
+      decayPerMin: Math.max(0, +document.getElementById('sq-decay').value || 0),
+      meterX: +document.getElementById('sq-meterx').value || 260,
+    },
+  }});
+}
+
 function testLike(n)      { send({ cmd: 'TRIGGER_EVENT', data: { type: 'like', count: n, username: testUser() } }); }
 function testComment(msg) { send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', message: msg, username: testUser() } }); }
 function testEvt(type)    { send({ cmd: 'TRIGGER_EVENT', data: { type, username: testUser() } }); }

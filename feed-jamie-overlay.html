@@ -274,6 +274,183 @@
     background: radial-gradient(ellipse at 50% 40%, #FFD34E33 0%, transparent 65%);
     transition: opacity .35s;
   }
+
+  /* ════════════════════════════════════════════════════════════════
+     SPLATTY SQUAD — gifter crowd, prize wheel, Jamie drip tiers
+     ════════════════════════════════════════════════════════════════ */
+
+  /* ── crowd of mini splatties (one per unique gifter) on the floor ── */
+  #squad-crowd { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+  .sq-fan {
+    position: absolute; object-fit: contain; pointer-events: none;
+    transform-origin: 50% 100%;
+    animation: sqCheer 2.4s ease-in-out infinite;
+  }
+  .sq-fan.mirror { scale: -1 1; }
+  @keyframes sqCheer {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px) scaleY(1.03); }
+  }
+  .sq-fan.hop { animation: sqHop .6s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes sqHop {
+    0% { transform: translateY(0); }
+    40% { transform: translateY(-20px) scaleY(1.1); }
+    70% { transform: translateY(2px) scaleY(.9); }
+    100% { transform: translateY(0); }
+  }
+  .sq-fan.toss { animation: sqToss .7s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes sqToss {
+    0% { transform: translateY(0); }
+    30% { transform: translateY(6px) scaleY(.85); }
+    60% { transform: translateY(-24px) scaleY(1.12); }
+    100% { transform: translateY(0); }
+  }
+  .sq-crown {
+    position: absolute; object-fit: contain; pointer-events: none; z-index: 31;
+    animation: sqCrownBob 2.6s ease-in-out infinite;
+    transition: left .8s cubic-bezier(.34,1.56,.64,1), top .8s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes sqCrownBob {
+    0%,100% { transform: translateY(0) rotate(-6deg); }
+    50% { transform: translateY(-5px) rotate(4deg); }
+  }
+  .sq-pip {
+    position: absolute; pointer-events: none; z-index: 30;
+    background: rgba(42,8,69,.9); border: 2px solid #C084FC;
+    border-radius: 999px; color: #FFF6D8;
+    font: 700 15px 'DM Sans', sans-serif;
+    padding: 2px 9px 3px; line-height: 1.2; white-space: nowrap;
+    display: none; align-items: center; justify-content: center;
+  }
+
+  /* ── prize wheel — transient, pops on gift, CSS-drawn (art can replace) ── */
+  #squad-wheel {
+    position: absolute; z-index: 60; pointer-events: none;
+    opacity: 0; transform: scale(.5);
+  }
+  #squad-wheel.show { animation: sqWheelIn .28s cubic-bezier(.34,1.56,.64,1) forwards; }
+  #squad-wheel.hide { animation: sqWheelOut .3s ease-in forwards; }
+  @keyframes sqWheelIn { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: scale(1); } }
+  @keyframes sqWheelOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.6); } }
+  .sq-wheel-disc {
+    position: absolute; inset: 34px 0 0 0; border-radius: 50%;
+    border: 6px solid #1A0A2A;
+    box-shadow: 0 6px 0 rgba(26,10,42,.6), 0 0 24px rgba(168,85,247,.5);
+    background: conic-gradient(
+      #FFE9A8 0deg 45deg,   #E9D5FF 45deg 90deg,
+      #FFD9DE 90deg 135deg, #CDEFFF 135deg 180deg,
+      #FFE9A8 180deg 225deg,#E9D5FF 225deg 270deg,
+      #FFD9DE 270deg 315deg,#CDEFFF 315deg 360deg);
+  }
+  .sq-wheel-disc::after {   /* hub */
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 22%; height: 22%; transform: translate(-50%,-50%);
+    background: #7B2FBE; border: 5px solid #1A0A2A; border-radius: 50%;
+  }
+  .sq-wheel-icon {
+    position: absolute; left: 50%; top: 50%; object-fit: contain; pointer-events: none;
+  }
+  .sq-wheel-ptr {
+    position: absolute; left: 50%; top: 6px; transform: translateX(-50%);
+    width: 0; height: 0; z-index: 2;
+    border-left: 17px solid transparent; border-right: 17px solid transparent;
+    border-top: 30px solid #FFD25A;
+    filter: drop-shadow(0 2.5px 0 #1A0A2A);
+  }
+  .sq-wheel-caption {
+    position: absolute; left: 0; right: 0; top: -32px; text-align: center;
+    font: 400 20px 'Boogaloo', cursive; color: #FFF6D8; letter-spacing: .5px;
+    text-shadow: 0 2px 0 #1A0A2A, 0 0 10px rgba(0,0,0,.8); white-space: nowrap;
+  }
+  #squad-wheel.landed .sq-wheel-disc { animation: sqWheelLand .4s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes sqWheelLand { 0%{scale:1} 45%{scale:1.09} 100%{scale:1} }
+
+  /* ── Jamie drip tiers (ported from Top Splatty; tint via --jt-tint) ── */
+  #jamie-tier-fx { position: absolute; inset: 0; z-index: 24; pointer-events: none; }
+  .jt-fx { position: absolute; pointer-events: none; opacity: 0; transition: opacity .8s; }
+  .jt-glow {
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--jt-tint,255,210,90),.38) 0%, transparent 70%);
+  }
+  .jt-glow.on { opacity: .55; animation: jtGlowPulse 3s ease-in-out infinite; }
+  @keyframes jtGlowPulse { 0%,100% { transform: scale(1); opacity: .45; } 50% { transform: scale(1.06); opacity: .6; } }
+  .jt-rays {
+    background: repeating-conic-gradient(rgba(var(--jt-tint,255,210,90),.5) 0deg 4deg, transparent 4deg 20deg);
+    border-radius: 50%;
+    animation: jtRaySpin 22s linear infinite;
+  }
+  .jt-rays.on { opacity: .4; }
+  @keyframes jtRaySpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  .jt-spot .beam {
+    position: absolute; top: 0; width: 46%; height: 100%;
+    background: linear-gradient(180deg, rgba(255,255,255,.5), transparent 85%);
+  }
+  .jt-spot .b1 { left: 5%; transform: skewX(-9deg); }
+  .jt-spot .b2 { right: 5%; transform: skewX(9deg); }
+  .jt-spot.on { opacity: .3; }
+  .jt-halo {
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #ff5da2, #FFD25A, #7FE8F2, #A855F7, #ff5da2);
+    animation: jtHaloSpin 3.4s linear infinite;
+    filter: blur(1.5px);
+  }
+  .jt-halo.on { opacity: .38; }
+  @keyframes jtHaloSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  .jt-orbit { position: absolute; pointer-events: none; }
+  .jt-orbit .jt-orbit-icon {
+    position: absolute; top: 50%; left: 50%; object-fit: contain;
+    margin: calc(var(--jt-size, 22px) / -2) 0 0 calc(var(--jt-size, 22px) / -2);
+    animation: jtOrbit var(--jt-dur, 5.5s) linear infinite;
+    animation-delay: var(--jt-delay, 0s);
+  }
+  @keyframes jtOrbit {
+    from { transform: rotate(0deg) translateX(var(--jt-r, 90px)) rotate(0deg); }
+    to   { transform: rotate(360deg) translateX(var(--jt-r, 90px)) rotate(-360deg); }
+  }
+  .jt-sparkle {
+    position: absolute; pointer-events: none; font-size: 17px; opacity: 0;
+    text-shadow: 0 0 6px rgba(255,255,255,.9);
+  }
+  .jt-sparkle.on { animation: jtTwinkle 1.8s ease-in-out infinite; }
+  .jt-sparkle.s2 { animation-delay: .45s; }
+  .jt-sparkle.s3 { animation-delay: .95s; }
+  .jt-sparkle.s4 { animation-delay: 1.35s; }
+  @keyframes jtTwinkle { 0%,100% { opacity: 0; transform: scale(.6); } 50% { opacity: 1; transform: scale(1); } }
+  .jt-crown { position: absolute; object-fit: contain; opacity: 0; transition: opacity .8s; animation: sqCrownBob 2.8s ease-in-out infinite; }
+  .jt-crown.on { opacity: 1; }
+
+  /* ── tier meter (badge + progress + decay hint) ── */
+  #squad-meter {
+    position: absolute; z-index: 35; pointer-events: none;
+    display: none; flex-direction: column; align-items: center; gap: 3px;
+  }
+  #squad-meter.show { display: flex; }
+  .sqm-badge {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(26,10,42,.82);
+    border: 3px solid var(--sqm-edge, #C084FC); border-radius: 999px;
+    padding: 3px 13px 5px;
+    font: 400 20px 'Boogaloo', cursive; color: #FFF6D8; letter-spacing: 1.5px;
+    text-shadow: 0 2px 0 rgba(0,0,0,.5);
+    transition: border-color .6s;
+  }
+  .sqm-badge .sqm-tname { color: var(--sqm-edge, #C084FC); }
+  .sqm-bar {
+    width: 190px; height: 10px; border-radius: 999px;
+    background: rgba(26,10,42,.8); border: 2px solid rgba(192,132,252,.6);
+    overflow: hidden;
+  }
+  .sqm-fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #A855F7, #FFD25A);
+    transition: width .6s cubic-bezier(.2,.9,.3,1);
+  }
+  .sqm-next {
+    font: 400 15px 'Boogaloo', cursive; color: #E9DEFB; letter-spacing: .5px;
+    text-shadow: 0 2px 0 rgba(0,0,0,.6); white-space: nowrap;
+  }
+  #squad-meter.tierup .sqm-badge { animation: sqmPop .7s cubic-bezier(.34,1.56,.64,1); border-color: #FFD25A; }
+  @keyframes sqmPop { 0%{transform:scale(1)} 40%{transform:scale(1.22)} 100%{transform:scale(1)} }
 </style>
 </head>
 <body>
@@ -286,7 +463,11 @@
   <div id="guide-floor-label">floor Y</div>
   <div id="reach-zone-vis"></div>
   <div id="jamie-box"></div>
+  <div id="jamie-tier-fx"></div>
   <div id="jamie"><div id="jamie-inner"></div></div>
+  <div id="squad-crowd"></div>
+  <div id="squad-meter"></div>
+  <div id="squad-wheel"></div>
   <div id="effects"></div>
   <div id="prompt-pill"></div>
   <div id="event-label"></div>
@@ -783,11 +964,19 @@ function instantFeed(itemType, opts = {}) {
 }
 function reactToGift(itemType, value, username, rawGiftName, mapping, showName) {
   const level = resolveIntensity(mapping, value);
+  /* SPLATTY SQUAD: every gift feeds the crowd roster + Jamie's care score */
+  squadOnGift(username, 'tiktok', (+value || 0) * 0.005);
   const f = CFG.events.instantFeed;
   if (f.enabled && level === 1 && itemType !== 'heartme' && (+value || 0) <= f.maxCoins && ITEM_DEFS[itemType]) {
     showGiftFloat(mapping || { itemType }, username, rawGiftName);
     instantFeed(itemType, { username });
     playSound('gift');
+    return;
+  }
+  /* prize wheel takeover (L1-L3): the wheel picks a premium treat, the crowd
+     tosses it in — replaces the default item spawn, never the mega spectacle */
+  if (itemType !== 'heartme' && squadTakeGift(level, value, username, rawGiftName, giftSizeScale(value), 'gift')) {
+    showGiftFloat(mapping || { itemType }, username, rawGiftName);
     return;
   }
   reactAtLevel(itemType, level, giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift', spectacleOf(value));
@@ -821,9 +1010,24 @@ function handleSuperchat(evt) {
   if (dollars <= 0) return;
   const username = evt.name || evt.username || null;
   const level = resolveSuperchatIntensity(dollars);
+  squadOnGift(username, 'youtube', dollars);
+  if (squadTakeGift(level, dollars / 0.005, username, 'Super Chat', superchatSizeScale(dollars), 'superchat')) return;
   const itemType = superchatItemForLevel(level);
   reactAtLevel(itemType, level, superchatSizeScale(dollars), username, 'Super Chat', null, true, 'superchat',
     spectacleOf(dollars, CFG.events.superchat.thresholds.l5));
+}
+/* YouTube jewels — same gift-alert broadcast, jewel counts at $0.005/jewel */
+function handleJewels(evt) {
+  const jewels = +evt.amount || 0;
+  if (jewels <= 0) return;
+  const usd = jewels * 0.005;
+  const username = evt.name || evt.username || null;
+  const level = resolveSuperchatIntensity(usd);
+  squadOnGift(username, 'youtube', usd);
+  if (squadTakeGift(level, jewels, username, 'Jewels', superchatSizeScale(usd), 'superchat')) return;
+  const itemType = superchatItemForLevel(level);
+  reactAtLevel(itemType, level, superchatSizeScale(usd), username, 'Jewels', null, true, 'superchat',
+    spectacleOf(usd, CFG.events.superchat.thresholds.l5));
 }
 fjValidateConfig();
 function applyMotionVar() {
@@ -1009,7 +1213,14 @@ const ITEM_DEFS = {
   'duck':               { file: 'items/duck.png',               width: 96,  reaction: 'duck',    target: 'paw',   catchSound: 'quack',  premium: false, speedFactor: 1 },
   'sock':               { file: 'items/sock.png',               width: 100, reaction: 'sock',    target: 'mouth', catchSound: 'catch',  premium: false, speedFactor: 1 },
   'bubble':             { file: 'items/bubble.png',             width: 96,  reaction: 'bubble',  target: 'paw',   catchSound: 'pop',    premium: false, speedFactor: 0.55 },
-  'heart-large':        { file: 'items/heart-large.png',        width: 150, reaction: 'treat',   target: 'mouth', catchSound: 'heartMe', premium: true, speedFactor: 0.8, glow: 'purple' }
+  'heart-large':        { file: 'items/heart-large.png',        width: 150, reaction: 'treat',   target: 'mouth', catchSound: 'heartMe', premium: true, speedFactor: 0.8, glow: 'purple' },
+  /* ── SPLATTY SQUAD premium pool — gift-only wheel prizes, visibly better
+     than anything free commands can spawn. PNGs pending (see
+     FEED-JAMIE-SQUAD-ART-NEEDS.md); inline SVGs render until then. ── */
+  'golden-bone':        { file: 'items/golden-bone.png',        width: 112, reaction: 'treat',   target: 'mouth', catchSound: 'subscribe', premium: true, speedFactor: 0.9, glow: 'gold', trail: true },
+  'diamond-biscuit':    { file: 'items/diamond-biscuit.png',    width: 104, reaction: 'treat',   target: 'mouth', catchSound: 'subscribe', premium: true, speedFactor: 0.9, glow: 'gold' },
+  'galaxy-treat':       { file: 'items/galaxy-treat.png',       width: 110, reaction: 'treat',   target: 'mouth', catchSound: 'heartMe',  premium: true, speedFactor: 0.85, glow: 'purple', trail: true },
+  'royal-burger':       { file: 'items/royal-burger.png',       width: 120, reaction: 'treat',   target: 'mouth', catchSound: 'heartMe',  premium: true, speedFactor: 0.85, glow: 'gold', trail: true }
 };
 
 /* ── 3. ANIMATION SEQUENCES (frame files + ms) — the asset report
@@ -1328,7 +1539,11 @@ const ITEM_SVGS = {
   'duck': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><g stroke="#FFF" stroke-width="14" fill="#FFF"><ellipse cx="58" cy="76" rx="40" ry="28"/><circle cx="44" cy="42" r="22"/></g><ellipse cx="58" cy="76" rx="40" ry="28" fill="#F2D043" stroke="#1A1A1E" stroke-width="6"/><circle cx="44" cy="42" r="22" fill="#F2D043" stroke="#1A1A1E" stroke-width="6"/><path d="M24 44 Q8 48 22 54 Q30 52 28 46 Z" fill="#F59E0B" stroke="#1A1A1E" stroke-width="4"/><circle cx="40" cy="38" r="5" fill="#0B0B0D"/><path d="M70 62 Q88 56 92 70" stroke="#1A1A1E" stroke-width="5" fill="none"/></svg>`,
   'sock': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M44 16 h32 v46 q0 8 8 14 l10 8 q12 10 2 22 q-10 12 -24 2 l-22 -16 q-6 -5 -6 -14 z" fill="#FFF" stroke="#FFF" stroke-width="14"/><path d="M44 16 h32 v46 q0 8 8 14 l10 8 q12 10 2 22 q-10 12 -24 2 l-22 -16 q-6 -5 -6 -14 z" fill="#EDEDF2" stroke="#1A1A1E" stroke-width="6"/><rect x="44" y="16" width="32" height="14" fill="#3B82F6" stroke="#1A1A1E" stroke-width="5"/><path d="M48 52 h24 M48 42 h24" stroke="#3B82F6" stroke-width="5"/></svg>`,
   'bubble': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="44" fill="#BFDBFE" opacity=".35" stroke="#FFF" stroke-width="6"/><circle cx="60" cy="60" r="44" fill="none" stroke="#93C5FD" stroke-width="4"/><path d="M34 44 Q42 30 58 26" stroke="#FFF" stroke-width="8" fill="none" stroke-linecap="round" opacity=".9"/><circle cx="78" cy="76" r="6" fill="#FFF" opacity=".7"/></svg>`,
-  'heart-large': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M60 104 Q12 70 12 42 Q12 18 38 18 Q54 18 60 36 Q66 18 82 18 Q108 18 108 42 Q108 70 60 104" fill="#FFF" stroke="#FFF" stroke-width="12"/><path d="M60 104 Q12 70 12 42 Q12 18 38 18 Q54 18 60 36 Q66 18 82 18 Q108 18 108 42 Q108 70 60 104" fill="#A855F7" stroke="#1A1A1E" stroke-width="6"/><path d="M32 38 Q38 26 52 26" stroke="#E9D5FF" stroke-width="8" fill="none" stroke-linecap="round"/></svg>`
+  'heart-large': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><path d="M60 104 Q12 70 12 42 Q12 18 38 18 Q54 18 60 36 Q66 18 82 18 Q108 18 108 42 Q108 70 60 104" fill="#FFF" stroke="#FFF" stroke-width="12"/><path d="M60 104 Q12 70 12 42 Q12 18 38 18 Q54 18 60 36 Q66 18 82 18 Q108 18 108 42 Q108 70 60 104" fill="#A855F7" stroke="#1A1A1E" stroke-width="6"/><path d="M32 38 Q38 26 52 26" stroke="#E9D5FF" stroke-width="8" fill="none" stroke-linecap="round"/></svg>`,
+  'golden-bone': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><g stroke="#FFF" stroke-width="16" fill="#FFF"><path d="M34 50 h52 v20 h-52 z"/><circle cx="32" cy="48" r="14"/><circle cx="32" cy="72" r="14"/><circle cx="88" cy="48" r="14"/><circle cx="88" cy="72" r="14"/></g><g stroke="#1A1A1E" stroke-width="6" fill="#F5C518"><path d="M34 50 h52 v20 h-52 z" stroke="none"/><circle cx="32" cy="48" r="14"/><circle cx="32" cy="72" r="14"/><circle cx="88" cy="48" r="14"/><circle cx="88" cy="72" r="14"/><path d="M34 50 h52 M34 70 h52" fill="none"/></g><path d="M60 26 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3 z" fill="#FFF7CC" stroke="#1A1A1E" stroke-width="3"/></svg>`,
+  'diamond-biscuit': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="34" width="80" height="52" rx="18" fill="#FFF" stroke="#FFF" stroke-width="18"/><rect x="20" y="34" width="80" height="52" rx="18" fill="#BFE9FF" stroke="#1A1A1E" stroke-width="7"/><path d="M60 42 l14 12 -14 20 -14 -20 z" fill="#7FD4F7" stroke="#1A1A1E" stroke-width="4"/><path d="M50 50 l10 -8 10 8" stroke="#FFF" stroke-width="3" fill="none"/></svg>`,
+  'galaxy-treat': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="42" fill="#FFF" stroke="#FFF" stroke-width="14"/><circle cx="60" cy="60" r="42" fill="#3B0764" stroke="#1A1A1E" stroke-width="6"/><path d="M32 66 Q60 40 88 58" stroke="#A855F7" stroke-width="8" fill="none" stroke-linecap="round"/><circle cx="46" cy="48" r="4" fill="#FFF"/><circle cx="76" cy="72" r="3" fill="#FFD25A"/><circle cx="64" cy="38" r="2.5" fill="#7FE8F2"/><circle cx="40" cy="76" r="3" fill="#FF5DA2"/></svg>`,
+  'royal-burger': `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><g stroke="#FFF" stroke-width="12" fill="#FFF"><ellipse cx="60" cy="46" rx="40" ry="18"/><rect x="20" y="52" width="80" height="30" rx="10"/><ellipse cx="60" cy="84" rx="40" ry="14"/></g><ellipse cx="60" cy="44" rx="40" ry="18" fill="#E8A24B" stroke="#1A1A1E" stroke-width="6"/><rect x="20" y="52" width="80" height="14" rx="7" fill="#8A4B28" stroke="#1A1A1E" stroke-width="5"/><rect x="22" y="64" width="76" height="10" rx="5" fill="#7BC043" stroke="#1A1A1E" stroke-width="4"/><ellipse cx="60" cy="82" rx="40" ry="13" fill="#E8A24B" stroke="#1A1A1E" stroke-width="6"/><path d="M44 20 l6 10 10 -12 10 12 6 -10 v10 h-32 z" fill="#FFD25A" stroke="#1A1A1E" stroke-width="4"/><circle cx="48" cy="40" r="2.5" fill="#FFF7CC"/><circle cx="68" cy="44" r="2.5" fill="#FFF7CC"/></svg>`
 };
 
 /* ── 6. AUDIO (Web Audio placeholder synth + optional file URLs) ── */
@@ -1495,6 +1710,7 @@ function applyLayout() {
   el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
   renderMilestoneBars(); /* each bar is positioned independently — see its own x/y */
   applyGiftShowcaseLayout();
+  if (typeof squadLayout === 'function' && jtEls) squadLayout();  /* squad tracks floor/Jamie moves */
 }
 
 /* ── wide wooden treat board layout: N cells side by side, each holding a
@@ -1904,7 +2120,13 @@ function spawnObject(itemType, opts = {}) {
   let ny = Math.sqrt(1 - nx * nx) * (Math.random() < 0.6 ? 1 : -1);
   let x, y;
   const lvl = opts.intensityLevel || 0;
-  if (opts.entry === 'throw') {
+  if (opts.startX != null) {
+    /* squad toss: item launches upward from an explicit point (the crowd) */
+    x = opts.startX - w / 2;
+    y = (opts.startY != null ? opts.startY : CFG.floor.y - 20) - h;
+    nx = Math.abs(nx) * (opts.dirX != null ? Math.sign(opts.dirX) : -1);
+    ny = -Math.abs(ny);
+  } else if (opts.entry === 'throw') {
     const fromLeft = CFG.jamie.side === 'right';
     x = fromLeft ? -w * 0.5 : 1080 - w * 0.5;
     y = rand(40, Math.max(80, CFG.floor.y * 0.35));
@@ -2700,7 +2922,9 @@ const GIFT_ITEM_LABELS = {
   'treat-biscuit': 'Biscuit', 'treat-bone': 'Bone Treat', 'treat-purple-splat': 'Splat Treat',
   'treat-heart': 'Heart Cookie', 'tennis-ball': 'Tennis Ball', 'golden-tennis-ball': 'Golden Ball',
   'squeaky-toy': 'Squeaky Toy', 'duck': 'Duck', 'sock': 'Sock', 'bubble': 'Bubble',
-  'heart-large': 'Big Heart', 'heartme': 'MEGA Party', 'jackpot': 'JACKPOT'
+  'heart-large': 'Big Heart', 'heartme': 'MEGA Party', 'jackpot': 'JACKPOT',
+  'golden-bone': 'GOLDEN Bone', 'diamond-biscuit': 'DIAMOND Biscuit',
+  'galaxy-treat': 'GALAXY Treat', 'royal-burger': 'ROYAL Burger'
 };
 const GIFT_ACTION_DEFAULTS = {
   'treat-biscuit':      { signAction: 'TREAT',     floatText: '+ TREAT TIME!' },
@@ -2955,6 +3179,435 @@ document.addEventListener('visibilitychange', () => {
   else { lastFrame = performance.now(); if (!rafId) rafId = requestAnimationFrame(tick); }
 });
 
+/* ════════════════════════════════════════════════════════════════
+   14b. SPLATTY SQUAD — the gifter crowd, the prize wheel, and Jamie's
+   decaying drip tiers. All state and settings live OUTSIDE CFG so the
+   control panel's full-config pushes can never clobber them.
+   ════════════════════════════════════════════════════════════════ */
+
+const SQ_LS_CFG   = 'feedJamie.squad.cfg.v1';
+const SQ_LS_STATE = 'feedJamie.squad.state.v1';
+const SQ_STALE_MS = 6 * 3600e3;   // saved state older than this = new stream, start fresh
+
+const SQ_DEFAULT = {
+  enabled: true,
+  crowd: { x: 890, maxFans: 7, fanSize: 64, spreadX: 34 },
+  wheel: { enabled: true, x: 540, size: 300, minCoins: 1, spinMs: 2100, holdMs: 700 },
+  tiers: {
+    enabled: true,
+    /* care score is USD-normalized so coins/jewels/superchats all feed it */
+    thresholds: [0.01, 12.5, 30, 60, 125, 225],   // T1..T6
+    decayPerMin: 0.4,                              // USD drained per minute — "keep him glowing"
+    meterX: 260, meterY: 0,                        // meterY 0 = auto (just under the floor)
+  },
+};
+let SQ = fjClone(SQ_DEFAULT);
+try { SQ = fjDeepMerge(SQ, JSON.parse(localStorage.getItem(SQ_LS_CFG) || 'null') || {}); } catch (e) {}
+
+const sqState = {
+  gifters: {},           // key → { name, platform, usd }
+  careUsd: 0,
+  lastTickAt: Date.now(),
+  topKey: null,
+  tier: 0,
+};
+try {
+  const s = JSON.parse(localStorage.getItem(SQ_LS_STATE) || 'null');
+  if (s && s.ts && Date.now() - s.ts < SQ_STALE_MS) {
+    sqState.gifters = s.gifters || {};
+    sqState.careUsd = +s.careUsd || 0;
+  }
+} catch (e) {}
+function sqPersist() {
+  try {
+    localStorage.setItem(SQ_LS_STATE, JSON.stringify({
+      gifters: sqState.gifters, careUsd: sqState.careUsd, ts: Date.now(),
+    }));
+  } catch (e) {}
+}
+const sqKey = (n) => String(n || '').trim().toLowerCase();
+
+/* ── tier model (decay-based) ── */
+const SQ_TIER_NAMES = ['', 'HAPPY', 'GLOWING', 'RICHES', 'RADIANT', 'UNTOUCHABLE', 'MYTHIC'];
+function sqTierOf(usd) {
+  const t = SQ.tiers.thresholds;
+  for (let i = t.length - 1; i >= 0; i--) if (usd >= t[i]) return i + 1;
+  return 0;
+}
+
+/* ── crowd ── */
+const sqFanEls = [];
+let sqCrownEl = null, sqPipEl = null;
+const SQ_FAN_ART = {
+  yt: ['assets/top-splatty/character/splatty-fan-yt-01.png', 'assets/top-splatty/character/splatty-fan-yt-02.png', 'assets/top-splatty/character/splatty-fan-yt-03.png'],
+  tt: ['assets/top-splatty/character/splatty-fan-tt-01.png', 'assets/top-splatty/character/splatty-fan-tt-02.png', 'assets/top-splatty/character/splatty-fan-tt-03.png'],
+};
+const SQ_CROWN_ART = 'assets/top-splatty/ui/top-splatty-crown.png';
+const SQ_ICED_CROWN_ART = 'assets/top-splatty/ui/crown-iced.png';
+
+function sqBuildCrowd() {
+  const box = $('squad-crowd');
+  box.innerHTML = '';
+  sqFanEls.length = 0;
+  for (let i = 0; i < 8; i++) {
+    const img = document.createElement('img');
+    img.className = 'sq-fan';
+    img.style.display = 'none';
+    img.style.animationDelay = (i * 0.32) + 's';
+    box.appendChild(img);
+    sqFanEls.push(img);
+  }
+  sqPipEl = document.createElement('div');
+  sqPipEl.className = 'sq-pip';
+  box.appendChild(sqPipEl);
+  sqCrownEl = document.createElement('img');
+  sqCrownEl.className = 'sq-crown';
+  sqCrownEl.src = SQ_CROWN_ART;
+  sqCrownEl.style.display = 'none';
+  box.appendChild(sqCrownEl);
+}
+
+/* fans sorted by total (top treater closest to Jamie, wearing the crown) */
+function sqUpdateCrowd() {
+  if (!sqFanEls.length) return;
+  const rows = Object.entries(sqState.gifters)
+    .map(([k, g]) => ({ key: k, ...g }))
+    .sort((a, b) => b.usd - a.usd);
+  sqState.topKey = rows.length ? rows[0].key : null;
+  const show = SQ.enabled ? Math.min(sqFanEls.length - 1, rows.length) : 0;
+  const jamieOnLeft = CFG.jamie.side !== 'right';
+  const size = SQ.crowd.fanSize;
+  const jitter = [0, -6, 4, -3, 6, -5, 3, -4];
+  let crownTarget = null;
+  sqFanEls.forEach((img, i) => {
+    if (i >= show) { img.style.display = 'none'; return; }
+    const row = rows[i];
+    const w = size * (1 - i * 0.055);
+    /* rank 0 stands closest to Jamie; the line walks away from him */
+    const step = (w * 0.62) + SQ.crowd.spreadX * 0.3;
+    const x = jamieOnLeft ? SQ.crowd.x + i * step : SQ.crowd.x - i * step;
+    const art = SQ_FAN_ART[row.platform === 'youtube' ? 'yt' : 'tt'][i % 3];
+    if (img.dataset.src !== art) { img.src = art; img.dataset.src = art; }
+    img.classList.toggle('mirror', jamieOnLeft);   // face toward Jamie
+    img.style.width = w + 'px'; img.style.height = w + 'px';
+    img.style.left = (x - w / 2) + 'px';
+    img.style.top = (CFG.floor.y - w + 4 + jitter[i]) + 'px';
+    img.style.display = '';
+    img.dataset.gifter = row.key;
+    if (i === 0) crownTarget = { x, w, top: CFG.floor.y - w + 4 + jitter[0] };
+  });
+  const extra = rows.length - show;
+  if (extra > 0 && SQ.enabled) {
+    sqPipEl.textContent = '+' + extra;
+    sqPipEl.style.display = 'flex';
+    const lastX = jamieOnLeft ? SQ.crowd.x + show * (size * 0.62 + SQ.crowd.spreadX * 0.3) : SQ.crowd.x - show * (size * 0.62 + SQ.crowd.spreadX * 0.3);
+    sqPipEl.style.left = (lastX - 22) + 'px';
+    sqPipEl.style.top = (CFG.floor.y - 26) + 'px';
+  } else sqPipEl.style.display = 'none';
+  if (crownTarget) {
+    const cw = crownTarget.w * 0.62, ch = cw * 0.72;
+    sqCrownEl.style.width = cw + 'px'; sqCrownEl.style.height = ch + 'px';
+    sqCrownEl.style.left = (crownTarget.x - cw / 2) + 'px';
+    sqCrownEl.style.top = (crownTarget.top - ch * 0.72) + 'px';
+    sqCrownEl.style.display = '';
+  } else sqCrownEl.style.display = 'none';
+}
+function sqFansReact(cls, onlyKey) {
+  sqFanEls.forEach((img) => {
+    if (img.style.display === 'none') return;
+    if (onlyKey && img.dataset.gifter !== onlyKey) return;
+    img.classList.remove('hop', 'toss'); void img.offsetWidth;
+    img.classList.add(cls);
+    setTimeout(() => img.classList.remove(cls), 750);
+  });
+}
+
+/* ── Jamie drip-tier FX ── */
+let jtEls = null;
+function sqBuildTierFx() {
+  const box = $('jamie-tier-fx');
+  box.style.setProperty('--jt-tint', '255,210,90');
+  box.innerHTML = `
+    <div class="jt-fx jt-glow"></div>
+    <div class="jt-fx jt-rays"></div>
+    <div class="jt-fx jt-spot"><div class="beam b1"></div><div class="beam b2"></div></div>
+    <div class="jt-fx jt-halo"></div>
+    <div class="jt-orbit"></div>
+    <span class="jt-sparkle s1">✨</span><span class="jt-sparkle s2">✨</span>
+    <span class="jt-sparkle s3">✨</span><span class="jt-sparkle s4">✨</span>
+    <img class="jt-crown" alt="">`;
+  jtEls = {
+    glow: box.querySelector('.jt-glow'),
+    rays: box.querySelector('.jt-rays'),
+    spot: box.querySelector('.jt-spot'),
+    halo: box.querySelector('.jt-halo'),
+    orbit: box.querySelector('.jt-orbit'),
+    sparkles: [...box.querySelectorAll('.jt-sparkle')],
+    crown: box.querySelector('.jt-crown'),
+  };
+}
+function sqLayoutTierFx() {
+  if (!jtEls || !jamieRect) return;
+  const jx = jamieRect.x, jy = jamieRect.y;
+  const jw = jamieRect.w || CFG.jamie.width, jh = jamieRect.h || jw;
+  const cx = jx + jw / 2, cy = jy + jh * 0.55;
+  const place = (el, size) => {
+    el.style.width = size + 'px'; el.style.height = size + 'px';
+    el.style.left = (cx - size / 2) + 'px'; el.style.top = (cy - size / 2) + 'px';
+  };
+  place(jtEls.glow, jw * 1.5);
+  place(jtEls.rays, jw * 1.35);
+  place(jtEls.halo, jw * 1.15);
+  jtEls.spot.style.width = (jw * 1.5) + 'px'; jtEls.spot.style.height = (jh * 1.5) + 'px';
+  jtEls.spot.style.left = (cx - jw * 0.75) + 'px'; jtEls.spot.style.top = (jy - jh * 0.6) + 'px';
+  jtEls.orbit.style.width = '2px'; jtEls.orbit.style.height = '2px';
+  jtEls.orbit.style.left = cx + 'px'; jtEls.orbit.style.top = cy + 'px';
+  const sp = [[-.62,-.5],[.66,-.38],[-.5,.44],[.6,.52]];
+  jtEls.sparkles.forEach((s, i) => {
+    s.style.left = (cx + sp[i][0] * jw * 0.8 - 9) + 'px';
+    s.style.top = (cy + sp[i][1] * jw * 0.8 - 9) + 'px';
+  });
+  const cw = jw * 0.34, chh = cw * 0.72;
+  jtEls.crown.style.width = cw + 'px'; jtEls.crown.style.height = chh + 'px';
+  jtEls.crown.style.left = (cx - cw / 2) + 'px';
+  jtEls.crown.style.top = (jy - chh * 0.55) + 'px';
+}
+function sqBuildOrbit(count) {
+  jtEls.orbit.innerHTML = '';
+  const files = ['items/treat-biscuit.png', 'items/treat-bone.png', 'items/golden-tennis-ball.png'];
+  for (let i = 0; i < count; i++) {
+    const img = document.createElement('img');
+    img.className = 'jt-orbit-icon';
+    img.src = CFG.assets.basePath + files[i % files.length] + '?v=' + FJ_CACHE_BUST;
+    const size = 22 + (i % 2) * 4;
+    const r = ((jamieRect && jamieRect.w) || 260) * 0.62 + (i % 3) * 16;
+    const dur = 5 + (i % 3) * 1.2;
+    img.style.setProperty('--jt-size', size + 'px');
+    img.style.setProperty('--jt-r', r + 'px');
+    img.style.setProperty('--jt-dur', dur + 's');
+    img.style.setProperty('--jt-delay', -(i * dur / count) + 's');
+    img.style.width = size + 'px'; img.style.height = size + 'px';
+    jtEls.orbit.appendChild(img);
+  }
+}
+const SQ_ORBIT_COUNT = { 0: 0, 1: 0, 2: 0, 3: 2, 4: 3, 5: 4, 6: 6 };
+function sqApplyTier() {
+  if (!jtEls) return;
+  const tier = (SQ.enabled && SQ.tiers.enabled) ? sqTierOf(sqState.careUsd) : 0;
+  const prev = sqState.tier;
+  jtEls.glow.classList.toggle('on', tier >= 2);
+  jtEls.rays.classList.toggle('on', tier >= 4);
+  jtEls.spot.classList.toggle('on', tier >= 5);
+  jtEls.halo.classList.toggle('on', tier >= 6);
+  jtEls.sparkles.forEach(s => s.classList.toggle('on', tier >= 5));
+  jtEls.crown.classList.toggle('on', tier >= 4);
+  const crownSrc = tier >= 6 ? SQ_ICED_CROWN_ART : SQ_CROWN_ART;
+  if (jtEls.crown.dataset.src !== crownSrc) { jtEls.crown.src = crownSrc; jtEls.crown.dataset.src = crownSrc; }
+  const wantOrbit = SQ_ORBIT_COUNT[tier] || 0;
+  if (jtEls.orbit.childElementCount !== wantOrbit) sqBuildOrbit(wantOrbit);
+  sqState.tier = tier;
+  sqUpdateMeter(tier > prev && prev > 0);
+  if (tier > prev && prev > 0) {
+    if (jamieRect) spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + 20, 10);
+    playSound('subscribe');
+    if (['IDLE', 'TRACKING'].includes(J.state)) jamieOneShot('grownProud', 1200);
+  }
+}
+
+/* ── tier meter ── */
+function sqUpdateMeter(popped) {
+  const m = $('squad-meter');
+  if (!SQ.enabled || !SQ.tiers.enabled) { m.classList.remove('show'); return; }
+  m.classList.add('show');
+  const tier = sqState.tier;
+  const th = SQ.tiers.thresholds;
+  const name = SQ_TIER_NAMES[tier] || 'FEED ME';
+  const next = tier < th.length ? th[tier] : null;
+  if (!m.dataset.built) {
+    m.innerHTML = `<div class="sqm-badge">🐶 <span class="sqm-tname"></span></div>
+      <div class="sqm-bar"><div class="sqm-fill"></div></div>
+      <div class="sqm-next"></div>`;
+    m.dataset.built = '1';
+  }
+  m.querySelector('.sqm-tname').textContent = tier > 0 ? `JAMIE IS ${name}` : 'FEED JAMIE!';
+  m.style.setProperty('--sqm-edge', tier >= 6 ? '#FFD25A' : tier >= 4 ? '#7FE8F2' : '#C084FC');
+  const fill = m.querySelector('.sqm-fill');
+  const nextEl = m.querySelector('.sqm-next');
+  if (next != null) {
+    const base = tier > 0 ? th[tier - 1] : 0;
+    const pct = Math.min(100, Math.max(0, (sqState.careUsd - base) / (next - base) * 100));
+    fill.style.width = pct.toFixed(1) + '%';
+    const gapCoins = Math.max(1, Math.ceil((next - sqState.careUsd) / 0.005));
+    nextEl.textContent = `${gapCoins.toLocaleString()} coins to ${SQ_TIER_NAMES[tier + 1]}`;
+  } else {
+    fill.style.width = '100%';
+    nextEl.textContent = 'MAX DRIP — keep him there!';
+  }
+  const mx = SQ.tiers.meterX, my = SQ.tiers.meterY || (CFG.floor.y + 14);
+  m.style.left = (mx - 110) + 'px';
+  m.style.top = my + 'px';
+  if (popped) { m.classList.remove('tierup'); void m.offsetWidth; m.classList.add('tierup'); }
+}
+
+/* decay loop — Jamie's drip fades unless chat keeps treating him.
+   The clock advances every tick even when there's nothing to drain, so the
+   first gift is never back-charged for time spent at zero. */
+setInterval(() => {
+  const now = Date.now();
+  const mins = (now - sqState.lastTickAt) / 60000;
+  sqState.lastTickAt = now;
+  if (!SQ.enabled || !SQ.tiers.enabled || sqState.careUsd <= 0) return;
+  sqState.careUsd = Math.max(0, sqState.careUsd - SQ.tiers.decayPerMin * mins);
+  sqPersist();
+  sqApplyTier();
+}, 5000);
+
+/* ── prize wheel ── */
+const SQ_WHEEL_ITEMS = ['golden-bone', 'diamond-biscuit', 'galaxy-treat', 'royal-burger',
+                        'golden-tennis-ball', 'heart-large', 'treat-heart', 'squeaky-toy'];
+/* wedge weights per intensity level: small gifts land modest prizes more often */
+const SQ_WHEEL_WEIGHTS = {
+  1: [6, 6, 4, 4, 8, 8, 34, 30],
+  2: [12, 12, 8, 8, 16, 16, 16, 12],
+  3: [20, 20, 16, 14, 14, 10, 4, 2],
+};
+let sqWheelBusy = false;
+function sqBuildWheel() {
+  const w = $('squad-wheel');
+  w.innerHTML = `<div class="sq-wheel-caption"></div><div class="sq-wheel-ptr"></div><div class="sq-wheel-disc"></div>`;
+  const disc = w.querySelector('.sq-wheel-disc');
+  SQ_WHEEL_ITEMS.forEach((item, i) => {
+    const img = document.createElement('img');
+    img.className = 'sq-wheel-icon';
+    const def = ITEM_DEFS[item];
+    const url = CFG.assets.basePath + def.file + '?v=' + FJ_CACHE_BUST;
+    img.src = url;
+    img.onerror = () => {
+      const span = document.createElement('span');
+      span.className = 'sq-wheel-icon';
+      span.style.cssText = img.style.cssText;
+      span.innerHTML = ITEM_SVGS[item] || '';
+      img.replaceWith(span);
+    };
+    img.dataset.wedge = i;
+    disc.appendChild(img);
+  });
+}
+function sqLayoutWheel() {
+  const w = $('squad-wheel');
+  const size = SQ.wheel.size;
+  w.style.width = size + 'px';
+  w.style.height = (size + 34) + 'px';
+  w.style.left = (SQ.wheel.x - size / 2) + 'px';
+  w.style.top = Math.max(30, CFG.floor.y * 0.32 - size / 2) + 'px';
+  const disc = w.querySelector('.sq-wheel-disc');
+  if (!disc) return;
+  const r = size * 0.335, iconSize = size * 0.19;
+  [...disc.querySelectorAll('.sq-wheel-icon')].forEach((el, i) => {
+    const ang = (i * 45 + 22.5 - 90) * Math.PI / 180;
+    el.style.width = iconSize + 'px'; el.style.height = iconSize + 'px';
+    el.style.left = (size / 2 + Math.cos(ang) * r - iconSize / 2 - 6) + 'px';
+    el.style.top = (size / 2 + Math.sin(ang) * r - iconSize / 2 - 6) + 'px';
+  });
+}
+function sqPickWedge(level) {
+  const wts = SQ_WHEEL_WEIGHTS[Math.min(3, Math.max(1, level))];
+  const sum = wts.reduce((a, b) => a + b, 0);
+  let r = Math.random() * sum;
+  for (let i = 0; i < wts.length; i++) { r -= wts[i]; if (r <= 0) return i; }
+  return 0;
+}
+let sqWheelRot = 0;
+function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
+  sqWheelBusy = true;
+  const w = $('squad-wheel');
+  const disc = w.querySelector('.sq-wheel-disc');
+  const cap = w.querySelector('.sq-wheel-caption');
+  cap.textContent = username ? `@${sanitizeName(username)} spins the treat wheel…` : 'treat wheel…';
+  const wedge = sqPickWedge(level);
+  const item = SQ_WHEEL_ITEMS[wedge];
+  /* pointer at top: land wedge center under it */
+  const target = 360 * 4 + (360 - (wedge * 45 + 22.5));
+  sqWheelRot += target - (sqWheelRot % 360);
+  w.classList.remove('hide', 'landed');
+  w.classList.add('show');
+  disc.style.transition = 'none';
+  disc.style.transform = `rotate(${sqWheelRot - target}deg)`;
+  void disc.offsetWidth;
+  disc.style.transition = `transform ${SQ.wheel.spinMs}ms cubic-bezier(.12,.68,.16,1)`;
+  disc.style.transform = `rotate(${sqWheelRot}deg)`;
+  playSound('bounce');
+  /* timers, not transitionend — must complete even in a throttled tab */
+  setTimeout(() => {
+    w.classList.add('landed');
+    cap.textContent = `${username ? '@' + sanitizeName(username) : 'chat'} won a ${GIFT_ITEM_LABELS[item] || item}!`;
+    playSound('jackpot');
+    setTimeout(() => {
+      w.classList.remove('show', 'landed');
+      w.classList.add('hide');
+      sqWheelBusy = false;
+      /* the crowd tosses the prize toward Jamie */
+      sqFansReact('toss');
+      const jamieOnLeft = CFG.jamie.side !== 'right';
+      queueSpawn(item, {
+        sourceEvent: sourceEvent || 'gift', username,
+        priority: 80, premium: true, showName: !!CFG.visuals.usernameEvents.gift,
+        nameSeconds: CFG.visuals.usernameSeconds * 1.5,
+        sizeScale: (sizeScale || 1) * 1.1,
+        intensityLevel: Math.max(2, level),
+        startX: SQ.crowd.x, startY: CFG.floor.y - 30,
+        dirX: jamieOnLeft ? -1 : 1,
+      });
+      playSound('gift');
+    }, SQ.wheel.holdMs);
+  }, SQ.wheel.spinMs + 150);
+}
+
+/* ── gift intake (all platforms funnel through here) ── */
+function squadOnGift(username, platform, usd) {
+  if (!SQ.enabled || !(usd > 0) || !username) { if (usd > 0) sqBumpCare(usd); return; }
+  const k = sqKey(username);
+  const g = sqState.gifters[k] || (sqState.gifters[k] = { name: username, platform, usd: 0 });
+  g.usd += usd;
+  g.name = username;
+  g.platform = platform;
+  sqBumpCare(usd);
+  const wasTop = sqState.topKey;
+  sqUpdateCrowd();
+  if (sqState.topKey && sqState.topKey !== wasTop && wasTop) playSound('jackpot');  // crown hopped
+  sqFansReact('hop', k);
+  sqPersist();
+}
+function sqBumpCare(usd) {
+  sqState.careUsd += usd;
+  sqApplyTier();
+  sqPersist();
+}
+/* wheel takeover: returns true if the wheel owns this gift's item spawn */
+function squadTakeGift(level, value, username, rawGiftName, sizeScale, sourceEvent) {
+  if (!SQ.enabled || !SQ.wheel.enabled) return false;
+  if (sqWheelBusy) return false;
+  if (level >= 4) return false;               // mega gifts keep the heart-me/jackpot spectacle
+  if ((+value || 0) < SQ.wheel.minCoins) return false;
+  sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent });
+  return true;
+}
+
+function squadLayout() {
+  sqUpdateCrowd();
+  sqLayoutTierFx();
+  sqLayoutWheel();
+  sqUpdateMeter(false);
+}
+function squadBoot() {
+  sqBuildCrowd();
+  sqBuildTierFx();
+  sqBuildWheel();
+  sqState.lastTickAt = Date.now();
+  squadLayout();
+  sqApplyTier();
+}
+
 /* ── 15. COMMS: Ably + BroadcastChannel + localStorage ─────────── */
 let bc = null, ablyChannel = null;
 function processMessage(msg) {
@@ -3016,6 +3669,27 @@ function processMessage(msg) {
       fjLoadAssets();
       break;
     case 'REQUEST_STATUS': publishStatus(true); break;
+    case 'SQUAD_CONFIG':
+      /* partial merge — squad settings live outside CFG on purpose */
+      SQ = fjDeepMerge(SQ, msg.data || {});
+      try { localStorage.setItem(SQ_LS_CFG, JSON.stringify(SQ)); } catch (e) {}
+      squadLayout(); sqApplyTier();
+      publishStatus(true);
+      break;
+    case 'SQUAD_RESET':
+      sqState.gifters = {}; sqState.careUsd = 0; sqState.topKey = null;
+      sqPersist(); squadLayout(); sqApplyTier();
+      publishStatus(true);
+      break;
+    case 'SQUAD_ADD_CARE':
+      sqBumpCare(Math.max(0, +((msg.data || {}).usd) || 0));
+      break;
+    case 'SQUAD_TEST_GIFT': {
+      const d = msg.data || {};
+      if ((d.platform || 'tiktok') === 'youtube') handleJewels({ amount: +d.amount || 200, name: d.username || 'yt_tester' });
+      else handleEvent({ type: 'gift', value: +d.amount || 99, username: d.username || 'tt_tester', giftName: 'Test Gift' });
+      break;
+    }
     case 'PLAY_SOUND': if (msg.data && msg.data.sound) playSound(msg.data.sound); break;
     case 'FORCE_CATCH': { const o = objects.find(x => !x.captured); if (o) captureObject(o); break; }
     case 'FORCE_MISS': jamieOneShot('miss', 800); break;
@@ -3051,6 +3725,17 @@ function publishStatus(immediate) {
           id: g.id, target: g.target, baseValue: g.baseValue, completed: g.completed
         })),
         lastEvent: lastEventInfo,
+        squad: {
+          enabled: SQ.enabled, wheel: SQ.wheel.enabled, tiers: SQ.tiers.enabled,
+          careUsd: Math.round(sqState.careUsd * 100) / 100,
+          tier: sqState.tier, tierName: SQ_TIER_NAMES[sqState.tier] || '—',
+          decayPerMin: SQ.tiers.decayPerMin,
+          gifterCount: Object.keys(sqState.gifters).length,
+          topTreater: sqState.topKey ? {
+            name: sqState.gifters[sqState.topKey].name,
+            usd: Math.round(sqState.gifters[sqState.topKey].usd * 100) / 100,
+          } : null,
+        },
         warnings: assetWarnings.slice(0, 40),
         assetAvailable: Object.fromEntries(Object.entries(assetAvailable)),
         ts: Date.now()
@@ -3087,6 +3772,7 @@ function initComms() {
       ablyChannel.subscribe('gift-alert', m => {
         const d = m.data || {};
         if (d.type === 'youtube_superchat' && (+d.amount || 0) > 0) handleSuperchat(d);
+        else if (d.type === 'youtube_jewels' && (+d.amount || 0) > 0) handleJewels(d);
       });
       /* gesture engine: streamer pinched on camera → steal the nearest treat for
          them. Rides the DEDICATED near-silent 'gesture-events' channel (same
@@ -3176,6 +3862,7 @@ promptLoop();
 giftShowcaseLoop();
 initComms();
 fjLoadAssets();
+squadBoot();
 rafId = requestAnimationFrame(tick);
 </script>
 </body>
