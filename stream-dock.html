@@ -9169,15 +9169,29 @@ function _gcHide() {
 }
 
 /* ── Subscribe to gift-alert channel ── */
+// The SAME gift can be published to 'gift-alert' by more than one source — this dock
+// (_src:'dock'), tracker.html's SSN handler (_src:'tracker'), and its Tikfinity relay
+// (_src:'tikfinity') all watch the same firehose. Without dedup the Money In rail counts
+// each copy, so a single gift shows up 2–3×. Collapse copies of the same logical gift
+// (name|amount|type) seen within a short window, regardless of _src. gift-bar.html does
+// the equivalent for its alert queue; amounts match across sources for a given gift.
+const _moneyRailDedup = new Map(); // "name|amount|type" → timestamp
+const _MONEY_DEDUP_MS = 6000;
 ablyChannel.subscribe('gift-alert', msg => {
   const d = msg?.data;
   if (!d || !d.amount) return;
 
-  // Money In rail — populate for EVERY gift alert, regardless of the slide-down
-  // tier gate below. This is the one canonical path: any gift that produces an
-  // alert (from this dock, tracker.html, or a Tikfinity relay) lands in the rail.
-  // d.type is the alertType from mapAlertType(): tiktok_coins | youtube_jewels |
-  // youtube_superchat | direct_donation. d.amount is coins / jewels / USD to match.
+  const _dupKey = `${(d.name || '').toLowerCase()}|${d.amount}|${d.type || ''}`;
+  const _nowD = Date.now();
+  for (const [k, t] of _moneyRailDedup) { if (_nowD - t > _MONEY_DEDUP_MS) _moneyRailDedup.delete(k); }
+  if (_moneyRailDedup.has(_dupKey) && _nowD - _moneyRailDedup.get(_dupKey) < _MONEY_DEDUP_MS) return; // duplicate copy from another publisher
+  _moneyRailDedup.set(_dupKey, _nowD);
+
+  // Money In rail — populate for EVERY gift alert (that survives the dedup above),
+  // regardless of the slide-down tier gate below. This is the one canonical path: any
+  // gift that produces an alert (from this dock, tracker.html, or a Tikfinity relay)
+  // lands in the rail. d.type is the alertType from mapAlertType(): tiktok_coins |
+  // youtube_jewels | youtube_superchat | direct_donation. d.amount is coins/jewels/USD.
   try {
     const at = String(d.type || '');
     const isTT = d.platform === 'tiktok' || at === 'tiktok_coins';
