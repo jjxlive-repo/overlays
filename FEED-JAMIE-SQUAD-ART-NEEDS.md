@@ -1,5 +1,14 @@
 # Feed Jamie × Splatty Squad — Art Needs (ChatGPT / image gen)
 
+## ✅ ALL DELIVERED 2026-07-18 — nothing outstanding.
+Every item below (including all optional + stretch pieces) was generated, green-screen
+stripped, trimmed, and wired in: 4 premium treats, wheel face + pointer (real art now
+replaces the CSS wheel), fan poses 04-06 per platform (6-pose crowd pool), and
+`jamie-mythic-celebrate.png` (normalized to the 1161×1355 manifest canvas, plays on the
+tier-6 MYTHIC unlock). This doc is kept for the prompts in case anything needs a re-gen.
+
+---
+
 Running tally of images the merged mechanic needs. Everything below has a working
 in-code fallback (inline SVG or CSS), so nothing blocks going live — real art is a
 polish drop. Deliver transparent PNGs, drop into the paths shown, done (the overlay

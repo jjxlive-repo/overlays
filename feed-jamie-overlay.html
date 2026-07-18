@@ -357,6 +357,15 @@
     border-top: 30px solid #FFD25A;
     filter: drop-shadow(0 2.5px 0 #1A0A2A);
   }
+  /* real art variants (swap in when the PNGs exist) */
+  .sq-wheel-disc.has-art { background: none; border: none; box-shadow: 0 6px 0 rgba(26,10,42,.4); }
+  .sq-wheel-disc.has-art::after { display: none; }
+  .sq-wheel-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .sq-wheel-ptr-img {
+    position: absolute; left: 50%; top: 2px; transform: translateX(-50%);
+    z-index: 2; object-fit: contain;
+    filter: drop-shadow(0 2px 0 rgba(26,10,42,.4));
+  }
   .sq-wheel-caption {
     position: absolute; left: 0; right: 0; top: -32px; text-align: center;
     font: 400 20px 'Boogaloo', cursive; color: #FFF6D8; letter-spacing: .5px;
@@ -1302,6 +1311,7 @@ const SEQ = {
   jackpot:      [{ f: 'jamie-jackpot-catch.png',      d: 900  }],
   jackpotEnd:   [{ f: 'jamie-jackpot-land.png',       d: 600  }],
   grownProud:   [{ f: 'jamie-grown-proud.png',        d: 1200 }],
+  mythicCelebrate: [{ f: 'jamie-mythic-celebrate.png', d: 1600 }],  /* squad tier-6 unlock */
   grownMid:     [{ f: 'jamie-grown-mid.png',          d: 1000 }],
   milestoneCheer: [{ f: 'jamie-milestone-cheer.png',  d: 900  }],
   showerNom:    [{ f: 'jamie-shower-nom.png',         d: 450  }],
@@ -3239,8 +3249,10 @@ function sqTierOf(usd) {
 const sqFanEls = [];
 let sqCrownEl = null, sqPipEl = null;
 const SQ_FAN_ART = {
-  yt: ['assets/top-splatty/character/splatty-fan-yt-01.png', 'assets/top-splatty/character/splatty-fan-yt-02.png', 'assets/top-splatty/character/splatty-fan-yt-03.png'],
-  tt: ['assets/top-splatty/character/splatty-fan-tt-01.png', 'assets/top-splatty/character/splatty-fan-tt-02.png', 'assets/top-splatty/character/splatty-fan-tt-03.png'],
+  yt: ['splatty-fan-yt-01', 'splatty-fan-yt-02', 'splatty-fan-yt-03', 'splatty-fan-yt-04', 'splatty-fan-yt-05', 'splatty-fan-yt-06']
+    .map(f => `assets/top-splatty/character/${f}.png`),
+  tt: ['splatty-fan-tt-01', 'splatty-fan-tt-02', 'splatty-fan-tt-03', 'splatty-fan-tt-04', 'splatty-fan-tt-05', 'splatty-fan-tt-06']
+    .map(f => `assets/top-splatty/character/${f}.png`),
 };
 const SQ_CROWN_ART = 'assets/top-splatty/ui/top-splatty-crown.png';
 const SQ_ICED_CROWN_ART = 'assets/top-splatty/ui/crown-iced.png';
@@ -3286,7 +3298,8 @@ function sqUpdateCrowd() {
     /* rank 0 stands closest to Jamie; the line walks away from him */
     const step = (w * 0.62) + SQ.crowd.spreadX * 0.3;
     const x = jamieOnLeft ? SQ.crowd.x + i * step : SQ.crowd.x - i * step;
-    const art = SQ_FAN_ART[row.platform === 'youtube' ? 'yt' : 'tt'][i % 3];
+    const pool = SQ_FAN_ART[row.platform === 'youtube' ? 'yt' : 'tt'];
+    const art = pool[i % pool.length];
     if (img.dataset.src !== art) { img.src = art; img.dataset.src = art; }
     img.classList.toggle('mirror', jamieOnLeft);   // face toward Jamie
     img.style.width = w + 'px'; img.style.height = w + 'px';
@@ -3410,7 +3423,11 @@ function sqApplyTier() {
   if (tier > prev && prev > 0) {
     if (jamieRect) spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + 20, 10);
     playSound('subscribe');
-    if (['IDLE', 'TRACKING'].includes(J.state)) jamieOneShot('grownProud', 1200);
+    if (['IDLE', 'TRACKING'].includes(J.state)) {
+      /* MYTHIC unlock gets its dedicated celebration frame */
+      if (tier >= 6 && assetAvailable['jamie-mythic-celebrate.png']) jamieOneShot('mythicCelebrate', 1600);
+      else jamieOneShot('grownProud', 1200);
+    }
   }
 }
 
@@ -3476,6 +3493,22 @@ function sqBuildWheel() {
   const w = $('squad-wheel');
   w.innerHTML = `<div class="sq-wheel-caption"></div><div class="sq-wheel-ptr"></div><div class="sq-wheel-disc"></div>`;
   const disc = w.querySelector('.sq-wheel-disc');
+  /* real wheel-face / pointer art when present; CSS conic + triangle otherwise */
+  const face = new Image();
+  face.onload = () => {
+    disc.classList.add('has-art');
+    face.className = 'sq-wheel-face';
+    disc.prepend(face);
+  };
+  face.src = CFG.assets.basePath + 'items/wheel-face.png?v=' + FJ_CACHE_BUST;
+  const ptrImg = new Image();
+  ptrImg.onload = () => {
+    const cssPtr = w.querySelector('.sq-wheel-ptr');
+    ptrImg.className = 'sq-wheel-ptr-img';
+    cssPtr.replaceWith(ptrImg);
+    sqLayoutWheel();
+  };
+  ptrImg.src = CFG.assets.basePath + 'items/wheel-pointer.png?v=' + FJ_CACHE_BUST;
   SQ_WHEEL_ITEMS.forEach((item, i) => {
     const img = document.createElement('img');
     img.className = 'sq-wheel-icon';
@@ -3502,6 +3535,8 @@ function sqLayoutWheel() {
   w.style.top = Math.max(30, CFG.floor.y * 0.32 - size / 2) + 'px';
   const disc = w.querySelector('.sq-wheel-disc');
   if (!disc) return;
+  const ptrImg = w.querySelector('.sq-wheel-ptr-img');
+  if (ptrImg) { ptrImg.style.width = (size * 0.15) + 'px'; ptrImg.style.height = (size * 0.18) + 'px'; }
   const r = size * 0.335, iconSize = size * 0.19;
   [...disc.querySelectorAll('.sq-wheel-icon')].forEach((el, i) => {
     const ang = (i * 45 + 22.5 - 90) * Math.PI / 180;
