@@ -670,6 +670,11 @@ const FJ_ABLY_MSG_OUT = 'feed-jamie-status'; /* overlay -> control */
    replacing a PNG under the same filename (common during art iteration)
    can never keep showing a stale browser-cached copy. */
 const FJ_CACHE_BUST = Date.now();
+/* mirror mode (?mirror=1): the control panel's tiny live-mirror iframe. It's a
+   same-origin copy driven purely over BroadcastChannel/localStorage, so it
+   must never attach to Ably (cost), publish status (would fight the real
+   TikTok Studio copy), or make noise. */
+const FJ_IS_MIRROR = /[?&]mirror=1/.test(location.search) || location.hash === '#mirror';
 
 function fjDeepMerge(base, extra) {
   if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
@@ -1584,7 +1589,7 @@ function fjAudio() {
   return audioCtx;
 }
 function playSound(name) {
-  if (CFG.audio.muted) return;
+  if (FJ_IS_MIRROR || CFG.audio.muted) return;
   const now = performance.now();
   if (soundLastPlayed[name] && now - soundLastPlayed[name] < CFG.audio.cooldownMs) return;
   soundLastPlayed[name] = now;
@@ -3240,8 +3245,8 @@ const SQ_STALE_MS = 6 * 3600e3;   // saved state older than this = new stream, s
 
 const SQ_DEFAULT = {
   enabled: true,
-  crowd: { x: 890, maxFans: 7, fanSize: 64, spreadX: 34 },
-  wheel: { enabled: true, x: 540, size: 300, minCoins: 1, spinMs: 2100, holdMs: 700 },
+  crowd: { x: 890, y: 0, maxFans: 7, fanSize: 64, spreadX: 34 },   // y 0 = auto (feet on the floor line)
+  wheel: { enabled: true, x: 540, y: 0, size: 300, minCoins: 1, spinMs: 2100, holdMs: 700 },  // y 0 = auto (upper third)
   tiers: {
     enabled: true,
     /* care score is USD-normalized so coins/jewels/superchats all feed it */
@@ -3328,6 +3333,7 @@ function sqUpdateCrowd() {
   const show = SQ.enabled ? Math.min(sqFanEls.length - 1, rows.length) : 0;
   const jamieOnLeft = CFG.jamie.side !== 'right';
   const size = SQ.crowd.fanSize;
+  const crowdBaseY = SQ.crowd.y || CFG.floor.y;   // feet line: canvas placement or the floor
   const jitter = [0, -6, 4, -3, 6, -5, 3, -4];
   let crownTarget = null;
   sqFanEls.forEach((img, i) => {
@@ -3343,10 +3349,10 @@ function sqUpdateCrowd() {
     img.classList.toggle('mirror', jamieOnLeft);   // face toward Jamie
     img.style.width = w + 'px'; img.style.height = w + 'px';
     img.style.left = (x - w / 2) + 'px';
-    img.style.top = (CFG.floor.y - w + 4 + jitter[i]) + 'px';
+    img.style.top = (crowdBaseY - w + 4 + jitter[i]) + 'px';
     img.style.display = '';
     img.dataset.gifter = row.key;
-    if (i === 0) crownTarget = { x, w, top: CFG.floor.y - w + 4 + jitter[0] };
+    if (i === 0) crownTarget = { x, w, top: crowdBaseY - w + 4 + jitter[0] };
   });
   const extra = rows.length - show;
   if (extra > 0 && SQ.enabled) {
@@ -3354,7 +3360,7 @@ function sqUpdateCrowd() {
     sqPipEl.style.display = 'flex';
     const lastX = jamieOnLeft ? SQ.crowd.x + show * (size * 0.62 + SQ.crowd.spreadX * 0.3) : SQ.crowd.x - show * (size * 0.62 + SQ.crowd.spreadX * 0.3);
     sqPipEl.style.left = (lastX - 22) + 'px';
-    sqPipEl.style.top = (CFG.floor.y - 26) + 'px';
+    sqPipEl.style.top = (crowdBaseY - 26) + 'px';
   } else sqPipEl.style.display = 'none';
   if (crownTarget) {
     const cw = crownTarget.w * 0.62, ch = cw * 0.72;
@@ -3572,7 +3578,7 @@ function sqLayoutWheel() {
   w.style.width = size + 'px';
   w.style.height = (size + 34) + 'px';
   w.style.left = (SQ.wheel.x - size / 2) + 'px';
-  w.style.top = Math.max(30, CFG.floor.y * 0.32 - size / 2) + 'px';
+  w.style.top = (SQ.wheel.y ? SQ.wheel.y - size / 2 : Math.max(30, CFG.floor.y * 0.32 - size / 2)) + 'px';
   const disc = w.querySelector('.sq-wheel-disc');
   if (!disc) return;
   const ptrImg = w.querySelector('.sq-wheel-ptr-img');
@@ -3630,7 +3636,7 @@ function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
         nameSeconds: CFG.visuals.usernameSeconds * 1.5,
         sizeScale: (sizeScale || 1) * 1.1,
         intensityLevel: Math.max(2, level),
-        startX: SQ.crowd.x, startY: CFG.floor.y - 30,
+        startX: SQ.crowd.x, startY: (SQ.crowd.y || CFG.floor.y) - 30,
         dirX: jamieOnLeft ? -1 : 1,
       });
       playSound('gift');
@@ -3787,6 +3793,7 @@ function processMessage(msg) {
 }
 let statusTimer = null, statusDirty = false;
 function publishStatus(immediate) {
+  if (FJ_IS_MIRROR) return;
   statusDirty = true;
   if (statusTimer && !immediate) return;
   const send = () => {
@@ -3847,7 +3854,7 @@ function initComms() {
       try { CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), JSON.parse(e.newValue)); fjValidateConfig(); applyLayout(); promptLoop(); giftShowcaseLoop(); applyMotionVar(); } catch (err) {}
     }
   });
-  if (window.Ably) {
+  if (window.Ably && !FJ_IS_MIRROR) {
     try {
       const ably = new Ably.Realtime({ key: FJ_ABLY_KEY });
       ablyChannel = ably.channels.get(FJ_ABLY_CH);
