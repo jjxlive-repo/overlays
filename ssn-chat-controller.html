@@ -288,6 +288,41 @@ h1 {
   border-color: rgba(105,201,208,.72);
   color: #69C9D0;
 }
+.theme-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.theme-label {
+  color: rgba(250,245,255,.68);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+.theme-btn {
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(250,245,255,.14);
+  background: rgba(0,0,0,.28);
+  color: #FAF5FF;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.theme-btn:hover {
+  border-color: rgba(105,201,208,.72);
+  color: #69C9D0;
+}
+.theme-btn.active {
+  border-color: rgba(253,230,138,.82);
+  color: #FDE68A;
+  box-shadow: 0 0 18px rgba(253,230,138,.16);
+}
 
 .glass .chat {
   padding: 12px;
@@ -474,12 +509,37 @@ h1 {
   <p class="sub">Messages persist until newer messages push them out. Gifts and other visible events appear as a small toast, then fade away so the chat area does not clog up.</p>
   <section class="quick-links" aria-label="JJxLive live overlay controls">
     <h2>JJxLive One-Overlay Controller</h2>
-    <button class="quick-link active" type="button" data-style-button="neon">Push Neon Rail<br><code>One overlay: jjxlive-chat-box.html</code></button>
-    <button class="quick-link" type="button" data-style-button="minimal">Push Minimal<br><code>One overlay: jjxlive-chat-box.html</code></button>
+    <div class="theme-row" aria-label="Overlay theme">
+      <span class="theme-label">Theme</span>
+      <button class="theme-btn active" type="button" data-theme-button="night">Night</button>
+      <button class="theme-btn" type="button" data-theme-button="broadcast">Broadcast</button>
+      <button class="theme-btn" type="button" data-theme-button="comic">Sticker Comic</button>
+      <button class="theme-btn" type="button" data-theme-button="comic-noir">Comic Noir</button>
+      <button class="theme-btn" type="button" data-theme-button="comic-midnight">Comic Midnight</button>
+      <button class="theme-btn" type="button" data-theme-button="comic-grape">Comic Grape</button>
+    </div>
     <div class="control-row">
+      <div class="control">
+        <label for="jjx-style">Style Preset</label>
+        <select id="jjx-style">
+          <option value="neon">Neon Rail</option>
+          <option value="minimal">Minimal</option>
+          <option value="sticker">Sticker</option>
+          <option value="splat">Splat</option>
+          <option value="arcade">Arcade</option>
+          <option value="chips">Chips</option>
+          <option value="comms">Comms</option>
+          <option value="spotlight">Spotlight</option>
+          <option value="glass">Glass</option>
+          <option value="caption">Caption</option>
+          <option value="sidebar">Sidebar</option>
+          <option value="bubble">Bubble</option>
+        </select>
+      </div>
       <div class="control">
         <label for="jjx-font">Font</label>
         <select id="jjx-font">
+          <option value="">Theme default</option>
           <option value="rounded">Rounded</option>
           <option value="trebuch">Trebuchet</option>
           <option value="arial">Arial</option>
@@ -565,11 +625,13 @@ const CONTROL_CONFIG = {
 let ablyClient = null;
 let controlChannel = null;
 let currentStyle = "neon";
+let currentTheme = "night";
 let pendingPayload = null;
 let isControlConnected = false;
 const CONTROLLER_STORAGE_KEY = "jjxlive-chat-controller-settings-v1";
 
 const statusEl = document.getElementById("jjx-controller-status");
+const styleEl = document.getElementById("jjx-style");
 const fontEl = document.getElementById("jjx-font");
 const fontScaleEl = document.getElementById("jjx-font-scale");
 const fontScaleLabel = document.getElementById("jjx-font-scale-label");
@@ -605,8 +667,11 @@ function saveControllerSettings(payload) {
 }
 
 function applyControllerSettingsToForm(settings = {}) {
-  currentStyle = ["neon", "minimal"].includes(settings.style) ? settings.style : "neon";
-  if (fontEl && settings.font) fontEl.value = settings.font;
+  const ALL_STYLES = ["sticker","splat","arcade","chips","comms","spotlight","glass","caption","sidebar","neon","bubble","minimal"];
+  currentStyle = ALL_STYLES.includes(settings.style) ? settings.style : "neon";
+  currentTheme = ["night","broadcast","comic","comic-noir","comic-midnight","comic-grape"].includes(settings.theme) ? settings.theme : "night";
+  if (styleEl) styleEl.value = currentStyle;
+  if (fontEl && settings.font != null) fontEl.value = settings.font;
   if (fontScaleEl && settings.fontScale != null) fontScaleEl.value = Math.round(Number(settings.fontScale) * 100);
   if (showFollowsEl && settings.showFollowsAsEvents != null) showFollowsEl.checked = Boolean(settings.showFollowsAsEvents);
   if (showLikesEl && settings.showLikesAsEvents != null) showLikesEl.checked = Boolean(settings.showLikesAsEvents);
@@ -622,6 +687,9 @@ function applyControllerSettingsToForm(settings = {}) {
   if (fontScaleLabel) fontScaleLabel.textContent = `${Math.round(Number(fontScaleEl?.value || 100))}%`;
   document.querySelectorAll("[data-style-button]").forEach(button => {
     button.classList.toggle("active", button.dataset.styleButton === currentStyle);
+  });
+  document.querySelectorAll("[data-theme-button]").forEach(button => {
+    button.classList.toggle("active", button.dataset.themeButton === currentTheme);
   });
 }
 
@@ -668,7 +736,8 @@ function publishSettings(extra = {}) {
   const fontScale = Number(fontScaleEl?.value || 100) / 100;
   const payload = {
     style: currentStyle,
-    font: fontEl?.value || "rounded",
+    theme: currentTheme,
+    font: fontEl?.value || "",
     fontScale,
     showFollowsAsEvents: Boolean(showFollowsEl?.checked),
     showLikesAsEvents: Boolean(showLikesEl?.checked),
@@ -685,6 +754,10 @@ function publishSettings(extra = {}) {
   document.querySelectorAll("[data-style-button]").forEach(button => {
     button.classList.toggle("active", button.dataset.styleButton === payload.style);
   });
+  document.querySelectorAll("[data-theme-button]").forEach(button => {
+    button.classList.toggle("active", button.dataset.themeButton === payload.theme);
+  });
+  if (styleEl) styleEl.value = payload.style;
   if (fontScaleLabel) fontScaleLabel.textContent = `${Math.round(fontScale * 100)}%`;
   if (widthLabel) widthLabel.textContent = `${payload.width}px`;
   if (heightLabel) heightLabel.textContent = `${payload.height}px`;
@@ -698,11 +771,22 @@ function publishSettings(extra = {}) {
 }
 
 document.addEventListener("click", event => {
+  const themeButton = event.target.closest("[data-theme-button]");
+  if (themeButton) {
+    currentTheme = themeButton.dataset.themeButton || "night";
+    publishSettings({ theme: currentTheme });
+    return;
+  }
   const button = event.target.closest("[data-style-button]");
   if (button) {
     currentStyle = button.dataset.styleButton || "neon";
     publishSettings({ style: currentStyle });
   }
+});
+
+styleEl?.addEventListener("change", () => {
+  currentStyle = styleEl.value || "neon";
+  publishSettings({ style: currentStyle });
 });
 
 fontEl?.addEventListener("change", () => publishSettings());
