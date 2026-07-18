@@ -33,26 +33,6 @@
     overflow: hidden;
   }
 
-  /* ── connection status dot — top-right, 12-14px.
-       NOTE: grey (disconnected) -> BLUE (connected).
-       Not green: JJ is red-green colorblind and can't
-       reliably tell purple/blue apart either, so blue
-       is the one accent color reserved for "connected"
-       across all his overlays. ── */
-  #kw-status-dot {
-    position: absolute;
-    top: 28px;
-    right: 28px;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: #6b7280;
-    box-shadow: 0 0 0 3px rgba(0,0,0,.25);
-    transition: background .25s ease;
-    z-index: 50;
-  }
-  #kw-status-dot.connected { background: #3b82f6; box-shadow: 0 0 8px #3b82f6, 0 0 0 3px rgba(0,0,0,.25); }
-
   /* ── rep counter pill — small, optional polish.
        Shows during the Rep Loop only. Positioned above
        the badge, never anchored to bottom. ── */
@@ -135,7 +115,6 @@
     <img id="kw-img-b" src="" alt="">
   </div>
   <div id="kw-rep-pill"></div>
-  <div id="kw-status-dot"></div>
 </div>
 
 <script>
@@ -409,14 +388,8 @@ function handleCmd(action) {
    ABLY — subscribe for commands, publish alive
    heartbeat so the stream-dock panel shows LIVE.
 ═══════════════════════════════════════════ */
-const dot = document.getElementById('kw-status-dot');
 const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY });
 const channel = ably.channels.get(CONFIG.ABLY_CHANNEL);
-
-ably.connection.on('connected',    () => dot.classList.add('connected'));
-ably.connection.on('disconnected', () => dot.classList.remove('connected'));
-ably.connection.on('suspended',    () => dot.classList.remove('connected'));
-ably.connection.on('failed',       () => dot.classList.remove('connected'));
 
 channel.subscribe('kegel-cmd', (msg) => {
   const action = msg?.data?.action;

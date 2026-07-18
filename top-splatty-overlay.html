@@ -26,14 +26,6 @@
   #scene * { box-sizing: border-box; }
   img { -webkit-user-drag: none; user-select: none; }
 
-  /* ── connection dot ── */
-  #conn-dot {
-    position: absolute; top: 14px; left: 1052px;
-    width: 13px; height: 13px; border-radius: 50%;
-    background: #666; border: 2px solid rgba(0,0,0,.35);
-    z-index: 99; transition: background .3s;
-  }
-  #conn-dot.connected { background: #35d97b; }
 
   /* ── thin seam rail (pure CSS — no PNG) ── */
   #rail {
@@ -146,17 +138,18 @@
   .tier-glow.on { opacity: .55; animation: tsGlowPulse 3s ease-in-out infinite; }
   @keyframes tsGlowPulse { 0%,100% { transform: scale(1); opacity: .45; } 50% { transform: scale(1.07); opacity: .6; } }
 
-  /* rays + halo are masked into RINGS (transparent center) so the flex reads
-     as a bloom around the champ instead of a solid disc over the camera */
+  /* kept deliberately small + low-opacity (not masked into true rings — this
+     overlay has no way to confirm mask-image renders correctly inside TikTok
+     Studio's embedded browser, and a live broadcast isn't the place to bet
+     on that) so the drip-tier flex reads as a bloom hugging the champ
+     instead of a wash over the camera behind them */
   .tier-rays {
     background: repeating-conic-gradient(rgba(var(--tier-tint,255,210,90),.5) 0deg 4deg, transparent 4deg 20deg);
     border-radius: 50%;
     opacity: 0; transition: opacity .7s;
     animation: tsRaySpin 20s linear infinite;
-    mask-image: radial-gradient(circle, transparent 0%, transparent 38%, black 55%, black 100%);
-    -webkit-mask-image: radial-gradient(circle, transparent 0%, transparent 38%, black 55%, black 100%);
   }
-  .tier-rays.on { opacity: .45; }
+  .tier-rays.on { opacity: .4; }
   @keyframes tsRaySpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
   .tier-spotlight { opacity: 0; transition: opacity .7s; }
@@ -174,10 +167,8 @@
     opacity: 0; transition: opacity .7s;
     animation: tsHaloSpin 3.2s linear infinite;
     filter: blur(1.5px);
-    mask-image: radial-gradient(circle, transparent 0%, transparent 60%, black 70%, black 84%, transparent 94%, transparent 100%);
-    -webkit-mask-image: radial-gradient(circle, transparent 0%, transparent 60%, black 70%, black 84%, transparent 94%, transparent 100%);
   }
-  .tier-halo.on { opacity: .65; }
+  .tier-halo.on { opacity: .4; }
   @keyframes tsHaloSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
   .tier-orbit { position: absolute; z-index: 15; pointer-events: none; }
@@ -553,7 +544,6 @@
 
   <div id="debug-seam"></div>
   <div id="debug-hud"></div>
-  <div id="conn-dot" title="Ably connection"></div>
 </div>
 
 <script>
@@ -1373,9 +1363,9 @@ function applyLayout() {
       el.style.width = size + 'px'; el.style.height = size + 'px';
       el.style.left = (cx - size / 2) + 'px'; el.style.top = (cy - size / 2) + 'px';
     };
-    place(E.tierGlow, G.charW * 1.7, charCX, charCY);
-    place(E.tierRays, G.charW * 2.15, charCX, charCY);
-    place(E.tierHalo, G.charW * 1.9, charCX, charCY);
+    place(E.tierGlow, G.charW * 1.55, charCX, charCY);
+    place(E.tierRays, G.charW * 1.4, charCX, charCY);
+    place(E.tierHalo, G.charW * 1.2, charCX, charCY);
     const spotW = G.charW * 1.7, spotH = G.clusterH * 0.85;
     E.tierSpotlight.style.width = spotW + 'px'; E.tierSpotlight.style.height = spotH + 'px';
     E.tierSpotlight.style.left = (charCX - spotW / 2) + 'px'; E.tierSpotlight.style.top = '0px';
@@ -2505,9 +2495,7 @@ function connectAbly() {
     ablyChannel.subscribe(CONFIG.GIFT_ALERT, m => onGiftAlert(m.data));
     ablyChannel.subscribe('milk-event', m => onChat(m.data));   // !steal / !throne chat commands
     syncChannel.subscribe(CONFIG.MSG_IN, m => onCommand(m.data));
-    ably.connection.on('connected', () => { $('conn-dot').classList.add('connected'); publishStatus(true); });
-    ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
-    ably.connection.on('suspended', () => $('conn-dot').classList.remove('connected'));
+    ably.connection.on('connected', () => publishStatus(true));
   } catch (e) { console.error('Ably init failed', e); }
 }
 
