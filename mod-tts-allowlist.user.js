@@ -2,7 +2,7 @@
 // @name         JJxLive Mod TTS Allowlist
 // @namespace    jjxlive
 // @version      1.0
-// @description  Lets specific moderators trigger the "." TTS command on the Social Stream Ninja dock without a paid channel membership, via a self-maintained allowlist.
+// @description  Lets specific moderators trigger the "." TTS command on YouTube chat in the Social Stream Ninja dock without a paid channel membership, via a self-maintained allowlist. Scoped to YouTube only — TikTok has its own TTS via Tikfinity.
 // @match        https://socialstream.ninja/dock.html*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -52,7 +52,7 @@
     var wrapped = function (data, reloaded) {
       try {
         var raw = data && data.contents ? data.contents : data;
-        if (raw && raw.chatname) {
+        if (raw && raw.chatname && raw.type === "youtube") {
           var name = normalize(raw.chatname);
           if (modList.has(name) && !raw.membership) {
             raw.membership = true;
