@@ -2485,6 +2485,7 @@ function doPublishStatus() {
   syncChannel.publish(CONFIG.MSG_OUT, payload).catch(() => {});
 }
 
+let _tsAttached = false;
 function connectAbly() {
   if (!window.Ably) return;
   try {
@@ -2495,7 +2496,36 @@ function connectAbly() {
     ablyChannel.subscribe(CONFIG.GIFT_ALERT, m => onGiftAlert(m.data));
     ablyChannel.subscribe('milk-event', m => onChat(m.data));   // !steal / !throne chat commands
     syncChannel.subscribe(CONFIG.MSG_IN, m => onCommand(m.data));
-    ably.connection.on('connected', () => publishStatus(true));
+
+    // ── On/off from the dock ──
+    // 'splat-overlay' is the busy shared channel: every milk-event on it is a billed
+    // delivery to us. Subscribing to specific event names does NOT reduce that — only
+    // fully DETACHING the channel does. So when the dock says "off" we detach from it
+    // entirely (real zero Ably cost while hidden) and hide the scene. A tiny, always-
+    // attached 'top-splatty-toggle' channel carries only the on/off command so we can
+    // still hear "turn back on" while detached. syncChannel stays attached either way
+    // (near-zero volume) so commands/status still flow. Defaults ON to preserve this
+    // overlay's original always-on behavior until the dock explicitly says off.
+    const scene = document.getElementById('scene');
+    function attachMain() {
+      if (_tsAttached) return;
+      _tsAttached = true;
+      if (scene) scene.style.display = '';
+      ablyChannel.attach().catch(() => {});
+    }
+    function detachMain() {
+      _tsAttached = false;
+      if (scene) scene.style.display = 'none';
+      ablyChannel.detach().catch(() => {});
+    }
+    const toggleCh = ably.channels.get('top-splatty-toggle');
+    toggleCh.subscribe('set', m => { if (m.data && m.data.enabled === false) detachMain(); else attachMain(); });
+
+    ably.connection.on('connected', () => {
+      attachMain();                                     // default on
+      publishStatus(true);
+      toggleCh.publish('request', {}).catch(() => {});  // ask the dock for its real state, in case it's off
+    });
   } catch (e) { console.error('Ably init failed', e); }
 }
 

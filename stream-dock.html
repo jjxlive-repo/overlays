@@ -4675,6 +4675,7 @@ const ablyChannel = ably.channels.get(ABLY_CH);
 const nhToggleChannel = ably.channels.get('new-here-toggle');
 const cgToggleChannel = ably.channels.get('crowd-glass-toggle');
 const tboxToggleChannel = ably.channels.get('timeout-box-toggle');
+const tsToggleChannel = ably.channels.get('top-splatty-toggle');
 // Dog House overlay — dedicated low-volume channel. The dock classifies + dedupes
 // here so the overlay never attaches to the shared firehose: it relays each unique
 // chatter ONCE per session, plus Heart Mes and gifts (~1 msg per unique viewer +
@@ -4693,6 +4694,9 @@ cgToggleChannel.subscribe('request', () => {
 });
 tboxToggleChannel.subscribe('request', () => {
   tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {});
+});
+tsToggleChannel.subscribe('request', () => {
+  tsToggleChannel.publish('set', { enabled: _dockTopSplattyVisible }).catch(() => {});
 });
 
 // NEW HERE overlay connection — ping on load, show LIVE/offline status
@@ -4718,6 +4722,10 @@ ably.connection.once('connected', () => {
     publishMissionStrip?.();
     ablyChannel.publish('new-here-config', { enabled:_dockNewHereVisible, visible:_dockNewHereVisible }).catch(() => {});
     cgAnnounceState?.();
+    // Push Top Splatty's real on/off state over its always-attached toggle channel,
+    // covering the case where the overlay loaded before the dock (its own 'request'
+    // covers the reverse). Overlay defaults ON, so this only matters when set off.
+    tsToggleChannel.publish('set', { enabled: _dockTopSplattyVisible }).catch(() => {});
     publishOverlayToggles?.();
   }, 500);
 });
@@ -5068,7 +5076,7 @@ ablyChannel.publish = function(...args) {
 };
 // The dedicated New Here / Crowd Glass toggle channels are near-zero volume by
 // design, but guard them too for complete coverage under the same daily budget.
-[nhToggleChannel, cgToggleChannel, dhChannel].forEach(ch => {
+[nhToggleChannel, cgToggleChannel, dhChannel, tsToggleChannel].forEach(ch => {
   const orig = ch.publish.bind(ch);
   ch.publish = function(...args) {
     if (!_ablyCapAllow()) return Promise.resolve();
@@ -7811,6 +7819,7 @@ function dockBuildQuickToggles() {
       ${dockToggleHtml('Splat Explainers', "dockQuickToggle('splat-explainer')", 'splat-explainer')}
       ${dockToggleHtml('Gift Animations', "dockQuickToggle('gift-anim')", 'gift-anim')}
       ${dockToggleHtml('Crowd Glass', "dockQuickToggle('crowd-glass')", 'crowd-glass')}
+      ${dockToggleHtml('Top Splatty', "dockQuickToggle('top-splatty')", 'top-splatty')}
       ${dockToggleHtml('New Here Pile', "dockQuickToggle('new-here')", 'new-here')}
       ${dockToggleHtml('Gifter Highlight', "dockQuickToggle('gifter-highlight')", 'gifter-highlight')}
       ${dockToggleHtml('Top Camera Gifter Panel', "dockQuickToggle('gift-bar')", 'gift-bar')}
@@ -7836,6 +7845,7 @@ function dockQuickToggle(name) {
     case 'splat-explainer': lsToggleExplainerSlides(); break;
     case 'gift-anim': dockToggleGiftAnimations(); break;
     case 'crowd-glass': dockToggleCrowdGlass(); break;
+    case 'top-splatty': dockToggleTopSplatty(); break;
     case 'new-here': dockToggleNewHere(); break;
     case 'gifter-highlight': dockToggleGifterHighlight(); break;
     case 'gift-bar': dockToggleGiftBar(); break;
@@ -7871,6 +7881,7 @@ function dockSyncQuickToggles() {
   dockSetToggleState('splat-explainer', !!_lsExplainerEnabled);
   dockSetToggleState('gift-anim', !!_dockGiftAnimVisible);
   dockSetToggleState('crowd-glass', !!_dockCrowdGlassVisible);
+  dockSetToggleState('top-splatty', !!_dockTopSplattyVisible);
   dockSetToggleState('new-here', !!_dockNewHereVisible);
   dockSetToggleState('gifter-highlight', !!_gifterPanelVisible);
   dockSetToggleState('gift-bar', !!_gifterPanelVisible);
@@ -7892,6 +7903,11 @@ let _dockTopGiftersVisible = localStorage.getItem('dockTopGiftersVisible') === '
 // timeout-box.html's attachMain/detachMain) — real zero Ably cost while hidden,
 // same as New Here/Crowd Glass.
 let _dockTimeoutBoxVisible = localStorage.getItem('dockTimeoutBoxVisible') !== '0';
+// Defaults ON — preserves Top Splatty's original always-on behavior for anyone who
+// hasn't touched this new toggle. Off fully DETACHES the overlay from the shared
+// 'splat-overlay' channel (see top-splatty-overlay.html's attachMain/detachMain) —
+// real zero Ably delivery cost while hidden, same as New Here/Crowd Glass/Timeout Box.
+let _dockTopSplattyVisible = localStorage.getItem('dockTopSplattyVisible') !== '0';
 // "Gifter Highlight" and "Top Camera Gifter Panel" are two dock buttons that both
 // show/hide the SAME overlay panel (#bar-info in gift-bar.html, gated by the single
 // `gifter-slides-config.enabled` flag). They used to track separate booleans, so
@@ -7967,6 +7983,16 @@ function dockToggleNewHere() {
     ablyChannel.publish('new-here-ping', {}).catch(() => {});
   }
   doFlash(_dockNewHereVisible ? 'green' : 'red');
+}
+
+function dockToggleTopSplatty() {
+  _dockTopSplattyVisible = !_dockTopSplattyVisible;
+  localStorage.setItem('dockTopSplattyVisible', _dockTopSplattyVisible ? '1' : '0');
+  // On/off goes over the always-attached toggle channel — the overlay fully detaches
+  // from the shared 'splat-overlay' channel while off, so it would never see this on
+  // the shared channel (see top-splatty-overlay.html's attachMain/detachMain).
+  tsToggleChannel.publish('set', { enabled: _dockTopSplattyVisible }).catch(() => {});
+  doFlash(_dockTopSplattyVisible ? 'green' : 'red');
 }
 
 function dockToggleCrowdGlass() {
