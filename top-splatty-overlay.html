@@ -195,6 +195,36 @@
   .ticket.empty { visibility: hidden; }
   .ticket.steal-hold { border-color: #FFD25A; }
 
+  /* ── fan crowd — one little cheering splatty per unique gifter (max 3) ── */
+  .fan {
+    position: absolute; z-index: 9; object-fit: contain;
+    pointer-events: none;
+    transform-origin: 50% 100%;
+    animation: tsFanCheer 2.2s ease-in-out infinite;
+  }
+  .fan.f2 { animation-delay: .4s; }
+  .fan.f3 { animation-delay: .9s; }
+  .fan.mirror { scale: -1 1; }
+  @keyframes tsFanCheer {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px) scaleY(1.03); }
+  }
+  .fan.hop { animation: tsFanHop .55s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tsFanHop {
+    0% { transform: translateY(0); }
+    40% { transform: translateY(-16px) scaleY(1.08); }
+    70% { transform: translateY(2px) scaleY(.92); }
+    100% { transform: translateY(0); }
+  }
+  .fan.hype { animation: tsFanHype .9s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tsFanHype {
+    0% { transform: translateY(0) rotate(0); }
+    30% { transform: translateY(-26px) rotate(-8deg) scaleY(1.1); }
+    55% { transform: translateY(0) scaleY(.9); }
+    75% { transform: translateY(-12px) rotate(6deg); }
+    100% { transform: translateY(0); }
+  }
+
   /* ── empty-throne tag ── */
   .open-tag {
     position: absolute; z-index: 14; text-align: center;
@@ -334,6 +364,9 @@
   <div id="side-youtube" class="side"></div>
   <div id="side-tiktok" class="side"></div>
 
+  <div id="fans-youtube"></div>
+  <div id="fans-tiktok"></div>
+
   <div id="proj-layer"></div>
   <div id="fx-layer"></div>
 
@@ -416,6 +449,7 @@ const CONFIG = {
   IDLE_DIM: true,         // grey the tickets when the lane goes quiet
   IDLE_AFTER_S: 60,       // quiet seconds before dimming
   SKIN: { youtube: 'auto', tiktok: 'auto' },  // auto | yt | tt | generic
+  FANS: true,             // little cheering splatties = unique gifters (max 3/side)
   CMD_STEAL: '!steal',
   CMD_THRONE: '!throne',
 
@@ -509,6 +543,8 @@ const REDESIGN_PATHS = {
   iconTt:   'ui/icon-coin',
   reel:     'chance/spinner-reel',
   reelPtr:  'chance/spinner-pointer',
+  fanYt1: 'character/splatty-fan-yt-01', fanYt2: 'character/splatty-fan-yt-02', fanYt3: 'character/splatty-fan-yt-03',
+  fanTt1: 'character/splatty-fan-tt-01', fanTt2: 'character/splatty-fan-tt-02', fanTt3: 'character/splatty-fan-tt-03',
 };
 const optSrc = {};          // resolved redesign art (absent key = use fallback)
 const sideFrames = { yt: {}, tt: {} };   // generic frame path → per-skin src
@@ -948,6 +984,7 @@ function loadPersisted() {
     if (cfgOverride.rotationS) CONFIG.ROTATION_S = cfgOverride.rotationS;
     if (cfgOverride.stealCdS != null) CONFIG.STEAL_CD_S = cfgOverride.stealCdS;
     if (cfgOverride.idleDim != null) CONFIG.IDLE_DIM = cfgOverride.idleDim;
+    if (cfgOverride.fans != null) CONFIG.FANS = cfgOverride.fans;
     if (cfgOverride.idleAfterS) CONFIG.IDLE_AFTER_S = cfgOverride.idleAfterS;
     if (cfgOverride.skin) Object.assign(CONFIG.SKIN, cfgOverride.skin);
   } catch (e) {}
@@ -1160,6 +1197,7 @@ function applyLayout() {
   }
 
   $('debug-seam').style.top = (seam - 1) + 'px';
+  layoutFans();
   updateHeights(true);
 }
 
@@ -1183,6 +1221,69 @@ function assignArt() {
     E.ticketIcon.src = iconSrcFor(side);
     E.ticketIcon.classList.add(iconCls);
   }
+}
+
+/* ── fan crowd: one cheering mini-splatty per unique gifter, max 3/side ── */
+const fanEls = { youtube: [], tiktok: [] };
+
+function buildFans() {
+  for (const side of ['youtube', 'tiktok']) {
+    const box = $(`fans-${side}`);
+    box.innerHTML = '';
+    fanEls[side] = [];
+    for (let i = 1; i <= 3; i++) {
+      const img = document.createElement('img');
+      img.className = `fan f${i}` + (side === 'tiktok' ? ' mirror' : '');
+      img.style.display = 'none';
+      box.appendChild(img);
+      fanEls[side].push(img);
+    }
+  }
+}
+
+function layoutFans() {
+  const s = CONFIG.UI_SCALE;
+  const gapL = G.leftX + G.clusterW, gapR = G.rightX;
+  const sizes = [60, 52, 48];
+  // mock offsets: YT fans spill from the cluster edge into the gap; TT mirrored
+  const ytX = [gapL - 44 * s, gapL - 2 * s, gapL + 38 * s];
+  const ttX = [gapR - 116 * s, gapR - 148 * s, gapR - 182 * s];
+  for (const side of ['youtube', 'tiktok']) {
+    fanEls[side].forEach((img, i) => {
+      const w = sizes[i] * s;
+      img.style.width = w + 'px'; img.style.height = w + 'px';
+      img.style.left = (side === 'youtube' ? ytX[i] : ttX[i]) + 'px';
+      img.style.top = (G.railTop - w + 2) + 'px';   // feet on the rail top
+    });
+  }
+}
+
+function updateFans(side) {
+  const skin = side === 'youtube' ? 'Yt' : 'Tt';
+  const count = CONFIG.FANS
+    ? Math.min(3, challengersForCount(side))
+    : 0;
+  fanEls[side].forEach((img, i) => {
+    if (i < count) {
+      const src = optSrc[`fan${skin}${i + 1}`];
+      if (!src) { img.style.display = 'none'; return; }   // art missing → quietly off
+      if (!img.src) img.src = src;
+      img.style.display = '';
+    } else img.style.display = 'none';
+  });
+}
+function challengersForCount(side) {
+  const top = state.top[side];
+  return Object.values(state.gifters[side])
+    .filter(g => !top || keyOf(g.name) !== keyOf(top.name)).length;
+}
+function fansReact(side, cls) {   // 'hop' on a gift, 'hype' on a steal
+  fanEls[side].forEach((img) => {
+    if (img.style.display === 'none') return;
+    img.classList.remove('hop', 'hype'); void img.offsetWidth;
+    img.classList.add(cls);
+    setTimeout(() => img.classList.remove(cls), cls === 'hype' ? 1000 : 650);
+  });
 }
 
 /* refresh visuals after a skin override change */
@@ -1211,6 +1312,7 @@ function updateSideInfo(side, bump) {
     E.plate.classList.remove('bump'); void E.plate.offsetWidth; E.plate.classList.add('bump');
   }
   refreshTicket(side);
+  updateFans(side);
   publishStatus();
 }
 
@@ -1549,6 +1651,7 @@ function recomputeTop(side, { animate = false } = {}) {
 function giftReceived(side, name, nativeAmount, usd, pic) {
   if (!SIDES[side] || !(nativeAmount > 0)) return;
   wakeIdle();
+  fansReact(side, 'hop');
   const k = keyOf(name);
   const g = state.gifters[side][k] || (state.gifters[side][k] = { name, total: 0, pic: null });
   g.total += nativeAmount;
@@ -1668,6 +1771,7 @@ async function runStealFlow(item) {
   }
   const c = sideCharCenter(side);
   spawnFx('flash', c.x, c.y, 220);
+  fansReact(side, 'hype');
   sfx('fanfare');
   if (a) {
     a.busy = true;
@@ -1912,6 +2016,10 @@ function onCommand(d) {
       if (+d.rotationS >= 2) { CONFIG.ROTATION_S = +d.rotationS; cfgOverride.rotationS = CONFIG.ROTATION_S; }
       if (d.stealCdS != null && +d.stealCdS >= 0) { CONFIG.STEAL_CD_S = +d.stealCdS; cfgOverride.stealCdS = CONFIG.STEAL_CD_S; }
       if (d.idleDim != null) { CONFIG.IDLE_DIM = !!d.idleDim; cfgOverride.idleDim = CONFIG.IDLE_DIM; }
+      if (d.fans != null) {
+        CONFIG.FANS = !!d.fans; cfgOverride.fans = CONFIG.FANS;
+        ['youtube', 'tiktok'].forEach(updateFans);
+      }
       if (+d.idleAfterS >= 10) { CONFIG.IDLE_AFTER_S = +d.idleAfterS; cfgOverride.idleAfterS = CONFIG.IDLE_AFTER_S; }
       if (d.skin && typeof d.skin === 'object') {
         for (const s of ['youtube', 'tiktok'])
@@ -1998,6 +2106,7 @@ function doPublishStatus() {
     redesign: {
       rotationS: CONFIG.ROTATION_S, stealCdS: CONFIG.STEAL_CD_S,
       idleDim: CONFIG.IDLE_DIM, idleAfterS: CONFIG.IDLE_AFTER_S, skin: CONFIG.SKIN,
+      fans: CONFIG.FANS,
     },
     missingAssets: missingCount, totalAssets: totalCount,
   };
@@ -2050,6 +2159,7 @@ async function boot() {
   if (new URLSearchParams(location.search).get('debug') === '1') document.body.classList.add('debug');
   buildSide('youtube');
   buildSide('tiktok');
+  buildFans();
   applyLayout();
 
   await Promise.all([...allAssetPaths().map(resolveAsset), ...allRedesignProbes()]);
