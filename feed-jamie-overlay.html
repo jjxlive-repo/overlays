@@ -2563,6 +2563,26 @@ function drainQueue() {
 let likeAccumulator = 0;
 let lastCommentAt = 0;
 const userCommentAt = {};
+/* Duplicate-delivery guard: one live comment can reach the overlay several
+   times (a second control/dock tab open, the same message on multiple
+   transports). The comment-cooldown sliders used to mask that — with them at
+   0s every duplicate spawns an item. Same user + same text inside 5s is a
+   re-delivery, not a viewer retyping; same text under a different name inside
+   1.2s is the same comment via a path that formats usernames differently
+   (uniqueId vs display name). */
+const recentComments = [];
+function isDupComment(username, message) {
+  const now = performance.now();
+  const text = String(message || '').trim().toLowerCase();
+  const key = String(username || '').trim().toLowerCase() + '|' + text;
+  while (recentComments.length && now - recentComments[0].t > 5000) recentComments.shift();
+  for (const rc of recentComments) {
+    if (rc.key === key) return true;
+    if (text && rc.text === text && now - rc.t < 1200) return true;
+  }
+  recentComments.push({ key, text, t: now });
+  return false;
+}
 let lastEventInfo = '—';
 let lastEngagementAt = performance.now();
 
@@ -2624,6 +2644,7 @@ function handleEvent(evt) {
   publishStatus();
 }
 function handleComment(username, message) {
+  if (isDupComment(username, message)) return;
   /* counted for milestone goals regardless of Jamie's reaction cooldown below —
      that cooldown is only an anti-spam limit on Jamie's own visual reaction,
      not on how many comments actually came in. */
@@ -3664,8 +3685,19 @@ function squadBoot() {
 
 /* ── 15. COMMS: Ably + BroadcastChannel + localStorage ─────────── */
 let bc = null, ablyChannel = null;
+/* The controller fires every message over BroadcastChannel + Ably + localStorage
+   at once (only Ably crosses into TikTok Studio, but any overlay copy sharing
+   the controller's browser origin — preview iframe, monitoring tab — receives
+   all three). send() stamps a fresh _mid per call, so a repeated _mid is the
+   same message on another transport, never a new command. */
+const seenMids = [];
 function processMessage(msg) {
   if (!msg || !msg.cmd) return;
+  if (msg._mid) {
+    if (seenMids.includes(msg._mid)) return;
+    seenMids.push(msg._mid);
+    if (seenMids.length > 80) seenMids.splice(0, 40);
+  }
   switch (msg.cmd) {
     case 'CONFIG_UPDATE':
       CFG = fjDeepMerge(fjClone(FJ_DEFAULT_CONFIG), msg.data || {});

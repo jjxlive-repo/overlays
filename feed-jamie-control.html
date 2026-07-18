@@ -486,6 +486,11 @@ function reconnectAbly() {
   send({ cmd: 'REQUEST_STATUS' });
 }
 function send(msg, opts = {}) {
+  /* Fresh id per send() call: an overlay copy that hears more than one of the
+     three transports below dedupes repeats of the same _mid, so one command
+     never fires twice. Overwritten (not preserved) so re-sending a message is
+     still a new command. */
+  if (msg && typeof msg === 'object') msg._mid = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
   try { if (bc) bc.postMessage(msg); } catch (e) {}
   if (!opts.skipAbly) { try { if (ablyChannel) ablyChannel.publish(FJ_ABLY_MSG_OUT, msg).catch(() => {}); } catch (e) {} }
   try { localStorage.setItem(FJ_LS_MSG, JSON.stringify({ n: Math.random(), p: msg })); } catch (e) {}
