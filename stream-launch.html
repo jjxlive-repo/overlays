@@ -242,7 +242,13 @@
     <p>Everything you open before you go live</p>
   </header>
 
-  <a class="card primary" href="stream-dock.html" target="_blank" rel="noopener">
+  <div class="ssn-warning" id="session-warning" style="display:none; margin-bottom:20px;">
+    <strong>⚠️ No session configured.</strong> This page's URL needs <code>?session=YOURID</code> appended —
+    without it, Stream Dock and the Social Stream Ninja links below won't connect to anything. Bookmark this
+    page with the param included so it's always there.
+  </div>
+
+  <a class="card primary" id="stream-dock-link" href="stream-dock.html" target="_blank" rel="noopener">
     <div class="icon">🎛️</div>
     <div>
       <div class="title">Stream Dock</div>
@@ -352,6 +358,13 @@
 </div>
 
 <script>
+var SESSION = new URLSearchParams(location.search).get("session") || "";
+if (!SESSION) {
+  document.getElementById("session-warning").style.display = "block";
+} else {
+  document.getElementById("stream-dock-link").href = "stream-dock.html?session=" + encodeURIComponent(SESSION);
+}
+
 (function () {
   var GOOGLE_VOICE_FALLBACK = [
     "Google US English",
@@ -376,7 +389,7 @@
   var DEFAULT_VOICE = "Google UK English Male";
 
   var SSN_PARAMS = {
-    session: "usNkSpEutq",
+    session: SESSION,
     lang: "en-GB",
     rate: "1.15",
     pitch: "1.2",
@@ -428,6 +441,10 @@
   refreshBtn.addEventListener("click", detect);
 
   launchBtn.addEventListener("click", function () {
+    if (!SESSION) {
+      alert("No session configured — add ?session=YOURID to this page's URL first.");
+      return;
+    }
     var voice = select.value || DEFAULT_VOICE;
     var params = new URLSearchParams();
     params.set("session", SSN_PARAMS.session);
@@ -455,13 +472,13 @@
     { name: "Top Splatty", file: "top-splatty-overlay.html" },
     { name: "Dog House", file: "dog-house-overlay.html" },
     { name: "New Here", file: "new-here-overlay.html" },
-    { name: "Featured Splat", file: "featured-splat.html" },
+    { name: "Featured Splat", file: "featured-splat.html", needsSession: true },
     { name: "Bomb Drop", file: "bomb-drop-overlay.html" },
     { name: "Hand Feed", file: "hand-feed-overlay.html" },
     { name: "Timeout Box", file: "timeout-box.html" },
     { name: "Gesture FX", file: "gesture-fx-overlay.html" },
-    { name: "SSN Chat", file: "ssn-chat-overlay.html" },
-    { name: "Chat Box", file: "jjxlive-chat-box.html" },
+    { name: "SSN Chat", file: "ssn-chat-overlay.html", needsSession: true },
+    { name: "Chat Box", file: "jjxlive-chat-box.html", needsSession: true },
     { name: "Kegel Workout", file: "kegel-workout-overlay.html" },
     { name: "Splatties Level Up", file: "Splatties-LevelUp-Overlay.html" }
   ];
@@ -501,6 +518,9 @@
   var container = document.getElementById("url-rows");
   OVERLAYS.forEach(function (item) {
     var url = BASE + item.file;
+    if (item.needsSession) {
+      url += "?session=" + encodeURIComponent(SESSION || "YOURID");
+    }
     var row = document.createElement("div");
     row.className = "url-row";
 
