@@ -542,7 +542,10 @@ function connectAbly() {
     // fired for YouTube viewers. stream-dock.html relays a 'comment' milk-event with the
     // message text for both platforms; TikTok already works via Tikfinity, so only forward
     // the YouTube ones here to avoid double-firing the same TikTok comment twice.
-    ablyChannel.subscribe('milk-event', m => {
+    // milk-event lives on its own 'splat-chat' channel now (split off the shared
+    // 'splat-overlay' firehose — see stream-dock.html for why).
+    const chatChannel = ably.channels.get('splat-chat');
+    chatChannel.subscribe('milk-event', m => {
       const d = m.data || {};
       if (d.type === 'comment' && d.platform === 'yt') {
         send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: d.username || null, message: String(d.message || '') } });

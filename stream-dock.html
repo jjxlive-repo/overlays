@@ -3812,7 +3812,7 @@ function fireMilestone(metric, plat, threshold, value) {
   const platform = plat === 'tt' ? 'tiktok' : plat === 'yt' ? 'youtube' : 'other';
   const label = metric === 'viewers' ? 'WATCHING' : metric === 'subs' ? 'SUBSCRIBERS' : 'FOLLOWERS';
   console.log('[milestone]', metric, platform, threshold, '(now', value + ')');
-  if (ablyChannel) ablyChannel.publish('milestone', { metric, platform, threshold, value, label }).catch(() => {});
+  if (ablyChannel) giftsChannel.publish('milestone', { metric, platform, threshold, value, label }).catch(() => {});
 }
 
 
@@ -3883,7 +3883,7 @@ const _DOCK_MAX_RAW = 200;  // kept so bean-boozled reset math works
 function publishMilk(type, platform, username, message) {
   const payload = { type, platform: platform || 'other', username: username || null };
   if (message) payload.message = message; // needed by Feed Jamie's YouTube comment/keyword listener
-  if (ablyChannel) ablyChannel.publish('milk-event', payload).catch(() => {});
+  if (ablyChannel) chatChannel.publish('milk-event', payload).catch(() => {});
   // No local scoring — dock bar syncs exclusively via milk-pct from overlay
 }
 
@@ -4087,7 +4087,7 @@ function handleMsg(data) {
       }
     }
 
-    if (ablyChannel) ablyChannel.publish('milk-event', {
+    if (ablyChannel) chatChannel.publish('milk-event', {
       type: 'yt_superchat', dollars: _milkDollars, gifterKey: _gifterKey, platform: 'yt',
       isJewels: _isJewels,
     }).catch(() => {});
@@ -4113,7 +4113,7 @@ function handleMsg(data) {
     // ttbMatches()/ttb-cmd panel). Only fires for YouTube; TikTok already
     // has real join/like events.
     if (isYT && data.chatname && ttbMatches(msgLower)) {
-      if (ablyChannel) ablyChannel.publish('team-timing-yt-comment', { username: data.chatname }).catch(() => {});
+      if (ablyChannel) chatChannel.publish('team-timing-yt-comment', { username: data.chatname }).catch(() => {});
     }
     // Command boost: if message matches the configured command, trigger a boost
     // Cooldown = the boost's own duration so it can't re-fire until it expires
@@ -4165,7 +4165,7 @@ function handleMsg(data) {
       }
     }
     if (alertAmount > 0 && ablyChannel) {
-      ablyChannel.publish('gift-alert', {
+      giftsChannel.publish('gift-alert', {
         name: data.chatname || 'Anonymous', amount: alertAmount,
         type: alertType, platform: alertPlat, contentImg, giftTitle,
         giftLabel: data.hasDonation || giftTitle || null,
@@ -4790,6 +4790,24 @@ function trim(el) {
 const ably = new Ably.Realtime({ key: ABLY_KEY });
 const ablyChannel = ably.channels.get(ABLY_CH);
 
+// Chat/like/join firehose and the gift/money stream each get their OWN channel,
+// split off from 'splat-overlay' (which is now config/cmd/heartbeat-tier only).
+// Ably bills every message to every ATTACHED client regardless of which event
+// name that client subscribes to — 11 different overlay pages were all
+// attached to 'splat-overlay' and being billed for 100% of every chat comment
+// and gift, even the ones (tracker, kegel, timeout-box, etc.) that only ever
+// read rare config events. Only the pages that genuinely need per-comment or
+// per-gift granularity attach here now:
+//   'splat-chat'  → milk-event, chat-message, league-sprint-chat,
+//                   team-timing-yt-comment (gift-bar, new-here-overlay,
+//                   top-splatty-overlay, tracker's own hype-event publishes)
+//   'splat-gifts' → gift-alert, giftr, giftr-roster, stinger, top-gifters,
+//                   league-sprint, league-sprint-state, milestone (gift-bar,
+//                   new-here-overlay, feed-jamie-overlay, top-splatty-overlay,
+//                   tracker)
+const chatChannel  = ably.channels.get('splat-chat');
+const giftsChannel = ably.channels.get('splat-gifts');
+
 // Dedicated always-on toggle channels for overlays that fully detach from the shared
 // channel when off (New Here, Crowd Glass) — see connectAbly()/attachMain() in
 // new-here-overlay.html for why: subscribing to specific event names on the shared
@@ -5263,19 +5281,74 @@ setInterval(() => {
   });
 }, 5000);
 
-const _ablyPublishOrig = ablyChannel.publish.bind(ablyChannel);
-ablyChannel.publish = function(...args) {
-  // Overlay OFF → its exclusive content events are dropped before they cost
-  // anything; the chip's counter visibly stops (the proof the design asks for).
-  if (_ablyGated(args[0])) return Promise.resolve();
-  _ablyTrackEvent(args[0]);
-  if (typeof _tcCapture !== 'undefined' && _tcCapture) _tcCapture.events.add(args[0]); // Test Console REACTED strip
-  _ablyMsgCount++;
-  _ablyRecentTimestamps.push(Date.now());
-  _updateAblyCounter();
-  if (!_ablyCapAllow()) return Promise.resolve(); // hard safety stop — no network call, no cost
-  return _ablyPublishOrig(...args);
-};
+// ── Burst-safe rate limiting ──────────────────────────────────────────────
+// Ably rejects (HTTP 429) any publish once a channel's rate exceeds its cap
+// (50 msg/sec on this plan) — this isn't a billing concern, it's messages
+// that never arrive anywhere: 78 real chat/gift events were dropped this way
+// during one heavy stream (2026-07-17/18) when comment/like volume spiked.
+// A token bucket smooths bursts under the cap instead of firing synchronously
+// and risking rejection: publishes within budget go straight through, any
+// overflow queues and drains a moment later. The queue itself is capped so a
+// pathological flood can't grow memory forever — if it fills, the OLDEST
+// queued item is dropped, not the newest, so the most recent viewer activity
+// always wins over a stale backlog.
+function makeRateLimiter(origPublish, ratePerSec) {
+  let tokens = ratePerSec, lastRefill = Date.now();
+  const queue = [];
+  const MAX_QUEUE = 300;
+  let draining = false;
+  function refill() {
+    const now = Date.now();
+    tokens = Math.min(ratePerSec, tokens + (now - lastRefill) / 1000 * ratePerSec);
+    lastRefill = now;
+  }
+  function drain() {
+    if (draining) return;
+    draining = true;
+    (function step() {
+      refill();
+      while (tokens >= 1 && queue.length) {
+        tokens -= 1;
+        const { args, resolve } = queue.shift();
+        resolve(origPublish(...args));
+      }
+      if (queue.length) setTimeout(step, 40);
+      else draining = false;
+    })();
+  }
+  return function(...args) {
+    refill();
+    if (tokens >= 1 && !queue.length) {
+      tokens -= 1;
+      return origPublish(...args);
+    }
+    if (queue.length >= MAX_QUEUE) queue.shift(); // drop oldest overflow — keep freshest activity
+    return new Promise(resolve => { queue.push({ args, resolve }); drain(); });
+  };
+}
+// Wraps a channel's publish with: overlay-off gating, event-rate tracking (for
+// the dock's own ABLY chips), the Test Console capture hook, the hard daily
+// cap, and burst-safe rate limiting — the same protection every publish
+// channel gets, parameterized so the two new high-volume channels get exactly
+// the same guarantees the original shared channel had.
+function guardAblyPublish(ch, ratePerSec) {
+  const rateLimited = makeRateLimiter(ch.publish.bind(ch), ratePerSec);
+  ch.publish = function(...args) {
+    // Overlay OFF → its exclusive content events are dropped before they cost
+    // anything; the chip's counter visibly stops (the proof the design asks for).
+    if (_ablyGated(args[0])) return Promise.resolve();
+    _ablyTrackEvent(args[0]);
+    if (typeof _tcCapture !== 'undefined' && _tcCapture) _tcCapture.events.add(args[0]); // Test Console REACTED strip
+    _ablyMsgCount++;
+    _ablyRecentTimestamps.push(Date.now());
+    _updateAblyCounter();
+    if (!_ablyCapAllow()) return Promise.resolve(); // hard safety stop — no network call, no cost
+    return rateLimited(...args);
+  };
+}
+guardAblyPublish(ablyChannel, 40);   // config/cmd/heartbeat-tier — rarely bursts, guarded for safety
+guardAblyPublish(chatChannel, 35);   // per-comment/like/join firehose — the one that actually hit 429s
+guardAblyPublish(giftsChannel, 35);  // gift/money stream — lower natural volume, same protection
 // The dedicated New Here / Crowd Glass toggle channels are near-zero volume by
 // design, but guard them too for complete coverage under the same daily budget.
 [nhToggleChannel, cgToggleChannel, dhChannel, tsToggleChannel].forEach(ch => {
@@ -7524,7 +7597,7 @@ function publishLeagueSprintState(eventText) {
       playerCount: typeof LeagueSprintState !== 'undefined' ? Object.keys(LeagueSprintState.state.players || {}).length : 0
     };
     if (eventText) payload.event = eventText;
-    ablyChannel.publish('league-sprint-state', payload).catch(() => {});
+    giftsChannel.publish('league-sprint-state', payload).catch(() => {});
   }
   const st = document.getElementById('ls-status');
   if (st) st.textContent = `${_lsGameTitle} ${lsStatusText()} - ${_lsPhase}`;
@@ -7566,7 +7639,7 @@ function lsSetGameTitle() {
   _lsGameTitle = (input?.value || '').trim() || 'League of Splatties';
   localStorage.setItem('lsGameTitle', _lsGameTitle);
   publishLeagueSprintState('EVENT - title updated');
-  if (ablyChannel) ablyChannel.publish('league-sprint', { gameTitle: _lsGameTitle }).catch(() => {});
+  if (ablyChannel) giftsChannel.publish('league-sprint', { gameTitle: _lsGameTitle }).catch(() => {});
   scheduleGistSave();
 }
 
@@ -7600,7 +7673,7 @@ function lsSetPhase(phase) {
   }
   lsSyncInputs();
   publishLeagueSprintState(`EVENT - ${_lsPhase} phase`);
-  if (ablyChannel) ablyChannel.publish('league-sprint', { action: 'phase', phase: _lsPhase }).catch(() => {});
+  if (ablyChannel) giftsChannel.publish('league-sprint', { action: 'phase', phase: _lsPhase }).catch(() => {});
   scheduleGistSave();
 }
 
@@ -7672,7 +7745,7 @@ function lsResetGame() {
   _lsPhase = 'active';
   lsSyncInputs();
   publishLeagueSprintState('EVENT - game reset');
-  if (ablyChannel) ablyChannel.publish('league-sprint', { action: 'idle', text: '!pull - !show - !duel 1 - !reroll' }).catch(() => {});
+  if (ablyChannel) giftsChannel.publish('league-sprint', { action: 'idle', text: '!pull - !show - !duel 1 - !reroll' }).catch(() => {});
   scheduleGistSave();
 }
 
@@ -7737,13 +7810,13 @@ function qcTGOShow() {
   const payload = _tgoLastData
     ? { ..._tgoLastData, visible: true, timeFrame: tf }
     : { visible: true, timeFrame: tf, gifters: tgoPreviewGifters() };
-  ablyChannel.publish('top-gifters', payload).catch(() => {});
+  giftsChannel.publish('top-gifters', payload).catch(() => {});
   _dockTopGiftersVisible = true;
   dockSyncQuickToggles?.();
   doFlash('green');
 }
 function qcTGOHide() {
-  ablyChannel.publish('top-gifters', { visible: false }).catch(() => {});
+  giftsChannel.publish('top-gifters', { visible: false }).catch(() => {});
   _dockTopGiftersVisible = false;
   dockSyncQuickToggles?.();
   doFlash('red');
@@ -7760,10 +7833,10 @@ function qcTGORefresh() {
       .map((g, i) => ({ ...g, rank: i + 1 }));
     _tgoLastData = { visible: true, timeFrame: tf, gifters };
     if (!_tgoLastData.gifters.length) _tgoLastData.gifters = tgoPreviewGifters();
-    ablyChannel.publish('top-gifters', _tgoLastData).catch(() => {});
+    giftsChannel.publish('top-gifters', _tgoLastData).catch(() => {});
     doFlash('green');
   } catch(e) {
-    ablyChannel.publish('top-gifters', { visible: true, timeFrame: 'daily', gifters: tgoPreviewGifters() }).catch(() => {});
+    giftsChannel.publish('top-gifters', { visible: true, timeFrame: 'daily', gifters: tgoPreviewGifters() }).catch(() => {});
   }
 }
 
@@ -8625,7 +8698,7 @@ function gbPresetSlideWindow(kind) {
 function gbPin(slot) {
   document.querySelectorAll('[data-gbslot]').forEach(b =>
     b.classList.toggle('c-act', b.dataset.gbslot === slot));
-  ablyChannel.publish('giftr', { cmd: slot === 'auto' ? 'auto' : 'slot:' + slot }).catch(() => {});
+  giftsChannel.publish('giftr', { cmd: slot === 'auto' ? 'auto' : 'slot:' + slot }).catch(() => {});
 }
 
 function gbToggleSlide(slot) {
@@ -8680,7 +8753,7 @@ function gbRefresh() {
 function gbTestBar() {
   gbPublishSlideWindow(false);
   const fake = name => ({ name, amount: 1234, type: 'tiktok_coins', platform: 'tiktok', profilePic: null });
-  ablyChannel.publish('giftr', {
+  giftsChannel.publish('giftr', {
     daily:   fake('TestViewer'),
     weekly:  { name: 'TestViewer', amount: 8888, type: 'tiktok_coins', platform: 'tiktok', profilePic: null },
     monthly: { name: 'TestViewer', amount: 22222, type: 'tiktok_coins', platform: 'tiktok', profilePic: null },
@@ -8693,7 +8766,7 @@ function gbTestBar() {
 }
 
 function gbClearGifterSlide() {
-  ablyChannel.publish('giftr', {
+  giftsChannel.publish('giftr', {
     daily: null, weekly: null, monthly: null, youtube: null, tiktok: null,
     enabledSlots: [],
     visible: false
@@ -9540,7 +9613,7 @@ function _gcHide() {
 // the equivalent for its alert queue; amounts match across sources for a given gift.
 const _moneyRailDedup = new Map(); // "name|amount|type" → timestamp
 const _MONEY_DEDUP_MS = 6000;
-ablyChannel.subscribe('gift-alert', msg => {
+giftsChannel.subscribe('gift-alert', msg => {
   const d = msg?.data;
   if (!d || !d.amount) return;
 
@@ -9592,7 +9665,7 @@ function testFireMilk(type, label, username) {
   const platMap = { like:'tt', like_batch:'tt', heart_me:'tt', heart_me_first:'tt', yt_sub:'yt', comment:'tt', join:'tt', comment_match:'tt' };
   const payload = { type, platform: platMap[type] || 'tt' };
   if (username) payload.username = username;
-  ablyChannel.publish('milk-event', payload).catch(() => {});
+  chatChannel.publish('milk-event', payload).catch(() => {});
   doFlash('purple');
 }
 
@@ -9603,7 +9676,7 @@ function testFireGiftAnim(variant) {
   // Use amounts that hit the right tier for each variant
   const coinAmt   = variant === 'blast' ? 50000 : 500;
   const dollarAmt = variant === 'blast' ? 200   : 5;
-  ablyChannel.publish('milk-event', {
+  chatChannel.publish('milk-event', {
     type:      isYT ? 'yt_superchat' : 'tiktok_gift',
     giftName:  variant === 'comet' ? 'Rose' : variant === 'blast' ? 'Lion' : null,
     coins:     isYT ? 0 : coinAmt,
@@ -10048,7 +10121,7 @@ const LeagueSprintState = (() => {
 
 function publishLeagueSprintVisual(payload) {
   if (!ablyChannel) return;
-  ablyChannel.publish('league-sprint', Object.assign({ gameTitle: _lsGameTitle || 'League of Splatties' }, payload)).catch(() => {});
+  giftsChannel.publish('league-sprint', Object.assign({ gameTitle: _lsGameTitle || 'League of Splatties' }, payload)).catch(() => {});
 }
 
 function lsDecorateRankings(cards) {
@@ -11240,7 +11313,7 @@ function losDeleteAllCards() {
   lsDecorateRankings();
   publishLeagueSprintState('EVENT - full reset - all cards deleted, fresh league started');
   publishLeagueSprintVisual({ action: 'shelf', mode: 'leaders', cards: [], meta: 'no players yet - !pull to join' });
-  if (ablyChannel) ablyChannel.publish('league-sprint', { action: 'idle', text: `!pull - !show - !duel 1 - !reroll` }).catch(() => {});
+  if (ablyChannel) giftsChannel.publish('league-sprint', { action: 'idle', text: `!pull - !show - !duel 1 - !reroll` }).catch(() => {});
   confirmInput.value = '';
   scheduleGistSave();
   const status = document.getElementById('ls-status');
@@ -11424,7 +11497,7 @@ function testLeagueSprint(name) {
     rebirthCount: 0
   };
   if (name === 'promoted') {
-    ablyChannel.publish('league-sprint', {
+    giftsChannel.publish('league-sprint', {
       action: 'popup',
       eventType: 'PROMOTION',
       label: 'PROMOTED',
@@ -11432,7 +11505,7 @@ function testLeagueSprint(name) {
       message: 'Pablo D1 > C5'
     }).catch(() => {});
   } else {
-    ablyChannel.publish('league-sprint', { action: 'test', name }).catch(() => {});
+    giftsChannel.publish('league-sprint', { action: 'test', name }).catch(() => {});
   }
   doFlash('purple');
 }
@@ -11483,7 +11556,7 @@ function sendGiftTierConfig() {
 
 function testFireTTGift() {
   if (!ablyChannel) { doFlash('red'); return; }
-  ablyChannel.publish('milk-event', {
+  chatChannel.publish('milk-event', {
     type: 'tiktok_gift',
     giftName: 'Galaxy',
     coins: 1000,
@@ -11496,7 +11569,7 @@ function testFireTTGift() {
 
 function testFireSuperchat() {
   if (!ablyChannel) { doFlash('red'); return; }
-  ablyChannel.publish('milk-event', {
+  chatChannel.publish('milk-event', {
     type: 'yt_superchat',
     dollars: 5,
     gifterKey: 'yt_test_gifter',
@@ -11736,7 +11809,7 @@ function _tfConnect() {
         if (data.repeatEnd === true || data.giftType !== 1) {
           const coins = (data.diamondCount || 0) * (data.repeatCount || 1);
           if (coins > 0) {
-            if (ablyChannel) ablyChannel.publish('milk-event', {
+            if (ablyChannel) chatChannel.publish('milk-event', {
               type: 'tiktok_gift',
               platform: 'tt',
               username: data.uniqueId || null,
@@ -11802,7 +11875,7 @@ function stgFire(id) {
   const s = _stingers.find(x => x.id === id);
   if (!s) return;
   if (ablyChannel) {
-    ablyChannel.publish('stinger', {
+    giftsChannel.publish('stinger', {
       name:       s.name,
       videoUrl:   s.videoUrl || null,
       audioUrl:   s.audioUrl || null,

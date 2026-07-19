@@ -3878,8 +3878,12 @@ function initComms() {
       ablyChannel.subscribe(FJ_ABLY_MSG_IN, m => processMessage(m.data));
       /* stream-dock already publishes YouTube Super Chats here (name/amount
          in USD/type). Feed Jamie piggybacks on this existing broadcast
-         instead of opening its own YouTube connection. */
-      ablyChannel.subscribe('gift-alert', m => {
+         instead of opening its own YouTube connection. gift-alert lives on
+         its own 'splat-gifts' channel now (split off the busy chat/gift
+         firehose 'splat-overlay') — Feed Jamie never needs raw chat volume
+         at all, so this moves it off 100% of that cost, not just a slice. */
+      const giftsChannel = ably.channels.get('splat-gifts');
+      giftsChannel.subscribe('gift-alert', m => {
         const d = m.data || {};
         if (d.type === 'youtube_superchat' && (+d.amount || 0) > 0) handleSuperchat(d);
         else if (d.type === 'youtube_jewels' && (+d.amount || 0) > 0) handleJewels(d);

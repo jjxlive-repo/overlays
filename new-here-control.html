@@ -431,11 +431,17 @@ input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--purple); }
 /* ── Ably ──────────────────────────────────────────────────────── */
 const ABLY_KEY = "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0";
 const ABLY_CH  = "splat-overlay";
-let ably = null, ablyChannel = null;
+let ably = null, ablyChannel = null, chatChannel = null, giftsChannel = null;
 (function initAbly() {
   try {
     ably = new Ably.Realtime({ key: ABLY_KEY });
     ablyChannel = ably.channels.get(ABLY_CH);
+    // Test-fire buttons below simulate milk-event/gift-alert/milestone, which now
+    // live on their own channels (split off 'splat-overlay' — see stream-dock.html
+    // for why) — publish test events on the SAME channels the real overlay listens
+    // on, or these buttons would silently stop reaching it.
+    chatChannel = ably.channels.get('splat-chat');
+    giftsChannel = ably.channels.get('splat-gifts');
     // Subscribe ONCE (channel object is stable across reconnects → no stacking).
     ablyChannel.subscribe('new-here-roster-snapshot', msg => nhToOnSnapshot(msg.data || {}));
     ablyChannel.subscribe('new-here-timeout-detected', msg => nhToOnDetected(msg.data || {}));
@@ -804,7 +810,7 @@ function nhTestGift(dollars) {
   const source = document.getElementById('nh-test-src')?.value || 'youtube';
   const type = source === 'tiktok' ? 'tiktok_coins' : 'youtube_superchat';
   const amount = source === 'tiktok' ? dollars * 100 : dollars; // tiktok pays in coins (100=$1)
-  if (ablyChannel) ablyChannel.publish('gift-alert', { name, amount, type, platform: source, _src: 'nh-test' }).catch(() => {});
+  if (giftsChannel) giftsChannel.publish('gift-alert', { name, amount, type, platform: source, _src: 'nh-test' }).catch(() => {});
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ $${dollars} gift → ${name}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }
@@ -814,7 +820,7 @@ function nhTfName() { const v = document.getElementById('nh-tf-name'); return (v
 function nhTfSrc()  { const v = document.getElementById('nh-tf-src'); return (v && v.value) || 'youtube'; }
 function nhTfMilk(type, extra) {
   const plat = nhTfSrc() === 'tiktok' ? 'tt' : 'yt';
-  if (ablyChannel) ablyChannel.publish('milk-event', Object.assign({ type, platform: plat, username: nhTfName() }, extra || {})).catch(() => {});
+  if (chatChannel) chatChannel.publish('milk-event', Object.assign({ type, platform: plat, username: nhTfName() }, extra || {})).catch(() => {});
   nhToStatus('↑ ' + type + ' → ' + nhTfName());
 }
 function nhTfComment() { nhTfMilk('comment', { message: 'test comment' }); }
@@ -823,7 +829,7 @@ function nhTfLike()    { nhTfMilk('like'); }
 function nhTfSub()     { if (nhTfSrc() !== 'youtube') { document.getElementById('nh-tf-src').value = 'youtube'; } nhTfMilk('yt_sub'); }
 function nhTfGift(type, amount) {
   const src = nhTfSrc() === 'tiktok' ? 'tiktok' : 'youtube';
-  if (ablyChannel) ablyChannel.publish('gift-alert', { name: nhTfName(), amount, type, platform: src, _src: 'nh-testfire' }).catch(() => {});
+  if (giftsChannel) giftsChannel.publish('gift-alert', { name: nhTfName(), amount, type, platform: src, _src: 'nh-testfire' }).catch(() => {});
   nhToStatus('↑ gift ' + amount + ' (' + type + ')');
 }
 function nhTfCoins(n)     { document.getElementById('nh-tf-src').value = 'tiktok'; nhTfGift('tiktok_coins', n); }
@@ -837,7 +843,7 @@ function nhTfCustomGift() {
 // Preview a milestone celebration banner on the overlay.
 function nhTestMilestone(metric, platform, threshold) {
   const label = metric === 'viewers' ? 'WATCHING' : metric === 'subs' ? 'SUBSCRIBERS' : 'FOLLOWERS';
-  if (ablyChannel) ablyChannel.publish('milestone', { metric, platform, threshold, value: threshold, label }).catch(() => {});
+  if (giftsChannel) giftsChannel.publish('milestone', { metric, platform, threshold, value: threshold, label }).catch(() => {});
   const st = document.getElementById('nh-status');
   if (st) { st.textContent = `↑ milestone: ${threshold} ${label}`; setTimeout(() => { st.textContent = '—'; }, 2000); }
 }

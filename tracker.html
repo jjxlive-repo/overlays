@@ -1604,7 +1604,7 @@ function handleTikfinityGift(data) {
     if (key) renderTableDebounced(key);
     // Publish gift-alert so gift-bar.html shows the explosion animation
     if (ablyChannel) {
-      ablyChannel.publish('gift-alert', {
+      giftsChannel.publish('gift-alert', {
         name, amount: coins, type: 'tiktok_coins', platform: 'tiktok',
         contentImg: null, giftTitle: giftName,
         _src: 'tikfinity',
@@ -1863,7 +1863,7 @@ function handleSSNEvent(payload) {
     const key = upsertGift(name, amount, type, platform, '', userId);
     renderTableDebounced(key);
     if (ablyChannel) {
-      ablyChannel.publish('gift-alert', {
+      giftsChannel.publish('gift-alert', {
         name, amount, type, platform,
         contentImg, giftTitle,
         _src: 'tracker',
@@ -2649,6 +2649,13 @@ function formatRawAmount(rawAmount, type) {
   try {
     ablyClient  = new Ably.Realtime({ key: ABLY_KEY });
     ablyChannel = ablyClient.channels.get(ABLY_CHANNEL);
+    // Chat/like/join volume ('milk-event' hype events) and gift/money volume
+    // ('gift-alert', 'giftr', 'giftr-roster', 'top-gifters') live on their own
+    // dedicated channels now, split off the shared 'splat-overlay' firehose —
+    // see stream-dock.html for why (11 pages were being billed for 100% of
+    // every chat comment regardless of which event names they actually read).
+    const chatChannel  = ablyClient.channels.get('splat-chat');
+    const giftsChannel = ablyClient.channels.get('splat-gifts');
 
     // ── Hard daily publish cap — shared safety net with stream-dock.html ──
     // Ably has no spend cap on paid plans (overage is just billed, with an email
@@ -2657,21 +2664,23 @@ function formatRawAmount(rawAmount, type) {
     // stream-dock.html's guard so the two share one daily budget rather than each
     // getting their own 400,000 (this file publishes gift-alert/giftr — real
     // money events — so it gets the same protection, not a separate allowance).
-    (function installAblyDailyCapGuard(channel) {
+    (function installAblyDailyCapGuard(channels) {
       const CAP = 400000, LS_KEY = 'ablyDailyPublishGuard.v1';
       const today = () => new Date().toISOString().slice(0, 10);
       const load = () => { let s = null; try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {} const t = today(); return (!s || s.day !== t) ? { day: t, count: 0, tripped: false } : s; };
       const save = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) {} };
-      const orig = channel.publish.bind(channel);
-      channel.publish = function(...args) {
-        let s = load();
-        if (s.tripped) return Promise.resolve();
-        s.count++;
-        if (s.count > CAP) { s.tripped = true; save(s); console.error('[Ably Safety] Daily publish cap reached — tracker.html publishing halted.'); return Promise.resolve(); }
-        save(s);
-        return orig(...args);
-      };
-    })(ablyChannel);
+      for (const channel of channels) {
+        const orig = channel.publish.bind(channel);
+        channel.publish = function(...args) {
+          let s = load();
+          if (s.tripped) return Promise.resolve();
+          s.count++;
+          if (s.count > CAP) { s.tripped = true; save(s); console.error('[Ably Safety] Daily publish cap reached — tracker.html publishing halted.'); return Promise.resolve(); }
+          save(s);
+          return orig(...args);
+        };
+      }
+    })([ablyChannel, chatChannel, giftsChannel]);
 
     const dot = document.createElement('div');
     dot.id = 'ably-dot';
@@ -2748,7 +2757,7 @@ function publishTopGifters(visible) {
   // allTime → cutoff stays 0
 
   if (!visible) {
-    ablyChannel.publish('top-gifters', { visible: false, timeFrame: tf, gifters: [] })
+    giftsChannel.publish('top-gifters', { visible: false, timeFrame: tf, gifters: [] })
       .catch(e => console.warn('[Ably] top-gifters err:', e));
     return;
   }
@@ -2775,7 +2784,7 @@ function publishTopGifters(visible) {
     .sort((a, b) => b.spendTotal - a.spendTotal)
     .slice(0, 5);
 
-  ablyChannel.publish('top-gifters', { visible: true, timeFrame: tf, gifters: ranked })
+  giftsChannel.publish('top-gifters', { visible: true, timeFrame: tf, gifters: ranked })
     .catch(e => console.warn('[Ably] top-gifters err:', e));
 
   const preview = document.getElementById('tgo-preview-text');
@@ -2841,7 +2850,7 @@ function publishGiftrLeaderboard() {
     custom: DB.settings.giftrCustom || null,
   };
 
-  ablyChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
+  giftsChannel.publish('giftr', payload).catch(e => console.warn('[Ably] giftr publish err:', e));
 
   // Full per-user roster (viewer-spend $) for the New Here balloon overlay's
   // daily/weekly/monthly/all-time ranking. Capped to the top 200 by all-time so the
@@ -2851,13 +2860,13 @@ function publishGiftrLeaderboard() {
     .sort((a, b) => b.allSpend - a.allSpend)
     .slice(0, 200)
     .map(r => ({ name: r.name, platform: r.platform, day: r.daySpend, week: r.weekSpend, month: r.monthSpend, all: r.allSpend }));
-  ablyChannel.publish('giftr-roster', { gifters: roster }).catch(() => {});
+  giftsChannel.publish('giftr-roster', { gifters: roster }).catch(() => {});
 }
 
 /* ── Community hype event publisher ── */
 function publishHypeEvent(type) {
   if (!ablyChannel) return;
-  ablyChannel.publish('milk-event', { type }).catch(() => {});
+  chatChannel.publish('milk-event', { type }).catch(() => {});
 }
 
 /* ── YouTube Live concurrentViewers polling ──

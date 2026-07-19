@@ -2403,6 +2403,13 @@ function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
   const ch     = client.channels.get(ABLY_CH);
   nhChannel = ch; // used by roster/timeout/moderation publishers (only live while attached)
+  // Chat/like/join volume ('milk-event') and gift/money volume ('gift-alert',
+  // 'giftr-roster') live on their own dedicated channels now, split off the
+  // shared 'splat-overlay' firehose — see stream-dock.html for why. Both must
+  // be attached/detached in lockstep with the main channel below, or turning
+  // New Here "off" would still leave it billed for every comment/gift.
+  const chatChannel  = client.channels.get('splat-chat');
+  const giftsChannel = client.channels.get('splat-gifts');
 
   function attachMain() {
     OVERLAY_ENABLED = true;
@@ -2410,6 +2417,8 @@ function connectAbly() {
     if (_nhAttached) return; // idempotent — ignore a repeat "on"
     _nhAttached = true;
     ch.attach().catch(() => {});
+    chatChannel.attach().catch(() => {});
+    giftsChannel.attach().catch(() => {});
     sendAlive();
     if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {});
     publishRosterSnapshot();
@@ -2420,6 +2429,8 @@ function connectAbly() {
     resetOverlay();
     _nhAttached = false;
     ch.detach().catch(() => {});
+    chatChannel.detach().catch(() => {});
+    giftsChannel.detach().catch(() => {});
   }
 
   // ── Toggle channel — always attached, near-zero traffic. Requests current state
@@ -2447,7 +2458,7 @@ function connectAbly() {
   // Real chat traffic rides the 'milk-event' comment the dock already publishes for
   // the hype meter — so New Here costs ZERO extra Ably messages per comment. Platform
   // arrives as 'tt'/'yt' here; map it to the overlay's 'tiktok'/'youtube' source.
-  ch.subscribe('milk-event', msg => {
+  chatChannel.subscribe('milk-event', msg => {
     if (!OVERLAY_ENABLED) return;
     const d = msg.data || {};
     const src = d.platform === 'tt' ? 'tiktok' : 'youtube';
@@ -2473,7 +2484,7 @@ function connectAbly() {
   // a duplicate publish (e.g. dock + tracker both connected) inflating someone's spend:
   // ignore an identical name+amount+type seen within a tight window.
   let _lastGiftSig = '', _lastGiftAt = 0;
-  ch.subscribe('gift-alert', msg => {
+  giftsChannel.subscribe('gift-alert', msg => {
     if (!OVERLAY_ENABLED) return;
     const d = msg.data || {};
     if (!d.name || !(d.amount > 0)) return;
@@ -2486,7 +2497,7 @@ function connectAbly() {
 
   // tracker.html broadcasts its full per-user spend roster (day/week/month/all-time).
   // We keep it and, in a non-live timeframe, re-rank the right channel from it.
-  ch.subscribe('giftr-roster', msg => {
+  giftsChannel.subscribe('giftr-roster', msg => {
     const list = (msg.data && msg.data.gifters) || [];
     giftrRoster = new Map();
     for (const g of list) if (g && g.name) giftrRoster.set(userKey(g.name, g.platform || 'youtube'), g);
@@ -2495,7 +2506,7 @@ function connectAbly() {
 
   // Milestone celebration — subscriber/follower totals + concurrent-viewer peaks
   // crossing a threshold (published by the dock). Shown as a top banner.
-  ch.subscribe('milestone', msg => {
+  giftsChannel.subscribe('milestone', msg => {
     if (!OVERLAY_ENABLED) return;
     const d = msg.data || {};
     if (!d.threshold) return;
@@ -2679,10 +2690,13 @@ function connectAbly() {
   client.connection.on('failed',       (err) => console.error('[Ably] connection failed', err));
   setInterval(() => { if (client.connection.state === 'connected' && _nhAttached) sendAlive(); }, 25000);
 
-  // Subscriptions above implicitly attach `ch` — start fully detached (zero Ably cost)
-  // until the toggle channel says otherwise. OVERLAY_ENABLED defaults to false, so this
-  // matches the pre-existing "hidden until the dock says on" behavior.
+  // Subscriptions above implicitly attach `ch`/chatChannel/giftsChannel — start fully
+  // detached (zero Ably cost) until the toggle channel says otherwise. OVERLAY_ENABLED
+  // defaults to false, so this matches the pre-existing "hidden until the dock says on"
+  // behavior — now across all three channels, not just the original one.
   ch.detach().catch(() => {});
+  chatChannel.detach().catch(() => {});
+  giftsChannel.detach().catch(() => {});
 
   // Debug hooks — inspect from devtools/preview via window.__nh
   window.__nh = {
