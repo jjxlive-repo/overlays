@@ -2062,6 +2062,17 @@ function tick(now) {
   signPeakY += (pilePeakY - signPeakY) * tweenK;
 }
 
+// The scene is never fully static (the count-0 idle invite and the balloons are
+// time-animated), so instead of parking, the loop drops to ~30fps whenever
+// nothing is bursting — full 60fps only while entries/resets/flashes are live.
+const NH_IDLE_FRAME_MS = 17; // skip roughly every other vsync at idle
+function sceneBursting(now) {
+  return queue.length > 0
+      || resetPending
+      || !!milestoneFlash
+      || (now - popFlashAt) < POP_FLASH_MS
+      || figures.some(f => f.phase !== 'settled');
+}
 function frame(now) {
   lastTime = now;
   tick(now);
@@ -2286,7 +2297,8 @@ function frame(now) {
   drawPopFlash(ctx, now);
   drawMilestone(ctx, now); // celebratory banner, always on top
 
-  requestAnimationFrame(frame);
+  if (sceneBursting(now)) requestAnimationFrame(frame);
+  else setTimeout(() => requestAnimationFrame(frame), NH_IDLE_FRAME_MS);
 }
 
 // ═══════════════════════════════════════════════════════════════════
