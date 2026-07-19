@@ -2603,10 +2603,27 @@ function pickTreat() {
   for (const [k, v] of entries) { r -= v; if (r <= 0) return k; }
   return 'treat-biscuit';
 }
+/* Same duplicate-delivery guard as comments, for the other one-shot events —
+   a second control tab relaying Tikfinity would triple gifts (3× wheel spins,
+   3× care money) exactly like it tripled keyword spawns. Tight 1.5s window:
+   re-deliveries land within ~500ms, while two genuinely separate identical
+   finalized gifts from one user almost never do. Likes are excluded (batch
+   counts legitimately repeat). */
+const recentEvents = [];
+function isDupEvent(key) {
+  const now = performance.now();
+  while (recentEvents.length && now - recentEvents[0].t > 1500) recentEvents.shift();
+  if (recentEvents.some(e => e.key === key)) return true;
+  recentEvents.push({ key, t: now });
+  return false;
+}
 function handleEvent(evt) {
   if (!evt || typeof evt !== 'object') return;
   const type = String(evt.type || '').toLowerCase();
   const username = evt.username || null;
+  const uk = String(username || 'anon').toLowerCase();
+  if (type === 'gift' && isDupEvent(`gift|${uk}|${evt.giftName || ''}|${+evt.value || 0}`)) return;
+  if ((type === 'follow' || type === 'subscribe' || type === 'share' || type === 'heartme') && isDupEvent(type + '|' + uk)) return;
   lastEventInfo = type + (username ? ' @' + sanitizeName(username) : '');
   lastEngagementAt = performance.now();
   wakeIfSleeping();
