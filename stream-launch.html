@@ -243,9 +243,24 @@
   </header>
 
   <div class="ssn-warning" id="session-warning" style="display:none; margin-bottom:20px;">
-    <strong>⚠️ No session configured.</strong> This page's URL needs <code>?session=YOURID</code> appended —
-    without it, Stream Dock and the Social Stream Ninja links below won't connect to anything. Bookmark this
-    page with the param included so it's always there.
+    <strong>⚠️ No session configured.</strong> Enter your Social Stream Ninja session ID below —
+    without it, Stream Dock, the SSN dock, guest chat and the session-tagged overlay URLs won't
+    connect to anything.
+  </div>
+
+  <div class="ssn-card" style="margin-bottom:20px;">
+    <div class="title">🔑 SSN Session ID</div>
+    <div class="desc">One ID feeds everything: Stream Dock, the SSN dock link, guest chat, and the
+      session-tagged overlay URLs below all inherit it from here. Saved in this browser and kept in
+      this page's URL, so a plain bookmark keeps working. Changed your session in SSN? Update it here
+      once — then re-copy the <em>Featured Splat / SSN Chat / Chat Box</em> overlay URLs into TikTok
+      Studio, because browser sources keep whatever session was in the URL when they were added.</div>
+    <div class="ssn-controls" style="margin-bottom:0;">
+      <label for="session-input">Session</label>
+      <input id="session-input" type="text" placeholder="e.g. jjxlive123" spellcheck="false" autocomplete="off"
+        style="flex:1;background:rgba(0,0,0,.3);color:var(--white);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;">
+      <button class="icon-btn" id="session-save" type="button">Save</button>
+    </div>
   </div>
 
   <a class="card primary" id="stream-dock-link" href="stream-dock.html" target="_blank" rel="noopener">
@@ -317,12 +332,7 @@
     <a class="card" href="feed-jamie-control.html" target="_blank" rel="noopener">
       <div class="icon">🐹</div>
       <div class="title">Feed Jamie Control</div>
-      <div class="desc">Drives the Feed Jamie interactive feeding overlay.</div>
-    </a>
-    <a class="card" href="top-splatty-control.html" target="_blank" rel="noopener">
-      <div class="icon">👑</div>
-      <div class="title">Top Splatty Control</div>
-      <div class="desc">Two-throne top-gifter battle overlay.</div>
+      <div class="desc">v2 panel — LIVE dashboard (mirror, kill switches, event log) + drag-to-place layout canvas. Splatty Squad (crowd, prize wheel, drip tiers) lives here now.</div>
     </a>
     <a class="card" href="dog-house-control.html" target="_blank" rel="noopener">
       <div class="icon">🐕</div>
@@ -373,12 +383,29 @@
 </div>
 
 <script>
-var SESSION = new URLSearchParams(location.search).get("session") || "";
-if (!SESSION) {
-  document.getElementById("session-warning").style.display = "block";
-} else {
+/* Session resolution: page URL param wins, this browser's saved copy is the
+   fallback — so a plain bookmark (no param) still works once the ID has been
+   saved here, and pasting a ?session= URL updates the saved copy. */
+var LS_SESSION = "jjx.ssnSession";
+var qsSession = new URLSearchParams(location.search).get("session") || "";
+var storedSession = "";
+try { storedSession = localStorage.getItem(LS_SESSION) || ""; } catch (e) {}
+var SESSION = qsSession || storedSession;
+if (SESSION) {
+  try { localStorage.setItem(LS_SESSION, SESSION); } catch (e) {}
+  /* keep the param visible in the address bar so a re-bookmark carries it */
+  if (!qsSession) history.replaceState(null, "", location.pathname + "?session=" + encodeURIComponent(SESSION));
   document.getElementById("stream-dock-link").href = "stream-dock.html?session=" + encodeURIComponent(SESSION);
+} else {
+  document.getElementById("session-warning").style.display = "block";
 }
+document.getElementById("session-input").value = SESSION;
+document.getElementById("session-save").addEventListener("click", function () {
+  var id = document.getElementById("session-input").value.trim();
+  if (!id) { alert("Enter your Social Stream Ninja session ID first."); return; }
+  try { localStorage.setItem(LS_SESSION, id); } catch (e) {}
+  location.href = location.pathname + "?session=" + encodeURIComponent(id);
+});
 
 (function () {
   var GOOGLE_VOICE_FALLBACK = [
@@ -484,7 +511,8 @@ if (!SESSION) {
     { name: "Gift Bar", file: "gift-bar.html" },
     { name: "Crowd Glass", file: "crowd-glass/index.html" },
     { name: "Feed Jamie", file: "feed-jamie-overlay.html" },
-    { name: "Top Splatty", file: "top-splatty-overlay.html" },
+    /* Top Splatty overlay retired 2026-07-18 — merged into Feed Jamie as
+       Splatty Squad; the standalone source should come OFF TikTok Studio */
     { name: "Dog House", file: "dog-house-overlay.html" },
     { name: "New Here", file: "new-here-overlay.html" },
     { name: "Featured Splat", file: "featured-splat.html", needsSession: true },
