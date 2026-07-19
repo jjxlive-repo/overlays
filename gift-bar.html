@@ -5486,11 +5486,16 @@ ablyChannel.subscribe('giftr',msg=>{
   }
   function _geqFire(){ _geqFireT = Date.now()/1000; _geqReact = 1.0; }
 
-  /* ── Geyser draw loop (always running) ── */
+  /* ── Geyser draw loop — full 60fps + shadowBlur glow only while reacting to
+     a gift (_geqReact decaying); the ambient idle wave redraws at ~24fps with
+     a cheap double-stroke fake glow instead. shadowBlur at 60fps was a
+     permanent GPU cost even with zero viewers. ── */
+  const GEQ_IDLE_FRAME_MS = 42;   // ~24fps ambient cadence
   (function _geqDraw(){
     const t = Date.now() / 1000;
     _geqCtx.clearRect(0, 0, 1080, GEQ_H);
     _geqReact = Math.max(0, _geqReact * 0.966);
+    const geqActive = _geqReact > 0.01;
     const tFire = Math.max(0, t - _geqFireT);
 
     function gy(x, phase, mult){
@@ -5511,8 +5516,10 @@ ablyChannel.subscribe('giftr',msg=>{
       _geqCtx.lineCap = 'round';
       _geqCtx.lineJoin = 'round';
       _geqCtx.strokeStyle = `rgba(${_geqPR},${_geqPG},${_geqPB},${alpha})`;
-      _geqCtx.shadowColor = `rgba(${_geqPR},${_geqPG},${_geqPB},${alpha})`;
-      _geqCtx.shadowBlur = 12 + _geqReact * 16;
+      if (geqActive) {
+        _geqCtx.shadowColor = `rgba(${_geqPR},${_geqPG},${_geqPB},${alpha})`;
+        _geqCtx.shadowBlur = 12 + _geqReact * 16;
+      }
       _geqCtx.lineWidth = width;
       _geqCtx.beginPath();
       for(let x = 0; x <= 1080; x += GEQ_STEP){
@@ -5521,13 +5528,20 @@ ablyChannel.subscribe('giftr',msg=>{
         else _geqCtx.lineTo(x, y);
       }
       _geqCtx.stroke();
+      if (!geqActive) {
+        /* fake glow: restroke the same path wide and faint */
+        _geqCtx.globalAlpha = 0.30;
+        _geqCtx.lineWidth = width * 3;
+        _geqCtx.stroke();
+      }
       _geqCtx.restore();
     }
 
     const baseA = 0.22 + _geqReact * 0.35;
     drawGeyserLine(0.0, Math.min(0.72, baseA), 3.2 + _geqReact * 2.5, 1.00);
     drawGeyserLine(1.8, Math.min(0.34, baseA * 0.58), 1.6 + _geqReact, 0.72);
-    requestAnimationFrame(_geqDraw);
+    if (geqActive) requestAnimationFrame(_geqDraw);
+    else setTimeout(() => requestAnimationFrame(_geqDraw), GEQ_IDLE_FRAME_MS);
   })();
 
   /* ── Blast shockwave rings ── */
@@ -6252,6 +6266,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
     } else {
       _mmGoalVisible = true;
       _mmForceVisible = true;
+      _scheduleHypeFrame(); // wake the parked render loop
     }
   }
   window._milkSetEnabled = _setMilkSystemEnabled;
@@ -6682,14 +6697,22 @@ ablyChannel.subscribe('top-gifters',msg=>{
   const _WAVE_CENTER = Math.round(EW / 2);
   if (_giftBarEl) _giftBarEl.style.setProperty('--wave-center', _WAVE_CENTER + 'px');
 
-  (function drawHype(){
+  /* Loop parks itself while the milk system is disabled (one final clear, no
+     reschedule) — _setMilkSystemEnabled(true) wakes it via _scheduleHypeFrame. */
+  let _hypeRafPending = false;
+  function _scheduleHypeFrame(){
+    if (_hypeRafPending) return;
+    _hypeRafPending = true;
+    requestAnimationFrame(drawHype);
+  }
+  function drawHype(){
+    _hypeRafPending = false;
     const t     = Date.now() / 1000;
     const boost = boostActive;
     const amp   = hypeAmp();
 
     if (!_milkSystemEnabled) {
       eCtx.clearRect(0, 0, EW, EH);
-      requestAnimationFrame(drawHype);
       return;
     }
 
@@ -6791,8 +6814,9 @@ ablyChannel.subscribe('top-gifters',msg=>{
     const pct = Math.min(100, Math.round((rawScore / MAX_RAW) * 100));
     _mmUpdateStatus(pct);
 
-    requestAnimationFrame(drawHype);
-  })();
+    _scheduleHypeFrame();
+  }
+  _scheduleHypeFrame();
 
   /* ── Unique gifter tracker ── */
   const _milkGiftersSeen = new Set();

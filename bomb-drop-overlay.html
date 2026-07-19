@@ -65,6 +65,7 @@ let booms = [];   // explosion particle bursts: { x, y, born, parts:[...] }
 let texts = [];   // "BOOM!"/"CRASH!" pop text
 
 function spawnBall(x, y) {
+  wakeFrame();
   const r = 52 + Math.random() * 20; // 52-72px — heavier/bigger than a normal treat
   balls.push({
     id: ++_ballId,
@@ -80,6 +81,7 @@ function spawnBall(x, y) {
 function explode(ball, chainDepth) {
   if (ball.exploding) return;
   ball.exploding = true;
+  wakeFrame(); // chain setTimeouts can land after the loop parked
   const cx = ball.x, cy = ball.y, r = ball.r;
   spawnBoom(cx, cy, r);
   if (Math.random() < 0.6 || chainDepth > 0) {
@@ -377,11 +379,20 @@ function drawTexts(ctx, now) {
   }
 }
 
-// ── Main loop ──────────────────────────────────────────────────────────
+// ── Main loop — sleeps when there's nothing to animate (no balls, booms,
+// texts, or hot floor line). spawnBall/explode/the floor-config handler call
+// wakeFrame(); the parked canvas keeps its last frame (static floor line),
+// so an idle overlay costs zero repaints in the compositor. ──────────────
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 let lastT = performance.now();
-function frame(now) {
+let frameRunning = false;
+function wakeFrame() {
+  if (frameRunning) return;
+  frameRunning = true;
+  lastT = performance.now();
   requestAnimationFrame(frame);
+}
+function frame(now) {
   const dt = Math.min(0.032, (now - lastT) / 1000);
   lastT = now;
   ctx.clearRect(0, 0, W, H);
@@ -396,8 +407,11 @@ function frame(now) {
   for (const b of balls) if (!b.exploding) drawBomb(ctx, b, now);
   drawBooms(ctx, now);
   drawTexts(ctx, now);
+  const floorHot = performance.now() - _floorCfgAt < 3000;
+  if (balls.length || booms.length || texts.length || floorHot) requestAnimationFrame(frame);
+  else frameRunning = false; // floor line stays painted from this frame
 }
-requestAnimationFrame(frame);
+wakeFrame();
 
 // ── Ably — dedicated near-silent channels only, same as gesture-fx-overlay.html ──
 // bomb-colliders/bomb-config are bursty while a bomb is alive, so they live on
@@ -417,6 +431,7 @@ ballCh.subscribe('bomb-config', msg => {
   if (isFinite(d.floorY)) {
     FLOOR_Y = Math.max(200, Math.min(1900, +d.floorY));
     _floorCfgAt = performance.now();
+    wakeFrame(); // repaint the (possibly parked) canvas so the hot floor line shows
     try { localStorage.setItem(FLOOR_LS, String(FLOOR_Y)); } catch (e) {}
   }
 });

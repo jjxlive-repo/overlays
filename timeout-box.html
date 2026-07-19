@@ -150,6 +150,7 @@ function addPerson(username, source, seconds, absUntil, silent) {
           bobPhase: Math.random() * 6.283, face: pickFace(), color: pickColor() };
     people.push(p);
   }
+  wakeFrame();
   if (!silent) { save(); scheduleStatus(); }
 }
 function releasePerson(username, source) {
@@ -401,6 +402,15 @@ function drawHeader(ctx, count) {
   ctx.restore();
 }
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+// Loop sleeps whenever the box is empty — the final frame clears the canvas and
+// stops rescheduling; addPerson() wakes it. The 250ms tick() fallback below
+// keeps running either way (cheap, no drawing) so expiry stays exact.
+let frameRunning = false;
+function wakeFrame() {
+  if (frameRunning) return;
+  frameRunning = true;
+  requestAnimationFrame(frame);
+}
 function frame() {
   tick();
   ctx.clearRect(0, 0, W, H);
@@ -423,7 +433,8 @@ function frame() {
       drawTimer(ctx, p.bx, p.y + bob + r + 26 * BOX_SCALE, p, alpha);
     }
   }
-  requestAnimationFrame(frame);
+  if (people.length) requestAnimationFrame(frame);
+  else frameRunning = false; // canvas just cleared — parked until next add
 }
 
 // ── Ably ─────────────────────────────────────────────────────────
@@ -481,8 +492,8 @@ function connect() {
 
 load();
 connect();
-requestAnimationFrame(frame);
-// State-only fallback so timers/animation keep advancing even if rAF is throttled
+wakeFrame();
+// State-only fallback so timers keep advancing even if rAF is throttled
 // in a backgrounded/unfocused tab (OBS sources render normally and are unaffected).
 setInterval(tick, 250);
 </script>

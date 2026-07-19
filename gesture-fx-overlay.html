@@ -51,6 +51,7 @@ function burstHearts(x, y) {
       born: performance.now(), life: 2200 + Math.random() * 900, wobble: Math.random() * 6.28
     });
   }
+  wakeFrame();
 }
 function burstConfetti(x, y) {
   const colors = ['#f472b6','#a78bfa','#4ade80','#fbbf24','#38bdf8','#fb7185'];
@@ -63,6 +64,7 @@ function burstConfetti(x, y) {
       born: performance.now(), life: 1600 + Math.random() * 900
     });
   }
+  wakeFrame();
 }
 function burstSparkle(x, y) {
   for (let i = 0; i < 10; i++) {
@@ -74,9 +76,11 @@ function burstSparkle(x, y) {
       born: performance.now(), life: 700 + Math.random() * 400, wobble: 0
     });
   }
+  wakeFrame();
 }
 function showAwww(x, y) {
   texts.push({ text: 'awwww 🥺', x: Math.max(180, Math.min(W - 180, x)), y: Math.max(220, y), born: performance.now(), life: 2400 });
+  wakeFrame();
 }
 
 // ── Synth sounds (no assets) ─────────────────────────────────────────────
@@ -119,10 +123,18 @@ function soundAwww() {
   } catch (e) {}
 }
 
-// ── Render loop ──────────────────────────────────────────────────────────
+// ── Render loop — sleeps when there's nothing to animate. Spawners call
+// wakeFrame(); the final frame clears the canvas and stops rescheduling, so
+// an idle overlay costs zero repaints in the compositor. ──────────────────
 let lastT = performance.now();
-function frame(now) {
+let frameRunning = false;
+function wakeFrame() {
+  if (frameRunning) return;
+  frameRunning = true;
+  lastT = performance.now();
   requestAnimationFrame(frame);
+}
+function frame(now) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
   ctx.clearRect(0, 0, W, H);
@@ -163,8 +175,10 @@ function frame(now) {
     ctx.fillText(t.text, t.x, y);
     ctx.restore();
   }
+
+  if (parts.length || texts.length) requestAnimationFrame(frame);
+  else frameRunning = false; // canvas just cleared — park until next spawn
 }
-requestAnimationFrame(frame);
 
 // ── Ably ─────────────────────────────────────────────────────────────────
 // Subscribes ONLY to the dedicated near-silent 'gesture-events' channel — never
