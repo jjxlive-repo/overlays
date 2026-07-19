@@ -2491,10 +2491,14 @@ function connectAbly() {
   try {
     /* echoMessages:false — never get billed a delivery of our own publishes */
     const ably = new Ably.Realtime({ key: CONFIG.ABLY_KEY, echoMessages: false });
-    ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);   // busy shared channel
+    ablyChannel = ably.channels.get(CONFIG.ABLY_CHANNEL);   // busy shared channel (config-tier only now)
     syncChannel = ably.channels.get(CONFIG.SYNC_CHANNEL);   // quiet private channel
-    ablyChannel.subscribe(CONFIG.GIFT_ALERT, m => onGiftAlert(m.data));
-    ablyChannel.subscribe('milk-event', m => onChat(m.data));   // !steal / !throne chat commands
+    // Chat/like/join volume and gift/money volume live on their own dedicated
+    // channels, split off 'splat-overlay' — see stream-dock.html for why.
+    const chatChannel  = ably.channels.get('splat-chat');
+    const giftsChannel = ably.channels.get('splat-gifts');
+    giftsChannel.subscribe(CONFIG.GIFT_ALERT, m => onGiftAlert(m.data));
+    chatChannel.subscribe('milk-event', m => onChat(m.data));   // !steal / !throne chat commands
     syncChannel.subscribe(CONFIG.MSG_IN, m => onCommand(m.data));
 
     // ── On/off from the dock ──
@@ -2512,11 +2516,15 @@ function connectAbly() {
       _tsAttached = true;
       if (scene) scene.style.display = '';
       ablyChannel.attach().catch(() => {});
+      chatChannel.attach().catch(() => {});
+      giftsChannel.attach().catch(() => {});
     }
     function detachMain() {
       _tsAttached = false;
       if (scene) scene.style.display = 'none';
       ablyChannel.detach().catch(() => {});
+      chatChannel.detach().catch(() => {});
+      giftsChannel.detach().catch(() => {});
     }
     const toggleCh = ably.channels.get('top-splatty-toggle');
     toggleCh.subscribe('set', m => { if (m.data && m.data.enabled === false) detachMain(); else attachMain(); });

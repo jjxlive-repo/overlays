@@ -4001,6 +4001,13 @@ function handleCommentPrompt(data){
 /* ══ ABLY INIT + ALL SUBSCRIPTIONS ══ */
 const ablyClient=new Ably.Realtime({key:CONFIG.ABLY_KEY});
 const ablyChannel=ablyClient.channels.get(CONFIG.ABLY_CHANNEL);
+// Chat/like/join firehose and the gift/money stream live on their own channels
+// (split off 'splat-overlay', which is now config/cmd-tier only) — gift-bar
+// genuinely needs both tiers (Milk meter + League Sprint chat commands need
+// every comment; gift alerts/giftr/top-gifters/stinger need every gift), so
+// it attaches to all three rather than losing anything.
+const chatChannel=ablyClient.channels.get('splat-chat');
+const giftsChannel=ablyClient.channels.get('splat-gifts');
 window._geyserY = 1720; // mirrors dock geyser position; updated live via Ably
 
 /* LEAGUE SPRINT dynamic cards
@@ -5104,10 +5111,10 @@ const LEAGUE_SPRINT = (() => {
   return { getRankArtPath, getFramePath, getTypeIconPath, getDivisionPips, renderCard, showCardDock, showCardDockRebirth, runTest, handleMessage, handleChatMessage, handleCommand, setPhase, setGameTitle, emitVisualEvent, sampleCards, cardDockQueue, duelResultQueue };
 })();
 window.LeagueSprintCards = LEAGUE_SPRINT;
-ablyChannel.subscribe('league-sprint', msg => LEAGUE_SPRINT.handleMessage(msg?.data));
-ablyChannel.subscribe('league-sprint-chat', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
-ablyChannel.subscribe('chat-message', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
-ablyChannel.subscribe('milk-event', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
+giftsChannel.subscribe('league-sprint', msg => LEAGUE_SPRINT.handleMessage(msg?.data));
+chatChannel.subscribe('league-sprint-chat', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
+chatChannel.subscribe('chat-message', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
+chatChannel.subscribe('milk-event', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
 
 function applySplatCardLayout(d) {
   if (!d) return;
@@ -5179,7 +5186,7 @@ function applyLeagueSprintState(d) {
 }
 
 ablyChannel.subscribe('splat-card-layout', msg => applySplatCardLayout(msg?.data));
-ablyChannel.subscribe('league-sprint-state', msg => applyLeagueSprintState(msg?.data));
+giftsChannel.subscribe('league-sprint-state', msg => applyLeagueSprintState(msg?.data));
 ablyChannel.subscribe('splat-explainer-config', msg => applySplatExplainerConfig(msg?.data || {}));
 ablyChannel.subscribe('gifter-slides-config', msg => applyGifterSlidesConfig(msg?.data || {}));
 
@@ -5274,7 +5281,7 @@ ablyChannel.subscribe('event-promo',msg=>{
 });
 
 // Gift alert → bar animation + hype meter injection + geyser card animation
-ablyChannel.subscribe('gift-alert',msg=>{
+giftsChannel.subscribe('gift-alert',msg=>{
   if(!msg.data)return;
   onGiftAlert(msg.data);
   if(typeof fireGiftAnim === 'function') fireGiftAnim(msg.data);
@@ -5366,7 +5373,7 @@ ablyChannel.subscribe('gift-alert',msg=>{
     }, 450);
   }
 
-  ablyChannel.subscribe('stinger', msg => {
+  giftsChannel.subscribe('stinger', msg => {
     const wrap   = document.getElementById('stinger-wrap');
     const canvas = document.getElementById('stinger-canvas');
     const iframe = document.getElementById('stinger-iframe');
@@ -5445,7 +5452,7 @@ ablyChannel.subscribe('gift-alert',msg=>{
 })();
 
 // Giftr leaderboard
-ablyChannel.subscribe('giftr',msg=>{
+giftsChannel.subscribe('giftr',msg=>{
   const d=msg.data;
   if(!d)return;
   if(d.cmd)onGiftrCmd(d.cmd);
@@ -5769,7 +5776,7 @@ ablyChannel.subscribe('splat-bait',msg=>{
 });
 
 // Top gifters panel
-ablyChannel.subscribe('top-gifters',msg=>{
+giftsChannel.subscribe('top-gifters',msg=>{
   if(msg.data)renderTopGifters(msg.data);
 });
 
@@ -6833,7 +6840,7 @@ ablyChannel.subscribe('top-gifters',msg=>{
   }
 
   /* ── Ably subscriptions ── */
-  ablyChannel.subscribe('milk-event', msg => {
+  chatChannel.subscribe('milk-event', msg => {
     const d = msg?.data, type = d?.type, plat = d?.platform || 'other';
     if(!type) return;
     trackEvt(type, plat);
@@ -7753,7 +7760,7 @@ ablyChannel.subscribe('team-timing-test', msg => {
 // YouTube join/tap proxy — dock only forwards a comment here once it has
 // already matched the configured command (see ttb-cmd/ttb-match on the
 // dock), so every message received here counts.
-ablyChannel.subscribe('team-timing-yt-comment', msg => {
+chatChannel.subscribe('team-timing-yt-comment', msg => {
   const username = msg?.data?.username;
   if (username && typeof ttbOnYouTubeComment === 'function') ttbOnYouTubeComment(username, 'yt');
 });
