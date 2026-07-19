@@ -443,11 +443,11 @@ function frame() {
 // event names doesn't reduce delivery cost, only fully detaching the whole
 // channel does. A second, tiny, always-attached channel ('timeout-box-toggle')
 // carries only the on/off command so this overlay can hear "turn back on" while
-// fully detached from the busy shared channel. Defaults to ATTACHED (matches
-// this overlay's original always-on behavior) until the dock explicitly says
-// off — active timeouts keep counting down (their `until` is a real timestamp)
-// even while hidden, they just can't receive new add/release commands until
-// re-attached, same tradeoff as New Here's moderation-goes-idle-while-off.
+// fully detached from the busy shared channel. Defaults to DETACHED — zero Ably
+// connection until the dock explicitly toggles it on — active timeouts keep
+// counting down (their `until` is a real timestamp) even while hidden, they
+// just can't receive new add/release commands until re-attached, same
+// tradeoff as New Here's moderation-goes-idle-while-off.
 let _tboxAttached = false;
 function scheduleStatus() { if (_statusTimer) return; _statusTimer = setTimeout(() => { _statusTimer = null; publishStatus(); }, 250); }
 function publishStatus() {
@@ -479,15 +479,20 @@ function connect() {
     ch.detach().catch(() => {});
   }
   const toggleCh = client.channels.get('timeout-box-toggle');
-  toggleCh.subscribe('set', msg => { if (msg.data && msg.data.enabled === false) detachMain(); else attachMain(); });
+  toggleCh.subscribe('set', msg => { if (msg.data && msg.data.enabled) attachMain(); else detachMain(); });
 
   const dot = document.getElementById('conn');
   client.connection.on(sc => { if (dot) dot.style.background = sc.current === 'connected' ? '#3b82f6' : (sc.current === 'connecting' ? '#facc15' : '#555'); });
   client.connection.on('connected', () => {
-    attachMain(); // default on — preserves this overlay's original always-on behavior
-    toggleCh.publish('request', {}).catch(() => {}); // then ask the dock for its real state, in case it's off
+    // Ask the dock for the current on/off state — covers the case where this
+    // overlay reloaded (or the dock's setting changed) while it was closed.
+    toggleCh.publish('request', {}).catch(() => {});
   });
   window.__timeoutBox = { get people() { return people; }, add: addPerson, release: releasePerson, releaseAll, get attached() { return _tboxAttached; } };
+
+  // The subscribe() calls above implicitly attach `ch` — start fully detached
+  // (zero Ably cost) until the toggle channel says otherwise.
+  ch.detach().catch(() => {});
 }
 
 load();

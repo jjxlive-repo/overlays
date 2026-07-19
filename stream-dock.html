@@ -3040,57 +3040,6 @@ tr.el-checked td { background: rgba(56,189,248,.04); }
         </div>
       </div>
 
-      <!-- ── CROWD GLASS ── -->
-      <div class="ctrl-card">
-        <div class="ctrl-hd" onclick="toggleCtrl('cg')">
-          <span class="ctrl-hd-title">🔨 Crowd Glass</span>
-          <span class="ctrl-hd-ch">▸</span>
-        </div>
-        <div class="ctrl-bd" id="ctrl-cg">
-          <div class="ctrl-row" style="gap:5px;align-items:center;justify-content:space-between;">
-            <span style="font-size:9px;color:var(--txt-dim);">Overlay status</span>
-            <span id="cg-overlay-status" style="font-size:9px;color:#6b7280;">● offline</span>
-          </div>
-
-          <div class="ctrl-sep" style="margin-top:6px;">
-            <span class="ctrl-lbl" style="margin-bottom:4px;">Mode</span>
-            <div class="ctrl-row">
-              <button class="ctrl-btn c-act" id="cg-auto-btn" style="flex:1;" onclick="cgSetAuto(true)" title="Real joins/gifts/viewer bursts crack the glass">⚡ Auto</button>
-              <button class="ctrl-btn" id="cg-manual-btn" style="flex:1;" onclick="cgSetAuto(false)" title="Only the buttons below affect the glass">✋ Manual</button>
-            </div>
-          </div>
-
-          <div class="ctrl-sep" style="margin-top:6px;">
-            <span class="ctrl-lbl" style="margin-bottom:4px;">Manual actions</span>
-            <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
-              <button class="ctrl-btn" style="flex:1;" onclick="cgCmd('break_small')">💥 Break</button>
-              <button class="ctrl-btn" style="flex:1;" onclick="cgCmd('break_big')">💥💥 Break Burst</button>
-            </div>
-            <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
-              <button class="ctrl-btn c-on" style="flex:1;" onclick="cgCmd('repair_small')">✨ Repair</button>
-              <button class="ctrl-btn c-on" style="flex:1;" onclick="cgCmd('repair_big')">✨✨ Big Repair</button>
-            </div>
-            <div class="ctrl-row" style="gap:4px;margin-bottom:4px;">
-              <button class="ctrl-btn" style="flex:1;background:rgba(96,165,250,0.18);border-color:rgba(96,165,250,0.5);color:#60a5fa;" onclick="cgCmd('activate_bulletproof')">🛡 Bulletproof</button>
-              <button class="ctrl-btn c-off" style="flex:1;" onclick="cgCmd('force_shatter')">💢 Shatter</button>
-            </div>
-            <button class="ctrl-btn c-off" style="width:100%;" onclick="cgCmd('reset_glass')">↺ Reset Glass</button>
-          </div>
-
-          <div class="ctrl-sep" style="margin-top:6px;">
-            <div class="ctrl-row" style="align-items:center;gap:6px;">
-              <span class="ctrl-lbl" style="white-space:nowrap;">💢 Shatter after</span>
-              <input type="range" id="cg-shatter-slider" min="5" max="40" value="30"
-                style="flex:1;accent-color:#ef4444;height:4px;cursor:pointer;"
-                oninput="cgSetShatterThreshold(this.value)">
-              <span class="ctrl-status" id="cg-shatter-val" style="font-size:10px;min-width:56px;text-align:right;font-weight:600;">30 cracks</span>
-            </div>
-          </div>
-
-          <div style="font-size:9px;color:var(--txt-dim);margin-top:6px;">Position &amp; crack size moved to 🎯 Layout panel</div>
-        </div>
-      </div>
-
       <!-- ── TEAM TIMING BAR ── -->
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('ttb')">
@@ -3713,18 +3662,7 @@ function featureMessage(data) {
 /* ═══════════════════════════════════════════
    MESSAGE HANDLING
 ═══════════════════════════════════════════ */
-/* Crowd Glass overlay — last viewer count broadcast per platform, so we only
-   publish on an actual change instead of flooding Ably on every SSN tick. */
-let _cgLastVC = { tt: null, yt: null };
-
 function updateViewerCount(key, count) {
-  if (ablyChannel && _cgLastVC[key] !== count) {
-    _cgLastVC[key] = count;
-    ablyChannel.publish('crowd-glass-viewer-count', {
-      platform: key === 'tt' ? 'tiktok' : 'youtube', count
-    }).catch(() => {});
-  }
-
   const bar  = document.getElementById('vbar-' + key);
   const el   = document.getElementById('vc-' + key);
   const topN = document.getElementById('tvcn-' + key);
@@ -4049,8 +3987,8 @@ function handleMsg(data) {
   if (evt === 'follow' || evt === 'follower' || evt === 'new_follower')  { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter' || evt === 'joined')    { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'like' || evt === 'like_batch' || evt === 'liked')    { if (!(isTT && _tfWs?.readyState===WebSocket.OPEN)) { if(isTT)_evtCounts.tt_like++; if(isYT)_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _platH, data.chatname); _hypeSent=true; } }
-  else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); dhRelay('heart', data.chatname); _hypeSent=true; }
-  else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH, data.chatname); dhRelay('heart', data.chatname); _hypeSent=true; }
+  else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); _hypeSent=true; }
+  else if (evt === 'heart_me_first')                                   { publishMilk('heart_me_first',_platH, data.chatname); _hypeSent=true; }
   else if ((evt === 'subscribe' || evt === 'yt_sub' || evt === 'new_subscriber' || evt === 'resub') && isYT) { publishMilk('yt_sub', 'yt', data.chatname); _hypeSent=true; }
   else if ((evt === 'member' || evt === 'membermilestone') && isYT)    { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
   // YouTube superchats, stickers, jewels, gift purchases → milk event with correct value
@@ -4133,12 +4071,6 @@ function handleMsg(data) {
     if(isTT)_evtCounts.tt_comment++; if(isYT)_evtCounts.yt_comment++; _updateEvtDebug();
     publishMilk('comment', _platH, data.chatname, data.chatmessage);
     tboRecordChatter(data.chatname, isTT ? 'tiktok' : 'youtube'); // for the Timeout control's recent list
-    // Dog House: first chat from a unique viewer this session → preview Splatty.
-    // Deduped HERE so the dog-house channel stays at ~1 message per unique chatter.
-    if (data.chatname && !_dhSeenChatters.has(data.chatname)) {
-      _dhSeenChatters.add(data.chatname);
-      dhRelay('chat', data.chatname);
-    }
   }
 
   if (isGift) {
@@ -4172,14 +4104,6 @@ function handleMsg(data) {
         message: data.chatmessage || null,
         _src: 'dock',
       }).catch(() => {});
-      // Dog House: relay every gift (low volume). amount is TikTok coins or YT
-      // dollars depending on alertType — the overlay normalizes via the type.
-      // TikTok gifts are relayed from the Tikfinity handler instead (exact
-      // diamond counts) whenever TF is connected — skip them here so the same
-      // gift can't count twice.
-      if (!(giftIsTT && _tfWs?.readyState === WebSocket.OPEN)) {
-        dhRelay('gift', data.chatname || 'Anonymous', { amount: alertAmount, kind: alertType, gift: giftTitle || null });
-      }
     }
 
     // The Money In rail is populated from the 'gift-alert' subscription below —
@@ -4800,44 +4724,25 @@ const ablyChannel = ably.channels.get(ABLY_CH);
 // per-gift granularity attach here now:
 //   'splat-chat'  → milk-event, chat-message, league-sprint-chat,
 //                   team-timing-yt-comment (gift-bar, new-here-overlay,
-//                   top-splatty-overlay, tracker's own hype-event publishes)
+//                   tracker's own hype-event publishes)
 //   'splat-gifts' → gift-alert, giftr, giftr-roster, stinger, top-gifters,
 //                   league-sprint, league-sprint-state, milestone (gift-bar,
-//                   new-here-overlay, feed-jamie-overlay, top-splatty-overlay,
-//                   tracker)
+//                   new-here-overlay, feed-jamie-overlay, tracker)
 const chatChannel  = ably.channels.get('splat-chat');
 const giftsChannel = ably.channels.get('splat-gifts');
 
-// Dedicated always-on toggle channels for overlays that fully detach from the shared
-// channel when off (New Here, Crowd Glass) — see connectAbly()/attachMain() in
+// Dedicated always-on toggle channel for overlays that fully detach from the shared
+// channel when off (New Here, Timeout Box) — see connectAbly()/attachMain() in
 // new-here-overlay.html for why: subscribing to specific event names on the shared
 // channel doesn't reduce Ably delivery cost, only detaching the whole channel does,
 // so those overlays need a separate tiny channel to hear "turn back on" while detached.
 const nhToggleChannel = ably.channels.get('new-here-toggle');
-const cgToggleChannel = ably.channels.get('crowd-glass-toggle');
 const tboxToggleChannel = ably.channels.get('timeout-box-toggle');
-const tsToggleChannel = ably.channels.get('top-splatty-toggle');
-// Dog House overlay — dedicated low-volume channel. The dock classifies + dedupes
-// here so the overlay never attaches to the shared firehose: it relays each unique
-// chatter ONCE per session, plus Heart Mes and gifts (~1 msg per unique viewer +
-// 1 per gift). The overlay decides first-vs-repeat gift from its own state.
-const dhChannel = ably.channels.get('dog-house');
-const _dhSeenChatters = new Set();
-function dhRelay(t, u, extra) {
-  if (!u) return;
-  dhChannel.publish('dh', Object.assign({ t, u: String(u) }, extra || {})).catch(() => {});
-}
 nhToggleChannel.subscribe('request', () => {
   nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {});
 });
-cgToggleChannel.subscribe('request', () => {
-  cgToggleChannel.publish('set', { enabled: _dockCrowdGlassVisible }).catch(() => {});
-});
 tboxToggleChannel.subscribe('request', () => {
   tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {});
-});
-tsToggleChannel.subscribe('request', () => {
-  tsToggleChannel.publish('set', { enabled: _dockTopSplattyVisible }).catch(() => {});
 });
 
 // NEW HERE overlay connection — ping on load, show LIVE/offline status
@@ -4862,77 +4767,9 @@ ably.connection.once('connected', () => {
   setTimeout(() => {
     publishMissionStrip?.();
     ablyChannel.publish('new-here-config', { enabled:_dockNewHereVisible, visible:_dockNewHereVisible }).catch(() => {});
-    cgAnnounceState?.();
-    // Push Top Splatty's real on/off state over its always-attached toggle channel,
-    // covering the case where the overlay loaded before the dock (its own 'request'
-    // covers the reverse). Overlay defaults ON, so this only matters when set off.
-    tsToggleChannel.publish('set', { enabled: _dockTopSplattyVisible }).catch(() => {});
     publishOverlayToggles?.();
   }, 500);
 });
-
-/* ── Crowd Glass overlay — status ping, auto/manual mode, manual actions, layout ── */
-let _cgAliveTimer = null;
-function _cgMarkLive() {
-  const el = document.getElementById('cg-overlay-status');
-  if (el) el.innerHTML = '<span style="color:#34D399">● LIVE</span>';
-  clearTimeout(_cgAliveTimer);
-  _cgAliveTimer = setTimeout(() => {
-    const el = document.getElementById('cg-overlay-status');
-    if (el) el.innerHTML = '<span style="color:#6b7280">● offline</span>';
-  }, 35000);
-}
-let _cgLayout = { 'cg-cta':{x:0,y:0}, 'cg-integrity':{x:0,y:0}, 'cg-viewerbadge':{x:0,y:0}, 'cg-livebadge':{x:0,y:0} };
-try { Object.assign(_cgLayout, JSON.parse(localStorage.getItem('cgLayout') || '{}')); } catch(e) {}
-let _cgCrackScale = parseInt(localStorage.getItem('cgCrackScale'), 10) || 100;
-let _cgShatterThreshold = parseInt(localStorage.getItem('cgShatterThreshold'), 10) || 30;
-let _cgAuto = localStorage.getItem('cgAuto') !== '0';
-(function() {
-  const slider = document.getElementById('cg-shatter-slider');
-  const lbl = document.getElementById('cg-shatter-val');
-  if (slider) slider.value = _cgShatterThreshold;
-  if (lbl) lbl.textContent = _cgShatterThreshold + ' cracks';
-})();
-function cgSetShatterThreshold(v) {
-  _cgShatterThreshold = parseInt(v, 10);
-  const lbl = document.getElementById('cg-shatter-val');
-  if (lbl) lbl.textContent = _cgShatterThreshold + ' cracks';
-  cgPublishLayout();
-}
-
-function cgPublishLayout() {
-  localStorage.setItem('cgLayout', JSON.stringify(_cgLayout));
-  localStorage.setItem('cgCrackScale', _cgCrackScale);
-  localStorage.setItem('cgStageScale', _cgStageScale);
-  localStorage.setItem('cgShatterThreshold', _cgShatterThreshold);
-  if (ablyChannel) ablyChannel.publish('crowd-glass-layout', {
-    positions: _cgLayout,
-    stageScale: _cgStageScale / 100,
-    crackScale: _cgCrackScale / 100,
-    shatterThreshold: _cgShatterThreshold
-  }).catch(() => {});
-  scheduleGistSave();
-}
-function cgAnnounceState() {
-  if (!ablyChannel) return;
-  ablyChannel.publish('crowd-glass-cmd', { command: _dockCrowdGlassVisible ? 'enable' : 'disable', visible: _dockCrowdGlassVisible }).catch(() => {});
-  ablyChannel.publish('crowd-glass-cmd', { command: 'set_auto', value: _cgAuto }).catch(() => {});
-  cgPublishLayout();
-}
-ablyChannel.subscribe('crowd-glass-alive', () => { _cgMarkLive(); cgAnnounceState(); });
-
-function cgSetAuto(v) {
-  _cgAuto = v;
-  localStorage.setItem('cgAuto', v ? '1' : '0');
-  const autoBtn = document.getElementById('cg-auto-btn'), manBtn = document.getElementById('cg-manual-btn');
-  if (autoBtn) autoBtn.classList.toggle('c-act', v);
-  if (manBtn) manBtn.classList.toggle('c-act', !v);
-  if (ablyChannel) ablyChannel.publish('crowd-glass-cmd', { command: 'set_auto', value: v }).catch(() => {});
-}
-function cgCmd(command) {
-  if (ablyChannel) ablyChannel.publish('crowd-glass-cmd', { command }).catch(() => {});
-  doFlash('purple');
-}
 
 /* ── Team Timing Bar — dock control panel ──
    Mirrors the overlay's TEAM_TIMING_CONFIG shape (see gift-bar.html). The
@@ -5227,8 +5064,6 @@ const DOCK_OVERLAY_ABLY = {
   'live-text':        { count:['live-text','announce'], gate:[] },
   'mission-strip':    { count:['mission-strip-config'], gate:[] },
   'geyser':           { count:['geyser-config'], gate:[] },
-  'crowd-glass':      { count:['crowd-glass-viewer-count','crowd-glass-cmd','crowd-glass-layout','crowd-glass-ping'], gate:['crowd-glass-viewer-count'] },
-  'top-splatty':      { count:[], gate:[] }, // own quiet channel; detaches itself when off
   'new-here':         { count:['new-here-config','new-here-ping'], gate:[] },
   'team-timing':      { count:['team-timing-config','team-timing-cmd','team-timing-yt-comment','team-timing-test'], gate:['team-timing-yt-comment','team-timing-test'] },
   'timeout-box':      { count:['timeout-box-cmd','timeout-box-config','timeout-box-request'], gate:['timeout-box-cmd','timeout-box-config'] },
@@ -5349,9 +5184,9 @@ function guardAblyPublish(ch, ratePerSec) {
 guardAblyPublish(ablyChannel, 40);   // config/cmd/heartbeat-tier — rarely bursts, guarded for safety
 guardAblyPublish(chatChannel, 35);   // per-comment/like/join firehose — the one that actually hit 429s
 guardAblyPublish(giftsChannel, 35);  // gift/money stream — lower natural volume, same protection
-// The dedicated New Here / Crowd Glass toggle channels are near-zero volume by
+// The dedicated New Here / Timeout Box toggle channels are near-zero volume by
 // design, but guard them too for complete coverage under the same daily budget.
-[nhToggleChannel, cgToggleChannel, dhChannel, tsToggleChannel].forEach(ch => {
+[nhToggleChannel, tboxToggleChannel].forEach(ch => {
   const orig = ch.publish.bind(ch);
   ch.publish = function(...args) {
     if (!_ablyCapAllow()) return Promise.resolve();
@@ -5451,7 +5286,6 @@ ably.connection.on(stateChange => {
     try { ablyChannel.publish('gift-animation-config', { enabled: _dockGiftAnimVisible }).catch(() => {}); } catch (e) {}
     try { gbPublishSlideWindow(false); } catch (e) {}
     try { nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {}); } catch (e) {}
-    try { cgToggleChannel.publish('set', { enabled: _dockCrowdGlassVisible }).catch(() => {}); } catch (e) {}
     try { tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {}); } catch (e) {}
     document.getElementById('gift-bar-y-val').textContent = _giftBarY;
     ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
@@ -5629,7 +5463,7 @@ document.addEventListener('keydown', e => {
    kegel-workout-overlay.html owns all frame timing
    and looping — the dock just says which segment to
    be in right now. Same alive/ping handshake pattern
-   as Crowd Glass above.
+   as New Here above.
 ═══════════════════════════════════════════ */
 let _kwAliveTimer = null;
 function _kwMarkLive(msg) {
@@ -6203,8 +6037,7 @@ function resetNotifPos() {
 const LAYOUT_SPLAT_POS_LEVELS = ['bottom','lower','center','upper','top'];
 let _splatPosLevel = Math.max(0, LAYOUT_SPLAT_POS_LEVELS.indexOf(localStorage.getItem('splatPos') || 'center'));
 let _layoutSelected = new Set();
-let _layoutOpenGroups = new Set(JSON.parse(localStorage.getItem('layoutOpenGroups') || '["Crowd Glass"]'));
-let _cgStageScale = parseInt(localStorage.getItem('cgStageScale') || '75', 10);
+let _layoutOpenGroups = new Set(JSON.parse(localStorage.getItem('layoutOpenGroups') || '["Splat"]'));
 
 const LAYOUT_ELEMENTS = [
   // New Here position/scale moved to new-here-control.html.
@@ -6224,18 +6057,6 @@ const LAYOUT_ELEMENTS = [
     y:{min:-200,max:600} },
   { id:'geyser', label:'Geyser (EQ wave)', group:'Geyser',
     y:{min:505,max:1720} },
-  { id:'cg-stage', label:'Whole overlay', group:'Crowd Glass',
-    scale:{min:35,max:130} },
-  { id:'cg-cta', label:'CTA text (NEXT VIEWER…)', group:'Crowd Glass',
-    x:{min:-400,max:400}, y:{min:-800,max:800} },
-  { id:'cg-integrity', label:'Integrity + hitters', group:'Crowd Glass',
-    x:{min:-400,max:400}, y:{min:-800,max:800} },
-  { id:'cg-viewerbadge', label:'Viewer count badge', group:'Crowd Glass',
-    x:{min:-300,max:300}, y:{min:-200,max:800} },
-  { id:'cg-livebadge', label:'LIVE badge', group:'Crowd Glass',
-    x:{min:-300,max:300}, y:{min:-200,max:800} },
-  { id:'cg-cracks', label:'Crack size', group:'Crowd Glass',
-    scale:{min:50,max:200} },
   { id:'ttb-root', label:'Whole timing bar', group:'Team Timing Bar',
     x:{min:-400,max:400}, y:{min:-600,max:600} },
   { id:'ttb-topline', label:'Round timer + leader', group:'Team Timing Bar',
@@ -6262,10 +6083,6 @@ function layoutGet(elDef, field) {
     case 'ls-side-panel': return field === 'x' ? _lsSidePanelX : (field === 'y' ? _lsSidePanelY : null);
     case 'mission-strip': return field === 'y' ? _missionStripY : null;
     case 'geyser': return field === 'y' ? _geyserY : null;
-    case 'cg-stage': return field === 'scale' ? _cgStageScale : null;
-    case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
-      return field === 'x' ? _cgLayout[elDef.id].x : field === 'y' ? _cgLayout[elDef.id].y : null;
-    case 'cg-cracks': return field === 'scale' ? _cgCrackScale : null;
     case 'ttb-root': case 'ttb-topline': case 'ttb-track': case 'ttb-cursor': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
       ttbEnsureLayout();
       return field === 'x' ? _ttbConfig.layout[elDef.id].x : field === 'y' ? _ttbConfig.layout[elDef.id].y : null;
@@ -6312,20 +6129,6 @@ function layoutSet(elDef, field, val) {
     case 'geyser':
       geyserMove(val - _geyserY);
       break;
-    case 'cg-stage':
-      if (field === 'scale') {
-        _cgStageScale = val;
-        cgPublishLayout();
-      }
-      return;
-    case 'cg-cta': case 'cg-integrity': case 'cg-viewerbadge': case 'cg-livebadge':
-      _cgLayout[elDef.id][field] = val;
-      cgPublishLayout();
-      return; // cgPublishLayout already calls scheduleGistSave()
-    case 'cg-cracks':
-      _cgCrackScale = val;
-      cgPublishLayout();
-      return;
     case 'ttb-root': case 'ttb-topline': case 'ttb-track': case 'ttb-cursor': case 'ttb-jointext': case 'ttb-instructions': case 'ttb-eventline':
       ttbEnsureLayout();
       _ttbConfig.layout[elDef.id][field] = val;
@@ -6351,8 +6154,6 @@ const DOCK_OVERLAYS = [
   { key:'live-text',        name:'Live Text',                                              on:() => !!announceVisible },
   { key:'mission-strip',    name:'Mission Strip',           layoutGroup:'Mission Strip',   on:() => !!_missionStripVisible },
   { key:'geyser',           name:'Geyser',                  layoutGroup:'Geyser',          on:() => !!_geyserEnabled },
-  { key:'crowd-glass',      name:'Crowd Glass',             layoutGroup:'Crowd Glass',     on:() => !!_dockCrowdGlassVisible },
-  { key:'top-splatty',      name:'Top Splatty',                                            on:() => !!_dockTopSplattyVisible },
   { key:'new-here',         name:'New Here Pile',                                          on:() => !!_dockNewHereVisible },
   { key:'team-timing',      name:'Team Timing',             layoutGroup:'Team Timing Bar', on:() => !!_ttbConfig?.enabled },
   { key:'timeout-box',      name:'Timeout Box',                                            on:() => !!_dockTimeoutBoxVisible },
@@ -6420,7 +6221,6 @@ function layoutSendToOverlay() {
     publishSplatCardLayout();
     publishMissionStrip();
     publishOverlayToggles();
-    if (typeof cgAnnounceState === 'function') cgAnnounceState();
     if (typeof ttbPublishConfig === 'function') ttbPublishConfig();
     if (typeof layoutRenderTable === 'function') layoutRenderTable();
     const st = document.getElementById('layout-send-status');
@@ -7876,8 +7676,8 @@ function dockMakeCard(id, title, html) {
 
 /* ── TEST CONSOLE (design ⑥) — the ONE place gift test-firing lives.
    FIRE pushes through the REAL pipeline: handleMsg() with an SSN-shaped payload,
-   exactly like a live gift — so Money In, gift-alert, milk, Dog House, and every
-   enabled overlay react at once. The REACTED strip is honest proof: it lists the
+   exactly like a live gift — so Money In, gift-alert, milk, and every enabled
+   overlay react at once. The REACTED strip is honest proof: it lists the
    Ably events actually published (captured at the publish wrapper) + the Money In
    row that actually appeared, and reports OFF overlays as MUTED. */
 const TC_PRESETS = [
@@ -7955,7 +7755,7 @@ function tcRenderReacted() {
   const strip = document.getElementById('tc-reacted');
   if (!strip || !_tcCapture) return;
   const cap = _tcCapture; _tcCapture = null;
-  const friendly = { 'gift-alert':'Gift Alert', 'milk-event':'Milk', 'team-timing-yt-comment':'Team Timing', 'crowd-glass-viewer-count':'Crowd Glass' };
+  const friendly = { 'gift-alert':'Gift Alert', 'milk-event':'Milk', 'team-timing-yt-comment':'Team Timing' };
   const chips = [];
   const railNow = document.getElementById('money-rail-list')?.children.length || 0;
   if (railNow > cap.railBefore) chips.push('<span class="tc-chip">Money In ✓</span>');
@@ -7963,7 +7763,7 @@ function tcRenderReacted() {
     chips.push(`<span class="tc-chip">${friendly[name] || name} ✓</span>`);
   });
   // OFF gift-consumers report MUTED — consistent with the ABLY chips on the group rows.
-  const giftConsumers = ['gift-anim','gifter-highlight','top-gifters','milk','top-splatty','splat'];
+  const giftConsumers = ['gift-anim','gifter-highlight','top-gifters','milk','splat'];
   DOCK_OVERLAYS.filter(o => giftConsumers.includes(o.key) && !o.on())
     .forEach(o => chips.push(`<span class="tc-chip muted">${o.name} MUTED</span>`));
   strip.innerHTML = '<span class="tc-reacted-lbl">REACTED</span>' +
@@ -8206,8 +8006,6 @@ function dockBuildQuickToggles() {
       ${dockToggleHtml('Splat Cards', "dockQuickToggle('splat')", 'splat')}
       ${dockToggleHtml('Splat Explainers', "dockQuickToggle('splat-explainer')", 'splat-explainer')}
       ${dockToggleHtml('Gift Animations', "dockQuickToggle('gift-anim')", 'gift-anim')}
-      ${dockToggleHtml('Crowd Glass', "dockQuickToggle('crowd-glass')", 'crowd-glass')}
-      ${dockToggleHtml('Top Splatty', "dockQuickToggle('top-splatty')", 'top-splatty')}
       ${dockToggleHtml('New Here Pile', "dockQuickToggle('new-here')", 'new-here')}
       ${dockToggleHtml('Gifter Highlight', "dockQuickToggle('gifter-highlight')", 'gifter-highlight')}
       ${dockToggleHtml('Top Camera Gifter Panel', "dockQuickToggle('gift-bar')", 'gift-bar')}
@@ -8232,8 +8030,6 @@ function dockQuickToggle(name) {
     case 'splat': dockToggleSplatCards(); break;
     case 'splat-explainer': lsToggleExplainerSlides(); break;
     case 'gift-anim': dockToggleGiftAnimations(); break;
-    case 'crowd-glass': dockToggleCrowdGlass(); break;
-    case 'top-splatty': dockToggleTopSplatty(); break;
     case 'new-here': dockToggleNewHere(); break;
     case 'gifter-highlight': dockToggleGifterHighlight(); break;
     case 'gift-bar': dockToggleGiftBar(); break;
@@ -8268,20 +8064,11 @@ function dockSyncQuickToggles() {
 let _streamBarEnabled = localStorage.getItem('streamBarEnabled') !== 'false';
 let _dockSplatVisible = localStorage.getItem('dockSplatVisible') !== '0';
 let _dockGiftAnimVisible = localStorage.getItem('dockGiftAnimVisible') !== '0';
-let _dockCrowdGlassVisible = localStorage.getItem('dockCrowdGlassVisible') === '1';
 let _dockNewHereVisible = localStorage.getItem('dockNewHereVisible') === '1';
 let _dockTopGiftersVisible = localStorage.getItem('dockTopGiftersVisible') === '1';
-// Defaults ON (unlike New Here/Crowd Glass, which default off) — this preserves
-// timeout-box.html's original always-on behavior for anyone who hasn't touched
-// this new toggle yet. Detaches from the shared channel when off (see
-// timeout-box.html's attachMain/detachMain) — real zero Ably cost while hidden,
-// same as New Here/Crowd Glass.
-let _dockTimeoutBoxVisible = localStorage.getItem('dockTimeoutBoxVisible') !== '0';
-// Defaults ON — preserves Top Splatty's original always-on behavior for anyone who
-// hasn't touched this new toggle. Off fully DETACHES the overlay from the shared
-// 'splat-overlay' channel (see top-splatty-overlay.html's attachMain/detachMain) —
-// real zero Ably delivery cost while hidden, same as New Here/Crowd Glass/Timeout Box.
-let _dockTopSplattyVisible = localStorage.getItem('dockTopSplattyVisible') !== '0';
+// Defaults OFF, same as New Here — zero Ably connection until
+// explicitly toggled on here (see timeout-box.html's attachMain/detachMain).
+let _dockTimeoutBoxVisible = localStorage.getItem('dockTimeoutBoxVisible') === '1';
 // "Gifter Highlight" and "Top Camera Gifter Panel" are two dock buttons that both
 // show/hide the SAME overlay panel (#bar-info in gift-bar.html, gated by the single
 // `gifter-slides-config.enabled` flag). They used to track separate booleans, so
@@ -8357,32 +8144,6 @@ function dockToggleNewHere() {
     ablyChannel.publish('new-here-ping', {}).catch(() => {});
   }
   doFlash(_dockNewHereVisible ? 'green' : 'red');
-}
-
-function dockToggleTopSplatty() {
-  _dockTopSplattyVisible = !_dockTopSplattyVisible;
-  localStorage.setItem('dockTopSplattyVisible', _dockTopSplattyVisible ? '1' : '0');
-  // On/off goes over the always-attached toggle channel — the overlay fully detaches
-  // from the shared 'splat-overlay' channel while off, so it would never see this on
-  // the shared channel (see top-splatty-overlay.html's attachMain/detachMain).
-  tsToggleChannel.publish('set', { enabled: _dockTopSplattyVisible }).catch(() => {});
-  doFlash(_dockTopSplattyVisible ? 'green' : 'red');
-}
-
-function dockToggleCrowdGlass() {
-  _dockCrowdGlassVisible = !_dockCrowdGlassVisible;
-  localStorage.setItem('dockCrowdGlassVisible', _dockCrowdGlassVisible ? '1' : '0');
-  // The on/off command itself must go over the always-attached toggle channel — the
-  // overlay fully detaches from ablyChannel while off, so it would never see this on
-  // the shared channel otherwise (see crowd-glass/app.js's attachMain/detachMain).
-  cgToggleChannel.publish('set', { enabled: _dockCrowdGlassVisible }).catch(() => {});
-  if (ablyChannel) {
-    ablyChannel.publish('crowd-glass-cmd', { command:_dockCrowdGlassVisible ? 'enable' : 'disable', visible:_dockCrowdGlassVisible }).catch(() => {});
-    ablyChannel.publish('crowd-glass-cmd', { command:'set_auto', value:_cgAuto }).catch(() => {});
-    if (_dockCrowdGlassVisible) ablyChannel.publish('crowd-glass-ping', {}).catch(() => {});
-  }
-  dockSyncQuickToggles?.();
-  doFlash(_dockCrowdGlassVisible ? 'green' : 'red');
 }
 
 // "Gifter Highlight" and "Top Camera Gifter Panel" both drive the same overlay panel
@@ -8902,10 +8663,6 @@ function gistGetConfig() {
     nh_cmd:               localStorage.getItem('nh_cmd'),
     nh_match:             localStorage.getItem('nh_match'),
     nh_display_cfg:       localStorage.getItem('nh_display_cfg'),
-    cgLayout:             localStorage.getItem('cgLayout'),
-    cgCrackScale:         localStorage.getItem('cgCrackScale'),
-    cgShatterThreshold:   localStorage.getItem('cgShatterThreshold'),
-    cgAuto:               localStorage.getItem('cgAuto'),
     ttbConfig:            localStorage.getItem('ttbConfig'),
     ttbCmd:               localStorage.getItem('ttbCmd'),
     ttbMatch:             localStorage.getItem('ttbMatch'),
@@ -9158,29 +8915,6 @@ function applyGistConfig(cfg) {
   if (cfg.nh_cmd != null)   localStorage.setItem('nh_cmd', cfg.nh_cmd);
   if (cfg.nh_match != null) localStorage.setItem('nh_match', cfg.nh_match);
 
-  // --- Crowd Glass layout / crack scale / auto mode ---
-  if (cfg.cgLayout != null) {
-    localStorage.setItem('cgLayout', cfg.cgLayout);
-    try { Object.assign(_cgLayout, JSON.parse(cfg.cgLayout)); } catch(e) {}
-  }
-  if (cfg.cgCrackScale != null) {
-    localStorage.setItem('cgCrackScale', cfg.cgCrackScale);
-    _cgCrackScale = parseInt(cfg.cgCrackScale, 10) || 100;
-  }
-  if (cfg.cgShatterThreshold != null) {
-    localStorage.setItem('cgShatterThreshold', cfg.cgShatterThreshold);
-    _cgShatterThreshold = parseInt(cfg.cgShatterThreshold, 10) || 30;
-    const slider = document.getElementById('cg-shatter-slider');
-    const lbl = document.getElementById('cg-shatter-val');
-    if (slider) slider.value = _cgShatterThreshold;
-    if (lbl) lbl.textContent = _cgShatterThreshold + ' cracks';
-  }
-  if (cfg.cgAuto != null) {
-    localStorage.setItem('cgAuto', cfg.cgAuto);
-    cgSetAuto(cfg.cgAuto !== '0');
-  }
-  if (cfg.cgLayout != null || cfg.cgCrackScale != null || cfg.cgShatterThreshold != null) cgPublishLayout();
-
   // --- Team Timing Bar ---
   if (cfg.ttbConfig != null) {
     localStorage.setItem('ttbConfig', cfg.ttbConfig);
@@ -9201,8 +8935,8 @@ function applyGistConfig(cfg) {
     const roundLbl = document.getElementById('ttb-round-val');
     if (roundLbl) roundLbl.textContent = (_ttbConfig.roundDurationMs / 1000) + 's';
     ttbRenderSegEditor();
-    // No alive-ping handshake for the gift bar (unlike Crowd Glass), so push
-    // straight away rather than waiting for the overlay to ask for it.
+    // No alive-ping handshake for the gift bar, so push straight away rather
+    // than waiting for the overlay to ask for it.
     ttbPublishConfig();
   }
   if (cfg.ttbCmd != null)   localStorage.setItem('ttbCmd', cfg.ttbCmd);
@@ -11809,7 +11543,7 @@ function _tfConnect() {
         if (data.repeatEnd === true || data.giftType !== 1) {
           const coins = (data.diamondCount || 0) * (data.repeatCount || 1);
           if (coins > 0) {
-            if (ablyChannel) chatChannel.publish('milk-event', {
+            if (chatChannel) chatChannel.publish('milk-event', {
               type: 'tiktok_gift',
               platform: 'tt',
               username: data.uniqueId || null,
@@ -11817,10 +11551,6 @@ function _tfConnect() {
               giftName: data.giftName || 'Gift',
               coins,
             }).catch(() => {});
-            // Dog House: Tikfinity is the authoritative TikTok gift source when
-            // connected (exact diamond counts) — relay from HERE, not handleMsg
-            dhRelay('gift', data.uniqueId || data.nickname || 'Anonymous',
-                    { amount: coins, kind: 'tiktok_coins', gift: data.giftName || null });
           }
         }
         break;
