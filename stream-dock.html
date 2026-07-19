@@ -3843,7 +3843,8 @@ function parseDockAmount(hasDonation, donoValue, alertType, rawCoins) {
     return 0;
   }
   if (alertType === 'youtube_jewels') {
-    const jewels = s.match(/^([\d,]+)\s*jewels?$/i);
+    /* unanchored: hasDonation may be just "10 Jewels" or carry the gift name */
+    const jewels = s.match(/([\d,]+)\s*jewels?\b/i);
     if (jewels) return parseFloat(jewels[1].replace(/,/g, ''));
     if (donoValue != null && donoValue !== '') {
       const dv = parseFloat(String(donoValue).replace(/[^0-9.]/g, ''));
@@ -4020,8 +4021,14 @@ function handleMsg(data) {
   // YouTube: hasDonation alone is NOT reliable — members have it set to their subscription cost.
   // Only treat YouTube messages as gifts when there is a named gift event.
   // TikTok + webhooks: hasDonation and gifttitle are reliable signals.
-  const ytGiftEvt = isYT && ['superchat','supersticker','superchatevent','superchatwithtext',
-                               'donation','jeweldonation','giftpurchase'].includes(evt);
+  // EXCEPTION — jewel gifts: SSN delivers them as a plain chat message ("sent
+  // Gold coin for 10 Jewels") with hasDonation "10 Jewels" and NO named event,
+  // so the named-event gate silently dropped every one (no gift-alert → Feed
+  // Jamie's wheel never fired for jewels). The jewel unit string is safe to
+  // gate on: a member's subscription-cost hasDonation can never say "Jewels".
+  const ytJewelGift = isYT && /[\d,]+\s*jewels?\b/i.test(String(data.hasDonation || ''));
+  const ytGiftEvt = isYT && (['superchat','supersticker','superchatevent','superchatwithtext',
+                               'donation','jeweldonation','giftpurchase'].includes(evt) || ytJewelGift);
   const isGift = !!(
     ytGiftEvt ||
     (!isYT && (data.hasDonation || data.gifttitle)) ||
@@ -4048,7 +4055,7 @@ function handleMsg(data) {
   else if ((evt === 'member' || evt === 'membermilestone') && isYT)    { publishMilk('yt_sub',        'yt',   data.chatname); _hypeSent=true; }
   // YouTube superchats, stickers, jewels, gift purchases → milk event with correct value
   else if (isYT && ytGiftEvt) {
-    const _isJewels = evt === 'jeweldonation';
+    const _isJewels = evt === 'jeweldonation' || ytJewelGift;
     const _gifterKey = (data.chatname || data.name || 'unknown').toLowerCase();
 
     let _milkDollars = 0;
@@ -4062,7 +4069,7 @@ function handleMsg(data) {
       }
       if (_milkDollars === 0) {
         const jStr  = String(data.hasDonation || '');
-        const jMatch = jStr.match(/^([\d,]+)\s*jewels?$/i);
+        const jMatch = jStr.match(/([\d,]+)\s*jewels?\b/i);
         if (jMatch) {
           _milkJewels  = parseFloat(jMatch[1].replace(/,/g, ''));
           _milkDollars = _milkJewels * 0.005; // 1 jewel = $0.005 viewer spend
@@ -4141,7 +4148,9 @@ function handleMsg(data) {
     const giftIsTT = isTT || ttEmbedCoins > 0;
 
     // Publish gift-alert → gift-bar explosion animation
-    const alertType   = ttEmbedCoins > 0 ? 'tiktok_coins' : mapAlertType(evt, isTT, isYT);
+    const alertType   = ttEmbedCoins > 0 ? 'tiktok_coins'
+                      : ytJewelGift ? 'youtube_jewels'
+                      : mapAlertType(evt, isTT, isYT);
     const alertAmount = ttEmbedCoins > 0
       ? ttEmbedCoins
       : parseDockAmount(data.hasDonation, data.donoValue, alertType, data.coins);
