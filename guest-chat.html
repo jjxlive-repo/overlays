@@ -430,7 +430,9 @@
         try { d = JSON.parse(d.value); } catch (err) { return; }
       }
       if (d && d.chatname && d.chatmessage) {
-        appendChatLine(stripHtml(d.chatname), stripHtml(d.chatmessage), false);
+        var incomingName = stripHtml(d.chatname);
+        var isOwnMessage = incomingName === "🎤 " + currentGuestName();
+        appendChatLine(incomingName, stripHtml(d.chatmessage), isOwnMessage);
       }
     };
     readSocket.onclose = function () {
@@ -609,8 +611,9 @@
     sendBtn.disabled = true;
     setStatus("Sending...", "");
     sendGuestMessage(SESSION, payload).then(function () {
+      // No local echo here on purpose — sent messages loop back through the same
+      // channel-4 relay this page listens on, so appending locally would double it up.
       setStatus("Sent!", "ok");
-      appendChatLine("🎤 " + name, message, true);
       messageInput.value = "";
       updatePreview();
       sendBtn.disabled = false;
