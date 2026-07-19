@@ -545,6 +545,40 @@ hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════ YOUTUBE VIEWER POLL ══ -->
+<section>
+  <div class="panel">
+    <div class="panel-header" id="ytpoll-panel-hdr">
+      <h2>▶️ YouTube Live Viewer Poll</h2>
+      <span id="ytpoll-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;flex-shrink:0"></span>
+      <span class="panel-toggle" id="ytpoll-panel-toggle">▼</span>
+    </div>
+    <div class="panel-body hidden" id="ytpoll-panel-body">
+      <p style="color:var(--muted);font-size:12px;margin-bottom:8px">
+        YouTube's chat relay has no native "join" event, so this polls the real concurrent-viewer
+        count every 30s and fires a synthetic join for each new viewer — catches silent lurkers the
+        chat-command workaround misses. Costs 1 quota unit/poll (~120/hr), far under the default
+        10,000/day limit. The video ID changes every stream, so start this fresh each time you go live.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label>YouTube Data API Key <span class="dim">(Google Cloud Console → APIs &amp; Services → Credentials)</span></label>
+          <input type="password" id="ytpoll-key-input" placeholder="AIza…" style="width:100%;box-sizing:border-box">
+        </div>
+        <div>
+          <label>Live Video ID <span class="dim">(from the stream's watch URL — changes every stream)</span></label>
+          <input type="text" id="ytpoll-video-input" placeholder="e.g. dQw4w9WgXcQ" style="width:100%;box-sizing:border-box">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn-primary btn-sm" id="ytpoll-btn-start">▶ Start Polling</button>
+          <button class="btn-secondary btn-sm hidden" id="ytpoll-btn-stop" style="color:var(--red)">■ Stop</button>
+        </div>
+        <div id="ytpoll-status" class="dim" style="font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════ TIKTOK CHAT ══ -->
 <section>
   <div class="panel">
@@ -1615,12 +1649,12 @@ function handleTikfinityGift(data) {
       const gk = (userId || name).toLowerCase();
       if (!heartMeFirstTimers.has(gk)) {
         heartMeFirstTimers.add(gk);
-        ablyChannel?.publish('milk-event', { type: 'heart_me_first', gifterKey: gk }).catch(() => {});
+        chatChannel?.publish('milk-event', { type: 'heart_me_first', gifterKey: gk }).catch(() => {});
       } else {
-        ablyChannel?.publish('milk-event', { type: 'heart_me', gifterKey: gk }).catch(() => {});
+        chatChannel?.publish('milk-event', { type: 'heart_me', gifterKey: gk }).catch(() => {});
       }
     } else {
-      ablyChannel?.publish('milk-event', { type: 'tiktok_gift', coins, gifterKey: (userId || name).toLowerCase() }).catch(() => {});
+      chatChannel?.publish('milk-event', { type: 'tiktok_gift', coins, gifterKey: (userId || name).toLowerCase() }).catch(() => {});
     }
   }
 }
@@ -2569,8 +2603,10 @@ const heartMeFirstTimers = new Set();  // tracks userids who've sent Heart Me th
 let   likeAccumulator    = 0;          // batches TT likes; fires every 150
 let   currentPromptPatterns = [];      // strings to match in TT chat comments
 
-let ablyClient  = null;
-let ablyChannel = null;
+let ablyClient   = null;
+let ablyChannel  = null;
+let chatChannel  = null;
+let giftsChannel = null;
 
 /* ── CST time helpers ── */
 function todayStartCST() {
@@ -2654,8 +2690,8 @@ function formatRawAmount(rawAmount, type) {
     // dedicated channels now, split off the shared 'splat-overlay' firehose —
     // see stream-dock.html for why (11 pages were being billed for 100% of
     // every chat comment regardless of which event names they actually read).
-    const chatChannel  = ablyClient.channels.get('splat-chat');
-    const giftsChannel = ablyClient.channels.get('splat-gifts');
+    chatChannel  = ablyClient.channels.get('splat-chat');
+    giftsChannel = ablyClient.channels.get('splat-gifts');
 
     // ── Hard daily publish cap — shared safety net with stream-dock.html ──
     // Ably has no spend cap on paid plans (overage is just billed, with an email
@@ -2869,27 +2905,122 @@ function publishHypeEvent(type) {
   chatChannel.publish('milk-event', { type }).catch(() => {});
 }
 
-/* ── YouTube Live concurrentViewers polling ──
-   Call startYTViewerPoll(videoId, apiKey) to enable.
-   Positive delta in viewer count → join events. */
-let _ytLastViewers = 0, _ytPollTimer = null;
+/* ── YouTube Live concurrentViewers polling ──────────────────────────────
+   YouTube's chat relay (SSN) has no native "join" event — this is the more
+   accurate alternative to the chat-command workaround (ttbMatches() in
+   stream-dock.html): poll the real concurrent-viewer count and fire a
+   synthetic join for each new viewer, catching lurkers who never comment.
+   1 quota unit per poll (videos.list is the cheapest call in the API) —
+   at the 30s interval below that's ~120 units/hr, far under the default
+   10,000/day project quota even for a long stream.
+   Video IDs are per-broadcast (a new one every stream), so this requires
+   an explicit Start each time rather than auto-starting on page load —
+   that also means a forgotten-open tab doesn't quietly poll a dead video
+   forever. As a second safety net, missing liveStreamingDetails for 3
+   consecutive polls (stream ended, or the ID was never live) auto-stops it. */
+const YT_POLL_KEY_STORAGE   = 'yt-poll-api-key';
+const YT_POLL_VIDEO_STORAGE = 'yt-poll-video-id';
+let _ytLastViewers = 0, _ytPollTimer = null, _ytMissingStreak = 0;
+
+function setYtPollDot(state) {
+  const dot = document.getElementById('ytpoll-dot');
+  if (dot) dot.style.background = state === 'ok' ? 'var(--green)' : state === 'err' ? 'var(--red)' : state === 'busy' ? 'var(--yellow)' : 'var(--muted)';
+}
+function setYtPollStatus(msg, state) {
+  const el = document.getElementById('ytpoll-status');
+  if (el) el.textContent = msg;
+  if (state) setYtPollDot(state);
+}
+
+async function ytPollTick(videoId, apiKey) {
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`
+    );
+    const d = await r.json();
+    if (d.error) {
+      // keyInvalid / quotaExceeded / etc. — retrying won't help until the
+      // underlying problem is fixed, so stop rather than burn quota forever.
+      setYtPollStatus(`❌ ${d.error.message || d.error.status || 'API error'}`, 'err');
+      stopYTViewerPoll();
+      return;
+    }
+    const details = d?.items?.[0]?.liveStreamingDetails;
+    const count = parseInt(details?.concurrentViewers, 10);
+    if (!details || isNaN(count)) {
+      // Video exists but isn't currently live (ended, or never was) —
+      // a few polls in a row means this ID is stale, not a network blip.
+      _ytMissingStreak++;
+      if (_ytMissingStreak >= 3) {
+        setYtPollStatus('⏹ Stream appears to have ended (no live viewer data) — stopped.', 'err');
+        stopYTViewerPoll();
+      } else {
+        setYtPollStatus(`⚠ No live viewer data (attempt ${_ytMissingStreak}/3)…`, 'busy');
+      }
+      return;
+    }
+    _ytMissingStreak = 0;
+    if (count > _ytLastViewers) {
+      const delta = Math.min(count - _ytLastViewers, 5);
+      for (let i = 0; i < delta; i++) publishHypeEvent('join');
+    }
+    _ytLastViewers = count;
+    setYtPollStatus(`● Live — ${count.toLocaleString()} concurrent viewers · last poll ${new Date().toLocaleTimeString()}`, 'ok');
+  } catch (e) {
+    // Network hiccup — transient, keep polling rather than stopping.
+    console.warn('[YT poll]', e);
+    setYtPollStatus('⚠ Network error on last poll, retrying…', 'busy');
+  }
+}
+
 function startYTViewerPoll(videoId, apiKey) {
   if (_ytPollTimer) clearInterval(_ytPollTimer);
-  _ytPollTimer = setInterval(async () => {
-    try {
-      const r = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`
-      );
-      const d = await r.json();
-      const count = parseInt(d?.items?.[0]?.liveStreamingDetails?.concurrentViewers || '0', 10);
-      if (!isNaN(count) && count > _ytLastViewers) {
-        const delta = Math.min(count - _ytLastViewers, 5);
-        for (let i = 0; i < delta; i++) publishHypeEvent('join');
-      }
-      if (!isNaN(count)) _ytLastViewers = count;
-    } catch(e) { console.warn('[YT poll]', e); }
-  }, 30000);
+  _ytLastViewers = 0;
+  _ytMissingStreak = 0;
+  setYtPollStatus('Connecting…', 'busy');
+  ytPollTick(videoId, apiKey); // fire immediately so Start gives instant feedback, not a 30s wait
+  _ytPollTimer = setInterval(() => ytPollTick(videoId, apiKey), 30000);
+  const btnS = document.getElementById('ytpoll-btn-start');
+  const btnE = document.getElementById('ytpoll-btn-stop');
+  if (btnS) btnS.classList.add('hidden');
+  if (btnE) btnE.classList.remove('hidden');
 }
+
+function stopYTViewerPoll() {
+  if (_ytPollTimer) { clearInterval(_ytPollTimer); _ytPollTimer = null; }
+  const btnS = document.getElementById('ytpoll-btn-start');
+  const btnE = document.getElementById('ytpoll-btn-stop');
+  if (btnS) btnS.classList.remove('hidden');
+  if (btnE) btnE.classList.add('hidden');
+  if (!document.getElementById('ytpoll-status')?.textContent.startsWith('❌') &&
+      !document.getElementById('ytpoll-status')?.textContent.startsWith('⏹')) {
+    setYtPollStatus('Stopped.', 'idle');
+  }
+}
+
+// Populate inputs from saved values (video ID persisted for convenience —
+// still per-stream, so always double-check it before hitting Start)
+(function initYtPoll() {
+  const keyInput = document.getElementById('ytpoll-key-input');
+  const vidInput = document.getElementById('ytpoll-video-input');
+  const btnStart = document.getElementById('ytpoll-btn-start');
+  const btnStop  = document.getElementById('ytpoll-btn-stop');
+  if (!keyInput) return;
+  keyInput.value = localStorage.getItem(YT_POLL_KEY_STORAGE) || '';
+  vidInput.value = localStorage.getItem(YT_POLL_VIDEO_STORAGE) || '';
+  btnStart.addEventListener('click', () => {
+    const apiKey  = keyInput.value.trim();
+    const videoId = vidInput.value.trim();
+    if (!apiKey || !videoId) { setYtPollStatus('❌ Enter both an API key and a video ID first', 'err'); return; }
+    try {
+      localStorage.setItem(YT_POLL_KEY_STORAGE, apiKey);
+      localStorage.setItem(YT_POLL_VIDEO_STORAGE, videoId);
+    } catch (e) {}
+    startYTViewerPoll(videoId, apiKey);
+  });
+  btnStop.addEventListener('click', stopYTViewerPoll);
+})();
+makeCollapsible('ytpoll-panel-hdr', 'ytpoll-panel-body', 'ytpoll-panel-toggle', false);
 
 // Ensure giftrEnabledSlots is initialised even without the old UI
 if (!Array.isArray(DB.settings.giftrEnabledSlots))
