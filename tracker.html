@@ -973,7 +973,7 @@ function computeValue(amount, type, mode, iosPercent) {
   if (mode === 'viewer_spend') {
     switch(type) {
       case 'tiktok_coins':      return amount * 0.01;        // 1 coin = $0.01 viewer spend
-      case 'youtube_jewels':    return amount * 0.005;       // 1 jewel = $0.005 viewer spend
+      case 'youtube_jewels':    return amount * 0.01;        // 1 jewel = $0.01 viewer spend — YouTube converts jewels to Rubies at $0.01 and the creator keeps half, so $0.01 is the VIEWER side and $0.005 is the payout. This was $0.005, i.e. the payout figure sitting in the viewer_spend branch, which halved every jewel gift.
       case 'youtube_superchat': return amount;              // already in USD
       case 'direct_donation':   return amount;              // already in USD
       default:                  return amount;
@@ -982,7 +982,7 @@ function computeValue(amount, type, mode, iosPercent) {
   if (mode === 'creator_earnings') {
     switch(type) {
       case 'tiktok_coins':      return amount * 0.0048;      // 1 coin = 1 diamond @ $0.0048 creator earnings
-      case 'youtube_jewels':    return (amount / 2) * 0.01 * blend; // 2 jewels = 1 ruby @ $0.01, same YouTube/iOS revenue split as Super Chat — was previously 100% pass-through with no platform cut at all
+      case 'youtube_jewels':    return amount * 0.005;      // the creator keeps half of the $0.01 a jewel costs the viewer. The old (amount/2)*0.01*blend applied the YouTube/iOS split on top of a figure that was ALREADY the post-split half, netting ~$0.003 instead of $0.005.
       case 'youtube_superchat': return amount * blend;      // YouTube keeps 30%, blended for iOS split
       case 'direct_donation':   return amount;
       default:                  return amount;
@@ -2751,16 +2751,6 @@ function formatRawAmount(rawAmount, type) {
         publishGiftrLeaderboard();
         return;
       }
-      // Handle showTopGifters / hideTopGifters from stream-dock quick controls
-      try {
-        const cmd = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
-        if (cmd?.action === 'showTopGifters') {
-          if (cmd.timeFrame) DB.settings.tgoTimeFrame = cmd.timeFrame;
-          publishTopGifters(true);
-        } else if (cmd?.action === 'hideTopGifters') {
-          publishTopGifters(false);
-        }
-      } catch(e) {}
     });
 
     // Keep comment-prompt patterns in sync so chat matching works
@@ -2778,58 +2768,6 @@ function formatRawAmount(rawAmount, type) {
     console.warn('[Ably] init failed:', e);
   }
 })();
-
-/* ── Top Gifters Overlay — publish top-5 for selected time frame ── */
-function publishTopGifters(visible) {
-  if (!ablyChannel) return;
-  const tf    = DB.settings.tgoTimeFrame || 'daily';
-  const iosPct = DB.settings.iosPercent ?? 50;
-
-  // Determine cutoff for time frame
-  let cutoff = 0;
-  if (tf === 'daily')   cutoff = todayStartCST();
-  else if (tf === 'weekly')  cutoff = weekStartCST();
-  else if (tf === 'monthly') cutoff = monthStartCST();
-  // allTime → cutoff stays 0
-
-  if (!visible) {
-    giftsChannel.publish('top-gifters', { visible: false, timeFrame: tf, gifters: [] })
-      .catch(e => console.warn('[Ably] top-gifters err:', e));
-    return;
-  }
-
-  // Build ranked list (viewer spend so all platforms compare fairly)
-  const ranked = Object.values(DB.gifters).map(g => {
-    let rawTotal = 0, spendTotal = 0;
-    for (const gift of g.gifts) {
-      if (gift.timestamp >= cutoff) {
-        rawTotal  += gift.amount;
-        spendTotal += computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
-      }
-    }
-    return {
-      name:        g.displayName,
-      rawTotal,
-      spendTotal,
-      rawDisplay:  formatRawAmount(rawTotal, gifterType(g)),
-      spendDisplay:'$' + spendTotal.toFixed(2),
-      type:        gifterType(g),
-      platform:    gifterPlatform(g),
-    };
-  }).filter(g => g.spendTotal > 0)
-    .sort((a, b) => b.spendTotal - a.spendTotal)
-    .slice(0, 5);
-
-  giftsChannel.publish('top-gifters', { visible: true, timeFrame: tf, gifters: ranked })
-    .catch(e => console.warn('[Ably] top-gifters err:', e));
-
-  const preview = document.getElementById('tgo-preview-text');
-  if (preview) {
-    preview.textContent = ranked.length
-      ? ranked.map((g, i) => `${i + 1}. ${g.name} ${g.spendDisplay}`).join('  |  ')
-      : 'No gifters for this period.';
-  }
-}
 
 /* ── Giftr 5-slot leaderboard (for gift-bar.html) ── */
 function publishGiftrLeaderboard() {
