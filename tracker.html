@@ -1599,6 +1599,51 @@ function disconnectTikfinity() {
   tikfSetStatus('disconnected', 'Disconnected');
 }
 
+/* ──────────────────────────────────────────────────────────────────────────────
+   COMBO SETTLING — bank a streak whose closing frame never arrives.
+
+   A streakable gift (Rose and friends) arrives as one frame per tap, each carrying the
+   running repeatCount, with the last one flagged repeatEnd:true. Coins are only counted on
+   that last frame, because counting the intermediate ones would multiply the gift. That is
+   right until the closing frame goes missing — and then the entire combo is discarded in
+   silence, which is what happened on 2026-07-20: four Roses vanished while four Rosas sent
+   seconds later were banked normally. Nothing could be recovered, because every consumer
+   (this tracker, the Producer Dock, even Social Stream Ninja's own "sent Rose × N" chat line)
+   waits on that same frame.
+
+   So if a combo goes quiet, settle it with the highest count actually seen. Double counting
+   would be the worse error, so a settled combo is remembered: a late closing frame banks only
+   the difference, and nothing at all if the count did not grow.
+   ────────────────────────────────────────────────────────────────────────────── */
+var COMBO_IDLE_MS   = 8000;
+var pendingCombos   = new Map();  // key -> { timer, count, data }
+var settledCombos   = new Map();  // key -> { count, at }
+var SETTLED_MEMORY_MS = 10 * 60 * 1000;
+
+function comboKeyFor(data, giftName) {
+  if (data.groupId) return 'g:' + data.groupId;
+  var who = data.userId || data.uniqueId || data.nickname || 'unknown';
+  return 'u:' + who + ':' + (giftName || '');
+}
+
+function forgetOldCombos() {
+  var now = Date.now();
+  settledCombos.forEach(function (v, k) {
+    if (now - v.at > SETTLED_MEMORY_MS) settledCombos.delete(k);
+  });
+}
+
+/** Re-enter the normal path with a synthesized closing frame. */
+function settleCombo(key, data, count) {
+  pendingCombos.delete(key);
+  var synthetic = Object.assign({}, data, { repeatCount: count, repeatEnd: true });
+  console.warn('[Tikfinity] combo never closed — banking', count, 'of', (data.giftName || ''), 'for', (data.nickname || data.uniqueId));
+  // Record the settlement only AFTER the frame is banked. Marking it first made the very
+  // frame we synthesize look like a duplicate of itself, so the combo was dropped twice over.
+  handleTikfinityGift(synthetic);
+  settledCombos.set(key, { count: count, at: Date.now() });
+}
+
 function handleTikfinityGift(data) {
   if (!data) return;
 
@@ -1608,7 +1653,7 @@ function handleTikfinityGift(data) {
   // Use explicit null check so diamondCount:0 doesn't fall through to 1
   const diamondCount = data.diamondCount != null ? data.diamondCount
     : (data.gift && data.gift.diamond_count != null ? data.gift.diamond_count : 1);
-  const repeatCount  = data.repeatCount || 1;
+  let   repeatCount  = data.repeatCount || 1; // reassigned when a late close owes only the delta
   // BUG FIX: Use strict === true check, NOT `!== false`.
   // If Tikfinity sends combo-in-progress events without a repeatEnd field at all,
   // `undefined !== false` evaluates to true — causing every incremental combo update
@@ -1621,9 +1666,37 @@ function handleTikfinityGift(data) {
   // giftType 2 = instant — always record immediately
   // For giftType 1: require an EXPLICIT repeatEnd:true signal; if repeatEnd field is missing
   // AND giftType is 1, it's a mid-combo event — skip it.
+  forgetOldCombos();
+  const cKey = comboKeyFor(data, giftName);
+
   if (giftType === 1 && data.repeatEnd !== true) {
-    console.log('[Tikfinity] combo in progress (skipping):', name, giftName, '×', repeatCount, 'repeatEnd:', data.repeatEnd);
+    // Mid-combo: still don't count coins yet, but remember it so a missing closing frame
+    // cannot make the whole run worth nothing. Highest count seen wins, in case frames
+    // arrive out of order.
+    const prev = pendingCombos.get(cKey);
+    if (prev) clearTimeout(prev.timer);
+    const best = Math.max(repeatCount, prev ? prev.count : 0);
+    const timer = setTimeout(function () { settleCombo(cKey, data, best); }, COMBO_IDLE_MS);
+    pendingCombos.set(cKey, { timer: timer, count: best, data: data });
+    console.log('[Tikfinity] combo in progress (holding):', name, giftName, '×', best, 'repeatEnd:', data.repeatEnd);
     return;
+  }
+
+  // A closing frame ends any hold on this combo.
+  const held = pendingCombos.get(cKey);
+  if (held) { clearTimeout(held.timer); pendingCombos.delete(cKey); }
+
+  // If the idle timer already banked this run, only the growth since then is still owed.
+  const already = settledCombos.get(cKey);
+  if (already) {
+    const extra = repeatCount - already.count;
+    settledCombos.set(cKey, { count: Math.max(already.count, repeatCount), at: Date.now() });
+    if (extra <= 0) {
+      console.log('[Tikfinity] late close for an already-banked combo — ignoring:', name, giftName);
+      return;
+    }
+    console.log('[Tikfinity] late close added', extra, 'more of', giftName, 'for', name);
+    repeatCount = extra;
   }
 
   const lowerGiftName = (giftName || '').toLowerCase().trim();
