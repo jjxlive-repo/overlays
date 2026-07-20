@@ -2751,6 +2751,16 @@ function formatRawAmount(rawAmount, type) {
         publishGiftrLeaderboard();
         return;
       }
+      // Handle showTopGifters / hideTopGifters from stream-dock quick controls
+      try {
+        const cmd = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
+        if (cmd?.action === 'showTopGifters') {
+          if (cmd.timeFrame) DB.settings.tgoTimeFrame = cmd.timeFrame;
+          publishTopGifters(true);
+        } else if (cmd?.action === 'hideTopGifters') {
+          publishTopGifters(false);
+        }
+      } catch(e) {}
     });
 
     // Keep comment-prompt patterns in sync so chat matching works
@@ -2768,6 +2778,58 @@ function formatRawAmount(rawAmount, type) {
     console.warn('[Ably] init failed:', e);
   }
 })();
+
+/* ── Top Gifters Overlay — publish top-5 for selected time frame ── */
+function publishTopGifters(visible) {
+  if (!ablyChannel) return;
+  const tf    = DB.settings.tgoTimeFrame || 'daily';
+  const iosPct = DB.settings.iosPercent ?? 50;
+
+  // Determine cutoff for time frame
+  let cutoff = 0;
+  if (tf === 'daily')   cutoff = todayStartCST();
+  else if (tf === 'weekly')  cutoff = weekStartCST();
+  else if (tf === 'monthly') cutoff = monthStartCST();
+  // allTime → cutoff stays 0
+
+  if (!visible) {
+    giftsChannel.publish('top-gifters', { visible: false, timeFrame: tf, gifters: [] })
+      .catch(e => console.warn('[Ably] top-gifters err:', e));
+    return;
+  }
+
+  // Build ranked list (viewer spend so all platforms compare fairly)
+  const ranked = Object.values(DB.gifters).map(g => {
+    let rawTotal = 0, spendTotal = 0;
+    for (const gift of g.gifts) {
+      if (gift.timestamp >= cutoff) {
+        rawTotal  += gift.amount;
+        spendTotal += computeValue(gift.amount, gift.type, 'viewer_spend', iosPct);
+      }
+    }
+    return {
+      name:        g.displayName,
+      rawTotal,
+      spendTotal,
+      rawDisplay:  formatRawAmount(rawTotal, gifterType(g)),
+      spendDisplay:'$' + spendTotal.toFixed(2),
+      type:        gifterType(g),
+      platform:    gifterPlatform(g),
+    };
+  }).filter(g => g.spendTotal > 0)
+    .sort((a, b) => b.spendTotal - a.spendTotal)
+    .slice(0, 5);
+
+  giftsChannel.publish('top-gifters', { visible: true, timeFrame: tf, gifters: ranked })
+    .catch(e => console.warn('[Ably] top-gifters err:', e));
+
+  const preview = document.getElementById('tgo-preview-text');
+  if (preview) {
+    preview.textContent = ranked.length
+      ? ranked.map((g, i) => `${i + 1}. ${g.name} ${g.spendDisplay}`).join('  |  ')
+      : 'No gifters for this period.';
+  }
+}
 
 /* ── Giftr 5-slot leaderboard (for gift-bar.html) ── */
 function publishGiftrLeaderboard() {

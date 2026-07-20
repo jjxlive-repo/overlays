@@ -554,6 +554,30 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
   </div>
 </div>
 
+<!-- ══ TOP GIFTERS OVERLAY ══ -->
+<div class="panel" id="p-tgo">
+  <div class="ph" onclick="togglePanel('tgo')">
+    <h2>🏆 Top Gifters Overlay</h2>
+    <span class="ph-chevron" id="ch-tgo">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-tgo">
+    <div class="row" data-tip="Which time window to rank gifters by.\nDaily resets at midnight CST. Weekly resets Monday.">
+      <div class="mode-group" id="tgo-tf-btns">
+        <button class="mode-btn active" data-tgotf="daily"   onclick="tgoTF('daily')">📅 Daily</button>
+        <button class="mode-btn"        data-tgotf="weekly"  onclick="tgoTF('weekly')">🗓 Weekly</button>
+        <button class="mode-btn"        data-tgotf="monthly" onclick="tgoTF('monthly')">📆 Monthly</button>
+        <button class="mode-btn"        data-tgotf="allTime" onclick="tgoTF('allTime')">🏅 All Time</button>
+      </div>
+    </div>
+    <div class="row" style="gap:6px;">
+      <button class="btn-g" onclick="tgoShow()">▶ Show Panel</button>
+      <button class="btn-r" onclick="tgoHide()">✕ Hide Panel</button>
+      <button class="btn-s" onclick="tgoRefresh()">↺ Refresh</button>
+    </div>
+    <div class="status-line" id="tgo-status"></div>
+  </div>
+</div>
+
 <!-- ══ GIST SYNC ══ -->
 <div class="panel" id="p-gist">
   <div class="ph" onclick="togglePanel('gist')">
@@ -978,6 +1002,34 @@ function gbtStop() {
   pub('gift-battle-cmd', { mode: 'off' });
   const st = document.getElementById('gbt-status');
   if (st) { st.textContent = 'Deactivated'; setTimeout(() => st.textContent = '', 2000); }
+}
+
+/* ═══════════════════════════════════════════
+   TOP GIFTERS OVERLAY
+═══════════════════════════════════════════ */
+let _tgoTF = 'daily';
+
+function tgoTF(tf) {
+  _tgoTF = tf;
+  document.querySelectorAll('[data-tgotf]').forEach(b => b.classList.toggle('active', b.dataset.tgotf === tf));
+}
+// tgoShow/tgoRefresh route through tracker.html's 'cmd' relay (it's the only page that
+// turns this into the real 'top-gifters' event gift-bar.html listens for) — there's no
+// ack path over Ably, so we can only report that the request was sent, not that it worked.
+function tgoShow() {
+  pub('cmd', JSON.stringify({ action: 'showTopGifters', timeFrame: _tgoTF }));
+  const st = document.getElementById('tgo-status');
+  if (st) { st.textContent = 'sent (needs tracker.html open)'; setTimeout(() => st.textContent = '', 2600); }
+}
+function tgoHide() {
+  pub('top-gifters', { visible: false, gifters: [] });
+  const st = document.getElementById('tgo-status');
+  if (st) { st.textContent = 'hidden'; setTimeout(() => st.textContent = '', 1800); }
+}
+function tgoRefresh() {
+  pub('cmd', 'requestLeaderboard');
+  const st = document.getElementById('tgo-status');
+  if (st) { st.textContent = 'sent (needs tracker.html open)'; setTimeout(() => st.textContent = '', 2600); }
 }
 
 /* ═══════════════════════════════════════════
