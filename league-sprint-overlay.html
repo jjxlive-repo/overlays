@@ -1,0 +1,2451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
+<title>League Sprint Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Boogaloo&family=DM+Sans:wght@700&family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; position: relative; }
+/* Ably connection dot — hidden on the broadcast overlay; check league-sprint-control.html
+   or stream-dock.html for status. Matches new-here-overlay.html's debug dot. */
+#conn-dot {
+  display: none;
+  position: fixed; top: 12px; right: 12px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #555; z-index: 9999;
+  transition: background .3s, box-shadow .3s;
+}
+:root {
+  --ls-card-radius: 16px;
+  --ls-card-shadow: 0 9px 18px rgba(0,0,0,.34);
+  --ls-card-bg: #2a1830;
+  --ls-card-text: #fff7ec;
+  --ls-card-muted: rgba(255,241,224,0.78);
+  --ls-card-ring: #E8926B;
+  --ls-rarity-d: #c9a5a5;
+  --ls-rarity-c: #efb783;
+  --ls-rarity-b: #c9d0db;
+  --ls-rarity-a: #FFC940;
+  --ls-league-d: #c9a5a5;
+  --ls-league-c: #efb783;
+  --ls-league-b: #c9d0db;
+  --ls-league-a: #FFC940;
+  --ls-ink: #1a1118;
+  --ls-accent-purple: #8e71d4;
+  --ls-accent-cyan: #80c7de;
+  --ls-chrome: #0B0D16;
+  --ls-panel: #1D1830;
+  --ls-panel-mid: #211A35;
+  --ls-track: #14101C;
+  --ls-positive: #7FE0C4;
+  --ls-negative: #E8926B;
+  --ls-bar-height: 110px;
+  --ls-bottom-shelf-height: 177px;
+  --ls-popup-card-width: 240px;
+  --ls-shelf-name-size: 17px;
+  --ls-shelf-rank-size: 24px;
+  --ls-shelf-title-size: 18px;
+  /* Global legibility multiplier for League of Splatties text, adjustable live from the
+     stream dock (Splat Cards Layout -> Text Size). Base px values below were bumped up
+     from the original tiny (8-11px) sizes as the new default; this var lets the streamer
+     scale everything further up/down on top of that new baseline. */
+  --ls-font-scale: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   LEAGUE OF SPLATTIES — DEDICATED ZONES
+   Region map (source of truth): 1080x1920 canvas.
+     Top Camera Region     y:   0 –  450  (#lsTopRegion)
+     Middle Splat Bar      y: 450 –  560  (#leagueSprintBar, 110px — see its own block)
+     Main Gameplay Region  y: 560 – 1743  MUST STAY CLEAR of League elements
+     Bottom Splat Info Strip y:1743 – 1920 (#leagueBottomShelf, 177px — see its own block)
+   These zones are independent of #gift-bar/#bar-info/gifter-slide layout so Splat
+   Cards never resizes, reserves space in, or competes with the gift/milk bar.
+   ══════════════════════════════════════════════════════════════════════ */
+#lsTopRegion {
+  position: absolute; top: 0; left: 0; width: 1080px; height: 450px;
+  pointer-events: none; z-index: 41;
+}
+/* RETIRED (see build note below) — zones 2/3/4 no longer receive routed content.
+   Kept in the DOM per spec ("if removing DOM is risky, keep hidden/disabled") but
+   force-hidden here so nothing can accidentally show through. */
+#lsPlayerWindow, #lsSystemWindow, #lsActivityPanel { display: none !important; }
+.ls-mini-window {
+  position: absolute; top: 24px; width: 340px; height: 210px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 16px; border-radius: 16px; overflow: hidden;
+  background: linear-gradient(180deg, var(--ls-panel-mid), var(--ls-panel));
+  box-shadow: 0 14px 30px rgba(0,0,0,.4);
+  font-family: 'Nunito', sans-serif; color: var(--ls-card-text);
+  opacity: 0; transform: translateY(-6px); transition: opacity 220ms ease, transform 260ms cubic-bezier(.34,1.56,.64,1);
+}
+.ls-mini-window.visible { opacity: 1; transform: translateY(0); }
+#lsPlayerWindow { left: 24px; border: 1px solid rgba(232,146,107,.55); }
+#lsSystemWindow { left: 380px; border: 1px solid rgba(255,201,64,.55); }
+.ls-mini-window-label {
+  display: inline-flex; align-self: flex-start; align-items: center; height: 20px; padding: 0 9px;
+  border-radius: 999px; font: 800 10px/1 'Nunito', sans-serif; letter-spacing: .08em; text-transform: uppercase;
+  background: rgba(8,8,16,.5);
+}
+#lsPlayerWindow .ls-mini-window-label { color: #FFDCC4; border: 1px solid rgba(232,146,107,.5); }
+#lsSystemWindow .ls-mini-window-label { color: #FFE8A8; border: 1px solid rgba(255,201,64,.5); }
+.ls-mini-window-body { flex: 1; min-height: 0; display: flex; align-items: center; gap: 10px; }
+.ls-mini-window-thumb { flex: 0 0 auto; }
+.ls-mini-window-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ls-mini-window-title {
+  font: 800 15px/1.15 'Fredoka', sans-serif; color: #fff7ec;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ls-mini-window-sub {
+  font: 700 11px/1.2 'Nunito', sans-serif; color: rgba(255,241,224,.72);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+#lsPlayerWindow.is-empty .ls-mini-window-title,
+#lsSystemWindow.is-empty .ls-mini-window-title { color: rgba(255,241,224,.5); }
+/* Compact art thumb used inside the Player Window (show/pull/rebirth) — reuses the
+   card's .ls-art/.ls-art img rendering (object-fit: contain, never cropped) but pinned
+   to a small, fixed footprint so it fits the 340x210px mini-window. */
+.ls-mini-window-thumb { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+.ls-mini-window-thumb .ls-art { width: 64px; height: 54px; margin: 0; border-radius: 8px; }
+.ls-mini-window-thumb-rank {
+  font: 800 11px/1 'Fredoka', sans-serif; color: var(--ls-card-ring, #E8926B);
+  text-align: center; text-transform: uppercase;
+}
+.ls-mini-window-thumb.is-pair { gap: 6px; }
+.ls-mini-window-thumb.is-pair .ls-art { width: 46px; height: 40px; }
+.ls-mini-window-thumb-arrow { font: 800 13px/1 'Nunito', sans-serif; color: rgba(255,241,224,.6); }
+/* Real card component (frame border + art + rank chip) embedded in the Player Window,
+   instead of a bare art sprite — makes a card reveal actually look like a card. */
+.ls-mini-window-thumb--card { display: block; }
+.ls-mini-window-thumb--card .ls-card-micro { margin: 0; }
+/* Optional right-side activity readout — sits above #bar-info's own slot (top:132px) so
+   the two never overlap even though they share the same horizontal band. */
+#lsActivityPanel {
+  position: absolute; top: 20px; left: 726px; width: 300px; height: 100px;
+  padding: 8px 12px; border-radius: 12px; overflow: hidden;
+  background: rgba(11,13,22,.72); border: 1px solid rgba(255,255,255,.1);
+  font: 700 11px/1.35 'Nunito', sans-serif; color: rgba(243,232,210,.82);
+  display: flex; flex-direction: column-reverse; gap: 3px;
+}
+#lsActivityPanel .ls-activity-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lsActivityPanel.is-empty { opacity: 0; }
+/* Quiet micro-pill lane for cooldown / invalid target / rebirth closed / no card /
+   already has card — errors/cooldowns only, tiny + low-motion. Moved out of the
+   middle bar and down to the transition strip just above the bottom combat/card
+   zones (canvas y ~1662-1690) so it never competes with the bar or the fight area. */
+#lsMicroPills {
+  position: absolute; left: 50%; top: 1662px; transform: translateX(-50%);
+  display: flex; gap: 6px; z-index: 30; pointer-events: none;
+}
+.ls-micro-pill {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 12px;
+  border-radius: 999px; font: 800 calc(12px * var(--ls-font-scale))/1 'Nunito', sans-serif; letter-spacing: .04em; text-transform: uppercase;
+  background: rgba(8,8,16,.82); border: 1px solid rgba(255,255,255,.16); color: rgba(243,232,210,.9);
+  box-shadow: 0 4px 10px rgba(0,0,0,.35);
+  animation: lsMicroPillIn 180ms ease both;
+}
+.ls-micro-pill.is-error { border-color: rgba(232,146,107,.7); color: #FFE7D7; }
+@keyframes lsMicroPillIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Player Window content target. Used to fill a compact, fixed-size top-region window
+   (see #lsPlayerWindow) instead of floating a giant card over the main gameplay area. */
+#leagueCardPopupZone {
+  position: relative; width: 100%; height: 100%; pointer-events: none;
+}
+#leagueCardPopupZone .ls-popup-shell {
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 200ms ease, transform 220ms cubic-bezier(.34,1.56,.64,1);
+  width: 100%; height: 100%;
+}
+#leagueCardPopupZone.visible .ls-popup-shell { opacity: 1; transform: translateY(0); }
+.ls-popup-kicker {
+  display: inline-flex; align-items: center; margin: 0 0 8px 8px;
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  background: rgba(8,16,28,.82); border: 1px solid rgba(245,244,239,.18);
+  color: var(--ls-card-text); font: 800 12px/1 'Nunito', sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; box-shadow: var(--ls-card-shadow);
+}
+
+/* Middle bar now owns exactly two lanes: zone 5 (state/timer) and the merged
+   zone 6-7 Target Rows / Boss Field region. The old 3rd lane (event log / leaders
+   ticker) is retired from the bar entirely — see #lsCardDock and .ls-target-rows
+   / .ls-boss-field below. */
+#leagueSprintBar {
+  /* Was `inset:0` inside gift-bar.html's #gift-bar (position:absolute; top:450px; left:0;
+     width:1080px). Now a top-level body element, so the position is spelled out explicitly
+     to land in the same place (see region map: Middle Splat Bar y:450-560px). */
+  position: absolute; top: 450px; left: 0; width: 1080px; height: var(--ls-bar-height);
+  display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: center;
+  gap: 10px; padding: 10px 28px; pointer-events: none; z-index: 22;
+  color: var(--ls-card-text); font-family: 'Nunito', sans-serif;
+  background:
+    linear-gradient(90deg, rgba(11,13,22,.94), rgba(29,24,48,.88), rgba(11,13,22,.94)),
+    repeating-linear-gradient(90deg, rgba(243,232,210,.08) 0 2px, transparent 2px 13px);
+  border-top: 1px solid rgba(255,255,255,.14);
+  border-bottom: 1px solid rgba(232,146,107,.58);
+  box-shadow: 0 12px 34px rgba(0,0,0,.28);
+  transition: opacity .24s ease, filter .24s ease;
+}
+/* The live text strip is a static/persistent stream title, not a passive alert —
+   it shouldn't dim the Splat Cards bar. Just shift the bar's content down to the
+   bottom edge so the two don't visually collide. */
+.live-strip-active #leagueSprintBar { align-items: end; padding-bottom: 7px; }
+#gift-bar.ep-passive-active #leagueSprintBar { opacity: .08; filter: blur(.35px); }
+#gift-bar.alert-active #leagueSprintBar {
+  opacity: .08;
+}
+#gift-bar.alert-active #bar-info,
+#gift-bar.alert-active #gb-bar-text,
+#gift-bar.alert-active #live-text-strip {
+  opacity: 0 !important;
+}
+/* A live duel/fight animation always wins — never let the passive/alert/live-strip
+   states fade it out. Those other elements should shift or fade themselves instead
+   of dimming the fight that's actively playing. */
+#gift-bar.ep-passive-active #leagueSprintBar.ls-duel-active,
+#gift-bar.alert-active #leagueSprintBar.ls-duel-active {
+  opacity: 1;
+  filter: none;
+}
+/* The middle Splat bar owns two lanes only: state/timer and the target/boss field.
+   Gifter/explainer slides are pinned to the top-camera region and never reserve bar space. */
+#gift-bar.gift-info-visible #leagueSprintBar,
+#gift-bar.ls-right-panel-visible #leagueSprintBar {
+  padding: 10px 28px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 10px;
+}
+#gift-bar.gift-info-visible #leagueSprintBar.ls-duel-active,
+#gift-bar.ls-right-panel-visible #leagueSprintBar.ls-duel-active {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+#gift-bar.gift-info-visible #leagueSprintStatus,
+#gift-bar.ls-right-panel-visible #leagueSprintStatus {
+  padding: 8px 12px;
+}
+#gift-bar.ep-passive-active #leagueSprintCenter {
+  opacity: .72;
+}
+/* ══ League of Splatties HUD (left zone) — a branded mini-game status block, not plain
+   utility text: badge title, round number, and a big high-contrast countdown timer. ══ */
+#leagueSprintStatus {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 0; width: 100%; height: 92px; padding: 8px 12px; gap: 2px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(42,24,48,.90), rgba(20,16,28,.92));
+  border: 1px solid rgba(232,146,107,.58);
+  box-shadow: 0 8px 22px rgba(0,0,0,.32), 0 0 0 1px rgba(255,255,255,.03) inset;
+}
+.ls-hud-badge {
+  color: #FFC940; font: 800 calc(clamp(13px, 1.3vw, 16px) * var(--ls-font-scale))/1.15 'Fredoka', sans-serif;
+  letter-spacing: .085em; text-transform: uppercase; text-align: center;
+  text-shadow: 0 1px 6px rgba(0,0,0,.75), 0 0 14px rgba(251,191,36,.4);
+  white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.ls-hud-round {
+  color: rgba(255,241,224,.9); font: 800 calc(13px * var(--ls-font-scale))/1 'Nunito', sans-serif;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.ls-hud-timer {
+  display: flex; flex-direction: column; align-items: center; gap: 0; margin-top: 3px;
+}
+.ls-hud-timer-digits {
+  color: #fff7ec; font: 700 calc(clamp(28px, 3vw, 36px) * var(--ls-font-scale))/1 'Fredoka', sans-serif;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  text-shadow: 0 2px 8px rgba(0,0,0,.8), 0 0 16px rgba(128,199,222,.5);
+}
+.ls-hud-timer-label {
+  color: rgba(255,241,224,.78); font: 800 calc(11px * var(--ls-font-scale))/1.2 'Nunito', sans-serif;
+  letter-spacing: .09em; text-transform: uppercase;
+}
+/* ══ Zones 6-7 merged: Target Rows (scouting) or Boss Field (boss encounters),
+   exactly one visible at a time via .mode-target / .mode-boss on #leagueSprintCenter.
+   Retired: the old center notice/idle-highlight rotation and the separate event-log /
+   leaders-ticker lanes — see #lsCardDock (zone 11) and #lsDuelResultPill for where
+   card events and duel results now go instead. ══ */
+#leagueSprintCenter {
+  position: relative; min-width: 0; height: 92px; padding: 8px 16px; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(35,26,50,.92), rgba(13,12,24,.92));
+  border: 1px solid rgba(232,146,107,.34);
+  box-shadow: 0 8px 22px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.05);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  transition: opacity .24s ease, filter .24s ease;
+}
+#leagueSprintCenter .ls-target-rows,
+#leagueSprintCenter .ls-boss-field { width: 100%; height: 100%; }
+#leagueSprintCenter.mode-boss .ls-target-rows { display: none; }
+#leagueSprintCenter:not(.mode-boss) .ls-boss-field { display: none; }
+/* Target Rows — one league row visible at a time (auto-rotates D/C/B/A every ~10s
+   via the same timer the old rankings marquee used), compact scouting/targeting
+   only, not a full leaderboard. */
+.ls-target-rows { display: flex; align-items: center; gap: 14px; }
+.ls-target-rows-league {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 60px; align-self: stretch; border-radius: 10px; gap: 2px;
+  background: color-mix(in srgb, var(--ls-league-color, var(--ls-league-d)) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ls-league-color, var(--ls-league-d)) 55%, transparent);
+}
+.ls-target-rows-league-label {
+  font: 900 calc(15px * var(--ls-font-scale))/1 'Fredoka', sans-serif; letter-spacing: .04em;
+  color: color-mix(in srgb, var(--ls-league-color, var(--ls-league-d)) 80%, #fff7ec 20%);
+}
+.ls-target-rows-league-sub { font: 800 calc(10px * var(--ls-font-scale))/1 'Nunito', sans-serif; color: rgba(255,241,224,.65); text-transform: uppercase; }
+.ls-target-rows-list { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; overflow: hidden; }
+.ls-target-chip { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 54px; }
+.ls-target-chip .ls-art { width: 38px; height: 34px; margin: 0; border-radius: 6px; }
+.ls-target-chip-name { font: 800 calc(10px * var(--ls-font-scale))/1.1 'Nunito', sans-serif; color: var(--ls-card-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 54px; }
+.ls-target-chip-num {
+  font: 900 calc(11px * var(--ls-font-scale))/1 'Fredoka', sans-serif; color: #08101c; background: #FFC940;
+  border-radius: 999px; padding: 1px 6px; min-width: 16px; text-align: center;
+}
+.ls-target-rows-empty { color: rgba(255,241,224,.6); font: 800 calc(13px * var(--ls-font-scale))/1.3 'Nunito', sans-serif; text-transform: uppercase; letter-spacing: .05em; }
+/* Boss Field — squad chips on the left, boss card + HP bar on the right. */
+.ls-boss-field { display: flex; align-items: center; gap: 10px; }
+.ls-boss-squad { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.ls-boss-squad .ls-target-chip { width: 40px; }
+.ls-boss-squad .ls-art { width: 30px; height: 26px; }
+.ls-boss-arrow { flex: 0 0 auto; color: #FFC940; font: 900 calc(18px * var(--ls-font-scale))/1 'Fredoka', sans-serif; }
+.ls-boss-card { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 130px; }
+.ls-boss-name { font: 900 calc(15px * var(--ls-font-scale))/1.1 'Fredoka', sans-serif; color: #fff7ec; text-transform: uppercase; letter-spacing: .03em; }
+.ls-boss-level { font: 800 calc(11px * var(--ls-font-scale))/1 'Nunito', sans-serif; color: rgba(255,241,224,.7); text-transform: uppercase; }
+.ls-boss-hp { width: 100%; height: 8px; border-radius: 999px; background: rgba(245,244,239,.16); overflow: hidden; border: 1px solid rgba(245,244,239,.18); margin-top: 2px; }
+.ls-boss-hp-fill { height: 100%; background: linear-gradient(90deg, #F43F5E, #FF9F45); transition: width 360ms ease; }
+.ls-boss-hp-text { font: 800 calc(11px * var(--ls-font-scale))/1 'Nunito', sans-serif; color: rgba(255,241,224,.8); margin-top: 1px; }
+/* Fight animation takes visual priority: while a duel occupies the bottom fight
+   strip, dim the scout/boss field slightly so it reads as secondary. */
+#leagueSprintBar.ls-duel-active #leagueSprintCenter { opacity: .55; }
+
+   and 10 are merged into #lsDuelPreview, which now fills the whole strip left of the
+   narrow zone-11 Card Event Dock (positioned separately below, anchored far right —
+   see #lsCardDock). #lsRecentChallengers is retired entirely (no idle recap) — when no
+   duel is live, #lsDuelPreview shows a live player-count join prompt instead
+   (see renderDuelIdleState). */
+#leagueBottomShelf {
+  position: absolute; top: 1743px; left: 16px;
+  width: calc(1080px - 32px - 176px); height: var(--ls-bottom-shelf-height);
+  display: flex; pointer-events: none; z-index: 38;
+  background: linear-gradient(90deg, rgba(11,13,22,.90), rgba(29,24,48,.78), rgba(11,13,22,.86));
+  border: 1px solid rgba(255,255,255,.14); border-radius: 10px; box-shadow: var(--ls-card-shadow);
+}
+#lsDuelPreview {
+  position: relative; width: 100%; height: 100%; min-width: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end; gap: 6px; overflow: visible;
+  padding: 0 14px 18px;
+}
+#lsRecentChallengers { display: none; }
+.ls-zone-title {
+  color: var(--ls-card-text); font: 700 var(--ls-shelf-title-size)/1.2 'Fredoka', sans-serif;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.ls-zone-sub { color: var(--ls-card-muted); font: 800 10px/1 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase; margin-top: 1px; }
+.ls-zone-empty { color: var(--ls-card-muted); font: 800 10px/1.3 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+/* Fight scene, scoped to the duel-preview column. The card row is bottom-anchored
+   (#lsDuelPreview uses justify-content:flex-end + overflow:visible) so card bottoms
+   stay flush against the bottom edge of the strip while the names banner + combat
+   caption chip are free to sit above the row, extending past the strip's nominal top
+   edge — the same "may run taller than its box" allowance zone 11 already has.
+   .ls-duel-wrap is display:flex (row-wrap); flex:0 0 100% forces the names/caption
+   lines onto their own full-width rows instead of squeezing into the card row. */
+#lsDuelPreview .ls-duel-wrap { position: relative; transform: none; gap: 6px; filter: none; z-index: 1; flex-wrap: wrap; align-items: flex-end; }
+#lsDuelPreview .ls-duel-names {
+  position: static; transform: none; margin-bottom: 0; min-width: 0; max-width: 320px;
+  height: 22px; padding: 0 10px; font-size: calc(12px * var(--ls-font-scale)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 0 0 100%; order: -2;
+}
+#lsDuelPreview .ls-duel-card { width: 132px; min-height: 176px; }
+/* Bigger, more legible portrait duel card. */
+#lsDuelPreview .ls-card-mini { width: 124px; height: 168px; padding: 6px 6px 8px; }
+#lsDuelPreview .ls-card-mini .ls-owner { top: 6px; left: 6px; right: 6px; height: 20px; font-size: calc(12px * var(--ls-font-scale)); line-height: 20px; }
+#lsDuelPreview .ls-card-mini .ls-card-top { margin-top: 26px; }
+#lsDuelPreview .ls-card-mini .ls-type-icon { display: none; }
+#lsDuelPreview .ls-card-mini .ls-rank { min-width: 32px; height: 20px; font-size: calc(15px * var(--ls-font-scale)); padding: 0 6px; }
+#lsDuelPreview .ls-card-mini .ls-art { width: 92px; height: 92px; margin: 6px auto 0; }
+#lsDuelPreview .ls-card-mini .ls-power,
+#lsDuelPreview .ls-card-mini .ls-card-footer { display: none; }
+#lsDuelPreview .ls-vs { font-size: calc(20px * var(--ls-font-scale)); }
+/* Combat/flavor caption — the "what happened" line — as a chip ABOVE the cards
+   (order:-1, between the names banner and the card row), not below them. */
+#lsDuelPreview .ls-duel-flavor {
+  position: static; transform: none; margin: 0; max-width: 320px;
+  white-space: normal; text-align: center; font-size: calc(13px * var(--ls-font-scale)); padding: 6px 16px;
+  flex: 0 0 100%; order: -1;
+}
+#lsDuelPreview .ls-hp { bottom: -6px; height: 6px; }
+#lsDuelPreview .ls-damage { top: -22px; right: -6px; font-size: calc(16px * var(--ls-font-scale)); padding: 3px 9px; }
+/* +DP / -DP delta badge: bumped to the top of the local stacking context and made
+   much more visible (bigger, brighter, thicker border) per feedback that it was
+   getting lost against the card art. */
+#lsDuelPreview .ls-delta-badge {
+  bottom: -16px; height: 26px; min-width: 74px; font-size: calc(15px * var(--ls-font-scale)); z-index: 9999;
+  border-width: 2px; box-shadow: 0 4px 0 rgba(0,0,0,.85), 0 0 16px rgba(255,201,64,.55);
+}
+#lsDuelPreview[data-queue]:not([data-queue=""])::after {
+  content: attr(data-queue);
+  position: absolute; top: 6px; right: 8px;
+  color: rgba(255,201,64,.85); font: 900 8px/1 'Nunito', sans-serif; letter-spacing: .08em; text-transform: uppercase;
+}
+/* Idle state (no live duel): live player count + join prompt, replacing the old
+   Recent Challengers recap entirely. */
+.ls-idle-cta { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ls-idle-cta-count {
+  color: #FFC940; font: 900 calc(34px * var(--ls-font-scale))/1 'Fredoka', sans-serif; text-shadow: 0 2px 8px rgba(0,0,0,.7), 0 0 16px rgba(255,201,64,.35);
+}
+.ls-idle-cta-label {
+  color: rgba(255,241,224,.85); font: 800 calc(13px * var(--ls-font-scale))/1 'Nunito', sans-serif; letter-spacing: .08em; text-transform: uppercase; margin-top: 2px;
+}
+.ls-idle-cta-cmd {
+  margin-top: 6px; color: #fff7ec; font: 800 calc(14px * var(--ls-font-scale))/1 'Fredoka', sans-serif; letter-spacing: .03em;
+  padding: 5px 16px; border-radius: 999px; background: rgba(168,85,247,.22); border: 1px solid rgba(232,121,249,.5);
+}
+/* Rankings Slideshow — reuses the shelf card renderer (renderCard('micro')) but at a
+   slower, clearer rotation instead of a marquee blur. */
+.ls-shelf-title { color: var(--ls-card-text); font: 700 var(--ls-shelf-title-size)/1.2 'Fredoka', sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+.ls-shelf-sub { margin-top: 2px; color: var(--ls-card-muted); font: 800 10px/1 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.ls-shelf-list { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; margin-top: 4px; }
+#lsRankingsSlideshow .ls-card-micro { width: 74px; height: 70px; }
+
+/* ══ ZONE 11 — Narrow Card Event Dock (repurposed #leagueSprintEvent DOM node).
+   Single card-width, far right of the bottom strip, anchored independently of
+   #leagueBottomShelf so it can run taller than the 177px fight strip. Art-forward:
+   one card event at a time (pull / show / rebirth / promotion / champion / boss
+   reward), queued, never a text log. ══ */
+#leagueSprintEvent {
+  position: absolute; right: 16px; top: 1690px; width: 160px; height: 230px;
+  display: flex !important; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 10px 8px; border-radius: 12px; pointer-events: none; z-index: 39;
+  background: linear-gradient(180deg, rgba(42,24,48,.94), rgba(20,16,28,.96));
+  border: 1px solid rgba(232,146,107,.5); box-shadow: var(--ls-card-shadow);
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 200ms ease, transform 220ms cubic-bezier(.34,1.56,.64,1);
+}
+#leagueSprintEvent.visible { opacity: 1; transform: translateY(0); }
+/* Rebirth results are the one card-dock event that gets a bigger, louder treatment —
+   still bottom-right and still clear of the Duel Stage / Duel Result Pill (only the
+   height grows, upward, never the width), but bigger art/fonts and a gold glow so the
+   gamble result reads as a big deal. */
+#leagueSprintEvent.is-rebirth-result {
+  height: 300px; padding: 14px 10px; gap: 8px;
+  border: 2px solid rgba(255,201,64,.85);
+  box-shadow: 0 0 0 4px rgba(255,201,64,.14), 0 14px 30px rgba(0,0,0,.5), var(--ls-card-shadow);
+  transform: translateY(0) scale(1.06);
+  transform-origin: bottom right;
+}
+#leagueSprintEvent.is-rebirth-result.visible { transform: translateY(0) scale(1.06); }
+.ls-card-dock-kicker {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 9px;
+  border-radius: 999px; background: rgba(8,8,16,.6); border: 1px solid rgba(255,241,224,.16);
+  color: #FFC940; font: 800 calc(11px * var(--ls-font-scale))/1 'Nunito', sans-serif; letter-spacing: .06em; text-transform: uppercase;
+}
+#leagueSprintEvent.is-rebirth-result .ls-card-dock-kicker { height: 24px; padding: 0 12px; font-size: calc(13px * var(--ls-font-scale)); }
+.ls-card-dock-title {
+  font: 800 calc(14px * var(--ls-font-scale))/1.2 'Fredoka', sans-serif; color: #fff7ec; text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+#leagueSprintEvent.is-rebirth-result .ls-card-dock-title { font-size: calc(18px * var(--ls-font-scale)); }
+.ls-card-dock-sub {
+  font: 700 calc(11px * var(--ls-font-scale))/1.2 'Nunito', sans-serif; color: rgba(255,241,224,.75); text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+#leagueSprintEvent.is-rebirth-result .ls-card-dock-sub { font-size: calc(14px * var(--ls-font-scale)); color: #FFE7D7; }
+.ls-card-dock-rebirth { display: flex; align-items: center; gap: 3px; }
+.ls-card-dock-rebirth .ls-art { width: 30px; height: 26px; margin: 0; }
+#leagueSprintEvent.is-rebirth-result .ls-card-dock-rebirth .ls-art { width: 42px; height: 36px; }
+.ls-card-dock-rebirth-arrow { font: 800 calc(13px * var(--ls-font-scale))/1 'Nunito', sans-serif; color: rgba(255,241,224,.65); }
+#leagueSprintEvent.is-rebirth-result .ls-card-dock-rebirth-arrow { font-size: calc(16px * var(--ls-font-scale)); }
+#leagueSprintEvent.is-rebirth-result .ls-mini-window-thumb--card { transform: scale(1.15); }
+
+/* ══ Duel Result Pill — slim headline above the fight strip, results only. Never
+   overlaps zone 8 (micro pills, positioned above it) or the fight strip (below it). ══ */
+#lsDuelResultPill {
+  position: absolute; left: 50%; top: 1700px; transform: translate(-50%, 6px);
+  min-width: 200px; max-width: 620px; height: 36px; padding: 0 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: rgba(8,16,28,.92); border: 1px solid rgba(255,201,64,.5);
+  color: #fff7ec; font: 800 calc(15px * var(--ls-font-scale))/1 'Fredoka', sans-serif; letter-spacing: .03em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 8px 18px rgba(0,0,0,.4); z-index: 37; pointer-events: none;
+  opacity: 0; transition: opacity 180ms ease, transform 200ms cubic-bezier(.34,1.56,.64,1);
+}
+#lsDuelResultPill.visible { opacity: 1; transform: translate(-50%, 0); }
+#lsDuelResultPill.is-error { border-color: rgba(232,146,107,.72); color: #FFE7D7; }
+
+.ls-card {
+  --ls-league-color: var(--ls-league-d);
+  --ls-rarity-outline: var(--ls-rarity-d);
+  position: relative; overflow: hidden; color: var(--ls-card-text);
+  background: var(--ls-card-bg);
+  border: 2px solid var(--ls-card-ring); border-radius: var(--ls-card-radius);
+  box-shadow: var(--ls-card-shadow), inset 0 0 0 1px rgba(255,241,224,.07);
+  font-family: 'Nunito', sans-serif;
+}
+.ls-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: repeating-radial-gradient(circle, rgba(255,241,224,0.08) 0 1.2px, transparent 1.2px 9px);
+  pointer-events: none;
+}
+.ls-card > * { position: relative; z-index: 1; }
+.ls-card[data-league="D"] { --ls-league-color: var(--ls-league-d); --ls-rarity-outline: var(--ls-rarity-d); }
+.ls-card[data-league="C"] { --ls-league-color: var(--ls-league-c); --ls-rarity-outline: var(--ls-rarity-c); }
+.ls-card[data-league="B"] { --ls-league-color: var(--ls-league-b); --ls-rarity-outline: var(--ls-rarity-b); }
+.ls-card[data-league="A"] { --ls-league-color: var(--ls-league-a); --ls-rarity-outline: var(--ls-rarity-a); }
+.ls-card.is-king { overflow: visible; }
+.ls-card.is-king::after {
+  content: "CROWN CHAMPION";
+  position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+  height: 20px; min-width: 106px; padding: 0 10px; display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: linear-gradient(90deg, #e2bf62, #fff0a8, #e2bf62);
+  border: 1px solid rgba(255,255,255,.62); color: #241904;
+  font-size: 8px; font-weight: 900; letter-spacing: .08em; z-index: 9;
+  box-shadow: 0 0 18px rgba(226,191,98,.55), 0 2px 8px rgba(0,0,0,.5);
+}
+.ls-card.is-league-leader {
+  box-shadow: var(--ls-card-shadow), 0 0 0 2px rgba(255,247,236,.16), 0 0 20px color-mix(in srgb, var(--ls-league-color) 42%, transparent);
+}
+.ls-leader-badge {
+  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  z-index: 8; height: 17px; padding: 0 7px; display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--ls-league-color); color: var(--ls-ink);
+  font: 900 7px/1 'Fredoka', sans-serif; letter-spacing: .08em; text-transform: uppercase;
+  box-shadow: 0 1px 8px rgba(0,0,0,.55);
+}
+.ls-card-popup .ls-leader-badge { top: 32px; height: 20px; font-size: 8px; }
+.ls-card-popup { width: var(--ls-popup-card-width); min-height: 342px; padding: 11px; }
+.ls-card-mini { width: 112px; height: 150px; padding: 6px 6px 8px; border-radius: 10px; }
+.ls-card-micro { width: 96px; height: 128px; padding: 6px; border-radius: 10px; }
+.ls-card-featured { width: 132px; }
+.ls-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ls-rank {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 26px;
+  padding: 0 8px; border-radius: 9px; background: color-mix(in srgb, var(--ls-league-color) 72%, #fff7ec 28%); color: var(--ls-ink);
+  border: 1px solid rgba(26,17,24,.28);
+  font: 700 18px/1 'Fredoka', sans-serif; box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 1px 4px rgba(0,0,0,.35);
+}
+.ls-rank::before {
+  content: "◇";
+  margin-right: 3px;
+  font-size: .82em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--ls-league-color) 56%, #fff7ec 44%);
+  text-shadow: 0 1px 0 rgba(26,17,24,.25);
+}
+.ls-card-mini .ls-rank { min-width: 30px; height: 20px; font-size: 17px; padding: 0 6px; border-radius: 6px; }
+.ls-card-micro .ls-rank { min-width: 24px; height: 18px; font-size: 15px; padding: 0 5px; border-radius: 5px; }
+.ls-card-mini .ls-card-top { margin-top: 22px; justify-content: center; gap: 6px; }
+/* Pips read fine on the big popup card but just add clutter/overflow risk on the
+   narrow portrait mini card — rank chip + type icon already convey the info. */
+.ls-card-mini .ls-pips { display: none; }
+.ls-pips, .ls-fragments { display: flex; gap: 3px; align-items: center; }
+.ls-pip, .ls-fragment { width: 7px; height: 7px; border-radius: 999px; background: rgba(245,244,239,.24); }
+.ls-pip.is-filled { background: var(--ls-league-color); box-shadow: 0 0 8px rgba(245,244,239,.2); }
+.ls-fragment { width: 10px; height: 10px; border-radius: 2px; transform: rotate(45deg); border: 1px solid rgba(245,244,239,.32); }
+.ls-fragment.is-filled { background: #FAF5FF; border-color: #FAF5FF; box-shadow: 0 0 8px rgba(250,245,255,.55); }
+.ls-type-icon {
+  width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
+  color: var(--ls-ink); background: color-mix(in srgb, var(--ls-league-color) 72%, #fff7ec 28%); font-size: 16px; font-weight: 800;
+  border: 1px solid rgba(26,17,24,.26);
+}
+.ls-card-mini .ls-type-icon, .ls-card-micro .ls-type-icon { width: 20px; height: 20px; border-radius: 6px; font-size: 13px; }
+.ls-owner {
+  margin-top: 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #fff7ec; font-size: 16px; font-weight: 800; font-family: 'Nunito', sans-serif;
+}
+.ls-card-mini .ls-owner {
+  position: absolute; top: 6px; left: 7px; right: 7px; z-index: 6;
+  margin: 0; height: 18px; font-size: 11px; line-height: 18px; text-align: center;
+  background: rgba(26,17,24,.76); border: 1px solid rgba(255,241,224,.10); border-radius: 7px; padding: 0 4px;
+  text-shadow: 0 1px 5px rgba(0,0,0,1);
+}
+.ls-card-micro .ls-owner { margin-top: 3px; font-size: calc(12px * var(--ls-font-scale)); text-align: center; }
+.ls-art {
+  position: relative; margin: 9px auto 8px; width: 176px; height: 166px; border-radius: 12px;
+  overflow: visible; display: grid; place-items: center;
+  background: transparent;
+  border: 0;
+}
+.ls-art img {
+  width: 100%; height: 100%; object-fit: contain; object-position: center bottom; display: block;
+  filter:
+    drop-shadow(2.5px 0 0 var(--ls-rarity-outline))
+    drop-shadow(-2.5px 0 0 var(--ls-rarity-outline))
+    drop-shadow(0 2.5px 0 var(--ls-rarity-outline))
+    drop-shadow(0 -2.5px 0 var(--ls-rarity-outline))
+    drop-shadow(1.8px 1.8px 0 var(--ls-rarity-outline))
+    drop-shadow(-1.8px -1.8px 0 var(--ls-rarity-outline))
+    drop-shadow(1.8px -1.8px 0 var(--ls-rarity-outline))
+    drop-shadow(-1.8px 1.8px 0 var(--ls-rarity-outline))
+    saturate(1.18) contrast(1.08)
+    drop-shadow(0 5px 8px rgba(0,0,0,.42));
+}
+.ls-art.is-missing img { display: none; }
+.ls-art-placeholder {
+  display: none; text-align: center; padding: 10px; color: var(--ls-card-muted);
+  font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.ls-art.is-missing .ls-art-placeholder { display: block; }
+/* On the big popup/rebirth cards, a missing art file shouldn't look like an empty
+   box — make the fallback text large and bright enough to actually read on stream. */
+.ls-card-popup .ls-art.is-missing .ls-art-placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 100%; font-size: 18px; font-weight: 900; letter-spacing: .06em;
+  color: #FAF5FF; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,.7);
+}
+/* Vertical/portrait card art: centered in normal flow (not corner-pinned) so the
+   full illustration always has room and is never clipped by the card's overflow:hidden. */
+.ls-card-mini .ls-art { position: static; width: 82px; height: 84px; margin: 4px auto 4px; border-radius: 8px; }
+.ls-card-mini .ls-art-placeholder { font-size: 8px; }
+.ls-card-micro .ls-art { width: 70px; height: 70px; margin: 4px auto 4px; border-radius: 8px; }
+.ls-card-micro .ls-art-placeholder { font-size: 8px; }
+/* Layered rank art sizing fix: final creator art stays inside the dynamic card renderer. */
+.ls-card-popup .ls-art { width: 190px; height: 228px; margin: 7px auto 7px; }
+.ls-card-popup .ls-art img { object-fit: contain; object-position: center bottom; }
+.ls-card-mini .ls-art img { object-fit: contain; object-position: center bottom; }
+.ls-card-micro .ls-art img { object-fit: contain; object-position: center bottom; }
+
+/* Bottom shelf cards are tiny; give rank + username their own readable footer.
+   The username floats ABOVE the card frame (not overlaid on top of it) so the
+   league-leader/champion chips — which live just inside the card's top edge —
+   never cover it. */
+.ls-shelf-list .ls-card-micro {
+  display: grid;
+  grid-template-rows: 1fr 30px;
+  width: 126px;
+  height: 126px;
+  padding: 6px;
+  margin-top: 26px;
+  overflow: visible;
+}
+.ls-shelf-list .ls-card-micro .ls-card-top {
+  position: absolute;
+  left: 7px;
+  right: 34px;
+  bottom: 7px;
+  height: 24px;
+  z-index: 5;
+  justify-content: flex-start;
+  gap: 4px;
+  overflow: hidden;
+}
+.ls-shelf-list .ls-card-micro .ls-rank {
+  min-width: 34px;
+  height: 23px;
+  font-size: var(--ls-shelf-rank-size);
+  flex: 0 0 auto;
+  box-shadow: 0 1px 6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.45);
+}
+.ls-shelf-list .ls-card-micro .ls-duel-num {
+  position: absolute;
+  bottom: 7px;
+  right: 7px;
+  z-index: 6;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(42,24,48,.94);
+  border: 1px solid rgba(255,241,224,.46);
+  color: #fff7ec;
+  font: 900 13px/1 'Fredoka', sans-serif;
+  box-shadow: 0 1px 6px rgba(0,0,0,.55);
+}
+.ls-shelf-list .ls-card-micro .ls-owner {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: -24px;
+  z-index: 6;
+  margin: 0;
+  height: 20px;
+  color: #fff7ec;
+  font: 900 var(--ls-shelf-name-size)/20px 'Nunito', sans-serif;
+  text-align: center;
+  background: rgba(42,24,48,.88);
+  border: 1px solid rgba(255,241,224,.13);
+  border-radius: 6px;
+  padding: 0 4px;
+  text-shadow: 0 1px 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,.85);
+}
+/* Champion crown sits above the card too — stack the username above that instead
+   of letting the two collide. */
+.ls-shelf-list .ls-card-micro.is-king .ls-owner { top: -46px; }
+.ls-shelf-list .ls-card-micro::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 38px;
+  z-index: 4;
+  background: linear-gradient(180deg, transparent, rgba(42,24,48,.94) 36%, rgba(42,24,48,.98));
+}
+.ls-shelf-list .ls-card-micro .ls-art {
+  width: 104px;
+  height: 76px;
+  margin: 6px auto 0;
+  border-radius: 8px;
+  z-index: 1;
+}
+.ls-shelf-list .ls-card-micro .ls-chip,
+.ls-shelf-list .ls-card-micro .ls-badge-line,
+.ls-shelf-list .ls-card-micro .ls-flex-line,
+.ls-shelf-list .ls-card-micro .ls-title-line {
+  display: none;
+}
+
+.ls-character-line { font: 700 24px/1 'Fredoka', sans-serif; color: #fff7ec; text-transform: uppercase; letter-spacing:.01em; }
+.ls-type-label { color: var(--ls-card-muted); font: 800 10px/1 'Nunito', sans-serif; letter-spacing: .10em; text-transform: uppercase; }
+.ls-power { margin-top: 6px; color: #fff7ec; font: 700 28px/1 'Fredoka', sans-serif; }
+.ls-card-mini .ls-power { position: static; text-align: center; font-size: 14px; margin: 0 0 2px; }
+.ls-card-footer { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.ls-card-mini .ls-card-footer { justify-content: center; margin-top: 2px; min-height: 18px; }
+.ls-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 118px; height: 22px; padding: 0 8px;
+  border-radius: 999px; background: rgba(245,244,239,.10); border: 1px solid rgba(245,244,239,.16);
+  color: var(--ls-card-text); font-size: 10px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ls-title-line { margin-top: 5px; color: #FFC940; font: 800 11px/1 'Nunito', sans-serif; letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+.ls-flex-line { margin-top: 5px; color: var(--ls-card-muted); font: 800 10px/1.2 'Nunito', sans-serif; letter-spacing: .05em; text-align: center; text-transform: uppercase; }
+.ls-badge-line { margin-top: 5px; display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+.ls-badge-mini { max-width: 74px; padding: 2px 5px; border-radius: 999px; background: rgba(232,146,107,.20); border: 1px solid rgba(232,146,107,.48); color: #ffe4c7; font: 800 8px/1 'Nunito', sans-serif; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-card-mini .ls-chip { height: 16px; max-width: 55px; padding: 0 5px; font-size: 9px; }
+.ls-card-micro .ls-chip { height: 14px; max-width: 24px; padding: 0 4px; font-size: 9px; }
+
+.ls-rank-marquee {
+  width: 100%; height: 46px; overflow: hidden; display: flex; align-items: center;
+  border-radius: 999px; background: rgba(8,16,28,.76); border: 1px solid rgba(192,132,252,.36);
+  box-shadow: inset 0 0 22px rgba(168,85,247,.12);
+}
+.ls-rank-board {
+  width: min(620px, 100%); min-height: 74px; padding: 8px 10px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px;
+  border-radius: 12px; background: rgba(8,16,28,.82); border: 1px solid rgba(192,132,252,.36);
+  box-shadow: 0 10px 24px rgba(0,0,0,.32), inset 0 0 22px rgba(168,85,247,.12);
+  animation: lsRankBoardIn 420ms ease both;
+}
+.ls-rank-row {
+  min-width: 0; height: 26px; padding: 0 8px; display: flex; align-items: center; gap: 7px;
+  border-radius: 999px; background: rgba(245,244,239,.08); border: 1px solid rgba(245,244,239,.13);
+  color: #fff7ec; font: 900 11px/1 'Nunito', sans-serif; letter-spacing: .035em; white-space: nowrap;
+}
+.ls-rank-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ls-rank-row[data-move="up"] { border-color: rgba(128,199,222,.62); box-shadow: 0 0 14px rgba(128,199,222,.18); }
+.ls-rank-row[data-move="down"] { border-color: rgba(244,63,94,.62); box-shadow: 0 0 14px rgba(244,63,94,.16); }
+.ls-rank-board-title {
+  grid-column: 1 / -1; color: rgba(250,245,255,.74);
+  font: 900 10px/1 'Nunito', sans-serif; letter-spacing: .12em; text-transform: uppercase;
+}
+.ls-rank-track {
+  display: flex; align-items: center; gap: 10px; white-space: nowrap;
+  animation: lsRankMarquee 24s linear infinite;
+  padding-left: 100%;
+}
+.ls-rank-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
+  border-radius: 999px; background: rgba(245,244,239,.08); border: 1px solid rgba(245,244,239,.14);
+  color: #fff7ec; font: 900 12px/1 'Nunito', sans-serif; letter-spacing: .04em;
+}
+.ls-rank-chip[data-move="up"] { border-color: rgba(128,199,222,.62); box-shadow: 0 0 14px rgba(128,199,222,.22); }
+.ls-rank-chip[data-move="down"] { border-color: rgba(244,63,94,.62); box-shadow: 0 0 14px rgba(244,63,94,.18); }
+.ls-rank-num {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 20px;
+  border-radius: 999px; background: var(--ls-league-color, #c9d0db); color: #08101c;
+}
+@keyframes lsRankMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+@keyframes lsRankBoardIn {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+
+.ls-popup-window {
+  position: relative;
+  width: 314px;
+  min-height: 430px;
+  padding: 12px 10px 14px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(250,245,255,.16), transparent 34%),
+    linear-gradient(180deg, rgba(10,12,28,.94), rgba(9,7,20,.88));
+  border: 1px solid rgba(245,244,239,.18);
+  box-shadow: 0 24px 54px rgba(0,0,0,.42), 0 0 34px rgba(168,85,247,.18);
+  overflow: hidden;
+}
+.ls-popup-window::before,
+.ls-popup-window::after {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  opacity: .55;
+}
+.ls-popup-window::before {
+  background: conic-gradient(from 20deg, transparent, rgba(128,199,222,.22), transparent, rgba(232,121,249,.2), transparent);
+  animation: lsPopupCharge 3s ease-out forwards;
+}
+.ls-popup-window::after {
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(250,245,255,.24), transparent);
+  transform: translateX(-130%);
+  animation: lsPopupSweep 3s ease-out forwards;
+}
+.ls-popup-headline {
+  position: relative;
+  z-index: 2;
+  min-height: 68px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(8,16,28,.72);
+  border: 1px solid rgba(245,244,239,.14);
+  text-transform: uppercase;
+}
+.ls-popup-kicker {
+  display: inline-flex; align-items: center; margin: 0 0 8px 8px;
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  background: rgba(8,16,28,.82); border: 1px solid rgba(245,244,239,.18);
+  color: var(--ls-card-text); font: 800 12px/1 'Nunito', sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; box-shadow: var(--ls-card-shadow);
+}
+.ls-popup-window .ls-popup-kicker {
+  margin: 0;
+  width: max-content;
+  height: 21px;
+  font-size: 10px;
+  box-shadow: none;
+}
+.ls-popup-title {
+  color: #fff7ec;
+  font: 700 20px/1.08 'Fredoka', sans-serif;
+  letter-spacing: .06em;
+  text-shadow: 0 2px 8px rgba(0,0,0,.9), 0 0 18px rgba(168,85,247,.34);
+}
+.ls-popup-sub {
+  color: rgba(250,245,255,.72);
+  font: 800 10px/1.15 'Nunito', sans-serif;
+  letter-spacing: .08em;
+}
+.ls-popup-card-wrap {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  margin-top: 10px;
+  opacity: 0;
+  transform: translateY(12px) scale(.94);
+  animation: lsCardReveal 900ms cubic-bezier(.34,1.56,.64,1) 1.9s forwards;
+}
+.ls-popup-window[data-event="SHOW_CARD"] .ls-popup-card-wrap { animation-delay: 1.25s; }
+.ls-popup-window[data-event="PROMOTION"] .ls-popup-card-wrap,
+.ls-popup-window[data-event="POWER_CHANGED"] .ls-popup-card-wrap,
+.ls-popup-window[data-event="BOSS_MVP"] .ls-popup-card-wrap { animation-delay: 1.7s; }
+.ls-popup-window[data-intensity="high"] { box-shadow: 0 24px 60px rgba(0,0,0,.48), 0 0 52px rgba(232,121,249,.32); }
+.ls-popup-window[data-intensity="max"] {
+  border-color: rgba(226,191,98,.72);
+  box-shadow: 0 24px 64px rgba(0,0,0,.52), 0 0 70px rgba(226,191,98,.48);
+}
+.ls-popup-window[data-event="KING_CHANGED"]::before {
+  background: conic-gradient(from 0deg, transparent, rgba(226,191,98,.78), rgba(250,245,255,.45), rgba(226,191,98,.62), transparent);
+  animation-duration: 3.15s;
+}
+.ls-popup-window[data-event="REBIRTH_SUCCESS"]::before {
+  background: radial-gradient(circle at 50% 46%, rgba(244,63,94,.46), transparent 32%),
+              conic-gradient(from 0deg, rgba(248,146,73,.42), transparent, rgba(168,85,247,.48), transparent);
+}
+.ls-popup-window[data-event="REBIRTH_SUCCESS"] {
+  width: 336px;
+  min-height: 566px;
+}
+.ls-rebirth-stage {
+  position: relative;
+  z-index: 2;
+  height: 390px;
+  margin-top: 10px;
+  display: grid;
+  place-items: center;
+}
+.ls-rebirth-stage .ls-card {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  scale: .76;
+  transform-origin: top center;
+}
+.ls-rebirth-old {
+  animation: lsBurnAway 3s ease-in forwards;
+  filter: sepia(.4) saturate(1.4);
+}
+.ls-rebirth-new {
+  opacity: 0;
+  transform: translateX(-50%) translateY(18px) scale(.9);
+  animation: lsRebirthReveal 1s cubic-bezier(.34,1.56,.64,1) 3s forwards;
+}
+@keyframes lsPopupCharge {
+  0% { transform: rotate(0deg) scale(.72); opacity: .25; filter: blur(8px); }
+  65% { opacity: .72; }
+  100% { transform: rotate(260deg) scale(1); opacity: .2; filter: blur(0); }
+}
+@keyframes lsPopupSweep {
+  0%, 72% { transform: translateX(-130%); opacity: 0; }
+  78% { opacity: .9; }
+  100% { transform: translateX(130%); opacity: 0; }
+}
+@keyframes lsCardReveal {
+  0% { opacity: 0; transform: translateY(12px) scale(.94); filter: brightness(1.8) blur(3px); }
+  60% { opacity: 1; transform: translateY(-2px) scale(1.035); filter: brightness(1.25) blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: none; }
+}
+@keyframes lsBurnAway {
+  0%, 42% { opacity: 1; transform: translateX(-50%) scale(1); filter: sepia(.35) saturate(1.2); clip-path: inset(0 0 0 0); }
+  72% { opacity: .65; transform: translateX(-50%) translateY(-8px) rotate(-2deg) scale(.98); filter: sepia(1) saturate(2.4) brightness(1.3); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-42px) rotate(-5deg) scale(.88); clip-path: inset(0 0 100% 0); filter: blur(4px) brightness(1.7); }
+}
+@keyframes lsRebirthReveal {
+  0% { opacity: 0; transform: translateX(-50%) translateY(18px) scale(.9); filter: brightness(2) blur(4px); }
+  70% { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.04); filter: brightness(1.35) blur(0); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); filter: none; }
+}
+#leagueCardPopupZone.hiding .ls-popup-shell {
+  animation: lsPopupExit 460ms cubic-bezier(.55,.05,.68,.19) forwards;
+}
+@keyframes lsPopupExit {
+  0% { opacity: 1; transform: translate(0,0) scale(1); filter: brightness(1); }
+  38% { opacity: 1; transform: translate(0,-4px) scale(1.08); filter: brightness(1.5); }
+  100% { opacity: 0; transform: translate(-10px,-18px) scale(.72); filter: brightness(1.8) blur(5px); }
+}
+
+/* Duel fight scene visuals (HP bars, damage numbers, VS banner, delta badges, battle
+   badges) — this chunk sat between two of the CSS ranges catalogued in the extraction
+   snapshot README and was caught by a re-grep during removal from gift-bar.html rather
+   than being in the original inventory. */
+.ls-vs {
+  color: #fff7ec; font: 700 24px/1 'Fredoka', sans-serif; text-shadow: 0 0 14px rgba(255,201,64,.34);
+}
+.ls-duel-wrap {
+  display: flex; align-items: center; justify-content: center; gap: 18px; position: relative; min-width: 0;
+  transform: translateY(-96px);
+  z-index: 70;
+  filter: drop-shadow(0 12px 22px rgba(0,0,0,.52));
+}
+.ls-duel-names {
+  position: absolute; left: 50%; top: -42px; transform: translateX(-50%);
+  z-index: 92; min-width: 360px; max-width: 660px; height: 34px; padding: 0 18px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  border-radius: 999px; background: rgba(8,16,28,.90); border: 1px solid rgba(250,245,255,.22);
+  color: #fff7ec; font: 800 18px/1 'Fredoka', sans-serif; letter-spacing: .035em;
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 10px 22px rgba(0,0,0,.42), 0 0 24px rgba(168,85,247,.24);
+}
+.ls-duel-names .ls-vs-text { color: #FFC940; font: 700 24px/1 'Fredoka', sans-serif; }
+.ls-duel-wrap.is-intro .ls-duel-card[data-side="attacker"] { animation: lsDuelIntroLeft 860ms cubic-bezier(.34,1.56,.64,1) both; }
+.ls-duel-wrap.is-intro .ls-duel-card[data-side="defender"] { animation: lsDuelIntroRight 860ms cubic-bezier(.34,1.56,.64,1) both; }
+.ls-duel-wrap.is-intro .ls-vs { animation: lsVsPop 860ms cubic-bezier(.34,1.56,.64,1) both; }
+.ls-duel-wrap.is-intro .ls-card-mini { transform: scale(1.16); }
+.ls-duel-wrap.is-intro-settled .ls-card-mini { transition: transform 320ms ease; transform: scale(1); }
+.ls-duel-wrap.is-intro-settled {
+  animation: lsDuelSettle 360ms ease both;
+}
+.ls-duel-card {
+  position: relative; display: grid; place-items: center; width: 160px; min-height: 210px;
+}
+.ls-duel-card .ls-card-mini { width: 148px; height: 198px; }
+.ls-duel-card .ls-card-mini .ls-art { width: 108px; height: 108px; margin: 6px auto 4px; }
+.ls-hp {
+  position: absolute; left: 8px; right: 8px; bottom: -5px; height: 8px;
+  border-radius: 999px; background: rgba(245,244,239,.16); overflow: hidden;
+  border: 1px solid rgba(245,244,239,.18);
+}
+.ls-hp-fill {
+  height: 100%; width: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #FAF5FF, #80C7DE);
+  transition: width 360ms ease;
+}
+.ls-duel-card.is-hit .ls-card-mini { animation: lsDuelHit 280ms ease; }
+.ls-duel-card.is-boost .ls-card-mini { animation: lsDuelBoost 340ms ease; }
+.ls-duel-card.is-ko { opacity: .55; filter: grayscale(.45); }
+.ls-damage {
+  position: absolute; top: -42px; right: -8px; padding: 6px 12px; border-radius: 999px;
+  background: rgba(248,146,73,.98); color: #08101c;
+  font: 900 24px/1 'Fredoka', sans-serif; letter-spacing: .02em;
+  animation: lsDamageFloat 1500ms ease forwards; pointer-events: none; z-index: 999;
+  box-shadow: 0 4px 0 rgba(0,0,0,.8), 0 0 18px rgba(248,146,73,.62);
+  text-shadow: 0 1px 0 rgba(255,255,255,.45);
+}
+.ls-damage.is-crit {
+  background: linear-gradient(90deg, #fff0a8, #f43f5e);
+  color: #18040a;
+  box-shadow: 0 4px 0 rgba(0,0,0,.86), 0 0 26px rgba(244,63,94,.75), 0 0 42px rgba(226,191,98,.5);
+  animation-duration: 1900ms;
+}
+.ls-delta-badge {
+  position: absolute; bottom: -46px; left: 50%; transform: translateX(-50%);
+  z-index: 9999; min-width: 106px; height: 34px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: rgba(8,16,28,.92); border: 2px solid rgba(250,245,255,.35);
+  color: #fff7ec; font: 900 20px/1 'Fredoka', sans-serif; letter-spacing: .02em;
+  box-shadow: 0 4px 0 rgba(0,0,0,.82), 0 0 20px rgba(168,85,247,.28);
+  animation: lsDeltaPop 1800ms ease forwards;
+}
+.ls-delta-badge.is-plus { color: #c7f2ff; border-color: rgba(128,199,222,.58); }
+.ls-delta-badge.is-minus { color: #ffe4e6; border-color: rgba(244,63,94,.58); }
+/* Live fight commentary — floats ABOVE the duel scene (names banner + cards) so it
+   plays out concurrently with the fight instead of being queued into the center
+   notice box (which only shows the result once the duel ends, per user feedback:
+   "notice bar announces battle after it ends, should be concurrent"). Re-renders
+   fresh on every beat so the pop animation replays each hit/block/ability. */
+.ls-duel-flavor {
+  position: absolute; top: -86px; left: 50%; transform: translateX(-50%);
+  z-index: 93; min-width: 200px; max-width: min(600px, 90vw);
+  padding: 8px 22px; border-radius: 999px;
+  background: linear-gradient(180deg, rgba(123,47,190,.92), rgba(8,16,28,.92));
+  border: 1px solid rgba(232,121,249,.55); color: #FAF5FF;
+  font: 800 17px/1.15 'Fredoka', sans-serif; letter-spacing: .035em;
+  text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0,0,0,.6);
+  box-shadow: 0 10px 24px rgba(0,0,0,.45), 0 0 26px rgba(232,121,249,.32);
+  animation: lsFlavorPop 260ms cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes lsFlavorPop {
+  0% { transform: translateX(-50%) scale(.82); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+@keyframes lsDuelHit {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  55% { transform: translateX(4px); box-shadow: 0 0 20px rgba(248,146,73,.35); }
+}
+@keyframes lsDuelBoost {
+  0%,100% { transform: scale(1); }
+  45% { transform: scale(1.04); box-shadow: 0 0 24px rgba(128,199,222,.32); }
+}
+@keyframes lsDamageFloat {
+  0% { opacity: 0; transform: translateY(14px) scale(.78); }
+  14%, 74% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-28px) scale(1.12); }
+}
+@keyframes lsDeltaPop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(16px) scale(.7); }
+  18%, 78% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-18px) scale(1.1); }
+}
+@keyframes lsDuelIntroLeft {
+  0% { transform: translateX(-210px) scale(.9) rotate(-6deg); opacity: 0; }
+  58% { transform: translateX(22px) scale(1.2) rotate(3deg); opacity: 1; }
+  78% { transform: translateX(-8px) scale(1.12) rotate(-2deg); }
+  100% { transform: translateX(0) scale(1) rotate(0); opacity: 1; }
+}
+@keyframes lsDuelIntroRight {
+  0% { transform: translateX(210px) scale(.9) rotate(6deg); opacity: 0; }
+  58% { transform: translateX(-22px) scale(1.2) rotate(-3deg); opacity: 1; }
+  78% { transform: translateX(8px) scale(1.12) rotate(2deg); }
+  100% { transform: translateX(0) scale(1) rotate(0); opacity: 1; }
+}
+@keyframes lsVsPop {
+  0%, 42% { opacity: 0; transform: scale(.6); }
+  58% { opacity: 1; transform: scale(1.45); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes lsDuelSettle {
+  from { transform: translateY(-106px) scale(1.04); }
+  to { transform: translateY(-96px) scale(1); }
+}
+.battle-badge--basic { border-color: rgba(245,244,239,.24); }
+.battle-badge--enhanced { border-color: rgba(128,199,222,.42); color: #c7f2ff; }
+.battle-badge--premium { border-color: rgba(226,191,98,.56); color: #ffe6a1; }
+.battle-badge--elite { border-color: rgba(232,121,249,.72); color: #ffd1fb; box-shadow: 0 0 10px rgba(232,121,249,.22); }
+</style>
+</head>
+<body>
+<div id="conn-dot"></div>
+
+<!-- ══ League of Splatties — Top Camera Region (0-450px): two fixed compact windows,
+     never a floating popup over the main gameplay area. ══ -->
+<div id="lsTopRegion">
+  <div id="lsPlayerWindow" class="ls-mini-window is-empty" data-ls-zone="player-window">
+    <div class="ls-mini-window-label">PLAYER</div>
+    <div id="leagueCardPopupZone"></div>
+  </div>
+  <div id="lsSystemWindow" class="ls-mini-window is-empty" data-ls-zone="system-window">
+    <div class="ls-mini-window-label">SYSTEM</div>
+    <div id="lsSystemWindowBody" class="ls-mini-window-body"></div>
+  </div>
+  <div id="lsActivityPanel" class="is-empty" data-ls-zone="activity-panel"></div>
+</div>
+
+<!-- Middle Splat Bar (450-560px) — was nested inside gift-bar.html's #gift-bar; now a
+     top-level, self-positioned element (see #leagueSprintBar CSS: top:450px explicit,
+     replacing the old `inset:0` that relied on #gift-bar as its positioned ancestor). -->
+<div id="leagueSprintBar">
+  <div id="leagueSprintStatus"><div class="ls-hud-badge">🫟 LEAGUE OF SPLATTIES</div><div class="ls-hud-round">ROUND 3</div><div class="ls-hud-timer"><span class="ls-hud-timer-digits">08:42</span><span class="ls-hud-timer-label">UNTIL LEAGUE RESET</span></div></div>
+  <div id="leagueSprintCenter"><div class="ls-target-rows"><div class="ls-target-rows-empty">SCOUTING…</div></div></div>
+</div>
+
+<div id="leagueBottomShelf" data-layout-id="league-bottom-shelf">
+  <div id="lsDuelPreview" data-ls-zone="duel-preview"><div class="ls-zone-empty">DUEL PREVIEW</div></div>
+</div>
+<!-- Retired as a visible column (zone 9 merged into zone 10 / #lsDuelPreview above) —
+     kept in the DOM only because the JS still holds a reference to it; force-hidden
+     via CSS. #lsRankingsSlideshow is reparented at init into #leagueSprintCenter as
+     the Boss Field panel (zone 6-7). -->
+<div id="lsRecentChallengers" data-ls-zone="recent-challengers"></div>
+<div id="lsRankingsSlideshow" data-ls-zone="rankings-slideshow"></div>
+
+<!-- Zone 8 — Micro Pills: tiny error/cooldown pills, moved out of the middle bar to
+     sit just above the bottom combat/card strip. -->
+<div id="lsMicroPills" data-ls-zone="micro-pills"></div>
+
+<!-- Duel Result Pill: slim headline above the fight strip, results only. -->
+<div id="lsDuelResultPill" data-ls-zone="duel-result-pill"></div>
+
+<!-- Zone 11 — Narrow Card Event Dock (repurposed #leagueSprintEvent node): single
+     card-width, anchored far right of the bottom strip, art-forward, one event at a
+     time. -->
+<div id="leagueSprintEvent" data-ls-zone="card-event-dock"></div>
+<script>
+// Tracks the shared mission-strip's last-known visibility (published by stream-dock.html
+// on 'mission-strip-config'). Mirrors gift-bar.html's own window._missionStripEnabled —
+// see setMissionStripText() below for why this matters (the .ls-command-strip CSS class
+// force-shows the strip, so it must only be requested when the strip is meant to be up).
+let _missionStripEnabled = true;
+
+// ── System Window (top camera region) + Micro Pills ──────────────────────
+// Renders League "system" events (rebirth window, promotion/demotion, champion changes,
+// cooldown/denied/open/closed, phase/state changes) into #lsSystemWindow, and routine
+// low-stakes command feedback (cooldown, invalid command, no target, etc.) into
+// #lsMicroPills. Called extensively from inside the LEAGUE_SPRINT engine below (e.g.
+// showMicroPill() at several event-handling sites) — this block sat just above
+// gift-bar.html's LEAGUE_SPRINT const and was caught by a re-grep during removal from
+// gift-bar.html rather than being in the original extraction snapshot's line inventory.
+const LS_SYSTEM_ICONS = {
+  rebirth:'♻️', promotion:'⬆️', demotion:'⬇️', cooldown:'⏳',
+  denied:'🚫', open:'🔓', closed:'🔒', state:'⚙️', event:'⚡', champion:'👑'
+};
+let lsSystemWindowTimer=null;
+function renderSystemWindow(kicker, title, sub, kind, ms=4200){
+  const win=document.getElementById('lsSystemWindow');
+  const body=document.getElementById('lsSystemWindowBody');
+  if(!win||!body)return;
+  clearTimeout(lsSystemWindowTimer);
+  const icon=LS_SYSTEM_ICONS[kind]||LS_SYSTEM_ICONS.event;
+  body.innerHTML=`
+    <div class="ls-mini-window-thumb" style="font-size:30px;line-height:1;">${icon}</div>
+    <div class="ls-mini-window-copy">
+      <div class="ls-mini-window-title">${title||''}</div>
+      <div class="ls-mini-window-sub">${sub||''}</div>
+    </div>`;
+  const labelEl=win.querySelector('.ls-mini-window-label');
+  if(labelEl)labelEl.textContent=kicker||'SYSTEM';
+  win.classList.remove('is-empty');
+  win.classList.add('visible');
+  if(ms>0)lsSystemWindowTimer=setTimeout(hideSystemWindow, ms);
+}
+function hideSystemWindow(){
+  clearTimeout(lsSystemWindowTimer);
+  document.getElementById('lsSystemWindow')?.classList.remove('visible');
+}
+function showMicroPill(text, kind='info'){
+  const wrap=document.getElementById('lsMicroPills');
+  if(!wrap||!text)return;
+  const pill=document.createElement('div');
+  pill.className='ls-micro-pill'+(kind==='error'?' is-error':'');
+  pill.textContent=text;
+  wrap.appendChild(pill);
+  while(wrap.children.length>3)wrap.removeChild(wrap.firstChild);
+  setTimeout(()=>{
+    pill.style.transition='opacity 200ms ease';
+    pill.style.opacity='0';
+    setTimeout(()=>pill.remove(), 220);
+  }, 2000);
+}
+function showSplatPanelTakeover(title, detail, note, ms=5200){
+  // Kept as a compatibility wrapper — existing call sites are unchanged.
+  renderSystemWindow('SYSTEM', title || 'Splat Cards', [detail, note].filter(Boolean).join('  '), 'event', ms);
+}
+
+const LEAGUE_SPRINT = (() => {
+  const characters = {
+    wekka: { label: 'Wekka', type: 'defender' },
+    layla: { label: 'Layla', type: 'attacker' },
+    kinz: { label: 'Kinz', type: 'balanced' },
+    jasper: { label: 'Jasper', type: 'gambler' },
+    jamie: { label: 'Jamie', type: 'escapist' }
+  };
+  const typeLabels = {
+    defender: { label: 'Defender', fallback: 'SH' },
+    attacker: { label: 'Attacker', fallback: 'AT' },
+    balanced: { label: 'Balanced', fallback: 'YY' },
+    gambler: { label: 'Gambler', fallback: 'D6' },
+    escapist: { label: 'Escapist', fallback: 'WG' }
+  };
+  const popupZone = document.getElementById('leagueCardPopupZone');
+  const sprintStatus = document.getElementById('leagueSprintStatus');
+  const sprintCenter = document.getElementById('leagueSprintCenter');
+  const sprintEvent = document.getElementById('leagueSprintEvent');
+  const bottomShelf = document.getElementById('leagueBottomShelf');
+  const sprintBar = document.getElementById('leagueSprintBar');
+  // Dedicated League of Splatties zones (top camera region windows, micro pill lane,
+  // and the three bottom-strip columns) — kept independent of #gift-bar/#bar-info so
+  // Splat Cards never resizes or competes with the gift/milk bar or gifter slides.
+  const playerWindowEl = document.getElementById('lsPlayerWindow');
+  const systemWindowEl = document.getElementById('lsSystemWindow');
+  const systemWindowBody = document.getElementById('lsSystemWindowBody');
+  const activityPanelEl = document.getElementById('lsActivityPanel');
+  const microPillsEl = document.getElementById('lsMicroPills');
+  const duelPreviewEl = document.getElementById('lsDuelPreview');
+  const rankingsSlideshowEl = document.getElementById('lsRankingsSlideshow');
+  const duelResultPillEl = document.getElementById('lsDuelResultPill');
+  let popupTimer = null;
+  let systemWindowTimer = null;
+  let knownPlayerCount = 0;
+  let shelfMode = 'leaders';
+  // Reparent #lsRankingsSlideshow into #leagueSprintCenter as the Boss Field panel
+  // (zone 6-7 mode B). Zone 5/6-7 are now the middle bar's only two lanes — the old
+  // 3rd lane (event log / leaders ticker) is retired; #leagueSprintEvent is detached
+  // entirely and repositioned as the standalone zone-11 Card Event Dock (see its own
+  // CSS), and #lsRecentChallengers is merged into #lsDuelPreview (zones 9-10).
+  (function mountBossField() {
+    if (!sprintCenter || !rankingsSlideshowEl) return;
+    rankingsSlideshowEl.classList.add('ls-boss-field');
+    sprintCenter.appendChild(rankingsSlideshowEl);
+  })();
+  let gameTitle = 'League of Splatties';
+  const commandCooldowns = new Map();
+  const cardRegistry = new Map();
+  let leaguePhase = 'active';
+  let rebirthCountdownTimer = null;
+  const COMMAND_COOLDOWN_MS = 2400;
+  // Shorter copy for the compact mission-strip notch (zone 1) — it's a small pill now,
+  // not a full-width banner, so it only ever needs one short line.
+  const phaseCopy = {
+    active: '!pull · !show · !duel',
+    rebirth: 'REBIRTH WINDOW · !rebirth',
+    results: 'ROUND RESULTS · next round soon'
+  };
+  let duelEndTimer = null;
+  let duelIdleTimer = null;
+  const duelAnimationQueue = [];
+  let duelAnimationActive = false;
+  // Target Rows (zone 6-7 mode A) rotates through the 4 leagues one at a time — the
+  // 110px-tall middle bar doesn't have room to show all leagues at once and stay
+  // "compact... for scouting, not a full leaderboard" per spec.
+  let targetRowsTimer = null;
+  let targetRowsLeagueIndex = 0;
+  // Boss Field (zone 6-7 mode B) state — populated by action:'boss' messages / the
+  // BOSS_* event types below. No boss active by default.
+  let bossState = null;
+  let scoutBossMode = 'target';
+  // Card Event Dock (zone 11) queue — one card event visible at a time, art-forward.
+  const cardDockQueue = [];
+  let cardDockBusy = false;
+  let cardDockTimer = null;
+  // Duel Result Pill queue — results only, above the fight strip.
+  const duelResultQueue = [];
+  let duelResultBusy = false;
+  let duelResultPillTimer = null;
+  // Event routing table (message-zone refactor) — one event, one *visible*
+  // destination. `dock` = zone 11 Card Event Dock, `micro` = zone 8 quiet pill,
+  // `scout` = silent zone 6-7 Target Rows refresh (no popup of its own), `boss` =
+  // silent Boss Field update (may also flip zone 6-7 into boss mode).
+  const eventMeta = {
+    CARD_DRAWN: { text: 'card drawn', kind: 'ok', dock: true },
+    SHOW_CARD: { text: 'show card', kind: 'ok', dock: true },
+    DUEL_COMMAND_RECEIVED: { text: 'duel command received', kind: 'ok' },
+    POWER_CHANGED: { text: 'power changed', kind: 'result', scout: true },
+    FRAGMENTS_CHANGED: { text: 'fragments changed', kind: 'result', scout: true },
+    PROMOTION: { text: 'promotion', kind: 'result', dock: true, scout: true },
+    DEMOTION: { text: 'demotion', kind: 'result', dock: true, scout: true },
+    REBIRTH_SUCCESS: { text: 'rebirth success', kind: 'result', dock: true, scout: true },
+    REBIRTH_DENIED: { text: 'rebirth denied', kind: 'error', micro: true },
+    KING_CHANGED: { text: 'champion changed', kind: 'result', dock: true, scout: true },
+    RESULTS_STARTED: { text: 'end of round reset', kind: 'result', scout: true },
+    INVALID_COMMAND: { text: 'invalid command', kind: 'error', micro: true },
+    NO_TARGET: { text: 'no target', kind: 'error', micro: true },
+    COOLDOWN: { text: 'cooldown', kind: 'error', micro: true },
+    BOSS_STARTED: { text: 'boss appeared', kind: 'result', boss: true },
+    BOSS_JOINED: { text: 'boss joined', kind: 'ok', boss: true },
+    BOSS_DEFEATED: { text: 'boss defeated', kind: 'result', boss: true },
+    BOSS_LOST: { text: 'boss escaped', kind: 'error', boss: true },
+    BOSS_MVP: { text: 'boss mvp', kind: 'result', dock: true },
+    LOOT_CLAIMED: { text: 'diamond grabbed', kind: 'result', dock: true },
+    ABILITY_READY: { text: 'ability ready', kind: 'ok', scout: true },
+    ABILITY_USED: { text: 'ability used', kind: 'ok', scout: true }
+  };
+
+  function getRankArtPath(character, rank) {
+    return `assets/cards/art-rank/${character}_${String(rank || 'D5').toLowerCase()}.png`;
+  }
+  function getFramePath(league) {
+    return `assets/cards/frames/frame_${String(league).toLowerCase()}.svg`;
+  }
+  function getTypeIconPath(type) {
+    return `assets/cards/icons/type_${type}.svg`;
+  }
+  function getDivisionPips(currentRank) {
+    const m = String(currentRank || 'D5').toUpperCase().match(/^([DCBA])([1-5])$/);
+    if (!m) return { filled: 1, total: 5 };
+    const league = m[1], n = Number(m[2]);
+    if (league === 'A') return { filled: Math.max(1, Math.min(3, 4 - n)), total: 3 };
+    return { filled: Math.max(1, Math.min(5, 6 - n)), total: 5 };
+  }
+  function badgeClass(steps) {
+    if (steps >= 10) return 'battle-badge--elite';
+    if (steps >= 6) return 'battle-badge--premium';
+    if (steps >= 3) return 'battle-badge--enhanced';
+    return 'battle-badge--basic';
+  }
+  function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function normalizeUsername(v) {
+    const raw = String(v || '@viewer').trim() || '@viewer';
+    return raw.startsWith('@') ? raw : `@${raw}`;
+  }
+  function userKey(v) {
+    return normalizeUsername(v).toLowerCase();
+  }
+  function hashString(v) {
+    return Array.from(String(v || 'viewer')).reduce((n, ch) => ((n << 5) - n + ch.charCodeAt(0)) | 0, 0);
+  }
+  function rankIndex(rank) {
+    const order = ['D5','D4','D3','D2','D1','C5','C4','C3','C2','C1','B5','B4','B3','B2','B1','A3','A2','A1'];
+    const idx = order.indexOf(String(rank || 'D5').toUpperCase());
+    return { order, idx: idx >= 0 ? idx : 0 };
+  }
+  // Best-ranked-first ordering used for the leaders shelf and for numbering duel targets,
+  // so the "#N" badge shown on a shelf card always matches what "!duel N" resolves to.
+  function sortedByRank(cards) {
+    return (cards || []).slice().sort((a, b) => rankIndex(b.currentRank).idx - rankIndex(a.currentRank).idx || (b.power || 0) - (a.power || 0));
+  }
+  function shiftRank(rank, delta) {
+    const r = rankIndex(rank);
+    return r.order[Math.max(0, Math.min(r.order.length - 1, r.idx + delta))];
+  }
+  function setMissionStripText(text) {
+    // #mission-strip lives in gift-bar.html, not this file — publish to the shared
+    // 'mission-strip-config' Ably channel instead of writing the DOM directly (gift-bar.html's
+    // existing handler, ~6676-6690, renders it). `commandStrip` is only included when the
+    // strip is meant to be showing (see _missionStripEnabled tracker below) — the CSS rule
+    // `#mission-strip.ls-command-strip { opacity:1 !important }` would otherwise force the
+    // strip visible even after the dock explicitly hid it, since round/phase ticking calls
+    // this continuously.
+    const payload = { text: `${gameTitle.toUpperCase()} - ${text}` };
+    if (_missionStripEnabled) payload.commandStrip = true;
+    if (typeof ablyChannel !== 'undefined' && ablyChannel) ablyChannel.publish('mission-strip-config', payload).catch(() => {});
+  }
+  function setGameTitle(title) {
+    const clean = String(title || '').trim();
+    gameTitle = clean || 'League of Splatties';
+    setMissionStripText(phaseCopy[leaguePhase]);
+  }
+  function setPhase(phase) {
+    const previous = leaguePhase;
+    leaguePhase = ['active', 'rebirth', 'results'].includes(phase) ? phase : 'active';
+    setMissionStripText(phaseCopy[leaguePhase]);
+    if (previous !== leaguePhase) refreshTargetRows();
+  }
+  function setDuelActive(active) {
+    sprintBar?.classList.toggle('ls-duel-active', !!active);
+    if (active) {
+      stopTargetRowsRotation();
+    } else {
+      if (duelPreviewEl) duelPreviewEl.removeAttribute('data-queue');
+      if (scoutBossMode === 'target') startTargetRowsRotation();
+    }
+  }
+  // Fight animation priority: the fight owns the bottom strip while active (see CSS).
+  // Once it ends, drop duel-active, announce the outcome via the Duel Result Pill
+  // (zone 6 / the old center notice is retired), and quietly refresh whichever of
+  // Target Rows / Boss Field is currently showing.
+  function concludeDuel(resultText, delayMs = 4200, resultLingerMs = 3400, done) {
+    clearTimeout(duelEndTimer);
+    clearTimeout(duelIdleTimer);
+    duelEndTimer = setTimeout(() => {
+      setDuelActive(false);
+      enqueueDuelResultPill(resultText || 'DUEL RESULT', 'result');
+      refreshTargetRows();
+      duelIdleTimer = setTimeout(() => {
+        renderDuelIdleState();
+        done?.();
+      }, resultLingerMs);
+    }, delayMs);
+  }
+  // ── Target Rows (zone 6-7, mode A) — one league row at a time, grouped by the
+  // game's real D/C/B/A leagues (compact scouting/targeting, not a full leaderboard).
+  // Rotates automatically; paused whenever a duel owns the bottom strip.
+  const TARGET_LEAGUES = ['D', 'C', 'B', 'A'];
+  function stopTargetRowsRotation() {
+    clearInterval(targetRowsTimer);
+    targetRowsTimer = null;
+  }
+  function startTargetRowsRotation() {
+    stopTargetRowsRotation();
+    renderTargetRows();
+    targetRowsTimer = setInterval(() => {
+      targetRowsLeagueIndex = (targetRowsLeagueIndex + 1) % TARGET_LEAGUES.length;
+      renderTargetRows();
+    }, 9000);
+  }
+  function renderTargetRows() {
+    if (!sprintCenter) return;
+    const targetRowsEl = sprintCenter.querySelector('.ls-target-rows');
+    if (!targetRowsEl) return;
+    const league = TARGET_LEAGUES[targetRowsLeagueIndex % TARGET_LEAGUES.length];
+    const cards = sortedByRank(decorateCards(allKnownCards().filter(c => String(c.league).toUpperCase() === league)));
+    if (!cards.length) {
+      targetRowsEl.innerHTML = `<div class="ls-target-rows-empty">LEAGUE ${esc(league)} - no players yet</div>`;
+      return;
+    }
+    const chips = cards.slice(0, 6).map((c, i) => `<div class="ls-target-chip">
+      ${artHtml(c)}
+      <div class="ls-target-chip-name">${esc(c.username)}</div>
+      <div class="ls-target-chip-num" title="!duel ${esc(i + 1)}">#${esc(i + 1)}</div>
+    </div>`).join('');
+    targetRowsEl.innerHTML = `<div class="ls-target-rows-league" data-league="${esc(league)}" style="--ls-league-color:var(--ls-league-${esc(league.toLowerCase())})">
+      <div class="ls-target-rows-league-label">${esc(league)}</div>
+      <div class="ls-target-rows-league-sub">league</div>
+    </div>
+    <div class="ls-target-rows-list">${chips}</div>`;
+  }
+  // Silent refresh hook for scout-affecting events (power/fragments/promotion/rebirth/
+  // results) — never a popup of its own, just keeps whichever of Target Rows / Boss
+  // Field is on screen current.
+  function refreshTargetRows() {
+    if (scoutBossMode === 'boss') renderBossField();
+    else renderTargetRows();
+  }
+  // ── Boss Field (zone 6-7, mode B) — squad chips + boss card/HP. Only one of
+  // Target Rows / Boss Field is ever visible; setScoutBossMode() switches between them. ──
+  function setScoutBossMode(mode, opts = {}) {
+    scoutBossMode = mode === 'boss' ? 'boss' : 'target';
+    if (!sprintCenter) return;
+    sprintCenter.classList.toggle('mode-boss', scoutBossMode === 'boss');
+    if (scoutBossMode === 'boss') {
+      stopTargetRowsRotation();
+      renderBossField(opts.boss);
+    } else {
+      renderBossField();
+      startTargetRowsRotation();
+    }
+  }
+  function renderBossField(state) {
+    if (state) bossState = Object.assign({}, bossState, state);
+    if (!sprintCenter) return;
+    const bossEl = sprintCenter.querySelector('.ls-boss-field');
+    if (!bossEl) return;
+    if (!bossState) {
+      bossEl.innerHTML = `<div class="ls-zone-empty">NO BOSS ACTIVE</div>`;
+      return;
+    }
+    const hpMax = Math.max(1, Number(bossState.hpMax) || 100);
+    const hp = Math.max(0, Math.min(hpMax, Number(bossState.hp ?? hpMax)));
+    const pct = Math.round((hp / hpMax) * 100);
+    const squad = (bossState.participants || []).slice(0, 5).map(p => `<div class="ls-target-chip">
+      ${artHtml(ensureCard(p.username || p))}
+      <div class="ls-target-chip-name">${esc(normalizeUsername(p.username || p))}</div>
+    </div>`).join('');
+    bossEl.innerHTML = `<div class="ls-boss-squad">${squad || '<div class="ls-zone-empty">no challengers yet</div>'}</div>
+      <div class="ls-boss-arrow">&#10148;</div>
+      <div class="ls-boss-card">
+        <div class="ls-boss-name">${esc(bossState.name || 'BOSS')}</div>
+        <div class="ls-boss-level">${esc(bossState.level ? `LV. ${bossState.level}` : bossState.resist || '')}</div>
+        <div class="ls-boss-hp"><div class="ls-boss-hp-fill" style="width:${pct}%"></div></div>
+        <div class="ls-boss-hp-text">${hp.toLocaleString()} / ${hpMax.toLocaleString()}</div>
+      </div>`;
+  }
+  function formatClock(ms) {
+    const total = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+  // Renders the League of Splatties left-zone HUD: branded badge + round + big timer.
+  // `statusText` is a back-compat fallback for any caller still sending a single string.
+  function renderStatusHud(opts = {}) {
+    if (!sprintStatus) return;
+    const badge = `<div class="ls-hud-badge">🫟 ${esc(gameTitle.toUpperCase())}</div>`;
+    if (opts.statusText) {
+      sprintStatus.innerHTML = `${badge}<div class="ls-hud-round">${esc(opts.statusText)}</div>`;
+      return;
+    }
+    const roundLabel = opts.roundLabel || '';
+    const clock = opts.clock || '';
+    const timerLabel = opts.timerLabel || 'UNTIL LEAGUE RESET';
+    sprintStatus.innerHTML = `${badge}
+      ${roundLabel ? `<div class="ls-hud-round">${esc(roundLabel)}</div>` : ''}
+      ${clock ? `<div class="ls-hud-timer"><span class="ls-hud-timer-digits">${esc(clock)}</span><span class="ls-hud-timer-label">${esc(timerLabel)}</span></div>` : ''}`;
+  }
+  function startRebirthCountdown(endsAt) {
+    clearInterval(rebirthCountdownTimer);
+    const end = Number(endsAt || 0);
+    if (!end || !sprintStatus) return;
+    const tick = () => {
+      const left = end - Date.now();
+      renderStatusHud({ roundLabel: 'REBIRTH WINDOW', clock: formatClock(left), timerLabel: 'UNTIL WINDOW CLOSES' });
+      if (left <= 0) {
+        clearInterval(rebirthCountdownTimer);
+        rebirthCountdownTimer = null;
+      }
+    };
+    tick();
+    rebirthCountdownTimer = setInterval(tick, 1000);
+  }
+  // Zone 11 — Card Event Dock (#leagueSprintEvent): narrow, art-forward, single-card-width
+  // queue. This is the ONLY destination for card-art events (Card Pull, Show Card, Rebirth,
+  // Promotion, Demotion, New Champion, Boss Reward, Rank-up). One at a time, queued, never
+  // a text log, never duel acknowledgements/errors (those go to micro pills / duel result pill).
+  const CARD_DOCK_QUEUE_CAP = 10; // ~70s max backlog at the ~6.8-7.6s linger per item
+  function enqueueCardDock(eventType, card, label, lingerMs, opts = {}) {
+    cardDockQueue.push({ eventType, card, label, lingerMs, opts });
+    while (cardDockQueue.length > CARD_DOCK_QUEUE_CAP) cardDockQueue.shift();
+    processCardDockQueue();
+  }
+  function processCardDockQueue() {
+    if (cardDockBusy || !cardDockQueue.length) return;
+    cardDockBusy = true;
+    const item = cardDockQueue.shift();
+    const linger = item.lingerMs || (item.eventType === 'REBIRTH_SUCCESS' ? 7600 : 6800);
+    if (item.eventType === 'REBIRTH_SUCCESS' && item.opts?.oldCard && item.card) {
+      showCardDockRebirth(item.opts.oldCard, item.card, item.label, linger, item.opts);
+    } else {
+      showCardDock(item.card, item.label, linger, item.opts);
+    }
+    clearTimeout(cardDockTimer);
+    cardDockTimer = setTimeout(() => {
+      hideCardDock();
+      setTimeout(() => {
+        cardDockBusy = false;
+        processCardDockQueue();
+      }, 260);
+    }, linger);
+  }
+  // Duel Result Pill: separate from zone 8 micro pills, sits just above the Duel Stage /
+  // Card Event Dock strip, results only, queues multiple results so nothing gets clobbered.
+  const DUEL_RESULT_QUEUE_CAP = 8; // ~34s max backlog at the ~4.2s linger per item
+  function enqueueDuelResultPill(text, kind = 'result') {
+    duelResultQueue.push({ text, kind });
+    while (duelResultQueue.length > DUEL_RESULT_QUEUE_CAP) duelResultQueue.shift();
+    processDuelResultQueue();
+  }
+  function processDuelResultQueue() {
+    if (duelResultBusy || !duelResultQueue.length) return;
+    duelResultBusy = true;
+    const item = duelResultQueue.shift();
+    if (duelResultPillEl) {
+      duelResultPillEl.textContent = item.text;
+      duelResultPillEl.classList.toggle('is-error', item.kind === 'error');
+      duelResultPillEl.classList.add('visible');
+    }
+    clearTimeout(duelResultPillTimer);
+    duelResultPillTimer = setTimeout(() => {
+      duelResultPillEl?.classList.remove('visible');
+      setTimeout(() => {
+        duelResultBusy = false;
+        processDuelResultQueue();
+      }, 220);
+    }, 4200);
+  }
+  function popupCopy(eventType, card, label, message, opts = {}) {
+    const user = normalizeUsername(card?.username || '@viewer');
+    const type = typeLabels[card?.type]?.label || card?.type || 'card';
+    const custom = (fallback) => ({
+      kicker: opts.popupKicker || label || fallback.kicker,
+      title: opts.popupTitle || message || fallback.title,
+      sub: opts.popupSub || fallback.sub
+    });
+    if (eventType === 'CARD_DRAWN') return custom({ kicker: 'CARD DRAW', title: `${user} pulled a card!`, sub: `${card?.currentRank || 'D5'} ${type}` });
+    if (eventType === 'SHOW_CARD') return custom({ kicker: 'SHOW CARD', title: `Showing ${user}'s Card`, sub: `${card?.currentRank || 'D5'} - ${Number(card?.power || 0).toLocaleString()} PWR` });
+    if (eventType === 'REBIRTH_SUCCESS') return custom({ kicker: 'REBIRTH', title: `${user} rerolled a ${type}!`, sub: message || `${card?.currentRank || 'D5'} - new path unlocked` });
+    if (eventType === 'KING_CHANGED') return custom({ kicker: 'NEW CHAMPION', title: 'A new champion emerges', sub: `${user} takes the top spot` });
+    if (eventType === 'PROMOTION') return custom({ kicker: 'PROMOTED', title: `${user} ranked up!`, sub: `${card?.currentRank || ''}` });
+    if (eventType === 'DEMOTION') return custom({ kicker: 'DEMOTED', title: `${user} dropped rank`, sub: `${card?.currentRank || ''}` });
+    return { kicker: label || 'CARD EVENT', title: message || `${user}`, sub: `${card?.currentRank || 'D5'} ${type}` };
+  }
+  function ensureCard(username, seedCard) {
+    const usernameSafe = normalizeUsername(username);
+    const key = userKey(usernameSafe);
+    if (cardRegistry.has(key)) return cardRegistry.get(key);
+    const chars = Object.keys(characters);
+    const seed = Math.abs(hashString(usernameSafe));
+    const character = seedCard?.character || chars[seed % chars.length];
+    // Fresh pulls are locked to D league with a very rare (3%) C-league draw — matches the
+    // real pull odds in the stream dock's engine (randomPullRank). This local fallback only
+    // ever runs for demo/test cards, never real production pulls.
+    const league = seedCard?.league || (Math.random() < 0.03 ? 'C' : 'D');
+    const rank = seedCard?.currentRank || `${league}${1 + Math.floor(Math.random() * 5)}`;
+    const card = normalizeCard(Object.assign({
+      id: key.replace(/[^a-z0-9]/g, '-'),
+      ownerId: key,
+      username: usernameSafe,
+      character,
+      type: seedCard?.type || characters[character].type,
+      league,
+      currentRank: rank,
+      originRank: rank,
+      power: 420 + (seed % 980),
+      fragments: seed % 3,
+      fragmentMax: league === 'A' ? 3 : 4,
+      battleStepsClimbed: 0,
+      rebirthCount: 0
+    }, seedCard || {}));
+    cardRegistry.set(key, card);
+    return card;
+  }
+  function updateCard(card, changes) {
+    const next = normalizeCard(Object.assign({}, card, changes || {}));
+    cardRegistry.set(userKey(next.username), next);
+    return next;
+  }
+  function allKnownCards() {
+    const cards = Array.from(cardRegistry.values());
+    return cards.length ? cards : sampleCards().map(c => ensureCard(c.username, c));
+  }
+  function chooseDuelTarget(player, arg) {
+    const cards = sortedByRank(allKnownCards().filter(c => userKey(c.username) !== userKey(player.username)));
+    if (!cards.length) return null;
+    const token = String(arg || '1').trim().toUpperCase();
+    if (/^[1-9]\d*$/.test(token)) return cards[(Number(token) - 1) % cards.length];
+    if (token === 'UP') {
+      const p = rankIndex(player.currentRank).idx;
+      return cards.slice().sort((a, b) => Math.abs(rankIndex(a.currentRank).idx - (p + 1)) - Math.abs(rankIndex(b.currentRank).idx - (p + 1)))[0];
+    }
+    if (/^[DCBA]$/.test(token)) return cards.find(c => String(c.league).toUpperCase() === token) || null;
+    return null;
+  }
+  function commandTextFromPayload(d) {
+    if (typeof d === 'string') return d;
+    return d?.text || d?.comment || d?.message || d?.body || d?.command || d?.rawText || '';
+  }
+  function commandUserFromPayload(d) {
+    return normalizeUsername(d?.username || d?.uniqueId || d?.displayName || d?.nickname || d?.user || d?.ownerId || '@viewer');
+  }
+  function parseCommand(text) {
+    const cleaned = String(text || '').trim().replace(/\s+/g, ' ');
+    if (!cleaned.startsWith('!')) return null;
+    const parts = cleaned.slice(1).split(' ');
+    const aliases = { draw: 'pull', join: 'pull', card: 'show', ls: 'show', cardgame: 'show', rebirth: 'reroll', fight: 'boss', attack: 'boss', loot: 'grab' };
+    const rawName = (parts.shift() || '').toLowerCase();
+    return { name: aliases[rawName] || rawName, args: parts, raw: cleaned };
+  }
+  function canRunCommand(username, name) {
+    const key = `${userKey(username)}:${name}`;
+    const now = Date.now();
+    const last = commandCooldowns.get(key) || 0;
+    if (now - last < COMMAND_COOLDOWN_MS) return false;
+    commandCooldowns.set(key, now);
+    return true;
+  }
+  function eventText(type, payload) {
+    const meta = eventMeta[type] || eventMeta.INVALID_COMMAND;
+    const user = payload?.username ? `${normalizeUsername(payload.username)} ` : '';
+    const detail = payload?.detail || payload?.reason || payload?.label || '';
+    return `${meta.text.toUpperCase()} - ${user}${detail}`.trim();
+  }
+  // One event -> exactly one visible destination (silent scouting-board data refreshes
+  // to zones 6-7 are the only thing allowed to ride alongside another visible output).
+  //   meta.micro -> Micro Pill rail (zone 8, errors/cooldowns only)
+  //   meta.dock  -> Card Event Dock (zone 11, queued, art-forward)
+  //   meta.boss  -> Boss Field transitions (zones 6-7, mode B)
+  //   meta.scout -> silent Target Rows / Boss Field data refresh, no popup of its own
+  function emitVisualEvent(type, payload = {}) {
+    const meta = eventMeta[type] || eventMeta.INVALID_COMMAND;
+    const card = payload.card ? normalizeCard(payload.card) : payload.username ? ensureCard(payload.username) : null;
+    if (meta.micro) {
+      showMicroPill(eventText(type, payload), 'error');
+    } else if (meta.dock && card) {
+      enqueueCardDock(type, card, payload.label || meta.text.toUpperCase(), payload.lingerMs, Object.assign({}, payload, { eventType: type }));
+    } else if (meta.boss) {
+      handleBossEvent(type, payload);
+    }
+    if (meta.scout) refreshTargetRows();
+  }
+  function handleBossEvent(type, payload) {
+    if (type === 'BOSS_STARTED') {
+      bossState = {
+        name: payload.name || payload.bossName || 'BOSS',
+        level: payload.level, resist: payload.resist,
+        hp: payload.hp ?? payload.hpMax ?? 100, hpMax: payload.hpMax ?? 100,
+        participants: []
+      };
+      setScoutBossMode('boss');
+    } else if (type === 'BOSS_JOINED') {
+      if (!bossState) bossState = { name: 'BOSS', hp: 100, hpMax: 100, participants: [] };
+      bossState.participants = (bossState.participants || []).concat([{ username: payload.username }]).slice(-5);
+      if (payload.hp != null) bossState.hp = payload.hp;
+      setScoutBossMode('boss');
+    } else if (type === 'BOSS_DEFEATED' || type === 'BOSS_LOST') {
+      if (bossState && payload.hp != null) bossState.hp = payload.hp;
+      renderBossField();
+      enqueueDuelResultPill(eventText(type, payload), type === 'BOSS_DEFEATED' ? 'result' : 'error');
+      setTimeout(() => { bossState = null; setScoutBossMode('target'); }, 4200);
+    }
+  }
+  function pipsHtml(rank) {
+    const p = getDivisionPips(rank);
+    return `<div class="ls-pips">${Array.from({length:p.total}, (_, i) => `<span class="ls-pip${i < p.filled ? ' is-filled' : ''}"></span>`).join('')}</div>`;
+  }
+  function fragmentsHtml(card) {
+    const max = Math.max(1, Number(card.fragmentMax) || (card.league === 'A' ? 3 : 4));
+    const filled = Math.max(0, Math.min(max, Number(card.fragments) || 0));
+    return `<div class="ls-fragments">${Array.from({length:max}, (_, i) => `<span class="ls-fragment${i < filled ? ' is-filled' : ''}"></span>`).join('')}</div>`;
+  }
+  function typeIconHtml(card) {
+    const type = typeLabels[card.type] || typeLabels.balanced;
+    const path = getTypeIconPath(card.type);
+    return `<span class="ls-type-icon"><img src="${esc(path)}" alt="" onerror="this.remove();this.parentNode.textContent='${esc(type.fallback)}';"></span>`;
+  }
+  function artHtml(card) {
+    const char = characters[card.character] || characters.kinz;
+    const rankPath = getRankArtPath(card.character, card.currentRank);
+    return `<div class="ls-art" data-art="${esc(rankPath)}">
+      <img src="${esc(rankPath)}" alt="${esc(char.label)} ${esc(card.currentRank)}" onerror="console.warn('Missing League Sprint art: ${esc(rankPath)}');this.parentNode.classList.add('is-missing');this.remove();">
+      <div class="ls-art-placeholder">ART MISSING<br>${esc(char.label)}<br>${esc(card.currentRank)}</div>
+    </div>`;
+  }
+  function battleChipHtml(card, compact) {
+    if (card.originRank === card.currentRank) return '';
+    const text = compact ? 'VS' : `VS ${card.originRank}>${card.currentRank}`;
+    return `<span class="ls-chip ${badgeClass(Number(card.battleStepsClimbed) || 1)}">${esc(text)}</span>`;
+  }
+  function rebirthChipHtml(card, compact) {
+    const n = Number(card.rebirthCount) || 0;
+    if (n <= 0) return '';
+    const text = compact ? `R${n}` : `REBIRTH x${n}`;
+    return `<span class="ls-chip">${esc(text)}</span>`;
+  }
+  function titleHtml(card) {
+    return card.title ? `<div class="ls-title-line">${esc(card.title)}</div>` : '';
+  }
+  function flexStatsHtml(card) {
+    const s = card.currentLeagueStats || {};
+    const kos = Number(s.playersDefeated || 0);
+    const bosses = Number(s.bossesDefeated || 0);
+    const mvp = Number(s.bossMvpCount || 0);
+    const bits = [`${kos} KOs`, `${bosses} Bosses`];
+    if (mvp) bits.push(`${mvp} MVP`);
+    if (card.rebirthCount) bits.push(`Rebirth x${Number(card.rebirthCount)}`);
+    return `<div class="ls-flex-line">${esc(bits.join(' · '))}</div>`;
+  }
+  function badgesHtml(card) {
+    const badges = Array.isArray(card.badges) ? card.badges : Array.isArray(card.currentLeagueStats?.badges) ? card.currentLeagueStats.badges : [];
+    if (!badges.length) return '';
+    return `<div class="ls-badge-line">${badges.slice(0, 3).map(b => `<span class="ls-badge-mini">${esc(b)}</span>`).join('')}</div>`;
+  }
+  function normalizeCard(card) {
+    const char = characters[card.character] ? card.character : 'kinz';
+    return Object.assign({
+      id: 'sample',
+      ownerId: 'sample',
+      username: '@viewer',
+      character: char,
+      type: characters[char].type,
+      league: 'D',
+      currentRank: 'D5',
+      originRank: 'D5',
+      power: 100,
+      fragments: 0,
+      fragmentMax: card.league === 'A' ? 3 : 4,
+      battleStepsClimbed: 0,
+      rebirthCount: 0,
+      title: '',
+      badges: [],
+      currentLeagueStats: {}
+    }, card, { character: char, type: card.type || characters[char].type });
+  }
+  function decorateCards(cards) {
+    const safe = (cards || []).map(c => normalizeCard(c || {}));
+    if (safe.some(card => Object.prototype.hasOwnProperty.call(card, 'isLeagueLeader'))) return safe;
+    const seen = new Set();
+    safe.forEach(card => {
+      const league = String(card.league || card.currentRank?.[0] || 'D').toUpperCase();
+      if (!seen.has(league)) {
+        card.isLeagueLeader = card.isLeagueLeader !== false;
+        seen.add(league);
+      }
+    });
+    return safe;
+  }
+  function renderCard(input, variant = 'popup', opts = {}) {
+    const card = normalizeCard(input || {});
+    const char = characters[card.character];
+    const type = typeLabels[card.type] || typeLabels.balanced;
+    const classes = ['ls-card', `ls-card-${variant}`];
+    if (card.isKing) classes.push('is-king');
+    if (card.isLeagueLeader) classes.push('is-league-leader');
+    if (opts.featured) classes.push('ls-card-featured');
+    const compact = variant !== 'popup';
+    if (variant === 'micro') {
+      return `<div class="${classes.join(' ')}" data-league="${esc(card.league)}">
+        ${card.isLeagueLeader ? `<div class="ls-leader-badge">${esc(card.league)} LEADER</div>` : ''}
+        ${opts.rankNum ? `<div class="ls-duel-num" title="!duel ${esc(opts.rankNum)}">#${esc(opts.rankNum)}</div>` : ''}
+        ${artHtml(card)}
+        <div class="ls-owner">${esc(card.username)}</div>
+        <div class="ls-card-top"><span class="ls-rank">${esc(card.currentRank)}</span><span>${battleChipHtml(card, true)}${rebirthChipHtml(card, true)}</span></div>
+      </div>`;
+    }
+    return `<div class="${classes.join(' ')}" data-league="${esc(card.league)}" data-frame="${esc(getFramePath(card.league))}">
+      ${card.isLeagueLeader ? `<div class="ls-leader-badge">${esc(card.league)} LEADER</div>` : ''}
+      <div class="ls-card-top"><span class="ls-rank">${esc(card.currentRank)}</span>${pipsHtml(card.currentRank)}${typeIconHtml(card)}</div>
+      <div class="ls-owner">${esc(card.username)}</div>
+      ${artHtml(card)}
+      ${variant === 'popup' ? `<div class="ls-character-line">${esc(char.label)}</div><div class="ls-type-label">${esc(type.label)}</div>` : ''}
+      <div class="ls-power">${Number(card.power || 0).toLocaleString()} PWR</div>
+      ${variant === 'popup' ? titleHtml(card) + flexStatsHtml(card) + badgesHtml(card) : ''}
+      ${variant === 'popup' ? fragmentsHtml(card) : ''}
+      <div class="ls-card-footer">${battleChipHtml(card, compact)}${rebirthChipHtml(card, compact)}</div>
+    </div>`;
+  }
+  // Card popup vs. event-notification overlap fix: whenever the card popup is on screen,
+  // flag it on #gift-bar so the top-camera event panel (#bar-info) can move to a
+  // guaranteed-clear lower position instead of sitting underneath the card.
+  function setCardPopupFlag(active) {
+    document.getElementById('gift-bar')?.classList.toggle('has-card-popup', !!active);
+  }
+  function hidePopupWithPop() {
+    if (!popupZone) return;
+    popupZone.classList.add('hiding');
+    setTimeout(() => { popupZone.classList.remove('visible', 'hiding'); setCardPopupFlag(false); }, 470);
+  }
+  // Zone 11 — Card Event Dock (#leagueSprintEvent): narrow (120-170px), single-card-width,
+  // art-forward. Replaces the old Player Window popup entirely — no floating panel over
+  // the main gameplay region (Goal: main gameplay area stays visually clear).
+  function showCardDock(card, label = 'CARD EVENT', lingerMs = 6800, opts = {}) {
+    if (!sprintEvent) return;
+    const safeCard = normalizeCard(card || {});
+    const eventType = opts.eventType || 'CARD_DRAWN';
+    const copy = popupCopy(eventType, safeCard, label, opts.message, opts);
+    sprintEvent.classList.remove('is-rebirth-result');
+    sprintEvent.innerHTML = `<div class="ls-card-dock-kicker">${esc(copy.kicker || label || 'CARD EVENT')}</div>
+      <div class="ls-mini-window-thumb ls-mini-window-thumb--card">${renderCard(safeCard, 'micro')}</div>
+      <div class="ls-card-dock-title">${esc(copy.title)}</div>
+      <div class="ls-card-dock-sub">${esc(copy.sub)}</div>`;
+    sprintEvent.classList.add('visible');
+  }
+  // Rebirth is now a diamond-cost gamble (up/down/same rank), and its result gets the
+  // one "big" treatment in the Card Event Dock (.is-rebirth-result — see CSS) since it's
+  // the highest-stakes moment in the game between rounds.
+  function showCardDockRebirth(oldCard, newCard, label = 'REBIRTH', lingerMs = 7600, opts = {}) {
+    if (!sprintEvent) return;
+    const before = normalizeCard(oldCard || {});
+    const after = normalizeCard(newCard || {});
+    const copy = popupCopy('REBIRTH_SUCCESS', after, label, opts.message, opts);
+    const direction = String(opts.direction || '').toUpperCase();
+    const arrow = direction === 'UP' ? '&uarr;' : direction === 'SAME' ? '&rarr;' : '&darr;';
+    const cost = opts.cost != null ? `-${opts.cost} DP` : '';
+    sprintEvent.classList.add('is-rebirth-result');
+    sprintEvent.innerHTML = `<div class="ls-card-dock-kicker">${esc(copy.kicker || label || 'REBIRTH')}</div>
+      <div class="ls-card-dock-rebirth">${artHtml(before)}<span class="ls-card-dock-rebirth-arrow">${arrow}</span></div>
+      <div class="ls-mini-window-thumb ls-mini-window-thumb--card">${renderCard(after, 'micro')}</div>
+      <div class="ls-card-dock-title">${esc(copy.title)}</div>
+      <div class="ls-card-dock-sub">${esc(before.currentRank)} &rarr; ${esc(after.currentRank)}${cost ? ' &middot; ' + esc(cost) : ''}</div>`;
+    sprintEvent.classList.add('visible');
+  }
+  function hideCardDock() {
+    sprintEvent?.classList.remove('visible', 'is-rebirth-result');
+  }
+  // Fight animation lives ONLY in the bottom-strip Duel Preview column (#lsDuelPreview) —
+  // never the middle bar or main gameplay region (Goal 5/7/8).
+  function renderDuel(left, right, eventText) {
+    if (!duelPreviewEl) return;
+    const cards = decorateCards([left, right]);
+    setDuelActive(true);
+    duelPreviewEl.innerHTML = `<div class="ls-duel-wrap is-intro">
+      <div class="ls-duel-names">${esc(cards[0].username)} <span class="ls-vs-text">VS</span> ${esc(cards[1].username)}</div>
+      <div class="ls-duel-card" data-side="attacker">${renderCard(cards[0], 'mini')}</div>
+      <div class="ls-vs">VS</div>
+      <div class="ls-duel-card" data-side="defender">${renderCard(cards[1], 'mini')}</div>
+    </div>`;
+    setTimeout(() => {
+      const wrap = duelPreviewEl?.querySelector('.ls-duel-wrap');
+      wrap?.classList.remove('is-intro');
+      wrap?.classList.add('is-intro-settled');
+    }, 900);
+  }
+  function renderDuelFrame(attacker, defender, hp = {}, flavor = '', opts = {}) {
+    if (!duelPreviewEl) return;
+    const cards = decorateCards([attacker, defender]);
+    attacker = cards[0];
+    defender = cards[1];
+    setDuelActive(true);
+    const aHp = Math.max(0, Math.min(100, Number(hp.attacker ?? 100)));
+    const dHp = Math.max(0, Math.min(100, Number(hp.defender ?? 100)));
+    const introClass = opts.intro ? ' is-intro' : '';
+    duelPreviewEl.innerHTML = `<div class="ls-duel-wrap${introClass}">
+      <div class="ls-duel-names">${esc(attacker.username)} <span class="ls-vs-text">VS</span> ${esc(defender.username)}</div>
+      <div class="ls-duel-card" data-side="attacker">${renderCard(attacker, 'mini')}<div class="ls-hp"><div class="ls-hp-fill" style="width:${aHp}%"></div></div></div>
+      <div class="ls-vs">VS</div>
+      <div class="ls-duel-card" data-side="defender">${renderCard(defender, 'mini')}<div class="ls-hp"><div class="ls-hp-fill" style="width:${dHp}%"></div></div></div>
+      ${flavor ? `<div class="ls-duel-flavor">${esc(flavor)}</div>` : ''}
+    </div>`;
+    if (opts.intro) {
+      setTimeout(() => {
+        const wrap = duelPreviewEl?.querySelector('.ls-duel-wrap');
+        wrap?.classList.remove('is-intro');
+        wrap?.classList.add('is-intro-settled');
+      }, 900);
+    }
+    if (aHp <= 0) duelPreviewEl.querySelector('[data-side="attacker"]')?.classList.add('is-ko');
+    if (dHp <= 0) duelPreviewEl.querySelector('[data-side="defender"]')?.classList.add('is-ko');
+  }
+  // Zones 9-10 merged: when no fight is live, the Duel Stage / Fight Area (#lsDuelPreview)
+  // shows a live player-count call-to-action instead of a recent-fight recap — "recent
+  // challengers doesn't need to be a thing," per feedback; a join prompt is more useful.
+  function renderDuelIdleState() {
+    if (!duelPreviewEl || sprintBar?.classList.contains('ls-duel-active')) return;
+    const count = Math.max(0, Number(knownPlayerCount) || 0);
+    const plural = count === 1 ? 'user' : 'users';
+    duelPreviewEl.innerHTML = `<div class="ls-idle-cta">
+      <div class="ls-idle-cta-count">${count.toLocaleString()}</div>
+      <div class="ls-idle-cta-label">${esc(plural)} playing</div>
+      <div class="ls-idle-cta-cmd">!join to draw a card</div>
+    </div>`;
+  }
+  function playDuelTimeline(d) {
+    duelAnimationQueue.push(d);
+    updateDuelQueueBadge();
+    processDuelAnimationQueue();
+  }
+  function updateDuelQueueBadge() {
+    if (!duelPreviewEl) return;
+    const queued = duelAnimationQueue.length;
+    duelPreviewEl.setAttribute('data-queue', queued > 0 ? `${queued} fight${queued === 1 ? '' : 's'} queued` : '');
+  }
+  function processDuelAnimationQueue() {
+    if (duelAnimationActive || !duelAnimationQueue.length) return;
+    const next = duelAnimationQueue.shift();
+    updateDuelQueueBadge();
+    duelAnimationActive = true;
+    playQueuedDuelTimeline(next, () => {
+      duelAnimationActive = false;
+      updateDuelQueueBadge();
+      if (duelAnimationQueue.length) setTimeout(processDuelAnimationQueue, 650);
+    });
+  }
+  function playQueuedDuelTimeline(d, done) {
+    const attacker = d.attacker || d.left;
+    const defender = d.defender || d.right;
+    if (!attacker || !defender) {
+      showMicroPill('NO TARGET', 'error');
+      done?.();
+      return;
+    }
+    const beats = Array.isArray(d.beats) && d.beats.length ? d.beats : [];
+    // Fight commentary plays live via the floating .ls-duel-flavor caption (passed as the
+    // `flavor` arg to renderDuelFrame below) — the Duel Stage / Fight Area is the only
+    // place combat captions render; they never also route through the Card Event Dock
+    // or Micro Pills.
+    renderDuelFrame(attacker, defender, { attacker: 100, defender: 100 }, d.targetLabel || 'FACE OFF', { intro: true });
+    let step = 0;
+    const advance = () => {
+      if (step >= beats.length) {
+        const result = d.result || {};
+        const winner = result.winner || result.winnerCard || (result.winnerId === attacker.ownerId ? attacker : defender);
+        const winnerSide = result.winnerId === attacker.ownerId ? 'attacker' : 'defender';
+        const loserSide = winnerSide === 'attacker' ? 'defender' : 'attacker';
+        const winnerEl = duelPreviewEl?.querySelector(`[data-side="${winnerSide}"]`);
+        const loserEl = duelPreviewEl?.querySelector(`[data-side="${loserSide}"]`);
+        if (winnerEl && result.winnerDelta != null) {
+          const plus = document.createElement('div');
+          plus.className = 'ls-delta-badge is-plus';
+          plus.textContent = `+${Math.max(0, Number(result.winnerDelta) || 0)} DP`;
+          winnerEl.appendChild(plus);
+        }
+        if (loserEl && result.loserDelta != null) {
+          const minus = document.createElement('div');
+          minus.className = 'ls-delta-badge is-minus';
+          minus.textContent = `${Math.min(0, Number(result.loserDelta) || 0)} DP`;
+          loserEl.appendChild(minus);
+        }
+        // Duel result → Duel Result Pill only (Goal 8) — no popup into the Card Event
+        // Dock, so one event doesn't hit two destinations.
+        concludeDuel(result.message || d.resultMessage || `${winner?.username || 'winner'} wins`, 2000, 3000, done);
+        return;
+      }
+      const beat = beats[step++];
+      if (beat.type === 'announce') {
+        renderDuelFrame(attacker, defender, { attacker: beat.attackerHp ?? 100, defender: beat.defenderHp ?? 100 }, beat.label || beat.text || 'ABILITY');
+        setTimeout(advance, Number(beat.delayMs) || 1300);
+        return;
+      }
+      const hp = { attacker: beat.attackerHp ?? beat.hp?.attacker ?? 100, defender: beat.defenderHp ?? beat.hp?.defender ?? 100 };
+      renderDuelFrame(attacker, defender, hp, beat.label || beat.text || beat.message || beat.type || 'HIT');
+      const targetSide = beat.target === 'attacker' ? 'attacker' : 'defender';
+      const cardEl = duelPreviewEl?.querySelector(`[data-side="${targetSide}"]`);
+      cardEl?.classList.add(beat.type === 'block' || beat.type === 'dodge' ? 'is-boost' : 'is-hit');
+      if (beat.damage != null && cardEl) {
+        const dmg = document.createElement('div');
+        dmg.className = `ls-damage${beat.type === 'crit' ? ' is-crit' : ''}`;
+        dmg.textContent = `${beat.type === 'crit' ? 'CRIT ' : ''}-${Math.max(0, Number(beat.damage) || 0)}`;
+        cardEl.appendChild(dmg);
+      }
+      setTimeout(advance, Number(beat.delayMs) || 720);
+    };
+    setTimeout(advance, 620);
+  }
+  // NOTE: the old center-notice idle-highlight rotation, League Leaders ticker, and
+  // rankings marquee are retired entirely — zones 6-7 are now the Target Rows / Boss
+  // Field mode-switch board (see renderTargetRows/renderBossField/refreshTargetRows/
+  // setScoutBossMode above). That board is fed silently by `meta.scout` events; it is
+  // not a message-spam destination for anything else.
+  function sampleCards() {
+    return [
+      { id:'sample-wekka-d5', ownerId:'u1', username:'@wekkaD5', character:'wekka', type:'defender', league:'D', currentRank:'D5', originRank:'D5', power:420, fragments:1, fragmentMax:4, battleStepsClimbed:0, rebirthCount:0 },
+      { id:'sample-layla-c2', ownerId:'u2', username:'@laylaC2', character:'layla', type:'attacker', league:'C', currentRank:'C2', originRank:'D1', power:820, fragments:2, fragmentMax:4, battleStepsClimbed:6, rebirthCount:0 },
+      { id:'sample-kinz-b3', ownerId:'u3', username:'@kinzB3', character:'kinz', type:'balanced', league:'B', currentRank:'B3', originRank:'C1', power:1140, fragments:3, fragmentMax:4, battleStepsClimbed:8, rebirthCount:1 },
+      { id:'sample-jasper-a2', ownerId:'u4', username:'@jasperA2', character:'jasper', type:'gambler', league:'A', currentRank:'A2', originRank:'B1', power:1540, fragments:2, fragmentMax:3, battleStepsClimbed:11, rebirthCount:2, isKing:true },
+      { id:'sample-jamie-a1', ownerId:'u5', username:'@jamieA1', character:'jamie', type:'escapist', league:'A', currentRank:'A1', originRank:'A2', power:1880, fragments:3, fragmentMax:3, battleStepsClimbed:14, rebirthCount:3 }
+    ];
+  }
+  // Debug/test hooks — one per new zone, reachable via {action:'test', name:'...'} from
+  // the stream dock. Old shelf-preview test names (leaders/anchors/badges/pips/fragments)
+  // are aliased onto the Target Rows board since that shelf grid no longer exists.
+  function runTest(name) {
+    const cards = sampleCards();
+    if (name === 'mission-strip') {
+      setMissionStripText('TEST · ' + (phaseCopy[leaguePhase] || phaseCopy.active));
+    } else if (name === 'round-hud') {
+      renderStatusHud({ roundLabel: 'ROUND 1 (TEST)', clock: formatClock(45000), timerLabel: 'UNTIL LEAGUE RESET' });
+    } else if (name === 'boss-field') {
+      handleBossEvent('BOSS_STARTED', { name: 'Test Boss', level: 3, hpMax: 500, hp: 500 });
+      setTimeout(() => handleBossEvent('BOSS_JOINED', { username: cards[0].username, hp: 340 }), 900);
+    } else if (['target-rows', 'leaders', 'anchors', 'badges', 'rebirth', 'pips', 'fragments'].includes(name)) {
+      setScoutBossMode('target');
+    } else if (name === 'micro-pill') {
+      showMicroPill('TEST · COOLDOWN', 'error');
+    } else if (name === 'duel-result-pill') {
+      enqueueDuelResultPill(`TEST · ${cards[2].username} wins +20 DP`, 'result');
+    } else if (name === 'duel-fight-area' || name === 'duel') {
+      playDuelTimeline({
+        attacker: cards[1],
+        defender: cards[2],
+        message: `${cards[1].username} attacks ${cards[2].username}`,
+        beats: [
+          { type:'announce', label:'FACE OFF', text:'Live duel queued', delayMs:900 },
+          { type:'strike', target:'defender', damage:28, attackerHp:88, defenderHp:62, label:'OPENING HIT', delayMs:1100 },
+          { type:'crit', target:'attacker', damage:36, attackerHp:52, defenderHp:62, label:'CRIT COUNTER', delayMs:1200 },
+          { type:'final', target:'attacker', damage:45, attackerHp:0, defenderHp:62, label:'FINAL HIT', delayMs:1300 }
+        ],
+        result: { winnerId:cards[2].ownerId, loserId:cards[1].ownerId, winner:cards[2], loser:cards[1], winnerDelta:20, loserDelta:-10, message:`${cards[2].username} wins +20 DP` }
+      });
+    } else if (name === 'promoted') {
+      enqueueCardDock('PROMOTION', cards[3], 'PROMOTED', 6800, { eventType: 'PROMOTION' });
+    } else {
+      // 'card-event-dock', 'popup', and any unrecognized name fall back to a card-pull dock test.
+      enqueueCardDock('CARD_DRAWN', cards[0], 'CARD DRAW', 6800, { eventType: 'CARD_DRAWN' });
+    }
+  }
+  function handleCommand(username, text, source = {}) {
+    const parsed = parseCommand(text);
+    if (!parsed) return false;
+    const commandName = parsed.name;
+    if (!['pull', 'show', 'duel', 'reroll', 'boss', 'grab', 'guard', 'flank', 'chaos', 'run', 'buff'].includes(commandName)) {
+      emitVisualEvent('INVALID_COMMAND', { username, reason: parsed.raw });
+      return true;
+    }
+    if (!canRunCommand(username, commandName)) {
+      emitVisualEvent('COOLDOWN', { username, reason: parsed.raw });
+      return true;
+    }
+    const existingCard = cardRegistry.get(userKey(username));
+    if (commandName === 'show' && !existingCard && !source.card) {
+      emitVisualEvent('NO_TARGET', { username, reason: 'no card - use !pull first' });
+      return true;
+    }
+    if (commandName === 'pull' && existingCard) {
+      emitVisualEvent('COOLDOWN', { username, reason: 'card exists - use !show' });
+      return true;
+    }
+    const card = ensureCard(username, source.card);
+    if (commandName === 'pull') {
+      emitVisualEvent('CARD_DRAWN', { username, card, detail: `${card.currentRank} ${typeLabels[card.type]?.label || card.type}` });
+      return true;
+    }
+    if (commandName === 'show') {
+      emitVisualEvent('SHOW_CARD', { username, card, detail: parsed.raw });
+      return true;
+    }
+    if (['boss', 'grab', 'guard', 'flank', 'chaos', 'run', 'buff'].includes(commandName)) {
+      const label = commandName === 'grab' ? 'diamond grab' : commandName === 'boss' ? 'boss command' : `${commandName} readied`;
+      emitVisualEvent(commandName === 'grab' ? 'LOOT_CLAIMED' : 'ABILITY_READY', { username, card, detail: label });
+      return true;
+    }
+    if (commandName === 'duel') {
+      emitVisualEvent('DUEL_COMMAND_RECEIVED', { username, card, detail: parsed.raw });
+      if (leaguePhase !== 'active') {
+        emitVisualEvent('INVALID_COMMAND', { username, reason: 'duels open during active round' });
+        return true;
+      }
+      const target = chooseDuelTarget(card, parsed.args[0] || '1');
+      if (!target) {
+        emitVisualEvent('NO_TARGET', { username, reason: parsed.raw });
+        return true;
+      }
+      const playerWins = (hashString(`${username}:${target.username}:${Date.now() >> 12}`) & 1) === 0;
+      const winner = playerWins ? card : target;
+      const loser = playerWins ? target : card;
+      const boostedWinner = updateCard(winner, {
+        power: Number(winner.power || 0) + 45,
+        fragments: Math.min(Number(winner.fragmentMax) || 4, Number(winner.fragments || 0) + 1),
+        battleStepsClimbed: Number(winner.battleStepsClimbed || 0) + 1
+      });
+      if (userKey(winner.username) === userKey(card.username)) Object.assign(card, boostedWinner);
+      if (userKey(winner.username) === userKey(target.username)) Object.assign(target, boostedWinner);
+      playDuelTimeline({
+        attacker: card,
+        defender: target,
+        message: `${normalizeUsername(username)} duels ${target.username}`,
+        beats: [
+          { type:'announce', label:'FACE OFF', text:`${card.username} vs ${target.username}`, delayMs:900 },
+          { type:'strike', target: playerWins ? 'defender' : 'attacker', damage:24, attackerHp: playerWins ? 82 : 54, defenderHp: playerWins ? 54 : 82, label:'OPENING HIT', delayMs:1100 },
+          { type:'final', target: playerWins ? 'defender' : 'attacker', damage:45, attackerHp: playerWins ? 82 : 0, defenderHp: playerWins ? 0 : 82, label:'FINAL HIT', delayMs:1200 }
+        ],
+        result: {
+          winnerId: winner.ownerId,
+          loserId: loser.ownerId,
+          winner: boostedWinner,
+          loser,
+          winnerDelta: 45,
+          loserDelta: 0,
+          message: `${normalizeUsername(winner.username)} wins +45 PWR`,
+          shelfText: 'recent duels'
+        }
+      });
+      emitVisualEvent('POWER_CHANGED', { username: winner.username, card: boostedWinner, detail: '+45 PWR' });
+      return true;
+    }
+    if (commandName === 'reroll') {
+      if (leaguePhase !== 'rebirth') {
+        emitVisualEvent('REBIRTH_DENIED', { username, card, reason: 'not in rebirth window' });
+        return true;
+      }
+      // Local demo-engine mirror of the real rebirth mechanic: pay 20% DP up front for a
+      // random 1/3-each shot at rank up / rank down / no change, only between rounds.
+      const oldCard = Object.assign({}, card);
+      const cost = Math.max(1, Math.round(Number(card.power || 0) * 0.20));
+      if (Number(card.power || 0) < cost) {
+        emitVisualEvent('REBIRTH_DENIED', { username, card, reason: `need ${cost} DP to gamble` });
+        return true;
+      }
+      const types = Object.keys(typeLabels);
+      const currentTypeIndex = Math.max(0, types.indexOf(card.type));
+      const newType = types[(currentTypeIndex + 1 + Math.abs(hashString(username)) % (types.length - 1)) % types.length];
+      const roll = Math.random();
+      const direction = roll < (1 / 3) ? 1 : roll < (2 / 3) ? -1 : 0;
+      const newRank = direction > 0 ? shiftRank(card.currentRank, 1) : direction < 0 ? shiftRank(card.currentRank, -1) : card.currentRank;
+      const directionLabel = direction > 0 ? 'UP' : direction < 0 ? 'DOWN' : 'SAME';
+      const rerolled = updateCard(card, {
+        type: newType,
+        currentRank: newRank,
+        league: newRank[0],
+        power: Math.min(newRank[0] === 'A' ? 2700 : newRank[0] === 'B' ? 1900 : newRank[0] === 'C' ? 1350 : 900, 120 + Math.max(0, rankIndex(newRank)) * 70),
+        rebirthCount: Number(card.rebirthCount || 0) + 1,
+        fragments: 0,
+        fragmentMax: newRank[0] === 'A' ? 3 : 4
+      });
+      // Pass oldCard so the popup shows the real burn-away -> reveal animation instead of
+      // just the new card appearing with nothing preceding it.
+      emitVisualEvent('REBIRTH_SUCCESS', { username, card: rerolled, oldCard, direction: directionLabel, cost, detail: `${typeLabels[newType].label}, ${newRank} (${directionLabel}, -${cost} DP)` });
+      return true;
+    }
+    emitVisualEvent('INVALID_COMMAND', { username, reason: parsed.raw });
+    return true;
+  }
+  function handleChatMessage(d) {
+    const text = commandTextFromPayload(d);
+    if (!text) return false;
+    return handleCommand(commandUserFromPayload(d), text, d || {});
+  }
+  function handleMessage(d) {
+    if (!d) return;
+    if (d.gameTitle || d.title) setGameTitle(d.gameTitle || d.title);
+    if (d.round != null || d.remainingSec != null) {
+      const round = Math.max(1, Number(d.round) || 1);
+      const remaining = Math.max(0, Number(d.remainingSec) || 0);
+      renderStatusHud({
+        roundLabel: `ROUND ${round}`,
+        clock: formatClock(remaining * 1000),
+        timerLabel: d.phase === 'rebirth' ? 'UNTIL WINDOW CLOSES' : 'UNTIL LEAGUE RESET'
+      });
+    } else if (d.status && sprintStatus) {
+      renderStatusHud({ statusText: d.status });
+    }
+    if (d.phase) setPhase(d.phase);
+    if (typeof d.playerCount === 'number') {
+      knownPlayerCount = Math.max(0, Math.round(d.playerCount));
+      renderDuelIdleState();
+    }
+    // Generic message/event fallbacks -> Micro Pill rail only. The old right-lane text
+    // Event Log is retired; zone 11 is reserved for the six named card-art events, and
+    // zones 6-7 are the Target Rows / Boss Field board, not a message-spam destination.
+    if (d.message && !d.event && !d.action) {
+      showMicroPill(d.message, d.severity === 'warn' ? 'error' : 'info');
+    }
+    if (d.event) showMicroPill(d.event, d.kind === 'error' ? 'error' : 'info');
+    if (!d.action && d.type && eventMeta[d.type]) emitVisualEvent(d.type, d);
+    if (!d.action && d.eventType && eventMeta[d.eventType]) emitVisualEvent(d.eventType, Object.assign({}, d, { type: d.eventType }));
+    if (d.action === 'popup') {
+      const type = d.eventType || d.type || 'SHOW_CARD';
+      const meta = eventMeta[type];
+      // `previewOnly` (set by the dock's Card Art Preview trigger) means: just pop the
+      // card art into the dock, nothing else — skip the micro pill, since a preview isn't
+      // a real game event.
+      if (!d.previewOnly && meta?.micro) showMicroPill(d.message || eventText(type, d), 'error');
+      // Card Event Dock (zone 11): the one guaranteed destination for a "popup" action —
+      // this is what actually shows the card art (CARD_DRAWN/SHOW_CARD/REBIRTH_SUCCESS etc.).
+      if (type === 'REBIRTH_SUCCESS' && d.oldCard) {
+        enqueueCardDock(type, d.card, d.label || meta?.text?.toUpperCase() || 'REBIRTH', d.lingerMs, Object.assign({}, d, { eventType: type }));
+      } else {
+        enqueueCardDock(type, d.card, d.label || meta?.text?.toUpperCase() || 'SHOW CARD', d.lingerMs, Object.assign({}, d, { eventType: type }));
+      }
+    }
+    else if (d.action === 'duel' || d.action === 'duel-start') {
+      const attacker = d.attacker || d.left;
+      const defender = d.defender || d.right;
+      playDuelTimeline({
+        attacker,
+        defender,
+        message: d.message || d.event || `${attacker?.username || 'player'} vs ${defender?.username || 'player'}`,
+        beats: [
+          { type:'announce', label:'FACE OFF', text:`${attacker?.username || 'player'} vs ${defender?.username || 'player'}`, delayMs:900 },
+          { type:'strike', target:'defender', damage:28, attackerHp:86, defenderHp:58, label:'HIT', delayMs:1150 },
+          { type:'final', target:'defender', damage:45, attackerHp:86, defenderHp:0, label:'FINAL HIT', delayMs:1250 }
+        ],
+        result: {
+          winnerId: attacker?.ownerId,
+          loserId: defender?.ownerId,
+          winner: attacker,
+          loser: defender,
+          winnerDelta: 40,
+          loserDelta: -20,
+          message: d.message || d.event || `${attacker?.username || 'winner'} wins`,
+          shelfText: 'recent duels'
+        }
+      });
+    }
+    else if (d.action === 'duel-timeline') {
+      playDuelTimeline(d);
+    }
+    else if (d.action === 'bar-message') {
+      // Retired right-lane text Event Log -> Micro Pill (quiet, non-blocking feedback only).
+      const type = d.eventType || 'INVALID_COMMAND';
+      const meta = eventMeta[type];
+      showMicroPill(d.message || meta?.text?.toUpperCase() || 'EVENT', d.severity === 'warn' ? 'error' : 'info');
+    }
+    else if (d.action === 'rebirth') {
+      if (d.newCard) enqueueCardDock('REBIRTH_SUCCESS', d.newCard, 'REBIRTH', 7800, Object.assign({}, d, { eventType: 'REBIRTH_SUCCESS', oldCard: d.oldCard }));
+      refreshTargetRows();
+    }
+    else if (d.action === 'idle') {
+      setMissionStripText(d.text || phaseCopy[leaguePhase]);
+    }
+    else if (d.action === 'boss') {
+      // Manual boss-fight controls from the stream dock, e.g. {action:'boss', name:'BOSS_STARTED', ...}
+      handleBossEvent(d.name || 'BOSS_STARTED', d);
+    }
+    else if (d.action === 'test') runTest(d.name || 'card-event-dock');
+    else if (d.action === 'chat' || d.action === 'command') handleChatMessage(d);
+    else if (d.action === 'phase') setPhase(d.phase || d.name);
+    else if (d.action === 'result') {
+      // Round reset/results -> mission-strip phase copy (setPhase) + a silent Target Rows/
+      // Boss Field data refresh. No separate rankings marquee or message-spam in the middle
+      // bar's zones 6-7 (Goal: not a message spam area).
+      setPhase(d.phase || 'rebirth');
+      if (d.rebirthEndsAt) startRebirthCountdown(d.rebirthEndsAt);
+      emitVisualEvent('RESULTS_STARTED', { detail: 'round reset' });
+      emitVisualEvent('FRAGMENTS_CHANGED', { detail: 'awarding fragments', cards: d.cards || allKnownCards().slice(0, 4) });
+    }
+  }
+  sampleCards().forEach(card => ensureCard(card.username, card));
+  setPhase('active');
+  startTargetRowsRotation();
+  renderDuelIdleState();
+  return { getRankArtPath, getFramePath, getTypeIconPath, getDivisionPips, renderCard, showCardDock, showCardDockRebirth, runTest, handleMessage, handleChatMessage, handleCommand, setPhase, setGameTitle, emitVisualEvent, sampleCards, cardDockQueue, duelResultQueue };
+})();
+window.LeagueSprintCards = LEAGUE_SPRINT;
+// Ably subscriptions (giftsChannel 'league-sprint', chatChannel 'league-sprint-chat' /
+// 'chat-message' / 'milk-event', ablyChannel 'splat-card-layout', giftsChannel
+// 'league-sprint-state') are registered inside connectAbly() below, alongside the
+// detach-by-default toggle wiring, instead of unconditionally at parse time.
+
+function applySplatCardLayout(d) {
+  if (!d) return;
+  // NOTE: this used to also reposition/scale gift-bar.html's own #gift-bar and #bar-lines
+  // as a side effect (they shared the same 'splat-card-layout' payload's top/scale fields).
+  // Those elements don't exist on this page anymore — only League's own elements are
+  // touched here. Visibility is now handled by the league-sprint-toggle attach/detach
+  // pattern (see connectAbly() below), not by a `d.hidden` flag on this channel.
+  const shelf = document.getElementById('leagueBottomShelf');
+  // NOTE: shelfTop/shelfScale free-position controls were removed as part of the
+  // structural rebuild — the Bottom Splat Info Strip is now a fixed 177px region
+  // (source-of-truth region map) anchored with a safety margin above the canvas edge.
+  // Letting a stale saved dock value move/scale it here previously caused it to clip
+  // off the bottom of the canvas. Text-size controls below are still honored.
+  // Gifter Highlight owns #bar-info positioning/size through gifter-slides-config.
+  // Older Splat Cards side-panel values are intentionally ignored here so one
+  // layout control cannot silently move the gifter slide window.
+  if (shelf) {
+    if (typeof d.shelfNameSize === 'number') shelf.style.setProperty('--ls-shelf-name-size', Math.max(9, Math.min(30, d.shelfNameSize)) + 'px');
+    if (typeof d.shelfRankSize === 'number') shelf.style.setProperty('--ls-shelf-rank-size', Math.max(12, Math.min(34, d.shelfRankSize)) + 'px');
+    if (typeof d.shelfTitleSize === 'number') shelf.style.setProperty('--ls-shelf-title-size', Math.max(10, Math.min(30, d.shelfTitleSize)) + 'px');
+  }
+  // Splat Cards center notice box — primary/secondary text sizes + helper line visibility.
+  const sprintBarEl = document.getElementById('leagueSprintBar');
+  if (sprintBarEl) {
+    if (typeof d.noticePrimarySize === 'number') sprintBarEl.style.setProperty('--ls-notice-primary-size', Math.max(18, Math.min(40, d.noticePrimarySize)) + 'px');
+    if (typeof d.noticeSecondarySize === 'number') sprintBarEl.style.setProperty('--ls-notice-secondary-size', Math.max(11, Math.min(26, d.noticeSecondarySize)) + 'px');
+  }
+  if (d.noticeHelperVisible !== undefined) window.LeagueSprintCards?.setNoticeHelperVisible?.(!!d.noticeHelperVisible);
+  if (d.noticeTest) window.LeagueSprintCards?.testNotice?.();
+  // Global League of Splatties text-size multiplier (mission strip, HUD, target rows/boss
+  // field, micro pills, duel result pill, duel cards, card dock). Base px values were
+  // already bumped up for legibility; this just scales further from that new baseline.
+  if (typeof d.fontScale === 'number') {
+    const scale = Math.max(0.7, Math.min(1.6, d.fontScale));
+    document.documentElement.style.setProperty('--ls-font-scale', String(scale));
+  }
+}
+
+function applyLeagueSprintState(d) {
+  if (!d) return;
+  const round = Math.max(1, Number(d.round) || 1);
+  const remaining = Math.max(0, Number(d.remainingSec) || 0);
+  // Only forward a real `event` string — this handler runs on every second-by-second
+  // countdown tick from the dock, and synthesizing a fallback event here used to spam
+  // a micro pill every tick even though nothing actually happened.
+  const msg = {
+    round, remainingSec: remaining,
+    gameTitle: d.gameTitle || d.title || 'League of Splatties',
+    phase: d.phase || (remaining <= 0 ? 'results' : 'active')
+  };
+  if (d.event) msg.event = d.event;
+  if (typeof d.playerCount === 'number') msg.playerCount = d.playerCount;
+  LEAGUE_SPRINT.handleMessage(msg);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// ABLY ADAPTER — detach-by-default, toggle-on. Follows the exact pattern used by
+// new-here-overlay.html (see its connectAbly()/attachMain()/detachMain()): own
+// Ably.Realtime client, own splat-chat/splat-gifts attachments (mirrored in lockstep
+// with the main channel), and a tiny always-attached 'league-sprint-toggle' channel
+// that carries only the on/off command so this overlay costs zero Ably messages while
+// off. On connect, it asks the toggle channel for current state in case the control
+// page's setting changed while this overlay was closed/reloaded.
+// ═══════════════════════════════════════════════════════════════════
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+
+let OVERLAY_ENABLED = false;
+let _lsAttached = false;
+
+function connectAbly() {
+  const client = new Ably.Realtime({ key: ABLY_KEY });
+  const ablyChannel  = client.channels.get(ABLY_CH);
+  const chatChannel  = client.channels.get('splat-chat');
+  const giftsChannel = client.channels.get('splat-gifts');
+
+  function attachMain() {
+    OVERLAY_ENABLED = true;
+    document.body.style.display = 'block';
+    if (_lsAttached) return; // idempotent — ignore a repeat "on"
+    _lsAttached = true;
+    ablyChannel.attach().catch(() => {});
+    chatChannel.attach().catch(() => {});
+    giftsChannel.attach().catch(() => {});
+  }
+  function detachMain() {
+    OVERLAY_ENABLED = false;
+    document.body.style.display = 'none';
+    _lsAttached = false;
+    ablyChannel.detach().catch(() => {});
+    chatChannel.detach().catch(() => {});
+    giftsChannel.detach().catch(() => {});
+  }
+
+  // ── Toggle channel — always attached, near-zero traffic. Requests current state
+  // on connect (in case league-sprint-control.html's setting changed while this
+  // overlay was closed). Mirrors 'new-here-toggle' / 'timeout-box-toggle'.
+  const toggleCh = client.channels.get('league-sprint-toggle');
+  toggleCh.subscribe('set', msg => {
+    if (msg.data && msg.data.enabled) attachMain(); else detachMain();
+  });
+
+  // ── Card engine + duel/round state (moved from gift-bar.html) ──
+  giftsChannel.subscribe('league-sprint', msg => LEAGUE_SPRINT.handleMessage(msg?.data));
+  chatChannel.subscribe('league-sprint-chat', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
+  chatChannel.subscribe('chat-message', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
+  // Real chat traffic rides the 'milk-event' comment stream-dock.html already publishes
+  // for the hype meter (see publishMilk()) — this is League reading Milk Bar's own data,
+  // a deliberate cross-feature dependency, not something to cut. Costs zero extra Ably
+  // messages since 'milk-event' is already flowing for the hype meter / New Here pile.
+  chatChannel.subscribe('milk-event', msg => LEAGUE_SPRINT.handleChatMessage(msg?.data));
+  ablyChannel.subscribe('splat-card-layout', msg => applySplatCardLayout(msg?.data));
+  giftsChannel.subscribe('league-sprint-state', msg => applyLeagueSprintState(msg?.data));
+
+  // Tracks the shared mission strip's visibility so setMissionStripText() (in the engine
+  // above) doesn't force it back on with .ls-command-strip after stream-dock.html/
+  // league-sprint-control.html explicitly hid it. Read-only here — this file never
+  // publishes the `visible` field itself, only `text`/`commandStrip`.
+  ablyChannel.subscribe('mission-strip-config', msg => {
+    if (msg.data && msg.data.visible !== undefined) _missionStripEnabled = !!msg.data.visible;
+  });
+
+  // Registered once, outside the 'connected' handler, so reconnects don't stack intervals
+  const connDotEl = document.getElementById('conn-dot');
+  client.connection.on(stateChange => {
+    const s = stateChange.current;
+    if (!connDotEl) return;
+    if (s === 'connected') {
+      connDotEl.style.background = '#3b82f6';
+      connDotEl.style.boxShadow = '0 0 6px #3b82f6';
+    } else if (s === 'connecting') {
+      connDotEl.style.background = '#facc15';
+      connDotEl.style.boxShadow = 'none';
+    } else {
+      connDotEl.style.background = '#555';
+      connDotEl.style.boxShadow = 'none';
+    }
+  });
+  client.connection.on('connected', () => {
+    console.log('[Ably] connected →', ABLY_CH);
+    // Ask for the current on/off state — covers the case where this overlay reloaded
+    // (or league-sprint-control.html's setting changed) while it was closed.
+    toggleCh.publish('request', {}).catch(() => {});
+  });
+  client.connection.on('disconnected', () => console.warn('[Ably] disconnected'));
+  client.connection.on('suspended',    () => console.warn('[Ably] suspended'));
+  client.connection.on('failed',       (err) => console.error('[Ably] connection failed', err));
+
+  // Subscriptions above implicitly attach ablyChannel/chatChannel/giftsChannel — start
+  // fully detached (zero Ably cost) until the toggle channel says otherwise.
+  ablyChannel.detach().catch(() => {});
+  chatChannel.detach().catch(() => {});
+  giftsChannel.detach().catch(() => {});
+
+  // Debug hooks — inspect from devtools/preview via window.__ls
+  window.__ls = {
+    client, ablyChannel, chatChannel, giftsChannel, toggleCh,
+    get attached() { return _lsAttached; },
+    get enabled() { return OVERLAY_ENABLED; },
+    attachMain, detachMain,
+    engine: LEAGUE_SPRINT,
+  };
+}
+
+document.body.style.display = 'none'; // hidden until the toggle channel says otherwise
+connectAbly();
+</script>
+</body>
+</html>
