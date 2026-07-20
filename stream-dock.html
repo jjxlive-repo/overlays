@@ -1576,7 +1576,6 @@ select.ctrl-in option { background: #12121a; color: var(--txt); }
   background: rgba(255,255,255,.08);
 }
 .dock-section-label[data-sec="config"]     { --sec-hue: #c084fc; }
-.dock-section-label[data-sec="moderation"] { --sec-hue: #fb7185; }
 .dock-section-label[data-sec="testing"]    { --sec-hue: #fbbf24; }
 .dock-section-label[data-sec="games"]      { --sec-hue: #e879f9; }
 .dock-section-label[data-sec="promo"]      { --sec-hue: #93c5fd; }
@@ -3578,7 +3577,6 @@ function handleMsg(data) {
       displayName: data.displayName || data.chatname,
       avatarUrl: data.profilePictureUrl || data.avatarUrl || ''
     });
-    tboRecordChatter(data.chatname, isTT ? 'tiktok' : 'youtube'); // for the Timeout control's recent list
   }
 
   if (isGift) {
@@ -4227,7 +4225,7 @@ const ablyChannel = ably.channels.get(ABLY_CH);
 // Ably bills every message to every ATTACHED client regardless of which event
 // name that client subscribes to — 11 different overlay pages were all
 // attached to 'splat-overlay' and being billed for 100% of every chat comment
-// and gift, even the ones (tracker, kegel, timeout-box, etc.) that only ever
+// and gift, even the ones (tracker, kegel, etc.) that only ever
 // read rare config events. Only the pages that genuinely need per-comment or
 // per-gift granularity attach here now:
 //   'splat-chat'  → milk-event, chat-message, league-sprint-chat (gift-bar,
@@ -4239,18 +4237,14 @@ const chatChannel  = ably.channels.get('splat-chat');
 const giftsChannel = ably.channels.get('splat-gifts');
 
 // Dedicated always-on toggle channel for overlays that fully detach from the shared
-// channel when off (New Here, Timeout Box) — see connectAbly()/attachMain() in
+// channel when off (New Here, League Sprint) — see connectAbly()/attachMain() in
 // new-here-overlay.html for why: subscribing to specific event names on the shared
 // channel doesn't reduce Ably delivery cost, only detaching the whole channel does,
 // so those overlays need a separate tiny channel to hear "turn back on" while detached.
 const nhToggleChannel = ably.channels.get('new-here-toggle');
-const tboxToggleChannel = ably.channels.get('timeout-box-toggle');
 const lsToggleChannel = ably.channels.get('league-sprint-toggle');
 nhToggleChannel.subscribe('request', () => {
   nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {});
-});
-tboxToggleChannel.subscribe('request', () => {
-  tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {});
 });
 // league-sprint-control.html's enable button ALSO publishes 'set' straight to this same
 // channel — this dock's quick-toggle and that control page always agree on true state,
@@ -4376,7 +4370,6 @@ const DOCK_OVERLAY_ABLY = {
   'mission-strip':    { count:['mission-strip-config'], gate:[] },
   'geyser':           { count:['geyser-config'], gate:[] },
   'new-here':         { count:['new-here-config','new-here-ping'], gate:[] },
-  'timeout-box':      { count:['timeout-box-cmd','timeout-box-config','timeout-box-request'], gate:['timeout-box-cmd','timeout-box-config'] },
 };
 const _ablyEvtLog = new Map();   // event name → { times:[t…] (trailing hour), last:t }
 const _ablyEvtOwner = new Map(); // event name → overlay key (first owner wins, for gating)
@@ -4494,9 +4487,9 @@ function guardAblyPublish(ch, ratePerSec) {
 guardAblyPublish(ablyChannel, 40);   // config/cmd/heartbeat-tier — rarely bursts, guarded for safety
 guardAblyPublish(chatChannel, 35);   // per-comment/like/join firehose — the one that actually hit 429s
 guardAblyPublish(giftsChannel, 35);  // gift/money stream — lower natural volume, same protection
-// The dedicated New Here / Timeout Box toggle channels are near-zero volume by
+// The dedicated New Here / League Sprint toggle channels are near-zero volume by
 // design, but guard them too for complete coverage under the same daily budget.
-[nhToggleChannel, tboxToggleChannel, lsToggleChannel].forEach(ch => {
+[nhToggleChannel, lsToggleChannel].forEach(ch => {
   const orig = ch.publish.bind(ch);
   ch.publish = function(...args) {
     if (!_ablyCapAllow()) return Promise.resolve();
@@ -4553,17 +4546,6 @@ ablyChannel.subscribe('event-promo', msg => {
   if (msg.data && msg.data.type === 'event-promo-config') _epConfig = msg.data.config;
 });
 
-// Timeout Box: sync active list from the overlay + request it on load. Restore any
-// persisted local sentences, and tick the countdown once per second.
-ablyChannel.subscribe('timeout-box-status', msg => tboOnStatus(msg.data || {}));
-tboLoad();
-tboCfgLoad();
-try { ablyChannel.publish('timeout-box-request', {}).catch(() => {}); } catch (e) {}
-try { tboCfgPublish(); } catch (e) {}
-setInterval(() => { if (document.getElementById('tbo-active')) tboRenderActive(); }, 1000);
-setInterval(tboRenderRecent, 4000);
-setTimeout(tboCfgRender, 400);
-
 // milk-full alert — DISABLED
 // ablyChannel.subscribe('milk-full', ...) — no-op
 
@@ -4586,7 +4568,6 @@ ably.connection.on(stateChange => {
     ablyChannel.publish('cmd', 'requestLeaderboard').catch(() => {});
     publishGiftBarPos();
     publishOverlayToggles();
-    try { tboCfgPublish(); } catch (e) {}
     // Re-assert persisted on/off states on every (re)connect — not just the button's own
     // color, the actual overlay-side visibility. Without this, an "off" set before a dock
     // reload/reconnect only looked off in the dock UI while the overlay kept its last
@@ -4594,7 +4575,6 @@ ably.connection.on(stateChange => {
     try { ablyChannel.publish('gift-animation-config', { enabled: _dockGiftAnimVisible }).catch(() => {}); } catch (e) {}
     try { gbPublishSlideWindow(false); } catch (e) {}
     try { nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {}); } catch (e) {}
-    try { tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {}); } catch (e) {}
     try { lsToggleChannel.publish('set', { enabled: _dockLeagueSprintVisible }).catch(() => {}); } catch (e) {}
     document.getElementById('gift-bar-y-val').textContent = _giftBarY;
     ablyChannel.publish('mission-strip-config', { top: _missionStripY, text: _missionStripText }).catch(() => {});
@@ -5423,7 +5403,6 @@ const DOCK_OVERLAYS = [
   { key:'mission-strip',    name:'Mission Strip',           layoutGroup:'Mission Strip',   on:() => !!_missionStripVisible },
   { key:'geyser',           name:'Geyser',                  layoutGroup:'Geyser',          on:() => !!_geyserEnabled },
   { key:'new-here',         name:'New Here Pile',                                          on:() => !!_dockNewHereVisible },
-  { key:'timeout-box',      name:'Timeout Box',                                            on:() => !!_dockTimeoutBoxVisible },
 ];
 
 function layoutRenderTable() {
@@ -6306,147 +6285,6 @@ function dockAddBaitRescueButtons() {
   body.dataset.rescueButtons = 'true';
 }
 
-/* ════════════════════════════════════════
-   TIMEOUT BOX — slim moderation control (drives timeout-box.html overlay)
-════════════════════════════════════════ */
-const TBO_LS = 'streamDock.timeoutBox.v1';
-let _tboActive = new Map();  // key -> { username, source, until }
-let _tboRecent = new Map();  // key -> { username, source, at } — recent chatters for the picker
-function tboKey(u, s) { return (s === 'tiktok' ? 'tiktok' : 'youtube') + ':' + String(u || '').trim().replace(/^@+/, '').toLowerCase(); }
-function tboRecordChatter(name, source) {
-  const u = String(name || '').trim().replace(/^@+/, ''); if (!u) return;
-  _tboRecent.set(tboKey(u, source), { username: u, source: source === 'tiktok' ? 'tiktok' : 'youtube', at: Date.now() });
-  if (_tboRecent.size > 200) { const oldest = [..._tboRecent.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) _tboRecent.delete(oldest[0]); }
-}
-function tboFmt(ms) { const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; }
-function tboLoad() { try { const a = JSON.parse(localStorage.getItem(TBO_LS) || '[]'); const now = Date.now(); a.forEach(r => { if ((+r.until || 0) > now) _tboActive.set(tboKey(r.username, r.source), { username: r.username, source: r.source, until: +r.until }); }); } catch (e) {} }
-function tboSave() { try { localStorage.setItem(TBO_LS, JSON.stringify([..._tboActive.values()])); } catch (e) {} }
-function tboPublish(payload) { if (typeof ablyChannel !== 'undefined' && ablyChannel) ablyChannel.publish('timeout-box-cmd', payload).catch(() => {}); }
-function tboAdd(username, source, minutes) {
-  const u = String(username || '').trim().replace(/^@+/, ''); if (!u) return;
-  const s = source === 'tiktok' ? 'tiktok' : 'youtube', key = tboKey(u, s), now = Date.now();
-  const cur = _tboActive.get(key), until = Math.max(now, cur ? cur.until : now) + (Number(minutes) || 0) * 60000; // cumulative
-  if (until <= now) return;
-  _tboActive.set(key, { username: u, source: s, until });
-  tboSave(); tboPublish({ action: 'add', username: u, source: s, until }); tboRenderActive();
-}
-function tboRelease(username, source) { _tboActive.delete(tboKey(username, source)); tboSave(); tboPublish({ action: 'release', username, source }); tboRenderActive(); }
-function tboReleaseAll() { if (!_tboActive.size) return; _tboActive.clear(); tboSave(); tboPublish({ action: 'release-all' }); tboRenderActive(); }
-function tboOnStatus(d) {
-  if (!d || !Array.isArray(d.people)) return;
-  const now = Date.now(), m = new Map();
-  d.people.forEach(p => { if ((+p.until || 0) > now) m.set(tboKey(p.username, p.source), { username: p.username, source: p.source, until: +p.until }); });
-  _tboActive = m; tboSave(); tboRenderActive();
-}
-function tboAddFromForm() {
-  const name = document.getElementById('tbo-name').value;
-  const src = document.getElementById('tbo-src').value;
-  const min = parseInt(document.getElementById('tbo-min').value) || 5;
-  if (!String(name).trim()) return;
-  tboAdd(name, src, min);
-  document.getElementById('tbo-name').value = '';
-}
-function tboQuick(min) { const name = document.getElementById('tbo-name').value; const src = document.getElementById('tbo-src').value; if (!String(name).trim()) return; tboAdd(name, src, min); document.getElementById('tbo-name').value = ''; }
-function tboRenderRecent() {
-  const dl = document.getElementById('tbo-recent'); if (!dl) return;
-  const arr = [..._tboRecent.values()].sort((a, b) => b.at - a.at).slice(0, 60);
-  dl.innerHTML = arr.map(r => `<option value="${(r.username || '').replace(/"/g, '&quot;')}">`).join('');
-}
-function tboRenderActive() {
-  const root = document.getElementById('tbo-active'); if (!root) return;
-  const now = Date.now();
-  for (const [k, v] of [..._tboActive]) if ((+v.until || 0) <= now) _tboActive.delete(k); // local expiry
-  const arr = [..._tboActive.values()].sort((a, b) => b.until - a.until);
-  const nEl = document.getElementById('tbo-active-n'); if (nEl) nEl.textContent = arr.length;
-  root.textContent = '';
-  if (!arr.length) { const e = document.createElement('div'); e.style.cssText = 'font-size:9px;color:var(--txt-dim);padding:5px;text-align:center;'; e.textContent = 'Nobody in timeout.'; root.appendChild(e); return; }
-  for (const v of arr) {
-    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:4px;padding:2px 0;';
-    const plat = document.createElement('span'); plat.textContent = v.source === 'tiktok' ? '🎵' : '▶'; plat.style.fontSize = '10px'; row.appendChild(plat);
-    const nm = document.createElement('span'); nm.textContent = v.username; nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;'; row.appendChild(nm);
-    const to = document.createElement('span'); to.textContent = tboFmt(v.until - now); to.style.cssText = 'font-size:11px;font-weight:700;color:#fbbf24;min-width:44px;text-align:right;'; row.appendChild(to);
-    const p1 = document.createElement('button'); p1.className = 'tf-btn'; p1.textContent = '+1'; p1.style.cssText = 'padding:1px 5px;font-size:9px;'; p1.onclick = () => tboAdd(v.username, v.source, 1); row.appendChild(p1);
-    const rl = document.createElement('button'); rl.className = 'tf-btn tf-btn-danger'; rl.textContent = 'Free'; rl.style.cssText = 'padding:1px 5px;font-size:9px;'; rl.onclick = () => tboRelease(v.username, v.source); row.appendChild(rl);
-    root.appendChild(row);
-  }
-}
-/* Box layout — balloon size + where they stack. Sliders publish `timeout-box-config`
-   to the timeout-box.html overlay (dock is authoritative; overlay persists last layout). */
-const TBO_CFG_LS = 'streamDock.timeoutBox.cfg.v1';
-let _tboCfg = { x: 540, y: 470, scale: 1, cols: 3, w: 1, h: 1 };
-function tboCfgLoad() { try { const c = JSON.parse(localStorage.getItem(TBO_CFG_LS) || 'null'); if (c) _tboCfg = Object.assign(_tboCfg, c); } catch (e) {} }
-function tboCfgSave() { try { localStorage.setItem(TBO_CFG_LS, JSON.stringify(_tboCfg)); } catch (e) {} }
-function tboCfgPublish() { if (typeof ablyChannel !== 'undefined' && ablyChannel) ablyChannel.publish('timeout-box-config', _tboCfg).catch(() => {}); }
-function tboCfgSet(k, v) { if (!isFinite(v)) return; _tboCfg[k] = v; tboCfgSave(); tboCfgPublish(); tboCfgRender(); }
-function tboCfgReset() { _tboCfg = { x: 540, y: 470, scale: 1, cols: 3, w: 1, h: 1 }; tboCfgSave(); tboCfgPublish(); tboCfgRender(); }
-function tboCfgRender() {
-  const txt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  const sld = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
-  txt('tbo-cfg-scale-v', Math.round(_tboCfg.scale * 100) + '%'); sld('tbo-cfg-scale', _tboCfg.scale);
-  txt('tbo-cfg-cols-v', _tboCfg.cols);                          sld('tbo-cfg-cols', _tboCfg.cols);
-  txt('tbo-cfg-w-v', Math.round(_tboCfg.w * 100) + '%');        sld('tbo-cfg-w', _tboCfg.w);
-  txt('tbo-cfg-h-v', Math.round(_tboCfg.h * 100) + '%');        sld('tbo-cfg-h', _tboCfg.h);
-  txt('tbo-cfg-x-v', Math.round(_tboCfg.x) + 'px');             sld('tbo-cfg-x', _tboCfg.x);
-  txt('tbo-cfg-y-v', Math.round(_tboCfg.y) + 'px');             sld('tbo-cfg-y', _tboCfg.y);
-}
-function dockBuildTimeoutCard() {
-  return dockMakeCard('timeout-box', 'Timeout Box', `
-    <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">Float a chatter into the <code>timeout-box.html</code> overlay for N minutes. Type a name (recent chatters autocomplete) or paste one.</div>
-    <div style="display:flex;gap:4px;margin-top:6px;">
-      <input id="tbo-name" list="tbo-recent" placeholder="username" style="flex:1;min-width:0;background:var(--bg-card,#1a1a22);border:1px solid var(--border,#333);color:#fff;border-radius:6px;padding:4px 6px;font-size:11px;">
-      <datalist id="tbo-recent"></datalist>
-      <select id="tbo-src" style="background:var(--bg-card,#1a1a22);border:1px solid var(--border,#333);color:#fff;border-radius:6px;font-size:11px;cursor:pointer;"><option value="tiktok">TikTok</option><option value="youtube">YouTube</option></select>
-      <input id="tbo-min" type="number" min="1" max="1440" value="5" style="width:46px;background:var(--bg-card,#1a1a22);border:1px solid var(--border,#333);color:#fff;border-radius:6px;padding:4px;font-size:11px;text-align:center;">
-    </div>
-    <div style="display:flex;gap:4px;margin-top:4px;">
-      <button class="tf-btn tf-btn-danger" style="flex:2;" onclick="tboAddFromForm()">⏱ TIMEOUT</button>
-      <button class="tf-btn" style="flex:1;" onclick="tboQuick(1)">+1m</button>
-      <button class="tf-btn" style="flex:1;" onclick="tboQuick(5)">+5m</button>
-      <button class="tf-btn" style="flex:1;" onclick="tboQuick(10)">+10m</button>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-      <span style="font-size:9px;color:var(--txt-dim);">IN TIMEOUT — <span id="tbo-active-n">0</span></span>
-      <button class="tf-btn tf-btn-danger" style="padding:1px 8px;font-size:9px;" onclick="tboReleaseAll()">Free All</button>
-    </div>
-    <div id="tbo-active" style="margin-top:2px;"></div>
-    <div style="margin-top:8px;border-top:1px solid var(--border,#333);padding-top:6px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:9px;color:var(--txt-dim);font-weight:800;letter-spacing:.06em;">BOX LAYOUT</span>
-        <button class="tf-btn" style="padding:1px 8px;font-size:9px;" onclick="tboCfgReset()">Reset</button>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
-        <span style="width:60px;color:var(--txt-dim);">Size</span>
-        <input id="tbo-cfg-scale" type="range" min="0.4" max="1.7" step="0.05" value="1" style="flex:1;min-width:0;" oninput="tboCfgSet('scale', parseFloat(this.value))">
-        <span id="tbo-cfg-scale-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">100%</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
-        <span style="width:60px;color:var(--txt-dim);">Columns</span>
-        <input id="tbo-cfg-cols" type="range" min="1" max="6" step="1" value="3" style="flex:1;min-width:0;" oninput="tboCfgSet('cols', parseInt(this.value))">
-        <span id="tbo-cfg-cols-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">3</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
-        <span style="width:60px;color:var(--txt-dim);">Width</span>
-        <input id="tbo-cfg-w" type="range" min="0.4" max="2.2" step="0.05" value="1" style="flex:1;min-width:0;" oninput="tboCfgSet('w', parseFloat(this.value))">
-        <span id="tbo-cfg-w-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">100%</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
-        <span style="width:60px;color:var(--txt-dim);">Height</span>
-        <input id="tbo-cfg-h" type="range" min="0.4" max="2.2" step="0.05" value="1" style="flex:1;min-width:0;" oninput="tboCfgSet('h', parseFloat(this.value))">
-        <span id="tbo-cfg-h-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">100%</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
-        <span style="width:60px;color:var(--txt-dim);">Stack X</span>
-        <input id="tbo-cfg-x" type="range" min="-100" max="1180" step="5" value="540" style="flex:1;min-width:0;" oninput="tboCfgSet('x', parseInt(this.value))">
-        <span id="tbo-cfg-x-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">540px</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;">
-        <span style="width:60px;color:var(--txt-dim);">Stack Y</span>
-        <input id="tbo-cfg-y" type="range" min="120" max="1560" step="10" value="470" style="flex:1;min-width:0;" oninput="tboCfgSet('y', parseInt(this.value))">
-        <span id="tbo-cfg-y-v" style="width:42px;text-align:right;color:#a78bfa;font-weight:700;">470px</span>
-      </label>
-    </div>`);
-}
-
 function dockBuildQuickToggles() {
   return dockMakeCard('dock-toggles', 'Overlay Toggles', `
     <div class="dock-quick-grid">
@@ -6460,7 +6298,6 @@ function dockBuildQuickToggles() {
       ${dockToggleHtml('New Here Pile', "dockQuickToggle('new-here')", 'new-here')}
       ${dockToggleHtml('Gifter Highlight', "dockQuickToggle('gifter-highlight')", 'gifter-highlight')}
       ${dockToggleHtml('Top Camera Gifter Panel', "dockQuickToggle('gift-bar')", 'gift-bar')}
-      ${dockToggleHtml('Timeout Box', "dockQuickToggle('timeout-box')", 'timeout-box')}
       ${dockToggleHtml('Bait Card', "dockQuickToggle('bait')", 'bait')}
     </div>`);
 }
@@ -6481,7 +6318,6 @@ function dockQuickToggle(name) {
     case 'new-here': dockToggleNewHere(); break;
     case 'gifter-highlight': dockToggleGifterHighlight(); break;
     case 'gift-bar': dockToggleGiftBar(); break;
-    case 'timeout-box': dockToggleTimeoutBoxOverlay(); break;
     case 'bait': qcToggleBait(); break;
   }
   dockSyncQuickToggles();
@@ -6508,14 +6344,11 @@ function dockSyncQuickToggles() {
 }
 
 let _streamBarEnabled = localStorage.getItem('streamBarEnabled') !== 'false';
-// League Sprint defaults OFF, same as New Here/Timeout Box — zero Ably connection until
+// League Sprint defaults OFF, same as New Here — zero Ably connection until
 // explicitly toggled on here (see league-sprint-overlay.html's attachMain/detachMain).
 let _dockLeagueSprintVisible = localStorage.getItem('dockLeagueSprintVisible') === '1';
 let _dockGiftAnimVisible = localStorage.getItem('dockGiftAnimVisible') !== '0';
 let _dockNewHereVisible = localStorage.getItem('dockNewHereVisible') === '1';
-// Defaults OFF, same as New Here — zero Ably connection until
-// explicitly toggled on here (see timeout-box.html's attachMain/detachMain).
-let _dockTimeoutBoxVisible = localStorage.getItem('dockTimeoutBoxVisible') === '1';
 // "Gifter Highlight" and "Top Camera Gifter Panel" are two dock buttons that both
 // show/hide the SAME overlay panel (#bar-info in gift-bar.html, gated by the single
 // `gifter-slides-config.enabled` flag). They used to track separate booleans, so
@@ -6616,16 +6449,6 @@ function dockToggleGiftBar() {
   doFlash(_gifterPanelVisible ? 'green' : 'red');
 }
 
-function dockToggleTimeoutBoxOverlay() {
-  _dockTimeoutBoxVisible = !_dockTimeoutBoxVisible;
-  localStorage.setItem('dockTimeoutBoxVisible', _dockTimeoutBoxVisible ? '1' : '0');
-  // The on/off command must go over the always-attached toggle channel — the
-  // overlay fully detaches from ablyChannel while off, so it would never see
-  // this on the shared channel (see timeout-box.html's attachMain/detachMain).
-  tboxToggleChannel.publish('set', { enabled: _dockTimeoutBoxVisible }).catch(() => {});
-  doFlash(_dockTimeoutBoxVisible ? 'green' : 'red');
-}
-
 function organizeDockControls() {
   const col = document.getElementById('col-controls');
   if (!col || col.dataset.organized === 'true') return;
@@ -6636,13 +6459,11 @@ function organizeDockControls() {
 
   const chatTesting = dockBuildChatTestCard();
   const funDrawer = dockBuildFunDrawerCard();
-  const timeoutBox = dockBuildTimeoutCard();
   // Six groups (design ①/⑧): the old Overlay Toggles quick-grid card is gone —
   // its toggles live on the merged Overlays card's group rows now. Chat Games +
   // Milk Bar fold into GAMES.
   const groups = [
     ['Config',     'config',     [dockCardByCtrl('layout'), dockCardByCtrl('cloud-sync')]],
-    ['Moderation', 'moderation', [timeoutBox]],
     ['Testing',    'testing',    [dockCardByCtrl('testfire'), chatTesting]],
     ['Games',      'games',      [dockCardByCtrl('bait'), dockCardByCtrl('newhere'), dockCardByCtrl('kw'), dockCardByCtrl('mm'), dockCardByCtrl('msc')]],
     ['Promo',      'promo',      [dockCardByCtrl('lt'), dockCardByCtrl('ep'), dockCardByCtrl('psc'), dockCardByCtrl('gb')]],
@@ -6659,7 +6480,6 @@ function organizeDockControls() {
   dockSyncQuickToggles();
   dockApplyGroupNav();
   dockSetChatCols(parseInt(localStorage.getItem('streamDockChatCols') || '1', 10));
-  if (typeof tboRenderActive === 'function') { tboRenderActive(); tboRenderRecent(); } // Timeout Box card is now in the DOM
   col.dataset.organized = 'true';
 }
 
@@ -6671,7 +6491,7 @@ function dockBuildGroupNav(groups) {
   const nav = document.createElement('div');
   nav.className = 'dock-group-nav';
   nav.id = 'dock-group-nav';
-  const short = { config:'CONFIG', moderation:'MOD', testing:'TESTING', games:'GAMES', promo:'PROMO', events:'EVENTS' };
+  const short = { config:'CONFIG', testing:'TESTING', games:'GAMES', promo:'PROMO', events:'EVENTS' };
   nav.innerHTML = groups.map(([label, slug]) =>
     `<button type="button" data-nav="${slug}" onclick="dockNavSelect('${slug}')">${short[slug] || label}</button>`
   ).join('');
