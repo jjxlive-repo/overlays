@@ -531,26 +531,57 @@ try {
   bc = new BroadcastChannel(FJ_BC_NAME);
   bc.onmessage = e => { if (e.data && e.data.cmd === 'STATUS_UPDATE') renderStatus(e.data.data); };
 } catch (e) {}
+/* ── comment de-duplication ────────────────────────────────────────
+   The same comment can reach Feed Jamie twice: TikTok arrives directly on the
+   Tikfinity WebSocket, and stream-dock ALSO relays every platform's chat as a
+   'milk-event'. The old guard filtered the relay to d.platform === 'yt', but
+   SSN frequently omits data.type, so stream-dock tags those comments 'other'
+   (it even logs '[platform-detect] ambiguous platform') — and YouTube chat was
+   silently dropped. Platform tagging is not trustworthy, so instead both paths
+   claim a comment by content: whichever arrives first wins, the other is
+   skipped. Order-independent, and works no matter how the platform is tagged. */
+const recentComments = new Map();
+const COMMENT_DEDUPE_MS = 6000;
+function claimComment(username, message) {
+  const key = String(username || '').toLowerCase() + '|' + String(message || '').slice(0, 80);
+  const now = Date.now();
+  const prev = recentComments.get(key);
+  if (prev != null && now - prev < COMMENT_DEDUPE_MS) return false;  /* already handled */
+  recentComments.set(key, now);
+  if (recentComments.size > 300) {
+    const cutoff = now - COMMENT_DEDUPE_MS * 2;
+    for (const [k, t] of recentComments) if (t < cutoff) recentComments.delete(k);
+  }
+  return true;
+}
 function connectAbly() {
   if (!window.Ably) { setDot('ably', false, 'CDN blocked'); return; }
   try {
     ably = new Ably.Realtime({ key: FJ_ABLY_KEY });
     ablyChannel = ably.channels.get(FJ_ABLY_CH);
     ablyChannel.subscribe(FJ_ABLY_MSG_IN, m => { if (m.data && m.data.data) renderStatus(m.data.data); });
-    // Comments only ever reached Jamie through the Tikfinity WebSocket below, which is
-    // TikTok-only — YouTube comments had no path in at all, so keyword reactions never
-    // fired for YouTube viewers. stream-dock.html relays a 'comment' milk-event with the
-    // message text for both platforms; TikTok already works via Tikfinity, so only forward
-    // the YouTube ones here to avoid double-firing the same TikTok comment twice.
+    // stream-dock.html relays every platform's chat here as a 'comment' milk-event
+    // (with the message text), which is the ONLY way YouTube chat reaches Jamie —
+    // the Tikfinity WebSocket below is TikTok-only. Double-firing of TikTok comments
+    // (which arrive on both paths) is handled by claimComment() above, NOT by
+    // platform filtering — see the note there for why d.platform is unreliable.
     // milk-event lives on its own 'splat-chat' channel now (split off the shared
     // 'splat-overlay' firehose — see stream-dock.html for why).
     const chatChannel = ably.channels.get('splat-chat');
     chatChannel.subscribe('milk-event', m => {
       const d = m.data || {};
-      if (d.type === 'comment' && d.platform === 'yt') {
-        send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: d.username || null, message: String(d.message || '') } });
-        addLog(`💬 @${d.username || '?'} (YT) "${String(d.message || '').slice(0, 40)}"`);
-      }
+      if (d.type !== 'comment') return;
+      const user = d.username || null;
+      const msg  = String(d.message || '');
+      if (!msg) return;
+      /* forward EVERY platform's chat and let claimComment() drop the ones the
+         Tikfinity bridge already delivered — see the note above. This is what
+         lets YouTube through: those arrive tagged 'yt' OR 'other' depending on
+         whether SSN included data.type, and the old 'yt'-only filter dropped
+         the 'other' ones entirely. */
+      if (!claimComment(user, msg)) return;
+      send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: user, message: msg } });
+      addLog(`💬 @${user || '?'} (${d.platform || '?'}) "${msg.slice(0, 40)}"`);
     });
     ably.connection.on('connected',    () => setDot('ably', true,  'connected'));
     ably.connection.on('disconnected', () => setDot('ably', false, 'disconnected'));
@@ -1775,10 +1806,16 @@ function tfConnect() {
         send({ cmd: 'TRIGGER_EVENT', data: { type: 'like', count: parseInt(d.likeCount) || 1, username: d.uniqueId || null } });
         logLikes(parseInt(d.likeCount) || 1);
         break;
-      case 'chat':
-        send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: d.uniqueId || d.nickname || null, message: String(d.comment || '') } });
-        addLog(`💬 @${d.uniqueId || d.nickname || '?'} "${String(d.comment || '').slice(0, 40)}"`);
+      case 'chat': {
+        /* claim it so stream-dock's 'milk-event' relay of this same TikTok
+           comment gets skipped (and vice-versa if the relay wins the race) */
+        const chatUser = d.uniqueId || d.nickname || null;
+        const chatMsg  = String(d.comment || '');
+        if (!claimComment(chatUser, chatMsg)) break;
+        send({ cmd: 'TRIGGER_EVENT', data: { type: 'comment', username: chatUser, message: chatMsg } });
+        addLog(`💬 @${chatUser || '?'} "${chatMsg.slice(0, 40)}"`);
         break;
+      }
       case 'follow':
         send({ cmd: 'TRIGGER_EVENT', data: { type: 'follow', username: d.uniqueId || d.nickname || null } });
         addLog(`➕ @${d.uniqueId || d.nickname || '?'} followed`);
