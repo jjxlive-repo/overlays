@@ -1,0 +1,407 @@
+<!--
+  FOLLOW METER — standalone control panel.
+
+  Combined TikTok + YouTube follow/sub meter with a milestone every N (default 10).
+  Split out of stream-dock.html the same way New Here was — stream-dock keeps only
+  an on/off toggle; gif/audio uploads, text templates, position and test-fires live
+  here. Open this locally in Chrome during streams.
+
+  Add follow-meter-overlay.html as a Browser Source (1080×1920, transparent).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOLLOW METER — Control</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+:root {
+  --tt:#38BDF8; --yt:#F87171; --gold:#FBBF24; --purple:#A855F7;
+  --green:#3b82f6; --danger:#F43F5E;
+  --bg:#0d0d12; --bg-panel:rgba(18,18,26,0.94); --bg-card:rgba(255,255,255,0.035);
+  --bg-hover:rgba(255,255,255,0.06); --border:rgba(255,255,255,0.07);
+  --txt:rgba(255,255,255,0.90); --txt-dim:rgba(255,255,255,0.42);
+  --radius:10px; --font:'DM Sans',sans-serif; --mono:'DM Mono',monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--txt); font-family: var(--font);
+  padding: 18px; display: flex; justify-content: center;
+}
+.wrap { width: 100%; max-width: 900px; }
+h1 {
+  font-size: 16px; font-weight: 700; margin: 0 0 3px; display: flex;
+  align-items: center; gap: 8px;
+}
+h1 .dot { width: 9px; height: 9px; border-radius: 50%; background: #555; transition: background .3s; }
+h1 .dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.subtitle { font-size: 11px; color: var(--txt-dim); margin: 0 0 14px; line-height: 1.5; }
+.subtitle code { font-size: 10px; background: rgba(255,255,255,0.07); padding: 1px 4px; border-radius: 3px; }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px 12px; margin-bottom: 10px;
+}
+.card > h2 {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--purple);
+  margin: 0 0 8px; font-weight: 700; display: flex; align-items: center; gap: 6px;
+}
+.cards { column-count: 2; column-gap: 12px; }
+.cards > .card { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 12px; }
+@media (max-width: 720px) { .cards { column-count: 1; } .wrap { max-width: 460px; } }
+.ctrl-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 5px; }
+.ctrl-row label { font-size: 10px; color: var(--txt-dim); flex-shrink: 0; }
+.ctrl-in {
+  background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--txt); font-family: var(--font); font-size: 11px; padding: 4px 7px;
+}
+.ctrl-in:focus { border-color: rgba(168,85,247,.5); outline: none; }
+input[type="number"].ctrl-in { width: 60px; }
+.ctrl-btn {
+  background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.3); border-radius: 6px;
+  color: var(--txt); font-family: var(--font); font-weight: 600; font-size: 11px;
+  padding: 6px 10px; cursor: pointer; transition: background .15s;
+}
+.ctrl-btn:hover { background: rgba(168,85,247,.22); }
+.ctrl-btn:active { transform: scale(0.97); }
+.ctrl-btn.c-act { background: rgba(168,85,247,.3); border-color: rgba(216,180,254,.85); color: #f5d0fe; }
+.ctrl-btn.danger { border-color: rgba(244,63,94,0.35); color: #fb7185; background: rgba(244,63,94,0.1); }
+.status { font-size: 10px; color: var(--txt-dim); min-height: 12px; margin-top: 8px; }
+.hint { font-size: 9px; color: var(--txt-dim); margin: 0 0 8px; line-height: 1.55; }
+
+/* slot card */
+.slot-card { border-radius: var(--radius); padding: 10px 12px 12px; margin-bottom: 12px; break-inside: avoid; }
+.slot-tiktok_follow  { background: rgba(56,189,248,0.06);  border: 1px solid rgba(56,189,248,0.28); }
+.slot-youtube_follow { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.28); }
+.slot-youtube_sub    { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.28); }
+.slot-milestone       { background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.32); }
+.slot-hd { font-size: 12px; font-weight: 700; margin-bottom: 6px; display:flex; align-items:center; gap:6px; }
+.slot-tiktok_follow .slot-hd  { color: var(--tt); }
+.slot-youtube_follow .slot-hd { color: var(--yt); }
+.slot-youtube_sub .slot-hd    { color: var(--yt); }
+.slot-milestone .slot-hd       { color: var(--gold); }
+.thumb-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.thumb { width: 46px; height: 46px; border-radius: 8px; object-fit: cover; background: rgba(0,0,0,0.3); border: 1px solid var(--border); flex-shrink:0; }
+.thumb.empty { display:flex; align-items:center; justify-content:center; font-size:9px; color:var(--txt-dim); }
+.slot-meter { font-size: 22px; font-weight: 700; color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="dot" id="conn-dot"></span>FOLLOW METER — Control</h1>
+  <p class="subtitle">
+    Combined TikTok + YouTube follow/sub meter. Every individual follow/sub fires its own gif + audio; every <b id="every-label">10</b>th fires the milestone gif + audio too. Add <code>follow-meter-overlay.html</code> as a Browser Source (1080×1920, transparent BG).<br>
+    <span style="color:#38BDF8;">■</span> TikTok &nbsp;·&nbsp; <span style="color:#F87171;">■</span> YouTube &nbsp;·&nbsp; <span style="color:#FBBF24;">■</span> Milestone
+  </p>
+
+  <div class="card" style="display:flex;flex-direction:column;gap:8px;">
+    <button class="ctrl-btn c-act" id="fm-enable-btn" onclick="fmToggleEnabled()" style="font-size:13px;padding:9px;">◉ Overlay: OFF</button>
+    <div class="ctrl-row" style="justify-content:space-between;">
+      <div><span class="slot-meter" id="fm-live-count">0</span> <span style="font-size:10px;color:var(--txt-dim);">combined follows/subs this session</span></div>
+      <button class="ctrl-btn danger" onclick="fmResetCount()">Reset counter</button>
+    </div>
+  </div>
+
+  <div class="cards">
+
+    <!-- SLOT: TikTok follow -->
+    <div class="slot-card slot-tiktok_follow">
+      <div class="slot-hd">🎵 TikTok Follow</div>
+      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="tiktok_follow" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
+      <p class="hint" style="margin:4px 0 0;">Use <code>{username}</code> — replaced with the follower's name.</p>
+      <div class="thumb-row">
+        <img class="thumb" id="thumb-tiktok_follow-gif" style="display:none;">
+        <div class="thumb empty" id="thumb-tiktok_follow-gif-ph">GIF</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('tiktok_follow','gif',this)"></label>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('tiktok_follow','gif')">✕</button>
+      </div>
+      <div class="thumb-row">
+        <div class="thumb empty" id="thumb-tiktok_follow-audio-ph">♪</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload audio<input type="file" accept="audio/*" style="display:none;" onchange="fmUploadAsset('tiktok_follow','audio',this)"></label>
+        <button class="ctrl-btn" onclick="fmTestAudio('tiktok_follow')">▶</button>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('tiktok_follow','audio')">✕</button>
+      </div>
+      <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('tiktok_follow')">Test fire</button>
+    </div>
+
+    <!-- SLOT: YouTube follow -->
+    <div class="slot-card slot-youtube_follow">
+      <div class="slot-hd">▶ YouTube Follow</div>
+      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="youtube_follow" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
+      <p class="hint" style="margin:4px 0 0;">Use <code>{username}</code> — replaced with the follower's name.</p>
+      <div class="thumb-row">
+        <img class="thumb" id="thumb-youtube_follow-gif" style="display:none;">
+        <div class="thumb empty" id="thumb-youtube_follow-gif-ph">GIF</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('youtube_follow','gif',this)"></label>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('youtube_follow','gif')">✕</button>
+      </div>
+      <div class="thumb-row">
+        <div class="thumb empty" id="thumb-youtube_follow-audio-ph">♪</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload audio<input type="file" accept="audio/*" style="display:none;" onchange="fmUploadAsset('youtube_follow','audio',this)"></label>
+        <button class="ctrl-btn" onclick="fmTestAudio('youtube_follow')">▶</button>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('youtube_follow','audio')">✕</button>
+      </div>
+      <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('youtube_follow')">Test fire</button>
+    </div>
+
+    <!-- SLOT: YouTube sub -->
+    <div class="slot-card slot-youtube_sub">
+      <div class="slot-hd">🔔 YouTube Sub</div>
+      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="youtube_sub" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
+      <p class="hint" style="margin:4px 0 0;">Use <code>{username}</code> — replaced with the subscriber's name.</p>
+      <div class="thumb-row">
+        <img class="thumb" id="thumb-youtube_sub-gif" style="display:none;">
+        <div class="thumb empty" id="thumb-youtube_sub-gif-ph">GIF</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('youtube_sub','gif',this)"></label>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('youtube_sub','gif')">✕</button>
+      </div>
+      <div class="thumb-row">
+        <div class="thumb empty" id="thumb-youtube_sub-audio-ph">♪</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload audio<input type="file" accept="audio/*" style="display:none;" onchange="fmUploadAsset('youtube_sub','audio',this)"></label>
+        <button class="ctrl-btn" onclick="fmTestAudio('youtube_sub')">▶</button>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('youtube_sub','audio')">✕</button>
+      </div>
+      <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('youtube_sub')">Test fire</button>
+    </div>
+
+    <!-- SLOT: milestone -->
+    <div class="slot-card slot-milestone">
+      <div class="slot-hd">🎉 Milestone (every N)</div>
+      <div class="ctrl-row"><label style="width:44px;">Every</label><input class="ctrl-in" id="fm-every" type="number" min="1" value="10" style="width:60px;" oninput="fmPushConfigMisc()"><span style="font-size:10px;color:var(--txt-dim);">combined follows/subs</span></div>
+      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="milestone" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
+      <p class="hint" style="margin:4px 0 0;">Use <code>{count}</code> — replaced with the current combined total.</p>
+      <div class="thumb-row">
+        <img class="thumb" id="thumb-milestone-gif" style="display:none;">
+        <div class="thumb empty" id="thumb-milestone-gif-ph">GIF</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('milestone','gif',this)"></label>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('milestone','gif')">✕</button>
+      </div>
+      <div class="thumb-row">
+        <div class="thumb empty" id="thumb-milestone-audio-ph">♪</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload audio<input type="file" accept="audio/*" style="display:none;" onchange="fmUploadAsset('milestone','audio',this)"></label>
+        <button class="ctrl-btn" onclick="fmTestAudio('milestone')">▶</button>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('milestone','audio')">✕</button>
+      </div>
+      <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('milestone')">Test fire</button>
+    </div>
+
+    <!-- POSITION / TIMING -->
+    <div class="card">
+      <h2>Position &amp; timing</h2>
+      <div class="ctrl-row"><label style="width:80px;">Meter label</label><input class="ctrl-in" id="fm-meter-label" type="text" value="FOLLOWERS" style="flex:1;min-width:0;" oninput="fmPushConfigMisc()"></div>
+      <div class="ctrl-row"><label style="width:80px;">Meter X / Y</label><input class="ctrl-in" id="fm-meter-x" type="number" value="0" oninput="fmPushConfigMisc()"><input class="ctrl-in" id="fm-meter-y" type="number" value="0" oninput="fmPushConfigMisc()"></div>
+      <div class="ctrl-row"><label style="width:80px;">Meter scale</label><input class="ctrl-in" id="fm-meter-scale" type="number" step="0.05" value="1" style="width:60px;" oninput="fmPushConfigMisc()"></div>
+      <div class="ctrl-row"><label style="width:80px;" title="Hide/show the persistent meter pill (alerts still fire either way).">Meter visible</label>
+        <input type="checkbox" id="fm-meter-visible" checked onchange="fmPushConfigMisc()">
+      </div>
+      <div class="ctrl-row"><label style="width:80px;">Alert X / Y</label><input class="ctrl-in" id="fm-alert-x" type="number" value="0" oninput="fmPushConfigMisc()"><input class="ctrl-in" id="fm-alert-y" type="number" value="0" oninput="fmPushConfigMisc()"></div>
+      <div class="ctrl-row"><label style="width:80px;">Alert scale</label><input class="ctrl-in" id="fm-alert-scale" type="number" step="0.05" value="1" style="width:60px;" oninput="fmPushConfigMisc()"></div>
+      <div class="ctrl-row"><label style="width:80px;" title="How long each gif/text/audio alert stays on screen before the next one plays.">Hold (sec)</label><input class="ctrl-in" id="fm-duration" type="number" step="0.5" min="1" value="4.5" style="width:60px;" oninput="fmPushConfigMisc()"></div>
+    </div>
+
+  </div>
+  <div class="status" id="fm-status">—</div>
+</div>
+
+<script>
+/* ── constants shared with the overlay ────────────────────────────── */
+const FM_LS_COUNT   = 'followMeter.count.v1';
+const FM_LS_CONFIG  = 'followMeter.config.v1';
+const FM_LS_ASSETS  = 'followMeter.assets.v1';
+const FM_LS_MSG     = 'followMeter.msg';
+const FM_BC_NAME    = 'follow-meter-control';
+const SLOTS = ['tiktok_follow', 'youtube_follow', 'youtube_sub', 'milestone'];
+
+const DEFAULT_CONFIG = {
+  milestoneEvery: 10,
+  meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
+  alert: { x: 0, y: 0, scale: 1, durationSec: 4.5 },
+  texts: {
+    tiktok_follow:  '{username} followed on TikTok!',
+    youtube_follow: '{username} followed on YouTube!',
+    youtube_sub:    '{username} subscribed on YouTube!',
+    milestone:      '{count} FOLLOWERS! 🎉',
+  },
+};
+function deepMerge(base, extra) {
+  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
+  const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k of Object.keys(extra)) {
+    const bv = out[k], ev = extra[k];
+    if (bv && ev && typeof bv === 'object' && typeof ev === 'object' && !Array.isArray(bv) && !Array.isArray(ev)) out[k] = deepMerge(bv, ev);
+    else if (ev !== undefined) out[k] = ev;
+  }
+  return out;
+}
+const clone = o => JSON.parse(JSON.stringify(o));
+
+let CFG = clone(DEFAULT_CONFIG);
+try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s) CFG = deepMerge(CFG, s); } catch (e) {}
+let ASSETS = {};
+try { ASSETS = JSON.parse(localStorage.getItem(FM_LS_ASSETS) || '{}'); } catch (e) {}
+
+/* ── COMMS (mirrors feed-jamie-control.html's three-transport send()) ── */
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+let bc = null, ably = null, ablyChannel = null, fmToggleChannel = null;
+try { bc = new BroadcastChannel(FM_BC_NAME); } catch (e) {}
+
+function send(msg, opts = {}) {
+  if (msg && typeof msg === 'object') msg._mid = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+  try { if (bc) bc.postMessage(msg); } catch (e) {}
+  if (!opts.skipAbly) { try { if (ablyChannel) ablyChannel.publish('follow-meter-cmd', msg).catch(() => {}); } catch (e) {} }
+  try { localStorage.setItem(FM_LS_MSG, JSON.stringify({ n: Math.random(), p: msg })); } catch (e) {}
+}
+
+function connectAbly() {
+  if (!window.Ably) return;
+  try {
+    ably = new Ably.Realtime({ key: ABLY_KEY });
+    ablyChannel = ably.channels.get(ABLY_CH);
+    fmToggleChannel = ably.channels.get('follow-meter-toggle');
+    fmToggleChannel.subscribe('set', msg => {
+      _fmEnabled = !!(msg.data && msg.data.enabled);
+      fmRenderEnableBtn();
+    });
+    const dot = document.getElementById('conn-dot');
+    ably.connection.on('connected', () => {
+      dot.classList.add('connected');
+      fmToggleChannel.publish('request', {}).catch(() => {});
+    });
+    ably.connection.on('disconnected', () => dot.classList.remove('connected'));
+    ably.connection.on('failed',       () => dot.classList.remove('connected'));
+  } catch (e) {}
+}
+connectAbly();
+
+/* ── overlay ON/OFF ─────────────────────────────────────────────── */
+let _fmEnabled = localStorage.getItem('dockFollowMeterVisible') === '1';
+function fmRenderEnableBtn() {
+  const btn = document.getElementById('fm-enable-btn');
+  btn.textContent = _fmEnabled ? '◉ Overlay: ON' : '◉ Overlay: OFF';
+  btn.style.background = _fmEnabled ? 'rgba(52,211,153,0.18)' : 'rgba(244,63,94,0.12)';
+  btn.style.borderColor = _fmEnabled ? 'rgba(52,211,153,0.6)' : 'rgba(244,63,94,0.4)';
+  btn.style.color = _fmEnabled ? '#6ee7b7' : '#fb7185';
+}
+function fmToggleEnabled() {
+  _fmEnabled = !_fmEnabled;
+  localStorage.setItem('dockFollowMeterVisible', _fmEnabled ? '1' : '0');
+  if (fmToggleChannel) fmToggleChannel.publish('set', { enabled: _fmEnabled }).catch(() => {});
+  fmRenderEnableBtn();
+}
+fmRenderEnableBtn();
+
+/* ── live counter (reads the same localStorage key the overlay persists to) ── */
+function fmRenderCount() {
+  const n = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0;
+  document.getElementById('fm-live-count').textContent = n.toLocaleString();
+}
+fmRenderCount();
+window.addEventListener('storage', e => { if (e.key === FM_LS_COUNT) fmRenderCount(); });
+function fmResetCount() {
+  if (!confirm('Reset the combined follow/sub counter to 0?')) return;
+  try { localStorage.setItem(FM_LS_COUNT, '0'); } catch (e) {}
+  send({ cmd: 'RESET_COUNT' });
+  fmRenderCount();
+  const st = document.getElementById('fm-status'); st.textContent = '↺ counter reset'; setTimeout(() => st.textContent = '—', 2000);
+}
+
+/* ── config push ───────────────────────────────────────────────── */
+let cfgTimer = null;
+function fmPushConfigMisc() {
+  CFG.milestoneEvery = Math.max(1, parseInt(document.getElementById('fm-every').value) || 10);
+  document.getElementById('every-label').textContent = CFG.milestoneEvery;
+  CFG.meter.label = document.getElementById('fm-meter-label').value.trim() || 'FOLLOWERS';
+  CFG.meter.x = parseInt(document.getElementById('fm-meter-x').value) || 0;
+  CFG.meter.y = parseInt(document.getElementById('fm-meter-y').value) || 0;
+  CFG.meter.scale = parseFloat(document.getElementById('fm-meter-scale').value) || 1;
+  CFG.meter.visible = document.getElementById('fm-meter-visible').checked;
+  CFG.alert.x = parseInt(document.getElementById('fm-alert-x').value) || 0;
+  CFG.alert.y = parseInt(document.getElementById('fm-alert-y').value) || 0;
+  CFG.alert.scale = parseFloat(document.getElementById('fm-alert-scale').value) || 1;
+  CFG.alert.durationSec = parseFloat(document.getElementById('fm-duration').value) || 4.5;
+  try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+  clearTimeout(cfgTimer);
+  cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: CFG }), 150);
+}
+function fmPushText(input) {
+  const slot = input.dataset.slot;
+  CFG.texts[slot] = input.value;
+  try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+  clearTimeout(cfgTimer);
+  cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: { texts: { [slot]: CFG.texts[slot] } } }), 200);
+}
+
+/* ── asset upload ──────────────────────────────────────────────── */
+const MAX_GIF_BYTES   = 4 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
+function fmUploadAsset(slot, kind, input) {
+  const f = input.files[0]; if (!f) return;
+  const max = kind === 'gif' ? MAX_GIF_BYTES : MAX_AUDIO_BYTES;
+  if (f.size > max) { alert(`Keep ${kind} files under ${Math.round(max / 1024 / 1024)} MB.`); input.value = ''; return; }
+  const r = new FileReader();
+  r.onload = () => {
+    if (!ASSETS[slot]) ASSETS[slot] = {};
+    ASSETS[slot][kind] = { mime: f.type, dataURL: r.result };
+    try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); }
+    catch (e) { alert('localStorage full — remove some uploads first.'); return; }
+    send({ cmd: 'ASSET_UPDATE', data: { slot, kind, mime: f.type, dataURL: r.result } }, { skipAbly: true });
+    fmRefreshThumb(slot, kind);
+  };
+  r.readAsDataURL(f);
+  input.value = '';
+}
+function fmClearAsset(slot, kind) {
+  if (ASSETS[slot]) delete ASSETS[slot][kind];
+  try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+  send({ cmd: 'ASSET_UPDATE', data: { slot, kind, dataURL: null } }, { skipAbly: true });
+  fmRefreshThumb(slot, kind);
+}
+function fmRefreshThumb(slot, kind) {
+  const asset = (ASSETS[slot] || {})[kind];
+  if (kind === 'gif') {
+    const img = document.getElementById(`thumb-${slot}-gif`);
+    const ph  = document.getElementById(`thumb-${slot}-gif-ph`);
+    if (asset && asset.dataURL && !asset.mime.startsWith('video/')) {
+      img.src = asset.dataURL; img.style.display = ''; ph.style.display = 'none';
+    } else {
+      img.style.display = 'none'; ph.style.display = 'flex'; ph.textContent = asset ? 'video ✓' : 'GIF';
+    }
+  } else {
+    const ph = document.getElementById(`thumb-${slot}-audio-ph`);
+    ph.textContent = asset ? '♪ ✓' : '♪';
+  }
+}
+function fmTestAudio(slot) {
+  const asset = (ASSETS[slot] || {}).audio;
+  if (!asset || !asset.dataURL) { const st = document.getElementById('fm-status'); st.textContent = 'no audio assigned for ' + slot; setTimeout(() => st.textContent = '—', 2000); return; }
+  new Audio(asset.dataURL).play().catch(() => {});
+}
+function fmTestFire(slot) {
+  const name = 'TestViewer' + Math.floor(Math.random() * 90 + 10);
+  send({ cmd: 'TEST_FIRE', data: { slot, username: name } });
+  const st = document.getElementById('fm-status'); st.textContent = `→ test fired: ${slot}`; setTimeout(() => st.textContent = '—', 2000);
+}
+
+/* ── init form values from CFG/ASSETS ─────────────────────────────── */
+(function initForm() {
+  document.getElementById('fm-every').value = CFG.milestoneEvery;
+  document.getElementById('every-label').textContent = CFG.milestoneEvery;
+  document.getElementById('fm-meter-label').value = CFG.meter.label;
+  document.getElementById('fm-meter-x').value = CFG.meter.x;
+  document.getElementById('fm-meter-y').value = CFG.meter.y;
+  document.getElementById('fm-meter-scale').value = CFG.meter.scale;
+  document.getElementById('fm-meter-visible').checked = CFG.meter.visible !== false;
+  document.getElementById('fm-alert-x').value = CFG.alert.x;
+  document.getElementById('fm-alert-y').value = CFG.alert.y;
+  document.getElementById('fm-alert-scale').value = CFG.alert.scale;
+  document.getElementById('fm-duration').value = CFG.alert.durationSec;
+  document.querySelectorAll('input[data-field="text"]').forEach(inp => {
+    inp.value = CFG.texts[inp.dataset.slot] || '';
+  });
+  SLOTS.forEach(slot => { fmRefreshThumb(slot, 'gif'); fmRefreshThumb(slot, 'audio'); });
+})();
+</script>
+</body>
+</html>

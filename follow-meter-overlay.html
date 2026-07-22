@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FOLLOW METER — Overlay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1080px;
+    height: 1920px;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Fredoka', 'DM Sans', sans-serif;
+  }
+  #conn-dot {
+    display: none;
+    position: fixed; top: 12px; right: 12px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #555; z-index: 9999;
+  }
+
+  /* ── METER PILL ───────────────────────────────────────────────── */
+  #meter {
+    position: fixed; left: 50%; top: 60px;
+    transform-origin: top center;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    opacity: 0; transition: opacity .35s ease;
+    z-index: 20;
+  }
+  #meter.show { opacity: 1; }
+  #meter-pill {
+    display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, rgba(20,10,30,0.88), rgba(10,5,20,0.88));
+    border: 2px solid rgba(255,255,255,0.18);
+    border-radius: 999px;
+    padding: 10px 26px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+  }
+  #meter-label {
+    font-weight: 700; font-size: 22px; letter-spacing: .06em;
+    color: #fff; text-transform: uppercase;
+  }
+  #meter-count {
+    font-weight: 700; font-size: 30px; color: #FDE047;
+    text-shadow: 0 0 12px rgba(253,224,71,0.6);
+  }
+  #meter-sub {
+    font-size: 15px; color: rgba(255,255,255,0.65); font-weight: 600;
+  }
+  #meter-track {
+    width: 260px; height: 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.14); overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  #meter-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #38BDF8, #FDE047);
+    transition: width .4s ease;
+  }
+
+  /* ── ALERT STAGE ──────────────────────────────────────────────── */
+  #alert-pos {
+    position: fixed; left: 50%; top: 45%;
+    z-index: 30; pointer-events: none;
+  }
+  #alert-stage {
+    transform: translate(-50%, -50%) scale(0.85);
+    transform-origin: center;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    opacity: 0;
+    transition: opacity .28s ease, transform .28s ease;
+  }
+  #alert-stage.show {
+    opacity: 1; transform: translate(-50%, -50%) scale(1);
+  }
+  #alert-media-wrap {
+    max-width: 640px; max-height: 640px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #alert-media-wrap img, #alert-media-wrap video {
+    max-width: 640px; max-height: 640px;
+    display: block;
+    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.55));
+  }
+  #alert-text {
+    max-width: 820px;
+    text-align: center;
+    font-weight: 700; font-size: 44px; line-height: 1.2;
+    color: #fff;
+    padding: 12px 34px;
+    border-radius: 18px;
+    background: rgba(10,10,16,0.55);
+    border: 2px solid rgba(255,255,255,0.2);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  #alert-text.tiktok { border-color: rgba(56,189,248,0.7); }
+  #alert-text.youtube { border-color: rgba(248,113,113,0.7); }
+  #alert-text.milestone {
+    border-color: rgba(253,224,71,0.85);
+    background: rgba(40,30,0,0.55);
+    color: #FDE047;
+  }
+</style>
+</head>
+<body>
+<div id="conn-dot"></div>
+
+<div id="meter">
+  <div id="meter-pill">
+    <span id="meter-label">FOLLOWERS</span>
+    <span id="meter-count">0</span>
+    <span id="meter-sub">· 10 to milestone</span>
+  </div>
+  <div id="meter-track"><div id="meter-fill"></div></div>
+</div>
+
+<div id="alert-pos">
+  <div id="alert-stage">
+    <div id="alert-media-wrap"></div>
+    <div id="alert-text"></div>
+  </div>
+</div>
+
+<audio id="alert-audio"></audio>
+
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG / CONSTANTS
+// ═══════════════════════════════════════════════════════════════════
+const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
+const ABLY_CH  = 'splat-overlay';
+
+const FM_LS_COUNT   = 'followMeter.count.v1';
+const FM_LS_CONFIG  = 'followMeter.config.v1';
+const FM_LS_ASSETS  = 'followMeter.assets.v1';
+const FM_LS_MSG     = 'followMeter.msg';
+const FM_BC_NAME    = 'follow-meter-control';
+
+const SLOTS = ['tiktok_follow', 'youtube_follow', 'youtube_sub', 'milestone'];
+
+const DEFAULT_CONFIG = {
+  milestoneEvery: 10,
+  meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
+  alert: { x: 0, y: 0, scale: 1, durationSec: 4.5 },
+  texts: {
+    tiktok_follow:  '{username} followed on TikTok!',
+    youtube_follow: '{username} followed on YouTube!',
+    youtube_sub:    '{username} subscribed on YouTube!',
+    milestone:      '{count} FOLLOWERS! 🎉',
+  },
+};
+
+function deepMerge(base, extra) {
+  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
+  const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k of Object.keys(extra)) {
+    const bv = out[k], ev = extra[k];
+    if (bv && ev && typeof bv === 'object' && typeof ev === 'object' && !Array.isArray(bv) && !Array.isArray(ev)) out[k] = deepMerge(bv, ev);
+    else if (ev !== undefined) out[k] = ev;
+  }
+  return out;
+}
+const clone = o => JSON.parse(JSON.stringify(o));
+
+let CFG = clone(DEFAULT_CONFIG);
+try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s) CFG = deepMerge(CFG, s); } catch (e) {}
+
+let ASSETS = {}; // slot -> { gif:{mime,dataURL}, audio:{mime,dataURL} }
+try { ASSETS = JSON.parse(localStorage.getItem(FM_LS_ASSETS) || '{}'); } catch (e) {}
+
+let count = 0;
+try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
+
+let OVERLAY_ENABLED = false;
+document.body.style.display = 'none';
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER: meter
+// ═══════════════════════════════════════════════════════════════════
+function applyMeterLayout() {
+  const el = document.getElementById('meter');
+  const m = CFG.meter;
+  el.style.transform = `translateX(calc(-50% + ${m.x}px)) translateY(${m.y}px) scale(${m.scale})`;
+  el.classList.toggle('show', OVERLAY_ENABLED && m.visible !== false);
+  document.getElementById('meter-label').textContent = m.label || 'FOLLOWERS';
+}
+function applyAlertLayout() {
+  const el = document.getElementById('alert-pos');
+  const a = CFG.alert;
+  el.style.transform = `translate(${a.x}px, ${a.y}px) scale(${a.scale})`;
+}
+function renderMeter() {
+  const every = Math.max(1, CFG.milestoneEvery || 10);
+  const rem = count % every === 0 ? every : every - (count % every);
+  document.getElementById('meter-count').textContent = count.toLocaleString();
+  document.getElementById('meter-sub').textContent = `· ${rem} to milestone`;
+  const pct = Math.round(((every - rem) / every) * 100);
+  document.getElementById('meter-fill').style.width = pct + '%';
+  try { localStorage.setItem(FM_LS_COUNT, String(count)); } catch (e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ALERT QUEUE
+// ═══════════════════════════════════════════════════════════════════
+let queue = [];
+let processing = false;
+
+function fillTemplate(tmpl, vars) {
+  return String(tmpl || '')
+    .replace(/\{username\}/g, vars.username || 'someone')
+    .replace(/\{count\}/g, (vars.count != null ? vars.count : count).toLocaleString());
+}
+
+function enqueueAlert(slot, username) {
+  if (!SLOTS.includes(slot)) return;
+  queue.push({ slot, username: username || '' });
+  processQueue();
+}
+
+function processQueue() {
+  if (processing || !queue.length || !OVERLAY_ENABLED) return;
+  processing = true;
+  const item = queue.shift();
+  showAlert(item, () => { processing = false; processQueue(); });
+}
+
+function showAlert(item, done) {
+  const wrap  = document.getElementById('alert-media-wrap');
+  const stage = document.getElementById('alert-stage');
+  const txt   = document.getElementById('alert-text');
+  const asset = ASSETS[item.slot] || {};
+  const platformClass = item.slot === 'milestone' ? 'milestone' : (item.slot === 'tiktok_follow' ? 'tiktok' : 'youtube');
+
+  wrap.innerHTML = '';
+  let mediaEl = null;
+  if (asset.gif && asset.gif.dataURL) {
+    if ((asset.gif.mime || '').startsWith('video/')) {
+      mediaEl = document.createElement('video');
+      mediaEl.src = asset.gif.dataURL;
+      mediaEl.autoplay = true;
+      mediaEl.playsInline = true;
+      mediaEl.muted = false;
+      mediaEl.loop = false;
+    } else {
+      mediaEl = document.createElement('img');
+      mediaEl.src = asset.gif.dataURL;
+    }
+    wrap.appendChild(mediaEl);
+  }
+
+  txt.className = platformClass;
+  txt.textContent = fillTemplate(CFG.texts[item.slot], { username: item.username, count });
+
+  const audioEl = document.getElementById('alert-audio');
+  audioEl.pause();
+  if (asset.audio && asset.audio.dataURL) {
+    audioEl.src = asset.audio.dataURL;
+    audioEl.currentTime = 0;
+    audioEl.play().catch(() => {});
+  } else {
+    audioEl.removeAttribute('src');
+  }
+
+  applyAlertLayout();
+  stage.classList.add('show');
+
+  const durMs = Math.max(1000, (CFG.alert.durationSec || 4.5) * 1000);
+  clearTimeout(showAlert._t);
+  showAlert._t = setTimeout(() => {
+    stage.classList.remove('show');
+    setTimeout(() => { wrap.innerHTML = ''; done(); }, 300);
+  }, durMs);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EVENT HANDLING — a follow/sub bumps the combined counter and fires
+// its individual alert; crossing a multiple of milestoneEvery queues
+// the milestone alert right after it.
+// ═══════════════════════════════════════════════════════════════════
+function handleFollowEvent(slot, username) {
+  if (!OVERLAY_ENABLED) return;
+  count++;
+  renderMeter();
+  enqueueAlert(slot, username);
+  const every = Math.max(1, CFG.milestoneEvery || 10);
+  if (count % every === 0) enqueueAlert('milestone', username);
+}
+
+function resetCount() {
+  count = 0;
+  renderMeter();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// COMMS — BroadcastChannel + localStorage (local, instant, handles big
+// gif/audio dataURLs) mirrored by Ably (remote/small messages only).
+// Same three-transport pattern used by feed-jamie-control.html.
+// ═══════════════════════════════════════════════════════════════════
+let bc = null;
+try {
+  bc = new BroadcastChannel(FM_BC_NAME);
+  bc.onmessage = e => handleCmd(e.data);
+} catch (e) {}
+window.addEventListener('storage', e => {
+  if (e.key === FM_LS_MSG && e.newValue) {
+    try { const w = JSON.parse(e.newValue); if (w.p) handleCmd(w.p); } catch (err) {}
+  }
+});
+
+const seenMids = new Set();
+function handleCmd(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg._mid) { if (seenMids.has(msg._mid)) return; seenMids.add(msg._mid); if (seenMids.size > 200) seenMids.clear(); }
+  switch (msg.cmd) {
+    case 'CONFIG_UPDATE':
+      CFG = deepMerge(CFG, msg.data || {});
+      applyMeterLayout(); applyAlertLayout(); renderMeter();
+      break;
+    case 'ASSET_UPDATE': {
+      const { slot, kind, mime, dataURL } = msg.data || {};
+      if (!SLOTS.includes(slot) || (kind !== 'gif' && kind !== 'audio')) break;
+      if (!ASSETS[slot]) ASSETS[slot] = {};
+      if (dataURL) ASSETS[slot][kind] = { mime, dataURL }; else delete ASSETS[slot][kind];
+      try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+      break;
+    }
+    case 'TEST_FIRE':
+      handleFollowEvent(msg.data.slot, msg.data.username || 'TestViewer');
+      break;
+    case 'RESET_COUNT':
+      resetCount();
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ABLY — toggle channel (always attached) + chat/config channels
+// (attached only while enabled), same pattern as new-here-overlay.html.
+// ═══════════════════════════════════════════════════════════════════
+let _fmAttached = false;
+function connectAbly() {
+  const client = new Ably.Realtime({ key: ABLY_KEY });
+  const ch          = client.channels.get(ABLY_CH);
+  const chatChannel = client.channels.get('splat-chat');
+
+  function attachMain() {
+    OVERLAY_ENABLED = true;
+    document.body.style.display = 'block';
+    applyMeterLayout(); applyAlertLayout(); renderMeter();
+    if (_fmAttached) return;
+    _fmAttached = true;
+    ch.attach().catch(() => {});
+    chatChannel.attach().catch(() => {});
+  }
+  function detachMain() {
+    OVERLAY_ENABLED = false;
+    document.body.style.display = 'none';
+    _fmAttached = false;
+    ch.detach().catch(() => {});
+    chatChannel.detach().catch(() => {});
+  }
+
+  const toggleCh = client.channels.get('follow-meter-toggle');
+  toggleCh.subscribe('set', msg => {
+    if (msg.data && msg.data.enabled) attachMain(); else detachMain();
+  });
+  toggleCh.publish('request', {}).catch(() => {});
+
+  // Real follow/sub traffic rides the 'milk-event' the dock already publishes for
+  // the hype meter — zero extra Ably messages. 'follow' is a dedicated, unambiguous
+  // signal (added alongside the existing 'join' event so nothing else breaks) that
+  // fires only on a genuine TikTok/YouTube follow, never a room-join/viewer-enter.
+  chatChannel.subscribe('milk-event', msg => {
+    if (!OVERLAY_ENABLED) return;
+    const d = msg.data || {};
+    if (d.type === 'follow' && d.username) {
+      const slot = d.platform === 'tt' ? 'tiktok_follow' : 'youtube_follow';
+      handleFollowEvent(slot, d.username);
+    } else if (d.type === 'yt_sub' && d.username) {
+      handleFollowEvent('youtube_sub', d.username);
+    }
+  });
+
+  ch.subscribe('follow-meter-cmd', msg => handleCmd(msg.data));
+}
+connectAbly();
+
+renderMeter();
+</script>
+</body>
+</html>
