@@ -2407,6 +2407,23 @@ tr.el-checked td { background: rgba(56,189,248,.04); }
         </div>
       </div>
 
+      <!-- ══ FOLLOW METER CONTROLS ══ -->
+      <div class="ctrl-card">
+        <div class="ctrl-hd" onclick="toggleCtrl('followmeter')">
+          <span style="width:7px;height:7px;border-radius:50%;background:#F87171;flex-shrink:0;display:inline-block;"></span>
+          <span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;flex-shrink:0;display:inline-block;margin-left:3px;"></span>
+          <span class="ctrl-hd-title" style="margin-left:4px;">Follow Meter</span>
+          <span class="ctrl-hd-ch">▸</span>
+        </div>
+        <div class="ctrl-bd" id="ctrl-followmeter" style="padding:7px 9px 9px;gap:6px;">
+          <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">
+            Combined TikTok + YouTube follow/sub meter with a milestone every 10. Toggle the overlay on/off below; gif/audio uploads, text templates &amp; test fires live in <code style="font-size:9px;background:rgba(255,255,255,0.07);padding:1px 4px;border-radius:3px;">follow-meter-control.html</code> — open it locally to configure.<br>
+            Add <code style="font-size:9px;background:rgba(255,255,255,0.07);padding:1px 4px;border-radius:3px;">follow-meter-overlay.html</code> as a Browser Source (1080×1920, transparent BG).
+          </div>
+          <button class="ctrl-btn c-act" onclick="dockToggleFollowMeter()" style="width:100%;">Toggle Follow Meter overlay on/off</button>
+        </div>
+      </div>
+
       <!-- ══ GIFT ANIMATION TIER CONFIG ══ -->
       <div class="ctrl-card">
         <div class="ctrl-hd" onclick="toggleCtrl('gifttiers')">
@@ -3356,7 +3373,7 @@ function handleMsg(data) {
   if (!data.chatname) {
     // Engagement events
     const _plat0 = p.includes('tiktok') ? 'tt' : p.includes('youtube') ? 'yt' : 'other';
-    if (evt === 'follow' || evt === 'follower')                       publishMilk('join',          _plat0);
+    if (evt === 'follow' || evt === 'follower')                       { publishMilk('join', _plat0); publishMilk('follow', _plat0); }
     else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter') publishMilk('join',          _plat0);
     else if (evt === 'like' || evt === 'like_batch')                  { if (!(_plat0==='tt' && _tfWs?.readyState===WebSocket.OPEN)) { if(_plat0==='tt')_evtCounts.tt_like++; if(_plat0==='yt')_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _plat0); } }
     else if (evt === 'heart_me')                                      publishMilk('heart_me',      _plat0);
@@ -3499,7 +3516,7 @@ function handleMsg(data) {
   let _hypeSent = false;
   // SSN sends normalized names (new_follower / joined / liked / new_subscriber / membermilestone);
   // older names (follow / join / like / subscribe / member) kept as aliases so both work.
-  if (evt === 'follow' || evt === 'follower' || evt === 'new_follower')  { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
+  if (evt === 'follow' || evt === 'follower' || evt === 'new_follower')  { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); publishMilk('follow', _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'roomjoin' || evt === 'join' || evt === 'enter' || evt === 'joined')    { if(isTT)_evtCounts.tt_join++; if(isYT)_evtCounts.yt_join++; _updateEvtDebug(); publishMilk('join', _platH, data.chatname); _hypeSent=true; }
   else if (evt === 'like' || evt === 'like_batch' || evt === 'liked')    { if (!(isTT && _tfWs?.readyState===WebSocket.OPEN)) { if(isTT)_evtCounts.tt_like++; if(isYT)_evtCounts.yt_like++; _updateEvtDebug(); publishMilk('like', _platH, data.chatname); _hypeSent=true; } }
   else if (evt === 'heart_me')                                         { publishMilk('heart_me',      _platH, data.chatname); _hypeSent=true; }
@@ -4245,8 +4262,19 @@ const giftsChannel = ably.channels.get('splat-gifts');
 // so those overlays need a separate tiny channel to hear "turn back on" while detached.
 const nhToggleChannel = ably.channels.get('new-here-toggle');
 const lsToggleChannel = ably.channels.get('league-sprint-toggle');
+const fmToggleChannel = ably.channels.get('follow-meter-toggle');
 nhToggleChannel.subscribe('request', () => {
   nhToggleChannel.publish('set', { enabled: _dockNewHereVisible }).catch(() => {});
+});
+// follow-meter-control.html's own enable button also publishes 'set' straight to this
+// channel (same pattern as league-sprint-toggle below) — dock and control page agree.
+fmToggleChannel.subscribe('request', () => {
+  fmToggleChannel.publish('set', { enabled: _dockFollowMeterVisible }).catch(() => {});
+});
+fmToggleChannel.subscribe('set', msg => {
+  _dockFollowMeterVisible = !!(msg.data && msg.data.enabled);
+  localStorage.setItem('dockFollowMeterVisible', _dockFollowMeterVisible ? '1' : '0');
+  if (typeof dockSyncQuickToggles === 'function') dockSyncQuickToggles();
 });
 // league-sprint-control.html's enable button ALSO publishes 'set' straight to this same
 // channel — this dock's quick-toggle and that control page always agree on true state,
@@ -5405,6 +5433,7 @@ const DOCK_OVERLAYS = [
   { key:'mission-strip',    name:'Mission Strip',           layoutGroup:'Mission Strip',   on:() => !!_missionStripVisible },
   { key:'geyser',           name:'Geyser',                  layoutGroup:'Geyser',          on:() => !!_geyserEnabled },
   { key:'new-here',         name:'New Here Pile',                                          on:() => !!_dockNewHereVisible },
+  { key:'follow-meter',     name:'Follow Meter',                                           on:() => !!_dockFollowMeterVisible },
 ];
 
 function layoutRenderTable() {
@@ -6318,6 +6347,7 @@ function dockQuickToggle(name) {
     case 'league-sprint': dockToggleLeagueSprint(); break;
     case 'gift-anim': dockToggleGiftAnimations(); break;
     case 'new-here': dockToggleNewHere(); break;
+    case 'follow-meter': dockToggleFollowMeter(); break;
     case 'gifter-highlight': dockToggleGifterHighlight(); break;
     case 'gift-bar': dockToggleGiftBar(); break;
     case 'bait': qcToggleBait(); break;
@@ -6351,6 +6381,7 @@ let _streamBarEnabled = localStorage.getItem('streamBarEnabled') !== 'false';
 let _dockLeagueSprintVisible = localStorage.getItem('dockLeagueSprintVisible') === '1';
 let _dockGiftAnimVisible = localStorage.getItem('dockGiftAnimVisible') !== '0';
 let _dockNewHereVisible = localStorage.getItem('dockNewHereVisible') === '1';
+let _dockFollowMeterVisible = localStorage.getItem('dockFollowMeterVisible') === '1';
 // "Gifter Highlight" and "Top Camera Gifter Panel" are two dock buttons that both
 // show/hide the SAME overlay panel (#bar-info in gift-bar.html, gated by the single
 // `gifter-slides-config.enabled` flag). They used to track separate booleans, so
@@ -6417,6 +6448,15 @@ function dockToggleNewHere() {
     ablyChannel.publish('new-here-ping', {}).catch(() => {});
   }
   doFlash(_dockNewHereVisible ? 'green' : 'red');
+}
+
+function dockToggleFollowMeter() {
+  _dockFollowMeterVisible = !_dockFollowMeterVisible;
+  localStorage.setItem('dockFollowMeterVisible', _dockFollowMeterVisible ? '1' : '0');
+  // Same reasoning as New Here: the overlay fully detaches from ablyChannel while off,
+  // so the on/off command must ride the always-attached toggle channel.
+  fmToggleChannel.publish('set', { enabled: _dockFollowMeterVisible }).catch(() => {});
+  doFlash(_dockFollowMeterVisible ? 'green' : 'red');
 }
 
 // "Gifter Highlight" and "Top Camera Gifter Panel" both drive the same overlay panel
