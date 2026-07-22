@@ -318,11 +318,12 @@ function handleCmd(msg) {
       applyMeterLayout(); applyAlertLayout(); renderMeter();
       break;
     case 'ASSET_UPDATE': {
-      const { slot, kind, mime, dataURL } = msg.data || {};
-      if (!SLOTS.includes(slot) || (kind !== 'gif' && kind !== 'audio')) break;
-      if (!ASSETS[slot]) ASSETS[slot] = {};
-      if (dataURL) ASSETS[slot][kind] = { mime, dataURL }; else delete ASSETS[slot][kind];
-      try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+      // Only reaches here via BroadcastChannel/localStorage — i.e. control and
+      // overlay open in the SAME browser profile (local preview/testing). The real
+      // OBS/TikTok Studio browser source is a separate, isolated browser engine with
+      // its own storage, so production asset delivery rides the chunked Ably
+      // transfer below instead (see 'follow-meter-assets' channel).
+      applyAssetUpdate(msg.data || {});
       break;
     }
     case 'TEST_FIRE':
@@ -333,6 +334,34 @@ function handleCmd(msg) {
       break;
   }
 }
+function applyAssetUpdate({ slot, kind, mime, dataURL }) {
+  if (!SLOTS.includes(slot) || (kind !== 'gif' && kind !== 'audio')) return;
+  if (!ASSETS[slot]) ASSETS[slot] = {};
+  if (dataURL) ASSETS[slot][kind] = { mime, dataURL }; else delete ASSETS[slot][kind];
+  try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CHUNKED ASSET TRANSFER — gif/audio dataURLs are too large for one Ably
+// message and localStorage doesn't cross browser engines (control page vs.
+// TikTok Studio/OBS's isolated browser source), so this is the real delivery
+// path in production. Chunks are re-assembled by assetId, then persisted to
+// this overlay's own localStorage so a reload doesn't need a re-transfer.
+// ═══════════════════════════════════════════════════════════════════
+const assetChunkBuffers = new Map(); // assetId -> { slot, kind, mime, total, parts: Map(idx->str) }
+function handleAssetChunk(d) {
+  if (!d || !d.assetId) return;
+  if (d.clear) { applyAssetUpdate({ slot: d.slot, kind: d.kind, dataURL: null }); return; }
+  if (!SLOTS.includes(d.slot) || (d.kind !== 'gif' && d.kind !== 'audio')) return;
+  let buf = assetChunkBuffers.get(d.assetId);
+  if (!buf) { buf = { slot: d.slot, kind: d.kind, mime: d.mime, total: d.total, parts: new Map() }; assetChunkBuffers.set(d.assetId, buf); }
+  buf.parts.set(d.idx, d.chunk);
+  if (buf.parts.size < buf.total) return;
+  let dataURL = '';
+  for (let i = 0; i < buf.total; i++) dataURL += buf.parts.get(i) || '';
+  assetChunkBuffers.delete(d.assetId);
+  applyAssetUpdate({ slot: buf.slot, kind: buf.kind, mime: buf.mime, dataURL });
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // ABLY — toggle channel (always attached) + chat/config channels
@@ -341,8 +370,9 @@ function handleCmd(msg) {
 let _fmAttached = false;
 function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
-  const ch          = client.channels.get(ABLY_CH);
-  const chatChannel = client.channels.get('splat-chat');
+  const ch           = client.channels.get(ABLY_CH);
+  const chatChannel  = client.channels.get('splat-chat');
+  const assetsChannel = client.channels.get('follow-meter-assets');
 
   function attachMain() {
     OVERLAY_ENABLED = true;
@@ -352,6 +382,10 @@ function connectAbly() {
     _fmAttached = true;
     ch.attach().catch(() => {});
     chatChannel.attach().catch(() => {});
+    assetsChannel.attach().catch(() => {});
+    // In case this is a fresh load/cleared cache and the control page is still
+    // open with assets assigned, ask it to re-send everything it has.
+    assetsChannel.publish('resend-request', {}).catch(() => {});
   }
   function detachMain() {
     OVERLAY_ENABLED = false;
@@ -359,7 +393,10 @@ function connectAbly() {
     _fmAttached = false;
     ch.detach().catch(() => {});
     chatChannel.detach().catch(() => {});
+    assetsChannel.detach().catch(() => {});
   }
+
+  assetsChannel.subscribe('chunk', msg => handleAssetChunk(msg.data));
 
   const toggleCh = client.channels.get('follow-meter-toggle');
   toggleCh.subscribe('set', msg => {
