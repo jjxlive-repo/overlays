@@ -85,6 +85,35 @@ input[type="number"].ctrl-in { width: 60px; }
 .thumb { width: 46px; height: 46px; border-radius: 8px; object-fit: cover; background: rgba(0,0,0,0.3); border: 1px solid var(--border); flex-shrink:0; }
 .thumb.empty { display:flex; align-items:center; justify-content:center; font-size:9px; color:var(--txt-dim); }
 .slot-meter { font-size: 22px; font-weight: 700; color: var(--gold); }
+
+/* per-slot position/scale nudge controls */
+.nudge-hd { font-size: 9px; color: var(--txt-dim); letter-spacing: .05em; text-transform: uppercase; margin: 8px 0 3px; }
+.nudge-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+.nudge-row .nlabel { font-size: 9px; color: var(--txt-dim); width: 34px; flex-shrink: 0; }
+.nudge-btn {
+  background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.3); border-radius: 5px;
+  color: var(--txt); font-family: var(--mono); font-size: 11px; line-height: 1; padding: 5px 7px;
+  cursor: pointer; flex-shrink: 0;
+}
+.nudge-btn:hover { background: rgba(168,85,247,.28); }
+.nudge-btn:active { transform: scale(0.94); }
+.nudge-ro {
+  flex: 1; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--txt);
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 5px; padding: 5px 4px;
+  min-width: 44px;
+}
+
+/* live mirror — a muted, always-on iframe copy of the overlay so position/
+   scale changes are visible instantly without touching the real broadcast */
+#mirror-box {
+  width: 243px; height: 432px; overflow: hidden; position: relative;
+  border: 1px solid var(--border); border-radius: 8px; background: #000;
+  margin: 0 auto;
+}
+#mirror-box iframe {
+  position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; border: 0;
+  transform: scale(0.225); transform-origin: top left;
+}
 </style>
 </head>
 <body>
@@ -102,6 +131,12 @@ input[type="number"].ctrl-in { width: 60px; }
       <button class="ctrl-btn danger" onclick="fmResetCount()">Reset counter</button>
     </div>
     <button class="ctrl-btn" onclick="fmResendAllAssets()" title="TikTok Studio/OBS run the overlay in its own isolated browser — it can't see uploads sitting in this tab's storage. Use this after opening/reloading the overlay to push everything you've uploaded to it over the network.">↻ Resend all gif/audio to overlay</button>
+  </div>
+
+  <div class="card">
+    <h2>Live mirror <span style="font-weight:400;color:var(--txt-dim);text-transform:none;letter-spacing:0;">— a muted local preview, not the real broadcast</span></h2>
+    <div id="mirror-box"></div>
+    <p class="hint" style="margin:8px 0 0;text-align:center;">Nudging a slot's Position &amp; scale below previews it here instantly. Nothing shown in this box plays audio or reaches the live overlay.</p>
   </div>
 
   <div class="cards">
@@ -123,6 +158,8 @@ input[type="number"].ctrl-in { width: 60px; }
         <button class="ctrl-btn" onclick="fmTestAudio('tiktok_follow')">▶</button>
         <button class="ctrl-btn danger" onclick="fmClearAsset('tiktok_follow','audio')">✕</button>
       </div>
+      <div class="nudge-hd">Position &amp; scale</div>
+      <div id="nudge-tiktok_follow"></div>
       <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('tiktok_follow')">Test fire</button>
     </div>
 
@@ -143,6 +180,8 @@ input[type="number"].ctrl-in { width: 60px; }
         <button class="ctrl-btn" onclick="fmTestAudio('youtube_follow')">▶</button>
         <button class="ctrl-btn danger" onclick="fmClearAsset('youtube_follow','audio')">✕</button>
       </div>
+      <div class="nudge-hd">Position &amp; scale</div>
+      <div id="nudge-youtube_follow"></div>
       <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('youtube_follow')">Test fire</button>
     </div>
 
@@ -163,6 +202,8 @@ input[type="number"].ctrl-in { width: 60px; }
         <button class="ctrl-btn" onclick="fmTestAudio('youtube_sub')">▶</button>
         <button class="ctrl-btn danger" onclick="fmClearAsset('youtube_sub','audio')">✕</button>
       </div>
+      <div class="nudge-hd">Position &amp; scale</div>
+      <div id="nudge-youtube_sub"></div>
       <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('youtube_sub')">Test fire</button>
     </div>
 
@@ -184,21 +225,22 @@ input[type="number"].ctrl-in { width: 60px; }
         <button class="ctrl-btn" onclick="fmTestAudio('milestone')">▶</button>
         <button class="ctrl-btn danger" onclick="fmClearAsset('milestone','audio')">✕</button>
       </div>
+      <div class="nudge-hd">Position &amp; scale</div>
+      <div id="nudge-milestone"></div>
       <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('milestone')">Test fire</button>
     </div>
 
-    <!-- POSITION / TIMING -->
+    <!-- METER / TIMING -->
     <div class="card">
-      <h2>Position &amp; timing</h2>
+      <h2>Meter &amp; timing</h2>
       <div class="ctrl-row"><label style="width:80px;">Meter label</label><input class="ctrl-in" id="fm-meter-label" type="text" value="FOLLOWERS" style="flex:1;min-width:0;" oninput="fmPushConfigMisc()"></div>
       <div class="ctrl-row"><label style="width:80px;">Meter X / Y</label><input class="ctrl-in" id="fm-meter-x" type="number" value="0" oninput="fmPushConfigMisc()"><input class="ctrl-in" id="fm-meter-y" type="number" value="0" oninput="fmPushConfigMisc()"></div>
       <div class="ctrl-row"><label style="width:80px;">Meter scale</label><input class="ctrl-in" id="fm-meter-scale" type="number" step="0.05" value="1" style="width:60px;" oninput="fmPushConfigMisc()"></div>
       <div class="ctrl-row"><label style="width:80px;" title="Hide/show the persistent meter pill (alerts still fire either way).">Meter visible</label>
         <input type="checkbox" id="fm-meter-visible" checked onchange="fmPushConfigMisc()">
       </div>
-      <div class="ctrl-row"><label style="width:80px;">Alert X / Y</label><input class="ctrl-in" id="fm-alert-x" type="number" value="0" oninput="fmPushConfigMisc()"><input class="ctrl-in" id="fm-alert-y" type="number" value="0" oninput="fmPushConfigMisc()"></div>
-      <div class="ctrl-row"><label style="width:80px;">Alert scale</label><input class="ctrl-in" id="fm-alert-scale" type="number" step="0.05" value="1" style="width:60px;" oninput="fmPushConfigMisc()"></div>
       <div class="ctrl-row"><label style="width:80px;" title="How long each gif/text/audio alert stays on screen before the next one plays.">Hold (sec)</label><input class="ctrl-in" id="fm-duration" type="number" step="0.5" min="1" value="4.5" style="width:60px;" oninput="fmPushConfigMisc()"></div>
+      <p class="hint" style="margin:6px 0 0;">Each alert's own position &amp; scale is set on its slot card above, next to its Test fire button.</p>
     </div>
 
   </div>
@@ -217,7 +259,13 @@ const SLOTS = ['tiktok_follow', 'youtube_follow', 'youtube_sub', 'milestone'];
 const DEFAULT_CONFIG = {
   milestoneEvery: 10,
   meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
-  alert: { x: 0, y: 0, scale: 1, durationSec: 4.5 },
+  alertDurationSec: 4.5,
+  alerts: {
+    tiktok_follow:  { x: 0, y: 0, scale: 1 },
+    youtube_follow: { x: 0, y: 0, scale: 1 },
+    youtube_sub:    { x: 0, y: 0, scale: 1 },
+    milestone:      { x: 0, y: 0, scale: 1 },
+  },
   texts: {
     tiktok_follow:  '{username} followed on TikTok!',
     youtube_follow: '{username} followed on YouTube!',
@@ -322,10 +370,7 @@ function fmPushConfigMisc() {
   CFG.meter.y = parseInt(document.getElementById('fm-meter-y').value) || 0;
   CFG.meter.scale = parseFloat(document.getElementById('fm-meter-scale').value) || 1;
   CFG.meter.visible = document.getElementById('fm-meter-visible').checked;
-  CFG.alert.x = parseInt(document.getElementById('fm-alert-x').value) || 0;
-  CFG.alert.y = parseInt(document.getElementById('fm-alert-y').value) || 0;
-  CFG.alert.scale = parseFloat(document.getElementById('fm-alert-scale').value) || 1;
-  CFG.alert.durationSec = parseFloat(document.getElementById('fm-duration').value) || 4.5;
+  CFG.alertDurationSec = parseFloat(document.getElementById('fm-duration').value) || 4.5;
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   clearTimeout(cfgTimer);
   cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: CFG }), 150);
@@ -336,6 +381,71 @@ function fmPushText(input) {
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   clearTimeout(cfgTimer);
   cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: { texts: { [slot]: CFG.texts[slot] } } }), 200);
+}
+
+/* ── per-slot position & scale — nudge buttons update CFG.alerts[slot],
+   push a debounced CONFIG_UPDATE to everyone (including the real overlay),
+   and pin a mirror-only (skipAbly) preview so you see the move instantly
+   without spamming a test alert onto the live broadcast. ─────────────── */
+function fmNudge(slot, axis, delta) {
+  if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1 };
+  const a = CFG.alerts[slot];
+  if (axis === 'scale') a.scale = Math.max(0.2, Math.min(3, Math.round((a.scale + delta) * 100) / 100));
+  else a[axis] = (a[axis] || 0) + delta;
+  fmRenderNudgeReadouts(slot);
+  fmPushAlertsConfig();
+  fmPreviewSlot(slot);
+}
+function fmResetPosition(slot) {
+  CFG.alerts[slot] = { x: 0, y: 0, scale: 1 };
+  fmRenderNudgeReadouts(slot);
+  fmPushAlertsConfig();
+  fmPreviewSlot(slot);
+}
+function fmPushAlertsConfig() {
+  // Sent immediately, not debounced: nudges are discrete clicks (not a
+  // continuous drag), and the preview fired right after this depends on the
+  // overlay already having the new position — a debounce here would race it.
+  try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+  send({ cmd: 'CONFIG_UPDATE', data: { alerts: CFG.alerts } });
+}
+function fmPreviewSlot(slot) {
+  // Mirror-only: BroadcastChannel + localStorage reach the muted preview iframe;
+  // skipAbly keeps this off the real broadcast overlay entirely.
+  send({ cmd: 'TEST_FIRE', data: { slot, username: 'Preview' } }, { skipAbly: true });
+}
+function fmRenderNudgeReadouts(slot) {
+  const a = CFG.alerts[slot] || { x: 0, y: 0, scale: 1 };
+  const xEl = document.getElementById(`ro-${slot}-x`); if (xEl) xEl.textContent = a.x + 'px';
+  const yEl = document.getElementById(`ro-${slot}-y`); if (yEl) yEl.textContent = a.y + 'px';
+  const sEl = document.getElementById(`ro-${slot}-scale`); if (sEl) sEl.textContent = a.scale.toFixed(2) + '×';
+}
+function fmBuildNudgeUI(slot) {
+  const box = document.getElementById(`nudge-${slot}`);
+  if (!box) return;
+  const row = (label, axis, small, big) => `
+    <div class="nudge-row">
+      <span class="nlabel">${label}</span>
+      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${-big})" title="Big step down">«</button>
+      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${-small})" title="Step down">‹</button>
+      <span class="nudge-ro" id="ro-${slot}-${axis}">0</span>
+      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${small})" title="Step up">›</button>
+      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${big})" title="Big step up">»</button>
+    </div>`;
+  box.innerHTML = row('X', 'x', 10, 50) + row('Y', 'y', 10, 50) + row('Scale', 'scale', 0.05, 0.2)
+    + `<button class="ctrl-btn" style="width:100%;margin-top:5px;font-size:10px;" onclick="fmResetPosition('${slot}')">Reset position</button>`;
+  fmRenderNudgeReadouts(slot);
+}
+
+/* ── live mirror — a muted iframe copy of the overlay (?mirror=1) so
+   position/scale nudges are visible without touching the real broadcast.
+   Same trick feed-jamie-control.html uses for its live preview. ────────── */
+function ensureMirror() {
+  const box = document.getElementById('mirror-box');
+  if (!box || box.querySelector('iframe')) return;
+  const f = document.createElement('iframe');
+  f.src = 'follow-meter-overlay.html?mirror=1&v=' + Date.now();
+  box.appendChild(f);
 }
 
 /* ── asset upload ──────────────────────────────────────────────── */
@@ -458,14 +568,16 @@ function fmTestFire(slot) {
   document.getElementById('fm-meter-y').value = CFG.meter.y;
   document.getElementById('fm-meter-scale').value = CFG.meter.scale;
   document.getElementById('fm-meter-visible').checked = CFG.meter.visible !== false;
-  document.getElementById('fm-alert-x').value = CFG.alert.x;
-  document.getElementById('fm-alert-y').value = CFG.alert.y;
-  document.getElementById('fm-alert-scale').value = CFG.alert.scale;
-  document.getElementById('fm-duration').value = CFG.alert.durationSec;
+  document.getElementById('fm-duration').value = CFG.alertDurationSec;
   document.querySelectorAll('input[data-field="text"]').forEach(inp => {
     inp.value = CFG.texts[inp.dataset.slot] || '';
   });
-  SLOTS.forEach(slot => { fmRefreshThumb(slot, 'gif'); fmRefreshThumb(slot, 'audio'); });
+  SLOTS.forEach(slot => {
+    if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1 };
+    fmRefreshThumb(slot, 'gif'); fmRefreshThumb(slot, 'audio');
+    fmBuildNudgeUI(slot);
+  });
+  ensureMirror();
 })();
 </script>
 </body>

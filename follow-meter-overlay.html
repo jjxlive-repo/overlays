@@ -150,7 +150,15 @@ const SLOTS = ['tiktok_follow', 'youtube_follow', 'youtube_sub', 'milestone'];
 const DEFAULT_CONFIG = {
   milestoneEvery: 10,
   meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
-  alert: { x: 0, y: 0, scale: 1, durationSec: 4.5 },
+  alertDurationSec: 4.5,
+  // Each alert type gets its own position/scale — a milestone banner and a
+  // tiny follow ping don't belong in the same spot.
+  alerts: {
+    tiktok_follow:  { x: 0, y: 0, scale: 1 },
+    youtube_follow: { x: 0, y: 0, scale: 1 },
+    youtube_sub:    { x: 0, y: 0, scale: 1 },
+    milestone:      { x: 0, y: 0, scale: 1 },
+  },
   texts: {
     tiktok_follow:  '{username} followed on TikTok!',
     youtube_follow: '{username} followed on YouTube!',
@@ -183,6 +191,13 @@ try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
 let OVERLAY_ENABLED = false;
 document.body.style.display = 'none';
 
+// Mirror mode: a lightweight, muted, always-visible copy embedded as an iframe
+// inside follow-meter-control.html so position/scale changes can be seen live
+// while tuning — no Ably connection (so it can't double-process real follows
+// or make noise), driven purely by the same BroadcastChannel/localStorage
+// commands the control page already sends. See connectAbly() below.
+const MIRROR = new URLSearchParams(location.search).get('mirror') === '1';
+
 // ═══════════════════════════════════════════════════════════════════
 // RENDER: meter
 // ═══════════════════════════════════════════════════════════════════
@@ -193,9 +208,9 @@ function applyMeterLayout() {
   el.classList.toggle('show', OVERLAY_ENABLED && m.visible !== false);
   document.getElementById('meter-label').textContent = m.label || 'FOLLOWERS';
 }
-function applyAlertLayout() {
+function applyAlertLayoutFor(slot) {
   const el = document.getElementById('alert-pos');
-  const a = CFG.alert;
+  const a = (CFG.alerts && CFG.alerts[slot]) || { x: 0, y: 0, scale: 1 };
   el.style.transform = `translate(${a.x}px, ${a.y}px) scale(${a.scale})`;
 }
 function renderMeter() {
@@ -260,20 +275,30 @@ function showAlert(item, done) {
   txt.className = platformClass;
   txt.textContent = fillTemplate(CFG.texts[item.slot], { username: item.username, count });
 
-  const audioEl = document.getElementById('alert-audio');
-  audioEl.pause();
-  if (asset.audio && asset.audio.dataURL) {
-    audioEl.src = asset.audio.dataURL;
-    audioEl.currentTime = 0;
-    audioEl.play().catch(() => {});
-  } else {
-    audioEl.removeAttribute('src');
+  if (!MIRROR) {
+    const audioEl = document.getElementById('alert-audio');
+    audioEl.pause();
+    if (asset.audio && asset.audio.dataURL) {
+      audioEl.src = asset.audio.dataURL;
+      audioEl.currentTime = 0;
+      audioEl.play().catch(() => {});
+    } else {
+      audioEl.removeAttribute('src');
+    }
   }
 
-  applyAlertLayout();
+  applyAlertLayoutFor(item.slot);
   stage.classList.add('show');
 
-  const durMs = Math.max(1000, (CFG.alert.durationSec || 4.5) * 1000);
+  if (MIRROR) {
+    // Pinned preview: stays on screen (silently) so position/scale nudges are
+    // visible without a 4.5s countdown running out mid-adjustment. The next
+    // preview just replaces it in place.
+    done();
+    return;
+  }
+
+  const durMs = Math.max(1000, (CFG.alertDurationSec || 4.5) * 1000);
   clearTimeout(showAlert._t);
   showAlert._t = setTimeout(() => {
     stage.classList.remove('show');
@@ -323,7 +348,9 @@ function handleCmd(msg) {
   switch (msg.cmd) {
     case 'CONFIG_UPDATE':
       CFG = deepMerge(CFG, msg.data || {});
-      applyMeterLayout(); applyAlertLayout(); renderMeter();
+      // Alert x/y/scale is applied per-slot at show time (applyAlertLayoutFor),
+      // not globally here — each alert type has its own position now.
+      applyMeterLayout(); renderMeter();
       break;
     case 'ASSET_UPDATE': {
       // Only reaches here via BroadcastChannel/localStorage — i.e. control and
@@ -385,7 +412,7 @@ function connectAbly() {
   function attachMain() {
     OVERLAY_ENABLED = true;
     document.body.style.display = 'block';
-    applyMeterLayout(); applyAlertLayout(); renderMeter();
+    applyMeterLayout(); renderMeter();
     if (_fmAttached) return;
     _fmAttached = true;
     ch.attach().catch(() => {});
@@ -429,7 +456,18 @@ function connectAbly() {
 
   ch.subscribe('follow-meter-cmd', msg => handleCmd(msg.data));
 }
-connectAbly();
+
+if (MIRROR) {
+  // No Ably here — the mirror must never process real follows/subs a second
+  // time or make sound. It's driven entirely by the BroadcastChannel/
+  // localStorage listeners above, which follow-meter-control.html already
+  // sends CONFIG_UPDATE/ASSET_UPDATE/TEST_FIRE over regardless of Ably.
+  OVERLAY_ENABLED = true;
+  document.body.style.display = 'block';
+  applyMeterLayout();
+} else {
+  connectAbly();
+}
 
 renderMeter();
 </script>
