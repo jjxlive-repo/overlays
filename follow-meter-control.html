@@ -16,6 +16,7 @@
 <title>FOLLOW METER — Control</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="jjx-core.js?v=1"></script>
 <style>
 :root {
   --tt:#38BDF8; --yt:#F87171; --gold:#FBBF24; --purple:#A855F7;
@@ -273,35 +274,27 @@ const DEFAULT_CONFIG = {
     milestone:      '{count} FOLLOWERS! 🎉',
   },
 };
-function deepMerge(base, extra) {
-  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
-  const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
-  for (const k of Object.keys(extra)) {
-    const bv = out[k], ev = extra[k];
-    if (bv && ev && typeof bv === 'object' && typeof ev === 'object' && !Array.isArray(bv) && !Array.isArray(ev)) out[k] = deepMerge(bv, ev);
-    else if (ev !== undefined) out[k] = ev;
-  }
-  return out;
-}
-const clone = o => JSON.parse(JSON.stringify(o));
+const deepMerge = JJX.deepMerge;
+const clone = JJX.clone;
 
 let CFG = clone(DEFAULT_CONFIG);
 try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s) CFG = deepMerge(CFG, s); } catch (e) {}
 let ASSETS = {};
 try { ASSETS = JSON.parse(localStorage.getItem(FM_LS_ASSETS) || '{}'); } catch (e) {}
 
-/* ── COMMS (mirrors feed-jamie-control.html's three-transport send()) ── */
-const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
-const ABLY_CH  = 'splat-overlay';
-let bc = null, ably = null, ablyChannel = null, fmToggleChannel = null, assetsChannel = null;
-try { bc = new BroadcastChannel(FM_BC_NAME); } catch (e) {}
+/* ── COMMS — three-transport send via jjx-core (BroadcastChannel +
+   localStorage for same-profile pages/mirror, Ably for the isolated
+   TikTok Studio browser source) ── */
+const ABLY_KEY = JJX.ABLY_KEY;
+const ABLY_CH  = JJX.ABLY_MAIN_CHANNEL;
+let ably = null, ablyChannel = null, fmToggleChannel = null, assetsChannel = null;
 
-function send(msg, opts = {}) {
-  if (msg && typeof msg === 'object') msg._mid = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
-  try { if (bc) bc.postMessage(msg); } catch (e) {}
-  if (!opts.skipAbly) { try { if (ablyChannel) ablyChannel.publish('follow-meter-cmd', msg).catch(() => {}); } catch (e) {} }
-  try { localStorage.setItem(FM_LS_MSG, JSON.stringify({ n: Math.random(), p: msg })); } catch (e) {}
-}
+const send = JJX.createSender({
+  bcName: FM_BC_NAME,
+  lsMsgKey: FM_LS_MSG,
+  ablyEventName: 'follow-meter-cmd',
+  getAblyChannel: () => ablyChannel,
+});
 
 function connectAbly() {
   if (!window.Ably) return;
@@ -444,7 +437,9 @@ function ensureMirror() {
   const box = document.getElementById('mirror-box');
   if (!box || box.querySelector('iframe')) return;
   const f = document.createElement('iframe');
-  f.src = 'follow-meter-overlay.html?mirror=1&v=' + Date.now();
+  /* both a query param and a hash: static hosts with clean-URL redirects
+     (like `serve`) drop the query, but a fragment always survives */
+  f.src = 'follow-meter-overlay.html?mirror=1&v=' + Date.now() + '#mirror';
   box.appendChild(f);
 }
 
@@ -479,45 +474,21 @@ function fmClearAsset(slot, kind) {
   if (ASSETS[slot]) delete ASSETS[slot][kind];
   try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
   fmRefreshThumb(slot, kind);
-  if (assetsChannel) assetsChannel.publish('chunk', { assetId: 'clear-' + Date.now(), slot, kind, clear: true }).catch(() => {});
+  _assetSender.clear(slot, kind);
 }
 
-/* Splits a dataURL into ~12KB pieces and publishes them as a numbered sequence
-   the overlay reassembles by assetId. One-time cost per upload — not a
-   per-event/per-follow expense — so this stays well within Ably budget.
-   All sends run through one queue/worker so "resend all" pushes chunks out
-   one asset at a time instead of several parallel publish loops at once
-   (which could spike past Ably's per-second rate limit). */
-let _assetSendSeq = 0;
-const _assetSendQueue = [];
-let _assetSendBusy = false;
+/* Chunked publishing lives in jjx-core (createAssetSender): ~12KB pieces,
+   reassembled by assetId on the overlay, one queue/worker so "resend all"
+   never runs parallel publish loops that could spike Ably's rate limit.
+   One-time cost per upload — not a per-event/per-follow expense. */
+const _assetSender = JJX.createAssetSender({
+  getChannel: () => assetsChannel,
+  chunkChars: ASSET_CHUNK_CHARS,
+  delayMs: ASSET_CHUNK_DELAY_MS,
+  onStatus: setStatus,
+});
 function sendAssetChunked(slot, kind, mime, dataURL) {
-  _assetSendQueue.push({ slot, kind, mime, dataURL });
-  _pumpAssetQueue();
-}
-function _pumpAssetQueue() {
-  if (_assetSendBusy || !_assetSendQueue.length) return;
-  if (!assetsChannel) { setStatus('not connected — reconnect and try again'); return; }
-  _assetSendBusy = true;
-  const { slot, kind, mime, dataURL } = _assetSendQueue.shift();
-  const assetId = `${slot}-${kind}-${Date.now()}-${++_assetSendSeq}`;
-  const total = Math.ceil(dataURL.length / ASSET_CHUNK_CHARS);
-  let idx = 0;
-  setStatus(`sending ${kind} to overlay… 0/${total}`);
-  function sendNext() {
-    if (idx >= total) {
-      setStatus(`✓ ${kind} sent to overlay`);
-      _assetSendBusy = false;
-      if (_assetSendQueue.length) _pumpAssetQueue(); else setTimeout(() => setStatus('—'), 2500);
-      return;
-    }
-    const chunk = dataURL.slice(idx * ASSET_CHUNK_CHARS, (idx + 1) * ASSET_CHUNK_CHARS);
-    assetsChannel.publish('chunk', { assetId, slot, kind, mime, idx, total, chunk }).catch(() => {});
-    idx++;
-    setStatus(`sending ${kind} to overlay… ${idx}/${total}`);
-    setTimeout(sendNext, ASSET_CHUNK_DELAY_MS);
-  }
-  sendNext();
+  _assetSender.send(slot, kind, mime, dataURL);
 }
 function setStatus(text) {
   const st = document.getElementById('fm-status');

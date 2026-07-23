@@ -132,12 +132,13 @@
 <audio id="alert-audio"></audio>
 
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="jjx-core.js?v=1"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
-// CONFIG / CONSTANTS
+// CONFIG / CONSTANTS — shared helpers live in jjx-core.js (window.JJX)
 // ═══════════════════════════════════════════════════════════════════
-const ABLY_KEY = 'Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0';
-const ABLY_CH  = 'splat-overlay';
+const ABLY_KEY = JJX.ABLY_KEY;
+const ABLY_CH  = JJX.ABLY_MAIN_CHANNEL;
 
 const FM_LS_COUNT   = 'followMeter.count.v1';
 const FM_LS_CONFIG  = 'followMeter.config.v1';
@@ -167,17 +168,8 @@ const DEFAULT_CONFIG = {
   },
 };
 
-function deepMerge(base, extra) {
-  if (extra === null || typeof extra !== 'object' || Array.isArray(extra)) return base;
-  const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
-  for (const k of Object.keys(extra)) {
-    const bv = out[k], ev = extra[k];
-    if (bv && ev && typeof bv === 'object' && typeof ev === 'object' && !Array.isArray(bv) && !Array.isArray(ev)) out[k] = deepMerge(bv, ev);
-    else if (ev !== undefined) out[k] = ev;
-  }
-  return out;
-}
-const clone = o => JSON.parse(JSON.stringify(o));
+const deepMerge = JJX.deepMerge;
+const clone = JJX.clone;
 
 let CFG = clone(DEFAULT_CONFIG);
 try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s) CFG = deepMerge(CFG, s); } catch (e) {}
@@ -196,7 +188,7 @@ document.body.style.display = 'none';
 // while tuning — no Ably connection (so it can't double-process real follows
 // or make noise), driven purely by the same BroadcastChannel/localStorage
 // commands the control page already sends. See connectAbly() below.
-const MIRROR = new URLSearchParams(location.search).get('mirror') === '1';
+const MIRROR = JJX.isMirror();
 
 // ═══════════════════════════════════════════════════════════════════
 // RENDER: meter
@@ -223,172 +215,10 @@ function renderMeter() {
   try { localStorage.setItem(FM_LS_COUNT, String(count)); } catch (e) {}
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// GIF DECODER/PLAYER — a native <img> plays an animated GIF's built-in loop
-// count forever; browsers give no way to override that. So a GIF asset is
-// decoded by hand here and played frame-by-frame on a canvas, stopping after
-// one pass (frozen on the last frame) instead of looping. No external
-// library: a dependency fetched at stream time is a single point of failure
-// this overlay can't afford. Standard GIF87a/89a + LZW, nothing exotic.
-// ═══════════════════════════════════════════════════════════════════
-function fmParseGIF(buffer) {
-  const data = new Uint8Array(buffer);
-  let pos = 6; // skip "GIF87a"/"GIF89a" signature
-  function u8() { return data[pos++]; }
-  function u16() { const v = data[pos] | (data[pos + 1] << 8); pos += 2; return v; }
-  function readSubBlocks() {
-    const bytes = [];
-    let size;
-    while ((size = u8()) !== 0) { for (let i = 0; i < size; i++) bytes.push(u8()); }
-    return bytes;
-  }
-  function readColorTable(count) {
-    const table = [];
-    for (let i = 0; i < count; i++) table.push([u8(), u8(), u8()]);
-    return table;
-  }
-  const width = u16(), height = u16();
-  const packed = u8();
-  const gctFlag = !!(packed & 0x80);
-  const gctSize = gctFlag ? (2 << (packed & 0x07)) : 0;
-  u8(); u8(); // bg color index, pixel aspect ratio — unused
-  const gct = gctFlag ? readColorTable(gctSize) : null;
-  const frames = [];
-  let gceDelay = 10, gceDisposal = 0, gceTransparentFlag = false, gceTransparentIndex = -1;
-  while (pos < data.length) {
-    const blockType = u8();
-    if (blockType === 0x21) { // extension
-      const label = u8();
-      if (label === 0xF9) { // graphic control extension
-        u8(); // block size (always 4)
-        const p = u8();
-        gceDisposal = (p >> 2) & 0x07;
-        gceTransparentFlag = !!(p & 0x01);
-        gceDelay = u16();
-        gceTransparentIndex = u8();
-        u8(); // terminator
-      } else {
-        readSubBlocks(); // comment / plain text / application extension — not needed
-      }
-    } else if (blockType === 0x2C) { // image descriptor
-      const left = u16(), top = u16(), w = u16(), h = u16();
-      const p = u8();
-      const lctFlag = !!(p & 0x80);
-      const lctSize = lctFlag ? (2 << (p & 0x07)) : 0;
-      const lct = lctFlag ? readColorTable(lctSize) : null;
-      const minCodeSize = u8();
-      const lzwBytes = readSubBlocks();
-      const indices = fmDecodeLZW(lzwBytes, minCodeSize, w * h);
-      frames.push({
-        left, top, width: w, height: h, colorTable: lct || gct, indices,
-        delay: gceDelay * 10, // centiseconds → ms
-        disposal: gceDisposal,
-        transparentIndex: gceTransparentFlag ? gceTransparentIndex : -1,
-      });
-      gceDelay = 10; gceDisposal = 0; gceTransparentFlag = false; gceTransparentIndex = -1;
-    } else {
-      break; // trailer (0x3B) or corrupt data — stop either way
-    }
-  }
-  return { width, height, gct, frames };
-}
-function fmDecodeLZW(bytes, minCodeSize, pixelCount) {
-  const clearCode = 1 << minCodeSize;
-  const endCode = clearCode + 1;
-  let codeSize, dict, nextCode;
-  function resetDict() {
-    dict = [];
-    for (let i = 0; i < clearCode; i++) dict[i] = [i];
-    nextCode = endCode + 1;
-    codeSize = minCodeSize + 1;
-  }
-  resetDict();
-  let bitBuffer = 0, bitCount = 0, bytePos = 0;
-  function readCode() {
-    while (bitCount < codeSize) {
-      if (bytePos >= bytes.length) return endCode;
-      bitBuffer |= (bytes[bytePos++] << bitCount);
-      bitCount += 8;
-    }
-    const code = bitBuffer & ((1 << codeSize) - 1);
-    bitBuffer >>= codeSize;
-    bitCount -= codeSize;
-    return code;
-  }
-  const output = [];
-  let prev = null;
-  let code = readCode();
-  while (code !== endCode && output.length < pixelCount + 8) {
-    if (code === clearCode) {
-      resetDict(); prev = null;
-      code = readCode();
-      if (code === endCode) break;
-      output.push(...dict[code]); prev = dict[code];
-      code = readCode();
-      continue;
-    }
-    let entry;
-    if (code < dict.length && dict[code]) entry = dict[code];
-    else if (code === nextCode && prev) entry = prev.concat([prev[0]]);
-    else break; // corrupt stream
-    output.push(...entry);
-    if (prev) {
-      dict[nextCode] = prev.concat([entry[0]]);
-      nextCode++;
-      if (nextCode >= (1 << codeSize) && codeSize < 12) codeSize++;
-    }
-    prev = entry;
-    code = readCode();
-  }
-  return output.slice(0, pixelCount);
-}
-// Plays every frame exactly once onto `canvas`, honoring each frame's own
-// disposal method, then freezes on the last frame (the final frame's own
-// disposal is skipped so it doesn't clear itself right after finishing).
-// Returns a stop() to cancel a still-running player early.
-function fmPlayGifOnce(canvas, gif) {
-  const w = gif.width, h = gif.height;
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  const back = document.createElement('canvas');
-  back.width = w; back.height = h;
-  const bctx = back.getContext('2d');
-  let i = 0, stopped = false, prevSnapshot = null;
-  function drawFrameToBack(frame) {
-    const imgData = bctx.createImageData(frame.width, frame.height);
-    const ct = frame.colorTable || [];
-    for (let p = 0; p < frame.indices.length; p++) {
-      const idx = frame.indices[p];
-      const rgb = ct[idx] || [0, 0, 0];
-      const o = p * 4;
-      if (idx === frame.transparentIndex) imgData.data[o + 3] = 0;
-      else { imgData.data[o] = rgb[0]; imgData.data[o + 1] = rgb[1]; imgData.data[o + 2] = rgb[2]; imgData.data[o + 3] = 255; }
-    }
-    const tmp = document.createElement('canvas');
-    tmp.width = frame.width; tmp.height = frame.height;
-    tmp.getContext('2d').putImageData(imgData, 0, 0);
-    bctx.drawImage(tmp, frame.left, frame.top); // source-over: alpha=0 pixels leave the backbuffer as-is
-  }
-  function renderFrame() {
-    if (stopped || i >= gif.frames.length) return;
-    const frame = gif.frames[i];
-    if (frame.disposal === 3 && prevSnapshot === null) prevSnapshot = bctx.getImageData(0, 0, w, h);
-    drawFrameToBack(frame);
-    ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(back, 0, 0);
-    i++;
-    const isLast = i >= gif.frames.length;
-    setTimeout(() => {
-      if (!isLast) {
-        if (frame.disposal === 2) bctx.clearRect(frame.left, frame.top, frame.width, frame.height);
-        else if (frame.disposal === 3 && prevSnapshot) { bctx.putImageData(prevSnapshot, 0, 0); prevSnapshot = null; }
-      }
-      renderFrame();
-    }, Math.max(20, frame.delay || 100));
-  }
-  renderFrame();
-  return () => { stopped = true; };
-}
+// GIF play-once decoding/rendering lives in jjx-core.js (JJX.parseGIF /
+// JJX.playGifOnce) — see the rationale there for why it's hand-rolled.
+const fmParseGIF = JJX.parseGIF;
+const fmPlayGifOnce = JJX.playGifOnce;
 
 // ═══════════════════════════════════════════════════════════════════
 // ALERT QUEUE
@@ -514,25 +344,18 @@ function resetCount() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// COMMS — BroadcastChannel + localStorage (local, instant, handles big
-// gif/audio dataURLs) mirrored by Ably (remote/small messages only).
-// Same three-transport pattern used by feed-jamie-control.html.
+// COMMS — three-transport receive via jjx-core: BroadcastChannel +
+// localStorage wired by createReceiver (same browser profile), and the Ably
+// subscription below routes through the SAME dispatcher so a command heard
+// on two transports still fires exactly once.
 // ═══════════════════════════════════════════════════════════════════
-let bc = null;
-try {
-  bc = new BroadcastChannel(FM_BC_NAME);
-  bc.onmessage = e => handleCmd(e.data);
-} catch (e) {}
-window.addEventListener('storage', e => {
-  if (e.key === FM_LS_MSG && e.newValue) {
-    try { const w = JSON.parse(e.newValue); if (w.p) handleCmd(w.p); } catch (err) {}
-  }
+const handleCmd = JJX.createReceiver({
+  bcName: FM_BC_NAME,
+  lsMsgKey: FM_LS_MSG,
+  handler: handleCmdInner,
 });
 
-const seenMids = new Set();
-function handleCmd(msg) {
-  if (!msg || typeof msg !== 'object') return;
-  if (msg._mid) { if (seenMids.has(msg._mid)) return; seenMids.add(msg._mid); if (seenMids.size > 200) seenMids.clear(); }
+function handleCmdInner(msg) {
   switch (msg.cmd) {
     case 'CONFIG_UPDATE':
       CFG = deepMerge(CFG, msg.data || {});
@@ -565,26 +388,16 @@ function applyAssetUpdate({ slot, kind, mime, dataURL }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CHUNKED ASSET TRANSFER — gif/audio dataURLs are too large for one Ably
-// message and localStorage doesn't cross browser engines (control page vs.
-// TikTok Studio/OBS's isolated browser source), so this is the real delivery
-// path in production. Chunks are re-assembled by assetId, then persisted to
-// this overlay's own localStorage so a reload doesn't need a re-transfer.
+// CHUNKED ASSET TRANSFER — the production delivery path for uploaded media
+// (dataURLs exceed Ably's per-message cap; localStorage can't cross browser
+// engines). Reassembly lives in jjx-core; reassembled assets are persisted to
+// this overlay's own localStorage (in applyAssetUpdate) so a reload doesn't
+// need a re-transfer.
 // ═══════════════════════════════════════════════════════════════════
-const assetChunkBuffers = new Map(); // assetId -> { slot, kind, mime, total, parts: Map(idx->str) }
-function handleAssetChunk(d) {
-  if (!d || !d.assetId) return;
-  if (d.clear) { applyAssetUpdate({ slot: d.slot, kind: d.kind, dataURL: null }); return; }
-  if (!SLOTS.includes(d.slot) || (d.kind !== 'gif' && d.kind !== 'audio')) return;
-  let buf = assetChunkBuffers.get(d.assetId);
-  if (!buf) { buf = { slot: d.slot, kind: d.kind, mime: d.mime, total: d.total, parts: new Map() }; assetChunkBuffers.set(d.assetId, buf); }
-  buf.parts.set(d.idx, d.chunk);
-  if (buf.parts.size < buf.total) return;
-  let dataURL = '';
-  for (let i = 0; i < buf.total; i++) dataURL += buf.parts.get(i) || '';
-  assetChunkBuffers.delete(d.assetId);
-  applyAssetUpdate({ slot: buf.slot, kind: buf.kind, mime: buf.mime, dataURL });
-}
+const handleAssetChunk = JJX.createAssetReceiver({
+  isValid: (slot, kind) => SLOTS.includes(slot) && (kind === 'gif' || kind === 'audio'),
+  onAsset: ({ slot, kind, mime, dataURL }) => applyAssetUpdate({ slot, kind, mime, dataURL }),
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // ABLY — toggle channel (always attached) + chat/config channels
