@@ -262,10 +262,10 @@ const DEFAULT_CONFIG = {
   meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
   alertDurationSec: 4.5,
   alerts: {
-    tiktok_follow:  { x: 0, y: 0, scale: 1 },
-    youtube_follow: { x: 0, y: 0, scale: 1 },
-    youtube_sub:    { x: 0, y: 0, scale: 1 },
-    milestone:      { x: 0, y: 0, scale: 1 },
+    tiktok_follow:  { x: 0, y: 0, scale: 1, mediaPct: 100 },
+    youtube_follow: { x: 0, y: 0, scale: 1, mediaPct: 100 },
+    youtube_sub:    { x: 0, y: 0, scale: 1, mediaPct: 100 },
+    milestone:      { x: 0, y: 0, scale: 1, mediaPct: 100 },
   },
   texts: {
     tiktok_follow:  '{username} followed on TikTok!',
@@ -381,16 +381,17 @@ function fmPushText(input) {
    and pin a mirror-only (skipAbly) preview so you see the move instantly
    without spamming a test alert onto the live broadcast. ─────────────── */
 function fmNudge(slot, axis, delta) {
-  if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1 };
+  if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
   const a = CFG.alerts[slot];
   if (axis === 'scale') a.scale = Math.max(0.2, Math.min(3, Math.round((a.scale + delta) * 100) / 100));
+  else if (axis === 'mediaPct') a.mediaPct = Math.max(10, Math.min(100, (a.mediaPct == null ? 100 : a.mediaPct) + delta));
   else a[axis] = (a[axis] || 0) + delta;
   fmRenderNudgeReadouts(slot);
   fmPushAlertsConfig();
   fmPreviewSlot(slot);
 }
 function fmResetPosition(slot) {
-  CFG.alerts[slot] = { x: 0, y: 0, scale: 1 };
+  CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
   fmRenderNudgeReadouts(slot);
   fmPushAlertsConfig();
   fmPreviewSlot(slot);
@@ -408,10 +409,11 @@ function fmPreviewSlot(slot) {
   send({ cmd: 'TEST_FIRE', data: { slot, username: 'Preview' } }, { skipAbly: true });
 }
 function fmRenderNudgeReadouts(slot) {
-  const a = CFG.alerts[slot] || { x: 0, y: 0, scale: 1 };
+  const a = CFG.alerts[slot] || { x: 0, y: 0, scale: 1, mediaPct: 100 };
   const xEl = document.getElementById(`ro-${slot}-x`); if (xEl) xEl.textContent = a.x + 'px';
   const yEl = document.getElementById(`ro-${slot}-y`); if (yEl) yEl.textContent = a.y + 'px';
   const sEl = document.getElementById(`ro-${slot}-scale`); if (sEl) sEl.textContent = a.scale.toFixed(2) + '×';
+  const mEl = document.getElementById(`ro-${slot}-mediaPct`); if (mEl) mEl.textContent = (a.mediaPct == null ? 100 : a.mediaPct) + '%';
 }
 function fmBuildNudgeUI(slot) {
   const box = document.getElementById(`nudge-${slot}`);
@@ -425,8 +427,9 @@ function fmBuildNudgeUI(slot) {
       <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${small})" title="Step up">›</button>
       <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${big})" title="Big step up">»</button>
     </div>`;
-  box.innerHTML = row('X', 'x', 10, 50) + row('Y', 'y', 10, 50) + row('Scale', 'scale', 0.05, 0.2)
-    + `<button class="ctrl-btn" style="width:100%;margin-top:5px;font-size:10px;" onclick="fmResetPosition('${slot}')">Reset position</button>`;
+  // "Size" = how much of the full screen the gif may fill (100% = edge to edge).
+  box.innerHTML = row('X', 'x', 10, 50) + row('Y', 'y', 10, 50) + row('Scale', 'scale', 0.05, 0.2) + row('Size', 'mediaPct', 5, 25)
+    + `<button class="ctrl-btn" style="width:100%;margin-top:5px;font-size:10px;" onclick="fmResetPosition('${slot}')">Reset position &amp; size</button>`;
   fmRenderNudgeReadouts(slot);
 }
 
@@ -544,7 +547,8 @@ function fmTestFire(slot) {
     inp.value = CFG.texts[inp.dataset.slot] || '';
   });
   SLOTS.forEach(slot => {
-    if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1 };
+    if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
+    if (CFG.alerts[slot].mediaPct == null) CFG.alerts[slot].mediaPct = 100; // migrate configs saved before per-gif size existed
     fmRefreshThumb(slot, 'gif'); fmRefreshThumb(slot, 'audio');
     fmBuildNudgeUI(slot);
   });

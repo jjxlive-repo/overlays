@@ -58,18 +58,17 @@
     transition: width .4s ease;
   }
 
-  /* ── ALERT STAGE — fills the entire 1080×1920 canvas so the gif can be
-     as large as the art actually is, instead of being boxed into a small
-     fixed-size tile. Media takes all the space not used by the text band. */
+  /* ── ALERT STAGE — the media is absolutely positioned over the FULL
+     1080×1920 canvas so a gif can go edge-to-edge (its cap is mediaPct, set
+     per slot from the control). The text is an overlaid caption pinned near
+     the bottom, so it never steals height from the media the way an in-flow
+     column did (which boxed even a "100%" gif into the upper ~half). */
   #alert-pos {
     position: fixed; left: 0; top: 0; width: 1080px; height: 1920px;
     z-index: 30; pointer-events: none;
   }
   #alert-stage {
-    width: 100%; height: 100%;
-    box-sizing: border-box;
-    padding: 60px 30px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    position: absolute; inset: 0;
     opacity: 0;
     transform: scale(0.92);
     transform-origin: center;
@@ -79,19 +78,19 @@
     opacity: 1; transform: scale(1);
   }
   #alert-media-wrap {
-    width: 100%;
-    flex: 1 1 auto;
-    min-height: 0;
+    position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
   }
   #alert-media-wrap img, #alert-media-wrap video, #alert-media-wrap canvas {
-    max-width: 100%; max-height: 100%;
+    /* max-width/height are set inline per-slot (mediaPct of the full canvas) */
     object-fit: contain;
     display: block;
     filter: drop-shadow(0 10px 30px rgba(0,0,0,0.55));
   }
   #alert-text {
-    max-width: 820px;
+    position: absolute; left: 50%; bottom: 150px;
+    transform: translateX(-50%);
+    max-width: 900px;
     text-align: center;
     font-weight: 700; font-size: 44px; line-height: 1.2;
     color: #fff;
@@ -153,12 +152,14 @@ const DEFAULT_CONFIG = {
   meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
   alertDurationSec: 4.5,
   // Each alert type gets its own position/scale — a milestone banner and a
-  // tiny follow ping don't belong in the same spot.
+  // tiny follow ping don't belong in the same spot. mediaPct is how much of the
+  // full 1080×1920 canvas the gif/video may fill (100 = edge to edge), so a big
+  // celebration gif isn't boxed into a small centered tile.
   alerts: {
-    tiktok_follow:  { x: 0, y: 0, scale: 1 },
-    youtube_follow: { x: 0, y: 0, scale: 1 },
-    youtube_sub:    { x: 0, y: 0, scale: 1 },
-    milestone:      { x: 0, y: 0, scale: 1 },
+    tiktok_follow:  { x: 0, y: 0, scale: 1, mediaPct: 100 },
+    youtube_follow: { x: 0, y: 0, scale: 1, mediaPct: 100 },
+    youtube_sub:    { x: 0, y: 0, scale: 1, mediaPct: 100 },
+    milestone:      { x: 0, y: 0, scale: 1, mediaPct: 100 },
   },
   texts: {
     tiktok_follow:  '{username} followed on TikTok!',
@@ -204,6 +205,15 @@ function applyAlertLayoutFor(slot) {
   const el = document.getElementById('alert-pos');
   const a = (CFG.alerts && CFG.alerts[slot]) || { x: 0, y: 0, scale: 1 };
   el.style.transform = `translate(${a.x}px, ${a.y}px) scale(${a.scale})`;
+}
+// Size the media element to mediaPct% of the FULL canvas (not the small flex
+// box), so a gif can go edge-to-edge. object-fit:contain keeps aspect ratio, so
+// a portrait gif fills height and a landscape one fills width — up to this cap.
+function sizeMediaEl(el, slot) {
+  const a = (CFG.alerts && CFG.alerts[slot]) || {};
+  const pct = Math.max(10, Math.min(100, a.mediaPct == null ? 100 : a.mediaPct));
+  el.style.maxWidth  = (1080 * pct / 100) + 'px';
+  el.style.maxHeight = (1920 * pct / 100) + 'px';
 }
 function renderMeter() {
   const every = Math.max(1, CFG.milestoneEvery || 10);
@@ -264,11 +274,13 @@ function showAlert(item, done) {
       v.playsInline = true;
       v.muted = false;
       v.loop = false; // play once, freeze on last frame — never restart
+      sizeMediaEl(v, item.slot);
       wrap.appendChild(v);
     } else if (mime === 'image/gif') {
       // A plain <img> plays a GIF's own baked-in loop count forever with no
       // way to override it, so decode it ourselves and play it once on a canvas.
       const canvas = document.createElement('canvas');
+      sizeMediaEl(canvas, item.slot);
       wrap.appendChild(canvas);
       const gifDataURL = asset.gif.dataURL;
       fetch(gifDataURL).then(r => r.arrayBuffer()).then(buf => {
@@ -280,12 +292,14 @@ function showAlert(item, done) {
         if (canvas !== wrap.firstChild) return;
         const img = document.createElement('img');
         img.src = gifDataURL;
+        sizeMediaEl(img, item.slot);
         wrap.innerHTML = '';
         wrap.appendChild(img);
       });
     } else {
       const img = document.createElement('img');
       img.src = asset.gif.dataURL;
+      sizeMediaEl(img, item.slot);
       wrap.appendChild(img);
     }
   }
