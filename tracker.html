@@ -1634,6 +1634,38 @@ function forgetOldCombos() {
 }
 
 /** Re-enter the normal path with a synthesized closing frame. */
+/*
+ * DUPLICATE-DELIVERY GUARD.
+ *
+ * The websocket handling above is single-instance-safe: one connection, one onmessage, closed
+ * before reconnect. But TikFinity broadcasts every event to EVERY client connected to
+ * ws://localhost:21213/ — and if this page happens to be open twice at once (a browser tab
+ * left open alongside the OBS browser source, or two OBS scenes both loading tracker.html),
+ * both instances receive the identical event and both record it independently.
+ *
+ * That is what was found on 2026-07-20: near-duplicate rows for the same person and amount,
+ * 6-9ms apart — far too close to be two real taps, and reconciled exactly against TikTok's
+ * own LIVE Center diamond total once removed (Jul 18 2:31 AM read 1,016 coins against
+ * TikTok's 508; the 9 duplicate rows accounted for precisely the difference). Across all
+ * history this was 32.7% of TikTok gift rows, ~9.6% of lifetime coins.
+ *
+ * The window is 500ms: comfortably wider than the observed jitter (including a combo settle
+ * whose idle timer fires slightly late in a backgrounded tab), but far short of any realistic
+ * gap between two genuinely separate gifts of the same amount from the same person.
+ */
+var DUP_DELIVERY_MS = 500;
+var recentGiftDeliveries = new Map(); // key -> last-recorded Date.now()
+
+function isDuplicateDelivery(giftKey, now) {
+  var last = recentGiftDeliveries.get(giftKey);
+  recentGiftDeliveries.set(giftKey, now);
+  // Prune opportunistically so this map never grows unbounded across a long stream.
+  if (recentGiftDeliveries.size > 500) {
+    recentGiftDeliveries.forEach(function (t, k) { if (now - t > 60000) recentGiftDeliveries.delete(k); });
+  }
+  return last !== undefined && now - last <= DUP_DELIVERY_MS;
+}
+
 function settleCombo(key, data, count) {
   pendingCombos.delete(key);
   var synthetic = Object.assign({}, data, { repeatCount: count, repeatEnd: true });
@@ -1702,6 +1734,14 @@ function handleTikfinityGift(data) {
   const lowerGiftName = (giftName || '').toLowerCase().trim();
   const coins = diamondCount * repeatCount;
   const ts    = Date.now();
+
+  // Same person, same gift, same amount, moments apart — this page has almost certainly
+  // already recorded this exact event via another open instance. See the guard above.
+  const dupKey = (userId || name).toLowerCase() + '|' + lowerGiftName + '|' + coins;
+  if (isDuplicateDelivery(dupKey, ts)) {
+    console.warn('[Tikfinity] duplicate delivery — already recorded (another tab/instance open?):', name, giftName, '×', repeatCount, '=', coins);
+    return;
+  }
 
   console.log('[Tikfinity] gift:', name, giftName, '×', repeatCount, '=', coins, 'coins (diamondCount:', diamondCount, ')');
 
