@@ -384,6 +384,20 @@
     return m ? decodeURIComponent(m[1]) : null;
   }
 
+  /*
+    Where the Producer Dock lives, for pages that read config/media from it.
+    Explicit ?dock=/#dock= always wins. Otherwise, a page the dock is serving
+    itself (mounted at /overlays/) talks to its OWN origin — which also makes its
+    writes same-origin, so no CORS is involved at all. Everything else falls back
+    to the default local port.
+  */
+  function dockBase(fallback) {
+    var explicit = param('dock');
+    if (explicit) return explicit.replace(/\/$/, '');
+    if (location.pathname.indexOf('/overlays/') === 0) return location.origin;
+    return (fallback || 'http://127.0.0.1:4317').replace(/\/$/, '');
+  }
+
   function isMirror() {
     // Both a query param and a hash: static hosts with clean-URL redirects
     // (like `serve`) drop the query string, but a fragment always survives.
@@ -408,5 +422,6 @@
     playGifOnce: playGifOnce,
     isMirror: isMirror,
     param: param,
+    dockBase: dockBase,
   };
 })();
