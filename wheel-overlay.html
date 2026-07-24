@@ -40,7 +40,10 @@
     color: #fff;
     -webkit-font-smoothing: antialiased;
   }
-  #stage { position: absolute; inset: 0; }
+  /* Explicit 1080×1920 — NOT inset:0, which would size to the viewport (correct
+     at 1080×1920 in Studio, but collapses to the pane width in a dev preview and
+     is fragile either way). Lanes are absolute children of this fixed box. */
+  #stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; }
 
   /* ── LANES ─────────────────────────────────────────────────────────
      Five independent stacking contexts, spec order. Each lane owns one
@@ -77,39 +80,38 @@
      equal too). Placeholder art: glyph + label per segment, rendered in code
      so text is crisp — designed segment art can swap in later. */
   :root { --seg-h: 112px; }   /* one segment's height — shared by CSS + JS landing math */
+  /* The housing ART (reel-housing.png, 1086x1448 with transparent margins) is the
+     background; its purple border, pink centre indicator line and left/right
+     triangles are baked in. The scrolling segments sit in a viewport positioned
+     over the transparent window HOLE in the art — geometry measured from the PNG's
+     alpha: window x 10.41%, y 30.73%, w 79.37%, h 38.47%, centred on the pink line
+     at ~50% height. Segments show through the hole; the opaque frame masks any
+     overflow; the winning row lands on the pink line. */
   .reel-frame {
-    position: relative; width: 760px; height: 560px; border-radius: 30px;
-    background: rgba(12,10,22,0.55); border: 3px solid rgba(255,255,255,0.28);
-    box-shadow: 0 22px 64px rgba(0,0,0,0.55);
-    overflow: hidden;
+    position: relative; width: 900px; height: 1200px;
+    background: url('assets/wheel/reel-housing.png') center / 100% 100% no-repeat;
     opacity: 0; transform: scale(0.9); transition: opacity .3s ease, transform .3s ease;
   }
   .reel-frame.show { opacity: 1; transform: scale(1); }
-  /* The mask fades top & bottom to transparent so segments "roll in / roll
-     out" — the cheap, reliable way to sell the edge-of-a-cylinder look. */
+  /* Viewport = the art's window hole. Mask fades top & bottom so segments roll
+     in/out (the edge-of-cylinder feel) inside the window. */
   .reel-viewport {
-    position: absolute; inset: 0; overflow: hidden;
+    position: absolute; left: 10.41%; top: 30.73%; width: 79.37%; height: 38.47%;
+    overflow: hidden;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
             mask-image: linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
   }
   .reel-strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; transform: translateY(0); }
   .reel-strip.spinning { transition: transform var(--spin-ms, 2200ms) cubic-bezier(.11,.68,.15,1); }
   .reel-seg {
-    height: var(--seg-h); display: flex; align-items: center; gap: 22px; padding: 0 46px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    height: var(--seg-h); display: flex; align-items: center; justify-content: center;
+    gap: 20px; padding: 0 30px;
   }
-  .reel-seg .seg-icon  { font-size: 56px; line-height: 1; }
-  .reel-seg .seg-label { font-size: 46px; font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 5px rgba(0,0,0,0.55); }
-  /* Centre window + inward pointers mark the winning row. */
-  .reel-window {
-    position: absolute; left: 10px; right: 10px; top: 50%; height: var(--seg-h);
-    transform: translateY(-56px);
-    border: 3px solid #E879F9; border-radius: 18px;
-    box-shadow: 0 0 26px rgba(232,121,249,0.55), inset 0 0 24px rgba(232,121,249,0.18);
-    pointer-events: none;
-  }
-  .reel-ptr { position: absolute; top: 50%; transform: translateY(-50%); font-size: 40px; color: #E879F9; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
-  .reel-ptr.l { left: -8px; } .reel-ptr.r { right: -8px; }
+  .reel-seg .seg-label { font-size: 46px; font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 5px rgba(0,0,0,0.6); }
+  /* Result icons drawn from the icons.png sprite sheet, positioned by each icon's
+     MEASURED centre (cells are a regular 444px grid but the art isn't centred in
+     its cell — up to ~55px drift — so we place by content centre, not cell). */
+  .wicon { display: inline-block; flex: 0 0 auto; background: url('assets/wheel/icons.png') no-repeat; }
 
   /* ── IMPACT: the result reveal card. Tier is read from SHAPE + SCALE +
      ICON + TEXT, never hue alone (streamer is red-green colorblind). ── */
@@ -120,7 +122,7 @@
     opacity: 0; transform: scale(0.8); transition: opacity .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
   }
   .impact.show { opacity: 1; transform: scale(1); }
-  .impact .i-glyph { font-size: 92px; line-height: 1; margin-bottom: 8px; }
+  .impact .i-glyph { display: flex; justify-content: center; margin-bottom: 8px; }
   .impact .i-user  { font-size: 40px; font-weight: 700; margin-bottom: 6px; max-width: 820px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .impact .i-tier  { font-size: 30px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; }
   .impact .i-result { font-size: 64px; font-weight: 800; letter-spacing: .04em; }
@@ -133,9 +135,10 @@
   /* ── AMBIENT: low, readable, non-blocking mood layer after impact. ── */
   .ambient {
     position: absolute; left: 50%; top: 1500px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
     padding: 12px 28px; border-radius: 16px;
     background: rgba(10,8,18,0.4); border: 1px solid rgba(255,255,255,0.18);
-    font-size: 24px; font-weight: 600; color: rgba(255,255,255,0.82);
+    font-size: 24px; font-weight: 600; color: rgba(255,255,255,0.82); white-space: nowrap;
     opacity: 0; transition: opacity .6s ease;
   }
   .ambient.show { opacity: 1; }
@@ -196,6 +199,26 @@ const RESULTS = [
   { key: 'avatar',    label: 'Avatar',    glyph: '👾' },
 ];
 const RESULT_BY_KEY = Object.fromEntries(RESULTS.map((r, i) => [r.key, { ...r, index: i }]));
+
+// Icon sprite: each result's icon CENTRE in icons.png (1774×887, 2×4 grid), measured
+// from the art's alpha. Placed by centre, not by cell, because the icons drift up to
+// ~55px inside their 444px cells. iconEl(key, box) returns a span showing just that
+// icon, scaled to fit `box`.
+const ICON_SHEET_W = 1774, ICON_SHEET_H = 887, ICON_NAT = 330; // nominal icon footprint
+const ICON_CENTER = {
+  curse: [269, 246], stamp: [679, 242], flood: [1084, 247], weather: [1499, 253],
+  crack: [265, 620], spotlight: [678, 621], frame: [1071, 623], avatar: [1497, 639],
+};
+function iconEl(key, box) {
+  const c = ICON_CENTER[key] || [ICON_SHEET_W / 8, ICON_SHEET_H / 4];
+  const f = (box * 0.92) / ICON_NAT; // fit a nominal icon into ~92% of the box
+  const s = document.createElement('span');
+  s.className = 'wicon';
+  s.style.width = box + 'px'; s.style.height = box + 'px';
+  s.style.backgroundSize = (ICON_SHEET_W * f) + 'px ' + (ICON_SHEET_H * f) + 'px';
+  s.style.backgroundPosition = (box / 2 - c[0] * f) + 'px ' + (box / 2 - c[1] * f) + 'px';
+  return s;
+}
 
 const TIER_LABEL = { spin: 'SPIN', power: 'POWER SPIN', takeover: 'TAKEOVER', legend: 'LEGEND SPIN' };
 const TIER_GLYPH = { spin: '●', power: '◆', takeover: '★', legend: '👑' };
@@ -287,11 +310,10 @@ function pump() {
 // ── Stage 1: SPINNING — edge-on reel. Segments scroll up and DECELERATE to
 // land the resolved result centred in the pink window. (Skipped when the dock
 // resolved a single-result pool — nothing to spin past.) ──
-const SEG_H = 112;    // keep in sync with CSS --seg-h
-const REEL_VP_H = 560; // .reel-frame height
+const SEG_H = 112;     // keep in sync with CSS --seg-h
 const REEL_CYCLES = 6; // how many times the 8 results repeat down the strip
-// translateY that puts strip segment `i` centred in the window.
-function reelCenter(i) { return (REEL_VP_H / 2 - SEG_H / 2) - i * SEG_H; }
+// translateY that puts strip segment `i` centred in a viewport of height vpH.
+function reelCenter(vpH, i) { return (vpH / 2 - SEG_H / 2) - i * SEG_H; }
 
 function startSpinning(run) {
   const spin = run.spin;
@@ -301,34 +323,39 @@ function startSpinning(run) {
   const vp = el('reel-viewport');
   const strip = el('reel-strip');
   // Build a long strip: the 8 results repeated REEL_CYCLES times, so there's
-  // plenty to scroll through before the landing row.
+  // plenty to scroll through before the landing row. Each segment: real icon
+  // (sprite) + upright label.
   for (let c = 0; c < REEL_CYCLES; c++) {
     for (const r of RESULTS) {
-      strip.appendChild(el('reel-seg', `<span class="seg-icon">${r.glyph}</span><span class="seg-label">${esc(r.label)}</span>`));
+      const seg = el('reel-seg');
+      seg.appendChild(iconEl(r.key, 78));
+      seg.appendChild(el('seg-label', esc(r.label)));
+      strip.appendChild(seg);
     }
   }
   vp.appendChild(strip);
-  const win = el('reel-window');
-  win.appendChild(el('reel-ptr l', '▶'));
-  win.appendChild(el('reel-ptr r', '◀'));
-  frame.appendChild(vp);
-  frame.appendChild(win);
+  frame.appendChild(vp); // segments sit BEHIND the housing art (frame background) —
+                         // the pink line + triangles show over the reel through the window
   runNode(run, laneWheel, frame);
   reveal(frame, 'show');
 
+  // Viewport height is % of the frame, so read it live rather than hard-coding.
+  const vpH = vp.clientHeight || 462;
+
   // Land the resolved result in the last-but-one cycle, after scrolling ~3
-  // cycles of build-up. Landing on a late copy guarantees there's always a
-  // long run-up regardless of which result won.
+  // cycles of build-up — every result gets the same long run-up regardless of
+  // which won. The window centre is the art's pink line, so a centred segment
+  // lands exactly on the indicator.
   const idx = RESULT_BY_KEY[spin.result]?.index ?? 0;
   const landIndex = (REEL_CYCLES - 1) * RESULTS.length + idx;
   const startIndex = Math.max(0, landIndex - 3 * RESULTS.length);
 
   const spinMs = TIMING.spinning.spin;
   strip.style.setProperty('--spin-ms', spinMs + 'ms');
-  strip.style.transform = `translateY(${reelCenter(startIndex)}px)`;
+  strip.style.transform = `translateY(${reelCenter(vpH, startIndex)}px)`;
   void strip.offsetWidth; // commit the start position before transitioning
   strip.classList.add('spinning');
-  strip.style.transform = `translateY(${reelCenter(landIndex)}px)`; // decelerate to the winner
+  strip.style.transform = `translateY(${reelCenter(vpH, landIndex)}px)`; // decelerate to the winner
 
   runStage(run, () => {
     frame.classList.remove('show');
@@ -339,13 +366,15 @@ function startSpinning(run) {
 // ── Stage 2: IMPACT (reveal + hold) ──
 function startImpact(run) {
   const spin = run.spin;
-  const res = RESULT_BY_KEY[spin.result] || { label: spin.result, glyph: '🎯' };
+  const res = RESULT_BY_KEY[spin.result] || { label: spin.result };
   const card = el(`impact tier-${spin.tier}`);
-  card.innerHTML =
-    `<div class="i-glyph">${res.glyph}</div>` +
+  const glyph = el('i-glyph');
+  glyph.appendChild(iconEl(spin.result, 130));
+  card.appendChild(glyph);
+  card.insertAdjacentHTML('beforeend',
     `<div class="i-user">${esc(displayName(spin))}</div>` +
     `<div class="i-tier">${TIER_GLYPH[spin.tier] || ''} ${TIER_LABEL[spin.tier] || spin.tier}</div>` +
-    `<div class="i-result">${esc(res.label)}</div>`;
+    `<div class="i-result">${esc(res.label)}</div>`);
   runNode(run, laneImpact, card);
   reveal(card, 'show');
 
@@ -399,8 +428,10 @@ function showReceipt(spin, position) {
 
 // ── AMBIENT lane (detached, self-cleaning) ──
 function startAmbient(spin) {
-  const res = RESULT_BY_KEY[spin.result] || { label: spin.result, glyph: '' };
-  const a = el('ambient', `${res.glyph} ${esc(displayName(spin))} — ${esc(res.label)}`);
+  const res = RESULT_BY_KEY[spin.result] || { label: spin.result };
+  const a = el('ambient');
+  a.appendChild(iconEl(spin.result, 30));
+  a.insertAdjacentHTML('beforeend', `<span>${esc(displayName(spin))} — ${esc(res.label)}</span>`);
   laneAmbient.appendChild(a);
   reveal(a, 'show');
   const life = TIMING.ambient[spin.tier] ?? TIMING.ambient.spin;
