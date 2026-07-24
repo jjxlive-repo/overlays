@@ -133,7 +133,7 @@
 <audio id="alert-audio"></audio>
 
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=4"></script>
+<script src="jjx-core.js?v=6"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG / CONSTANTS — shared helpers live in jjx-core.js (window.JJX)
@@ -456,6 +456,9 @@ function handleCmdInner(msg) {
     case 'RESET_COUNT':
       resetCount();
       break;
+    case 'SET_ENABLED':
+      if (handleToggle) handleToggle(!!(msg.data && msg.data.enabled));
+      break;
   }
 }
 function applyAssetUpdate({ slot, kind, mime, dataURL, url }) {
@@ -468,27 +471,23 @@ function applyAssetUpdate({ slot, kind, mime, dataURL, url }) {
   try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// CHUNKED ASSET TRANSFER — LEGACY. Media now comes from the dock by URL
-// (see loadFromDock), which is why uploads no longer touch the browser's
-// storage quota. This receiver stays so an older control page — one still
-// chunking base64 over Ably — keeps working against this overlay.
-// ═══════════════════════════════════════════════════════════════════
-const handleAssetChunk = JJX.createAssetReceiver({
-  isValid: (slot, kind) => SLOTS.includes(slot) && (kind === 'gif' || kind === 'audio'),
-  onAsset: ({ slot, kind, mime, dataURL }) => applyAssetUpdate({ slot, kind, mime, dataURL }),
-});
+// The chunked-over-Ably asset receiver is gone: media comes from the dock by URL
+// (loadFromDock), so nothing publishes chunks any more. Subscribing to that channel
+// would have kept an Ably attachment alive purely to receive nothing.
 
 // ═══════════════════════════════════════════════════════════════════
 // ABLY — toggle channel (always attached) + chat/config channels
 // (attached only while enabled), same pattern as new-here-overlay.html.
 // ═══════════════════════════════════════════════════════════════════
 let _fmAttached = false;
+let eventBus = null;
 function connectAbly() {
-  const client = new Ably.Realtime({ key: ABLY_KEY });
-  const ch           = client.channels.get(ABLY_CH);
-  const chatChannel  = client.channels.get('splat-chat');
-  const assetsChannel = client.channels.get('follow-meter-assets');
+  // Ably is constructed ONLY as the bus's fallback. When the dock's socket is
+  // reachable — the normal case — no channel is ever attached, so this overlay
+  // costs zero Ably messages and holds no realtime connection of its own.
+  // ABLY_FALLBACK=0 opts out entirely for a socket-only setup.
+  const wantFallback = JJX.param('ablyFallback') !== '0';
+  const client = wantFallback ? new Ably.Realtime({ key: ABLY_KEY }) : null;
 
   function attachMain() {
     OVERLAY_ENABLED = true;
@@ -496,39 +495,26 @@ function connectAbly() {
     applyMeterLayout(); renderMeter();
     // Config/media may have changed while this overlay was toggled off.
     loadFromDock();
-    if (_fmAttached) return;
     _fmAttached = true;
-    ch.attach().catch(() => {});
-    chatChannel.attach().catch(() => {});
-    assetsChannel.attach().catch(() => {});
-    // In case this is a fresh load/cleared cache and the control page is still
-    // open with assets assigned, ask it to re-send everything it has.
-    assetsChannel.publish('resend-request', {}).catch(() => {});
   }
   function detachMain() {
     OVERLAY_ENABLED = false;
     document.body.style.display = 'none';
     _fmAttached = false;
-    ch.detach().catch(() => {});
-    chatChannel.detach().catch(() => {});
-    assetsChannel.detach().catch(() => {});
   }
 
-  assetsChannel.subscribe('chunk', msg => handleAssetChunk(msg.data));
-
-  const toggleCh = client.channels.get('follow-meter-toggle');
-  toggleCh.subscribe('set', msg => {
-    if (msg.data && msg.data.enabled) attachMain(); else detachMain();
+  // Real follow/sub traffic comes off the dock's local socket, with Ably as an
+  // automatic fallback (JJX.createOverlayBus). Same 'milk-event' payload either way.
+  // 'follow' is a dedicated, unambiguous signal — added alongside the existing 'join'
+  // event so nothing else breaks — that fires only on a genuine TikTok/YouTube
+  // follow, never a room-join/viewer-enter.
+  eventBus = JJX.createOverlayBus({
+    ably: client,
+    onStatus: (state, why) => console.info('[follow-meter] event transport:', state, why || ''),
   });
-  toggleCh.publish('request', {}).catch(() => {});
-
-  // Real follow/sub traffic rides the 'milk-event' the dock already publishes for
-  // the hype meter — zero extra Ably messages. 'follow' is a dedicated, unambiguous
-  // signal (added alongside the existing 'join' event so nothing else breaks) that
-  // fires only on a genuine TikTok/YouTube follow, never a room-join/viewer-enter.
-  chatChannel.subscribe('milk-event', msg => {
+  eventBus.on('splat-chat', 'milk-event', d => {
     if (!OVERLAY_ENABLED) return;
-    const d = msg.data || {};
+    d = d || {};
     if (d.type === 'follow' && d.username) {
       const slot = d.platform === 'tt' ? 'tiktok_follow' : 'youtube_follow';
       handleFollowEvent(slot, d.username);
@@ -537,8 +523,23 @@ function connectAbly() {
     }
   });
 
-  ch.subscribe('follow-meter-cmd', msg => handleCmd(msg.data));
+  // Control-plane (config nudges, test fires, on/off) over the same socket, relayed
+  // by the dock's /api/overlay/:name/cmd. Ably carries it only in fallback mode.
+  eventBus.on(`overlay-cmd:${OVERLAY_NAME}`, 'cmd', d => handleCmd(d));
+  eventBus.on(ABLY_CH, 'follow-meter-cmd', d => handleCmd(d));   // fallback shape
+
+  // The on/off toggle rides the same command stream now.
+  handleToggle = enabled => { if (enabled) attachMain(); else detachMain(); };
+
+  // Ask the dock what the current on/off state is, since a toggle sent while this
+  // overlay was closed isn't replayed by a socket.
+  fetch(`${DOCK_BASE}/overlay-public/${OVERLAY_NAME}/config`, { cache: 'no-store' })
+    .then(r => r.json())
+    .then(p => { if (p.config && p.config.enabled) attachMain(); })
+    .catch(() => {});
 }
+// Set once connectAbly runs; kept module-level so handleCmd can reach it.
+let handleToggle = null;
 
 if (MIRROR) {
   // No Ably here — the mirror must never process real follows/subs a second

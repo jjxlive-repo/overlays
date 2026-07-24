@@ -404,6 +404,117 @@
     return (fallback || 'http://127.0.0.1:4317').replace(/\/$/, '');
   }
 
+  /*
+    OVERLAY EVENT BUS — live events over the Producer Dock's local WebSocket, with
+    Ably as an automatic fallback.
+
+    Why: every overlay used to subscribe to Ably directly, so a single comment, like,
+    follow or gift cost a metered message PER OVERLAY watching. The dock already
+    produces all of those events (it is the bridge that publishes them), so taking
+    them straight off a loopback socket costs nothing and arrives sooner — the Ably
+    path is batched on a flush timer, this is not.
+
+    Fallback is not optional. The socket depends on the overlay's browser being
+    allowed to reach 127.0.0.1, and Chrome's Private Network Access rules are
+    tightening — if that is ever refused, an overlay with no fallback goes silent
+    mid-stream with nothing on screen to say why. So: try the socket, and if it
+    cannot connect (or drops and cannot be regained) fall back to Ably.
+
+    Usage mirrors an Ably subscription, so migrating an overlay is a one-line swap:
+        var bus = JJX.createOverlayBus({ ably: ablyClient });   // ably optional
+        bus.on('splat-chat', 'milk-event', function (d) { … });
+  */
+  function createOverlayBus(opts) {
+    opts = opts || {};
+    var base = (opts.dockBase || dockBase()).replace(/^http/, 'ws');
+    var handlers = {};           // "channel/name" -> [fn]
+    var ws = null;
+    var usingAbly = false;
+    var ablyChannels = {};
+    var retries = 0;
+    var closed = false;
+    var onStatus = opts.onStatus || function () {};
+
+    function key(channel, name) { return channel + '/' + name; }
+
+    function emit(channel, name, data) {
+      var list = handlers[key(channel, name)];
+      if (!list) return;
+      for (var i = 0; i < list.length; i++) {
+        try { list[i](data); } catch (e) { /* one bad handler must not kill the feed */ }
+      }
+    }
+
+    // Ably is only touched when the socket cannot serve us, so a healthy dock means
+    // zero Ably messages. Subscriptions are attached lazily and per channel.
+    function fallbackToAbly(why) {
+      if (usingAbly || !opts.ably) { onStatus('socket-down', why); return; }
+      usingAbly = true;
+      onStatus('ably-fallback', why);
+      Object.keys(handlers).forEach(function (k) {
+        var parts = k.split('/');
+        subscribeAbly(parts[0], parts.slice(1).join('/'));
+      });
+    }
+
+    function subscribeAbly(channel, name) {
+      if (!opts.ably) return;
+      try {
+        var ch = ablyChannels[channel] || (ablyChannels[channel] = opts.ably.channels.get(channel));
+        ch.subscribe(name, function (m) { emit(channel, name, m.data); });
+      } catch (e) { /* Ably unavailable too — nothing further we can do */ }
+    }
+
+    function connect() {
+      if (closed) return;
+      try {
+        ws = new WebSocket(base + '/overlay-ws');
+      } catch (e) {
+        fallbackToAbly('websocket constructor threw');
+        return;
+      }
+      ws.onopen = function () {
+        retries = 0;
+        // Reaching the dock again after a fallback does NOT tear the Ably
+        // subscriptions down: they would then deliver the same event twice.
+        // Ably-mode is sticky until reload; the socket simply idles.
+        onStatus(usingAbly ? 'socket-up-but-ably-sticky' : 'socket', '');
+      };
+      ws.onmessage = function (ev) {
+        var msg;
+        try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (!msg || msg.channel === '_meta') return;
+        if (usingAbly) return;   // Ably owns delivery now — ignore, don't double-fire
+        emit(msg.channel, msg.name, msg.data);
+      };
+      ws.onerror = function () { /* onclose always follows; handle it there */ };
+      ws.onclose = function () {
+        if (closed) return;
+        retries++;
+        // Fast on purpose: every second spent retrying is a second of alerts not
+        // firing on a live stream. Three quick tries (~3.5s total, plus whatever the
+        // connection attempts themselves cost) cover a dock restart; past that,
+        // assume the socket isn't coming back and switch to Ably rather than keep
+        // a dark overlay hoping.
+        if (retries <= 3) setTimeout(connect, 500 * retries);
+        else fallbackToAbly('socket unavailable after ' + retries + ' attempts');
+      };
+    }
+
+    connect();
+
+    return {
+      on: function (channel, name, fn) {
+        var k = key(channel, name);
+        (handlers[k] || (handlers[k] = [])).push(fn);
+        if (usingAbly) subscribeAbly(channel, name);
+        return this;
+      },
+      isUsingAbly: function () { return usingAbly; },
+      close: function () { closed = true; try { if (ws) ws.close(); } catch (e) {} },
+    };
+  }
+
   function isMirror() {
     // Both a query param and a hash: static hosts with clean-URL redirects
     // (like `serve`) drop the query string, but a fragment always survives.
@@ -429,5 +540,6 @@
     isMirror: isMirror,
     param: param,
     dockBase: dockBase,
+    createOverlayBus: createOverlayBus,
   };
 })();

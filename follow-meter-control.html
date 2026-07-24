@@ -16,7 +16,7 @@
 <title>FOLLOW METER — Control</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=4"></script>
+<script src="jjx-core.js?v=6"></script>
 <style>
 :root {
   --tt:#38BDF8; --yt:#F87171; --gold:#FBBF24; --purple:#A855F7;
@@ -315,19 +315,44 @@ try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s)
 let ASSETS = {};
 try { ASSETS = JSON.parse(localStorage.getItem(FM_LS_ASSETS) || '{}'); } catch (e) {}
 
-/* ── COMMS — three-transport send via jjx-core (BroadcastChannel +
-   localStorage for same-profile pages/mirror, Ably for the isolated
-   TikTok Studio browser source) ── */
+/* ── COMMS ───────────────────────────────────────────────────────────
+   BroadcastChannel + localStorage reach same-profile pages (the mirror iframe);
+   the DOCK relay reaches the real overlay in TikTok Studio, which used to be
+   Ably's job. Ably is now only a fallback for when the dock is unreachable, so
+   in normal operation this page publishes nothing to Ably at all. */
 const ABLY_KEY = JJX.ABLY_KEY;
 const ABLY_CH  = JJX.ABLY_MAIN_CHANNEL;
 let ably = null, ablyChannel = null, fmToggleChannel = null, assetsChannel = null;
+let _dockRelayOk = true;   // false only after the dock refuses a command
 
-const send = JJX.createSender({
+const _send = JJX.createSender({
   bcName: FM_BC_NAME,
   lsMsgKey: FM_LS_MSG,
   ablyEventName: 'follow-meter-cmd',
   getAblyChannel: () => ablyChannel,
 });
+
+/**
+ * Local transports always fire. The overlay-bound copy goes to the dock relay, and
+ * only falls back to an Ably publish if that relay fails — so a healthy dock means
+ * zero Ably messages, while a dead one still drives the overlay.
+ */
+function send(msg, opts) {
+  opts = opts || {};
+  if (opts.skipAbly) return _send(msg, opts);          // mirror-only, never leaves this profile
+  _send(msg, { skipAbly: true });                      // BroadcastChannel + localStorage
+  fetch(dockUrl(`/api/overlay/${OVERLAY_NAME}/cmd`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(msg),
+  }).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _dockRelayOk = true;
+  }).catch(() => {
+    if (_dockRelayOk) { _dockRelayOk = false; setStatus('⚠ dock relay down — using Ably fallback'); }
+    try { if (ablyChannel) ablyChannel.publish('follow-meter-cmd', msg).catch(() => {}); } catch (e) {}
+  });
+}
 
 function connectAbly() {
   if (!window.Ably) return;
@@ -339,10 +364,8 @@ function connectAbly() {
       _fmEnabled = !!(msg.data && msg.data.enabled);
       fmRenderEnableBtn();
     });
-    assetsChannel = ably.channels.get('follow-meter-assets');
-    // A freshly-loaded (or cache-cleared) overlay asks for everything this
-    // control page currently has assigned, in case it missed the original send.
-    assetsChannel.subscribe('resend-request', () => fmResendAllAssets());
+    // The 'follow-meter-assets' channel is gone — the overlay reads media from the
+    // dock by URL, so there is no chunk stream to serve or resend-request to answer.
     const dot = document.getElementById('conn-dot');
     ably.connection.on('connected', () => {
       dot.classList.add('connected');
@@ -366,6 +389,14 @@ function fmRenderEnableBtn() {
 function fmToggleEnabled() {
   _fmEnabled = !_fmEnabled;
   localStorage.setItem('dockFollowMeterVisible', _fmEnabled ? '1' : '0');
+  // Rides the same dock relay as every other command (Ably only on fallback).
+  send({ cmd: 'SET_ENABLED', data: { enabled: _fmEnabled } });
+  // Persisted so an overlay opened later comes up in the right state — a socket
+  // doesn't replay a toggle that was sent while it was closed.
+  CFG.enabled = _fmEnabled;
+  saveConfigToDock();
+  // stream-dock.html's own Follow Meter pill still listens on the Ably toggle
+  // channel; keep it in sync until that page moves onto the dock too.
   if (fmToggleChannel) fmToggleChannel.publish('set', { enabled: _fmEnabled }).catch(() => {});
   fmRenderEnableBtn();
 }
