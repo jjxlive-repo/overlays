@@ -99,6 +99,36 @@ input[type="number"].ctrl-in { width: 60px; }
   width: 50px; text-align: right; flex-shrink: 0;
 }
 
+/* drag-to-place canvas — a scaled stand-in for the 1080x1920 overlay, same
+   interaction feed-jamie-control.html uses (drag to move, click to select,
+   arrows to nudge). Checkerboard = transparent overlay background. */
+#cv {
+  position: relative; width: 227px; height: 403px; flex: none;
+  border: 1px solid var(--border); border-radius: 10px; margin: 0 auto;
+  background: repeating-conic-gradient(rgba(255,255,255,0.045) 0% 25%, transparent 0% 50%) 0 0/22px 22px;
+  touch-action: none; overflow: hidden;
+}
+#cv-cap { font-size: 9px; color: var(--txt-dim); margin-top: 6px; text-align: center; }
+.cv-el {
+  position: absolute; border: 1.5px dashed rgba(255,255,255,0.35); border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  display: flex; align-items: center; justify-content: center; cursor: grab;
+  user-select: none; touch-action: none; overflow: hidden;
+  font: 700 8px var(--font); color: var(--txt); text-align: center;
+}
+.cv-el span { pointer-events: none; padding: 2px; }
+.cv-el.sel { border-style: solid; border-color: var(--purple); background: rgba(168,85,247,0.18); z-index: 4; }
+.cv-el.e-tiktok_follow  { border-color: rgba(56,189,248,0.55); }
+.cv-el.e-youtube_follow,
+.cv-el.e-youtube_sub    { border-color: rgba(248,113,113,0.55); }
+.cv-el.e-milestone      { border-color: rgba(251,191,36,0.6); }
+.cv-el.e-meter          { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.10); }
+.cv-chip {
+  font: 600 9px var(--font); padding: 3px 7px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--txt-dim);
+}
+.cv-chip.on { border-color: var(--purple); color: #f5d0fe; background: rgba(168,85,247,0.2); }
+
 /* live mirror — a muted, always-on iframe copy of the overlay so position/
    scale changes are visible instantly without touching the real broadcast */
 #mirror-box {
@@ -128,6 +158,13 @@ input[type="number"].ctrl-in { width: 60px; }
     </div>
     <button class="ctrl-btn" onclick="fmResendAllAssets()" title="Re-reads config and media from the Producer Dock and tells any open overlay to do the same. Use it if an overlay looks out of date.">↻ Refresh overlays from dock</button>
     <div id="dock-status" style="font-size:10px;color:var(--txt-dim);text-align:center;">● checking dock…</div>
+  </div>
+
+  <div class="card">
+    <h2>Drag to place <span style="font-weight:400;color:var(--txt-dim);text-transform:none;letter-spacing:0;">— the whole 1080×1920 overlay, to scale</span></h2>
+    <div class="ctrl-row" id="cv-chips" style="justify-content:center;gap:4px;margin-bottom:8px;"></div>
+    <div id="cv"></div>
+    <div id="cv-cap">pick one above · drag to place · arrow keys nudge (shift = 1px)</div>
   </div>
 
   <div class="card">
@@ -408,6 +445,7 @@ function fmPushConfigMisc() {
   CFG.meter.scale = parseFloat(document.getElementById('fm-meter-scale').value) || 1;
   CFG.meter.visible = document.getElementById('fm-meter-visible').checked;
   CFG.alertDurationSec = parseFloat(document.getElementById('fm-duration').value) || 4.5;
+  renderCanvas();                    // meter x/y/scale edits move its box on the canvas
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   clearTimeout(cfgTimer);
   cfgTimer = setTimeout(() => { send({ cmd: 'CONFIG_UPDATE', data: CFG }); saveConfigToDock(); }, 150);
@@ -441,6 +479,8 @@ function fmSlide(slot, axis, raw) {
   if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
   CFG.alerts[slot][axis] = axis === 'scale' ? parseFloat(raw) : parseInt(raw, 10);
   fmRenderNudgeReadouts(slot);      // local only — always immediate
+  cvSel = slot;                     // keep the canvas selection on what's being edited
+  renderCanvas();
   fmPushAlertsThrottled(slot);
 }
 /** Drag released (or keyboard commit): send the exact final value, no throttle. */
@@ -451,6 +491,7 @@ function fmSlideEnd(slot) {
 function fmResetPosition(slot) {
   CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
   fmRenderNudgeReadouts(slot);
+  renderCanvas();
   fmPushAlertsConfig();
   fmPreviewSlot(slot);
 }
@@ -518,6 +559,132 @@ function fmBuildNudgeUI(slot) {
     + row('Size', 'mediaPct', 'How much of the full screen the gif may fill — 100% = edge to edge')
     + `<button class="ctrl-btn" style="width:100%;margin-top:6px;font-size:10px;" onclick="fmResetPosition('${slot}')">Reset position &amp; size</button>`;
   fmRenderNudgeReadouts(slot);
+}
+
+/* ── drag-to-place canvas ───────────────────────────────────────────
+   A scaled stand-in for the 1080x1920 overlay, same interaction model as
+   feed-jamie-control.html: pointer drag moves an element, click selects it,
+   arrow keys nudge the selection. Canvas pixels convert to overlay pixels by
+   dividing by CV_S, so a drag maps 1:1 onto the real coordinates.
+
+   Alert x/y are OFFSETS FROM CENTRE (that's how the overlay translates them),
+   and the meter hangs from the top edge — so each element converts between its
+   own anchor and absolute canvas coordinates rather than sharing one origin. */
+const CV_S = 0.21, OW = 1080, OH = 1920;
+const METER_ANCHOR_Y = 100;               // meter sits near the top, not centred
+const SLOT_LABEL = {
+  tiktok_follow: 'TikTok', youtube_follow: 'YT Follow',
+  youtube_sub: 'YT Sub', milestone: 'Milestone',
+};
+let cvSel = 'milestone', cvDrag = null;
+
+function cvEls() {
+  const els = SLOTS.map(slot => {
+    const a = CFG.alerts[slot] || (CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 });
+    const pct = (a.mediaPct == null ? 100 : a.mediaPct) / 100;
+    return {
+      id: slot, label: SLOT_LABEL[slot],
+      w: OW * pct * a.scale, h: OH * pct * a.scale,
+      cx: OW / 2 + (a.x || 0), cy: OH / 2 + (a.y || 0),
+      setPos: (x, y) => { a.x = Math.round(x - OW / 2); a.y = Math.round(y - OH / 2); },
+      onMoved: () => { fmRenderNudgeReadouts(slot); fmPushAlertsThrottled(slot); },
+    };
+  });
+  const m = CFG.meter;
+  els.push({
+    id: 'meter', label: 'Meter',
+    w: 340 * m.scale, h: 84 * m.scale,
+    cx: OW / 2 + (m.x || 0), cy: METER_ANCHOR_Y + (m.y || 0),
+    setPos: (x, y) => { m.x = Math.round(x - OW / 2); m.y = Math.round(y - METER_ANCHOR_Y); },
+    onMoved: () => {
+      const xi = document.getElementById('fm-meter-x'), yi = document.getElementById('fm-meter-y');
+      if (xi) xi.value = m.x; if (yi) yi.value = m.y;
+      fmPushMeterThrottled();
+    },
+  });
+  return els;
+}
+const cvFind = id => cvEls().find(e => e.id === id);
+
+function renderCanvas() {
+  const cv = document.getElementById('cv');
+  if (!cv) return;
+  cv.innerHTML = '';
+  // Only the selected alert is drawn, plus the meter. Every alert defaults to the
+  // FULL canvas, so drawing all four stacks four identical full-size boxes on top
+  // of each other with their labels smeared together — unreadable, and you can
+  // only grab whichever happens to be on top. Tuning happens one alert at a time.
+  for (const el of cvEls().filter(e => e.id === 'meter' || e.id === cvSel)) {
+    const d = document.createElement('div');
+    d.className = `cv-el e-${el.id}` + (cvSel === el.id ? ' sel' : '');
+    const w = Math.max(10, el.w * CV_S), h = Math.max(8, el.h * CV_S);
+    d.style.width = w.toFixed(1) + 'px';
+    d.style.height = h.toFixed(1) + 'px';
+    d.style.left = (el.cx * CV_S - w / 2).toFixed(1) + 'px';
+    d.style.top  = (el.cy * CV_S - h / 2).toFixed(1) + 'px';
+    if (el.id === 'meter') d.style.borderRadius = '999px';
+    const sp = document.createElement('span');
+    sp.textContent = el.label;
+    d.appendChild(sp);
+    d.onpointerdown = ev => {
+      ev.preventDefault();
+      cvSel = el.id;
+      cvDrag = { id: el.id, sx: ev.clientX, sy: ev.clientY, ox: el.cx, oy: el.cy };
+      renderCanvas(); renderCvChips();
+    };
+    cv.appendChild(d);
+  }
+  renderCvChips();
+}
+function renderCvChips() {
+  const box = document.getElementById('cv-chips');
+  if (!box) return;
+  box.innerHTML = cvEls().map(e =>
+    `<span class="cv-chip${cvSel === e.id ? ' on' : ''}" onclick="cvSelect('${e.id}')">${e.label}</span>`).join('');
+}
+function cvSelect(id) { cvSel = id; renderCanvas(); }
+
+window.addEventListener('pointermove', ev => {
+  if (!cvDrag) return;
+  const el = cvFind(cvDrag.id);
+  if (!el) { cvDrag = null; return; }
+  const nx = clampN(Math.round(cvDrag.ox + (ev.clientX - cvDrag.sx) / CV_S), -OW, OW * 2);
+  const ny = clampN(Math.round(cvDrag.oy + (ev.clientY - cvDrag.sy) / CV_S), -OH, OH * 2);
+  el.setPos(nx, ny);
+  el.onMoved();
+  renderCanvas();
+});
+window.addEventListener('pointerup', () => { cvDrag = null; });
+
+// Arrow-key nudge for the selected element (5px, shift = 1px), ignored while
+// typing so it can't hijack the text/number fields.
+window.addEventListener('keydown', ev => {
+  if (!cvSel) return;
+  const t = ev.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const step = ev.shiftKey ? 1 : 5;
+  const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[ev.key];
+  if (!d) return;
+  ev.preventDefault();
+  const el = cvFind(cvSel);
+  if (!el) return;
+  el.setPos(el.cx + d[0], el.cy + d[1]);
+  el.onMoved();
+  renderCanvas();
+});
+function clampN(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+let _meterPushAt = 0, _meterPushTimer = null, _meterSaveTimer = null;
+function fmPushMeterThrottled() {
+  const wait = Math.max(0, LIVE_PUSH_MS - (Date.now() - _meterPushAt));
+  clearTimeout(_meterPushTimer);
+  _meterPushTimer = setTimeout(() => {
+    _meterPushAt = Date.now();
+    try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+    send({ cmd: 'CONFIG_UPDATE', data: { meter: CFG.meter } });
+    clearTimeout(_meterSaveTimer);
+    _meterSaveTimer = setTimeout(saveConfigToDock, 400);
+  }, wait);
 }
 
 /* ── live mirror — a muted iframe copy of the overlay (?mirror=1) so
@@ -698,6 +865,7 @@ async function loadFromDock() {
     fmRefreshThumb(slot, 'gif'); fmRefreshThumb(slot, 'audio');
     fmBuildNudgeUI(slot);
   });
+  renderCanvas();
   ensureMirror();
 })();
 </script>
