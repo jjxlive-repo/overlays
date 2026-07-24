@@ -4,91 +4,114 @@
 <meta charset="utf-8">
 <title>Localhost Reachability Probe</title>
 <!--
-  Answers ONE question: can a page served from public https (GitHub Pages) open a
-  WebSocket to the Producer Dock on 127.0.0.1?
+  Answers one question before we commit to any hosting: can a page served from public
+  https reach the Producer Dock on 127.0.0.1? If yes, overlays can read config/media
+  and take live events straight from the dock — no tunnel, no domain, and Ably drops
+  out of the runtime path.
 
-  Why it matters: if YES, the overlay can take live events + config straight from the
-  dock's /ws and skip Ably entirely — with no tunnel, no domain, no Cloudflare/ngrok.
-  If NO, reaching the dock needs a public hostname (tunnel), otherwise live events
-  have to keep riding Ably.
+  Three transports are tested SEPARATELY because the browser governs them differently,
+  and passing one does not imply the others:
+    WS    ws://…/ws              not subject to CORS or the Private Network Access check
+    FETCH http://…/overlay-public needs CORS *and* a PNA preflight opt-in
+    IMG   http://…/overlay-assets mixed-content rules for subresources
+  The overlay needs all three, so a partial pass changes the design.
 
-  WebSocket is the right thing to probe: it's the transport the overlay would actually
-  use, it isn't subject to CORS the way fetch is, and it works against the dock as it
-  runs TODAY (no restart, no new routes needed). With no LOCAL_ACCESS_TOKEN set the
-  dock accepts the connection; if a token IS set, expect close code 4401 — which still
-  proves the network path works (that's reported as REACHABLE below).
-
-  Load this in TikTok Studio as a Browser Source (or just open the Pages URL in Chrome
-  to compare). The dock must be running.
+  Requires the Producer Dock running, restarted since the overlay-backend commit
+  (the FETCH/IMG targets are routes added there). Load in TikTok Studio as a Browser
+  Source — that engine's result is the one that counts.
 -->
 <style>
   html, body { margin: 0; height: 100%; background: #0d0d12; color: #fff;
     font-family: 'DM Sans', system-ui, sans-serif; }
   .wrap { height: 100%; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
-  #verdict { font-size: 44px; font-weight: 800; line-height: 1.15; margin-bottom: 14px; }
-  #detail { font-size: 20px; opacity: .85; max-width: 900px; line-height: 1.45; }
-  #meta { margin-top: 18px; font-size: 15px; opacity: .5; font-family: ui-monospace, monospace; }
+    justify-content: center; text-align: center; padding: 20px; box-sizing: border-box; }
+  #verdict { font-size: 40px; font-weight: 800; line-height: 1.15; margin-bottom: 18px; }
+  .row { display: flex; align-items: center; gap: 12px; font-size: 22px; margin: 5px 0;
+    font-family: ui-monospace, monospace; }
+  .row .k { width: 84px; text-align: right; opacity: .6; }
+  .row .v { font-weight: 700; }
+  #note { margin-top: 18px; font-size: 17px; opacity: .8; max-width: 860px; line-height: 1.45; }
+  #meta { margin-top: 12px; font-size: 13px; opacity: .45; font-family: ui-monospace, monospace; }
   .pending { color: #FBBF24; } .ok { color: #34D399; } .bad { color: #F87171; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div id="verdict" class="pending">Testing…</div>
-  <div id="detail">Trying to reach the Producer Dock at 127.0.0.1:4317</div>
+  <div class="row"><span class="k">WS</span><span class="v pending" id="r-ws">…</span></div>
+  <div class="row"><span class="k">FETCH</span><span class="v pending" id="r-fetch">…</span></div>
+  <div class="row"><span class="k">IMG</span><span class="v pending" id="r-img">…</span></div>
+  <div id="note"></div>
   <div id="meta"></div>
 </div>
 <script>
 var PORT = new URLSearchParams(location.search).get('port') || '4317';
-var URLS = 'ws://127.0.0.1:' + PORT + '/ws';
-var verdict = document.getElementById('verdict');
-var detail  = document.getElementById('detail');
-var meta    = document.getElementById('meta');
-var settled = false;
+var BASE = 'http://127.0.0.1:' + PORT;
+var results = { ws: null, fetch: null, img: null };
 
-function show(cls, title, note) {
-  if (settled) return;
-  settled = true;
-  verdict.className = cls;
-  verdict.textContent = title;
-  detail.textContent = note;
-  meta.textContent = 'page origin: ' + location.origin + '  →  ' + URLS;
+document.getElementById('meta').textContent = 'from ' + location.origin + '  →  ' + BASE;
+
+function set(key, pass, label) {
+  if (results[key] !== null) return;      // first answer wins (guards the timeout race)
+  results[key] = pass;
+  var el = document.getElementById('r-' + key);
+  el.className = 'v ' + (pass ? 'ok' : 'bad');
+  el.textContent = (pass ? '✅ ' : '❌ ') + label;
+  finishIfDone();
 }
 
+function finishIfDone() {
+  if (results.ws === null || results.fetch === null || results.img === null) return;
+  var v = document.getElementById('verdict');
+  var note = document.getElementById('note');
+  if (results.ws && results.fetch && results.img) {
+    v.className = 'ok';
+    v.textContent = '✅ ALL CLEAR';
+    note.textContent = 'This browser can reach the dock on localhost for all three. No tunnel needed, and live events can come straight from the dock instead of Ably.';
+  } else if (results.ws && !results.fetch && !results.img) {
+    v.className = 'bad';
+    v.textContent = '⚠ WEBSOCKET ONLY';
+    note.textContent = 'Live events could come from the dock, but config/media cannot — those would need to stay on a public host (GitHub Pages). Tell Claude this exact result.';
+  } else {
+    v.className = 'bad';
+    v.textContent = '⚠ PARTIAL';
+    note.textContent = 'Some transports are blocked. The mix matters — tell Claude exactly which lines passed and which failed.';
+  }
+}
+
+/* 1. WebSocket — the live-event path. A 4401 close still proves the network path
+      works (that is the dock demanding its access token). */
 try {
-  var ws = new WebSocket(URLS);
-
-  ws.onopen = function () {
-    show('ok', '✅ REACHABLE',
-      'This browser CAN reach the dock on localhost. No tunnel needed — the overlay can take live events straight from the dock and skip Ably.');
-    try { ws.close(); } catch (e) {}
-  };
-
-  // A 4401 close is the dock actively rejecting an untokened client, which still
-  // proves the connection got there — that's a pass, not a failure.
+  var ws = new WebSocket('ws://127.0.0.1:' + PORT + '/ws');
+  ws.onopen = function () { set('ws', true, 'connected'); try { ws.close(); } catch (e) {} };
   ws.onclose = function (e) {
-    if (e.code === 4401) {
-      show('ok', '✅ REACHABLE (auth required)',
-        'The dock answered and asked for its access token — the network path works. No tunnel needed.');
-    } else {
-      show('bad', '❌ BLOCKED',
-        'This browser could not reach localhost from an https page. Reaching the dock will need a public hostname (tunnel), or live events keep using Ably.');
-    }
+    if (e.code === 4401) set('ws', true, 'reachable (needs token)');
+    else set('ws', false, 'blocked');
   };
+  ws.onerror = function () { set('ws', false, 'blocked'); };
+} catch (err) { set('ws', false, 'rejected'); }
 
-  ws.onerror = function () {
-    show('bad', '❌ BLOCKED',
-      'Connection refused or blocked. Check the dock is running, then assume a tunnel is required.');
-  };
+/* 2. fetch — the config path. Exercises CORS + the Private Network Access preflight. */
+// 'probe' (not '__probe__'): overlay ids must start alphanumeric, and the dock
+// correctly 400s anything else. Any unknown-but-valid id returns an empty payload.
+fetch(BASE + '/overlay-public/probe/config', { cache: 'no-store' })
+  .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+  .then(function () { set('fetch', true, 'config readable'); })
+  .catch(function (e) { set('fetch', false, String(e.message || e).slice(0, 28)); });
 
-  // Never hang on a silent stall.
-  setTimeout(function () {
-    show('bad', '❌ BLOCKED (timed out)',
-      'No response in 8s — treat as blocked. Confirm the Producer Dock is running and retry.');
-  }, 8000);
-} catch (err) {
-  show('bad', '❌ BLOCKED', 'WebSocket rejected outright: ' + err.message);
-}
+/* 3. <img> — the media path. Mixed-content rules for subresources differ from fetch,
+      so this is tested with a real image load against a file the dock always writes. */
+var probeImg = new Image();
+probeImg.onload = function () { set('img', true, 'media loads'); };
+probeImg.onerror = function () { set('img', false, 'blocked'); };
+probeImg.src = BASE + '/overlay-assets/__probe__.png?t=' + Date.now();
+
+// Anything still unanswered after 8s is a failure, not a hang.
+setTimeout(function () {
+  set('ws', false, 'timed out');
+  set('fetch', false, 'timed out');
+  set('img', false, 'timed out');
+}, 8000);
 </script>
 </body>
 </html>
