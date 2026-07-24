@@ -6,6 +6,7 @@
 <title>Gift Bar + Splat Overlay v3</title>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Boogaloo&family=DM+Sans:wght@700&family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="jjx-core.js?v=6"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; position: relative; }
@@ -2495,8 +2496,15 @@ const ablyChannel=ablyClient.channels.get(CONFIG.ABLY_CHANNEL);
 // stinger need every gift), so it attaches to all three rather than losing anything.
 // (League Sprint's own chat-command reading of 'milk-event' moved with it to
 // league-sprint-overlay.html — it no longer needs anything from this page.)
-const chatChannel=ablyClient.channels.get('splat-chat');
-const giftsChannel=ablyClient.channels.get('splat-gifts');
+// splat-chat (every comment/like/join) and splat-gifts (every gift) are the two
+// channels that scale with audience. They now arrive over the Producer Dock's local
+// socket, which is free, with Ably kept as the bus's automatic fallback. The
+// 'splat-overlay' channel above still carries config/cmd traffic over Ably, because
+// stream-dock.html still publishes it there.
+const eventBus = JJX.createOverlayBus({
+  ably: ablyClient,
+  onStatus: (state, why) => console.info('[gift-bar] event transport:', state, why || ''),
+});
 window._geyserY = 1720; // mirrors dock geyser position; updated live via Ably
 
 ablyChannel.subscribe('gifter-slides-config', msg => applyGifterSlidesConfig(msg?.data || {}));
@@ -2592,7 +2600,7 @@ ablyChannel.subscribe('event-promo',msg=>{
 });
 
 // Gift alert → bar animation + hype meter injection + geyser card animation
-giftsChannel.subscribe('gift-alert',msg=>{
+eventBus.on('splat-gifts','gift-alert',_ev=>{const msg={data:_ev};
   if(!msg.data)return;
   onGiftAlert(msg.data);
   if(typeof fireGiftAnim === 'function') fireGiftAnim(msg.data);
@@ -2684,7 +2692,7 @@ giftsChannel.subscribe('gift-alert',msg=>{
     }, 450);
   }
 
-  giftsChannel.subscribe('stinger', msg => {
+  eventBus.on('splat-gifts','stinger', _ev => {const msg={data:_ev};
     const wrap   = document.getElementById('stinger-wrap');
     const canvas = document.getElementById('stinger-canvas');
     const iframe = document.getElementById('stinger-iframe');
@@ -2763,7 +2771,7 @@ giftsChannel.subscribe('gift-alert',msg=>{
 })();
 
 // Giftr leaderboard
-giftsChannel.subscribe('giftr',msg=>{
+eventBus.on('splat-gifts','giftr',_ev=>{const msg={data:_ev};
   const d=msg.data;
   if(!d)return;
   if(d.cmd)onGiftrCmd(d.cmd);
@@ -4147,7 +4155,7 @@ ablyChannel.subscribe('splat-bait',msg=>{
   }
 
   /* ── Ably subscriptions ── */
-  chatChannel.subscribe('milk-event', msg => {
+  eventBus.on('splat-chat','milk-event', _ev => {const msg={data:_ev};
     const d = msg?.data, type = d?.type, plat = d?.platform || 'other';
     if(!type) return;
     trackEvt(type, plat);

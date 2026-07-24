@@ -29,6 +29,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="jjx-core.js?v=6"></script>
 </head>
 <body>
 <div id="conn-dot"></div>
@@ -2403,13 +2404,23 @@ function connectAbly() {
   const client = new Ably.Realtime({ key: ABLY_KEY });
   const ch     = client.channels.get(ABLY_CH);
   nhChannel = ch; // used by roster/timeout/moderation publishers (only live while attached)
+
   // Chat/like/join volume ('milk-event') and gift/money volume ('gift-alert',
-  // 'giftr-roster') live on their own dedicated channels now, split off the
-  // shared 'splat-overlay' firehose — see stream-dock.html for why. Both must
-  // be attached/detached in lockstep with the main channel below, or turning
-  // New Here "off" would still leave it billed for every comment/gift.
-  const chatChannel  = client.channels.get('splat-chat');
-  const giftsChannel = client.channels.get('splat-gifts');
+  // 'giftr-roster', 'milestone') are the two channels that scale with audience —
+  // they used to be dedicated Ably channels attached/detached in lockstep so that
+  // turning New Here "off" wasn't billed for every comment. They now come off the
+  // Producer Dock's local socket instead, which costs nothing at all, so there is
+  // no attach/detach to manage and nothing to bill either way. Ably remains the
+  // automatic fallback inside the bus if the dock can't be reached.
+  //
+  // The 'splat-overlay' channel below still carries this overlay's control-plane
+  // (config, timer, pressure, roster/timeout commands) over Ably, because those
+  // come from stream-dock.html and new-here-control.html, which still publish
+  // there. Migrating those senders is what finishes the job.
+  const eventBus = JJX.createOverlayBus({
+    ably: client,
+    onStatus: (state, why) => console.info('[new-here] event transport:', state, why || ''),
+  });
 
   function attachMain() {
     OVERLAY_ENABLED = true;
@@ -2417,8 +2428,6 @@ function connectAbly() {
     if (_nhAttached) return; // idempotent — ignore a repeat "on"
     _nhAttached = true;
     ch.attach().catch(() => {});
-    chatChannel.attach().catch(() => {});
-    giftsChannel.attach().catch(() => {});
     sendAlive();
     if (RANK_TIMEFRAME !== 'live') ch.publish('cmd', 'requestLeaderboard').catch(() => {});
     publishRosterSnapshot();
@@ -2429,8 +2438,6 @@ function connectAbly() {
     resetOverlay();
     _nhAttached = false;
     ch.detach().catch(() => {});
-    chatChannel.detach().catch(() => {});
-    giftsChannel.detach().catch(() => {});
   }
 
   // ── Toggle channel — always attached, near-zero traffic. Requests current state
@@ -2458,9 +2465,9 @@ function connectAbly() {
   // Real chat traffic rides the 'milk-event' comment the dock already publishes for
   // the hype meter — so New Here costs ZERO extra Ably messages per comment. Platform
   // arrives as 'tt'/'yt' here; map it to the overlay's 'tiktok'/'youtube' source.
-  chatChannel.subscribe('milk-event', msg => {
+  eventBus.on('splat-chat', 'milk-event', d => {
     if (!OVERLAY_ENABLED) return;
-    const d = msg.data || {};
+    d = d || {};
     const src = d.platform === 'tt' ? 'tiktok' : 'youtube';
     if (d.type === 'comment' && d.username) {
       enqueue(d.username, src);
@@ -2484,9 +2491,9 @@ function connectAbly() {
   // a duplicate publish (e.g. dock + tracker both connected) inflating someone's spend:
   // ignore an identical name+amount+type seen within a tight window.
   let _lastGiftSig = '', _lastGiftAt = 0;
-  giftsChannel.subscribe('gift-alert', msg => {
+  eventBus.on('splat-gifts', 'gift-alert', d => {
     if (!OVERLAY_ENABLED) return;
-    const d = msg.data || {};
+    d = d || {};
     if (!d.name || !(d.amount > 0)) return;
     const sig = `${d.name}|${d.amount}|${d.type}`, t = Date.now();
     if (sig === _lastGiftSig && t - _lastGiftAt < 900) return; // same gift, two publishers
@@ -2497,8 +2504,8 @@ function connectAbly() {
 
   // tracker.html broadcasts its full per-user spend roster (day/week/month/all-time).
   // We keep it and, in a non-live timeframe, re-rank the right channel from it.
-  giftsChannel.subscribe('giftr-roster', msg => {
-    const list = (msg.data && msg.data.gifters) || [];
+  eventBus.on('splat-gifts', 'giftr-roster', d => {
+    const list = (d && d.gifters) || [];
     giftrRoster = new Map();
     for (const g of list) if (g && g.name) giftrRoster.set(userKey(g.name, g.platform || 'youtube'), g);
     if (OVERLAY_ENABLED) applyTimeframe();
@@ -2506,9 +2513,9 @@ function connectAbly() {
 
   // Milestone celebration — subscriber/follower totals + concurrent-viewer peaks
   // crossing a threshold (published by the dock). Shown as a top banner.
-  giftsChannel.subscribe('milestone', msg => {
+  eventBus.on('splat-gifts', 'milestone', d => {
     if (!OVERLAY_ENABLED) return;
-    const d = msg.data || {};
+    d = d || {};
     if (!d.threshold) return;
     const platName = d.platform === 'tiktok' ? 'TikTok' : d.platform === 'youtube' ? 'YouTube' : '';
     const fill = tmpl => String(tmpl)
@@ -2690,13 +2697,12 @@ function connectAbly() {
   client.connection.on('failed',       (err) => console.error('[Ably] connection failed', err));
   setInterval(() => { if (client.connection.state === 'connected' && _nhAttached) sendAlive(); }, 25000);
 
-  // Subscriptions above implicitly attach `ch`/chatChannel/giftsChannel — start fully
-  // detached (zero Ably cost) until the toggle channel says otherwise. OVERLAY_ENABLED
-  // defaults to false, so this matches the pre-existing "hidden until the dock says on"
-  // behavior — now across all three channels, not just the original one.
+  // Subscriptions above implicitly attach `ch` — start detached (zero Ably cost)
+  // until the toggle channel says otherwise. OVERLAY_ENABLED defaults to false, so
+  // this matches the pre-existing "hidden until the dock says on" behavior.
+  // splat-chat / splat-gifts no longer appear here: their traffic comes off the
+  // dock's socket, which costs nothing whether the overlay is on or off.
   ch.detach().catch(() => {});
-  chatChannel.detach().catch(() => {});
-  giftsChannel.detach().catch(() => {});
 
   // Debug hooks — inspect from devtools/preview via window.__nh
   window.__nh = {
