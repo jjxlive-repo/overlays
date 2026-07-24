@@ -1749,8 +1749,12 @@ function handleTikfinityGift(data) {
   if (coins > 0) {
     const key = upsertGift(name, coins, 'tiktok_coins', 'tiktok', '', userId);
     if (key) renderTableDebounced(key);
-    // Publish gift-alert so gift-bar.html shows the explosion animation
-    if (ablyChannel) {
+    // Publish gift-alert so gift-bar.html shows the explosion animation.
+    // Silenced in Dock Bridge Mode (shared localStorage flag, set from
+    // stream-dock.html's 🌉 card): the Producer Dock's overlay bridge publishes
+    // the same gift-alert then, and two publishers double-fire the overlays.
+    // Tracking/logging above is NOT gated — only the overlay publish is.
+    if (ablyChannel && !_dockBridgeMode()) {
       giftsChannel.publish('gift-alert', {
         name, amount: coins, type: 'tiktok_coins', platform: 'tiktok',
         contentImg: null, giftTitle: giftName,
@@ -2009,7 +2013,8 @@ function handleSSNEvent(payload) {
   if (isRelevant && amount > 0 && !ssnIsDupe(name, amount, type, data)) {
     const key = upsertGift(name, amount, type, platform, '', userId);
     renderTableDebounced(key);
-    if (ablyChannel) {
+    // Silenced in Dock Bridge Mode — see the TikFinity gift-alert publish above.
+    if (ablyChannel && !_dockBridgeMode()) {
       giftsChannel.publish('gift-alert', {
         name, amount, type, platform,
         contentImg, giftTitle,
@@ -2017,6 +2022,14 @@ function handleSSNEvent(payload) {
       }).catch(() => {});
     }
   }
+}
+
+/* Dock Bridge Mode flag — owned by stream-dock.html's 🌉 card, shared via
+   localStorage (same origin). Read fresh each time rather than cached: the
+   storage event doesn't fire in the tab that SET the value, and tracker can
+   be open in the same window group for hours. */
+function _dockBridgeMode() {
+  try { return localStorage.getItem('dockBridgeMode') === '1'; } catch (e) { return false; }
 }
 
 /* ── Connection UI ── */
