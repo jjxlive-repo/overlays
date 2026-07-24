@@ -16,7 +16,7 @@
 <title>FOLLOW METER — Control</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=1"></script>
+<script src="jjx-core.js?v=2"></script>
 <style>
 :root {
   --tt:#38BDF8; --yt:#F87171; --gold:#FBBF24; --purple:#A855F7;
@@ -131,7 +131,8 @@ input[type="number"].ctrl-in { width: 60px; }
       <div><span class="slot-meter" id="fm-live-count">0</span> <span style="font-size:10px;color:var(--txt-dim);">combined follows/subs this session</span></div>
       <button class="ctrl-btn danger" onclick="fmResetCount()">Reset counter</button>
     </div>
-    <button class="ctrl-btn" onclick="fmResendAllAssets()" title="TikTok Studio/OBS run the overlay in its own isolated browser — it can't see uploads sitting in this tab's storage. Use this after opening/reloading the overlay to push everything you've uploaded to it over the network.">↻ Resend all gif/audio to overlay</button>
+    <button class="ctrl-btn" onclick="fmResendAllAssets()" title="Re-reads config and media from the Producer Dock and tells any open overlay to do the same. Use it if an overlay looks out of date.">↻ Refresh overlays from dock</button>
+    <div id="dock-status" style="font-size:10px;color:var(--txt-dim);text-align:center;">● checking dock…</div>
   </div>
 
   <div class="card">
@@ -353,6 +354,52 @@ function fmResetCount() {
   const st = document.getElementById('fm-status'); st.textContent = '↺ counter reset'; setTimeout(() => st.textContent = '—', 2000);
 }
 
+/* ── Producer Dock backend ──────────────────────────────────────────
+   Config and uploaded media persist on the dock over HTTP instead of in browser
+   localStorage — one quota shared by every overlay on this origin, which is what
+   eventually threw "storage full", and TikTok Studio's browser source has its own
+   storage this page can't write to anyway. Ably keeps carrying only live nudges.
+   ?dock= overrides the host; ?token= supplies LOCAL_ACCESS_TOKEN if one is set. */
+const DOCK_BASE = (JJX.param('dock') || 'http://127.0.0.1:4317').replace(/\/$/, '');
+const DOCK_TOKEN = JJX.param('token') || '';
+const OVERLAY_NAME = 'follow-meter';
+let _dockOnline = null;
+
+function dockUrl(path) {
+  return DOCK_BASE + path + (DOCK_TOKEN ? (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(DOCK_TOKEN) : '');
+}
+function setDockStatus(online, why) {
+  if (_dockOnline === online) return;
+  _dockOnline = online;
+  const el = document.getElementById('dock-status');
+  if (!el) return;
+  el.textContent = online ? '● dock connected' : '● dock offline' + (why ? ' — ' + why : '');
+  el.style.color = online ? '#34D399' : '#fb7185';
+}
+async function dockFetch(path, init) {
+  try {
+    const res = await fetch(dockUrl(path), init);
+    setDockStatus(res.ok, res.ok ? '' : 'HTTP ' + res.status);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res;
+  } catch (err) {
+    setDockStatus(false, 'not reachable');
+    throw err;
+  }
+}
+/** Persist the whole config to the dock (debounced by callers). */
+async function saveConfigToDock() {
+  try {
+    await dockFetch(`/api/overlay/${OVERLAY_NAME}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: CFG }),
+    });
+  } catch (err) {
+    setStatus('⚠ not saved to dock (' + err.message + ') — start the Producer Dock');
+  }
+}
+
 /* ── config push ───────────────────────────────────────────────── */
 let cfgTimer = null;
 function fmPushConfigMisc() {
@@ -366,14 +413,17 @@ function fmPushConfigMisc() {
   CFG.alertDurationSec = parseFloat(document.getElementById('fm-duration').value) || 4.5;
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   clearTimeout(cfgTimer);
-  cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: CFG }), 150);
+  cfgTimer = setTimeout(() => { send({ cmd: 'CONFIG_UPDATE', data: CFG }); saveConfigToDock(); }, 150);
 }
 function fmPushText(input) {
   const slot = input.dataset.slot;
   CFG.texts[slot] = input.value;
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   clearTimeout(cfgTimer);
-  cfgTimer = setTimeout(() => send({ cmd: 'CONFIG_UPDATE', data: { texts: { [slot]: CFG.texts[slot] } } }), 200);
+  cfgTimer = setTimeout(() => {
+    send({ cmd: 'CONFIG_UPDATE', data: { texts: { [slot]: CFG.texts[slot] } } });
+    saveConfigToDock();
+  }, 200);
 }
 
 /* ── per-slot position & scale — nudge buttons update CFG.alerts[slot],
@@ -396,12 +446,17 @@ function fmResetPosition(slot) {
   fmPushAlertsConfig();
   fmPreviewSlot(slot);
 }
+let alertsSaveTimer = null;
 function fmPushAlertsConfig() {
-  // Sent immediately, not debounced: nudges are discrete clicks (not a
-  // continuous drag), and the preview fired right after this depends on the
+  // The live nudge is sent immediately, not debounced: nudges are discrete clicks
+  // (not a continuous drag), and the preview fired right after this depends on the
   // overlay already having the new position — a debounce here would race it.
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   send({ cmd: 'CONFIG_UPDATE', data: { alerts: CFG.alerts } });
+  // Persisting to disk IS debounced — holding a nudge button shouldn't write a
+  // file per click, and the in-flight look is already correct via the line above.
+  clearTimeout(alertsSaveTimer);
+  alertsSaveTimer = setTimeout(saveConfigToDock, 400);
 }
 function fmPreviewSlot(slot) {
   // Mirror-only: BroadcastChannel + localStorage reach the muted preview iframe;
@@ -442,78 +497,116 @@ function ensureMirror() {
   const f = document.createElement('iframe');
   /* both a query param and a hash: static hosts with clean-URL redirects
      (like `serve`) drop the query, but a fragment always survives */
-  f.src = 'follow-meter-overlay.html?mirror=1&v=' + Date.now() + '#mirror';
+  // The dock override has to be forwarded, or the preview reads a DIFFERENT dock
+  // than the page it is previewing (silently showing the wrong config/media).
+  const dockFrag = DOCK_BASE ? '&dock=' + encodeURIComponent(DOCK_BASE) : '';
+  f.src = 'follow-meter-overlay.html?mirror=1&v=' + Date.now() + '#mirror' + dockFrag;
   box.appendChild(f);
 }
 
-/* ── asset upload ──────────────────────────────────────────────── */
-// TikTok Studio / OBS run the overlay in a separate, isolated browser engine —
-// it does NOT share localStorage or BroadcastChannel with this control page,
-// even though both load the same github.io origin. So uploads are delivered
-// to the overlay over Ably, chunked (a gif/audio dataURL is way past Ably's
-// per-message size limit). Kept smallish so a transfer finishes in a couple
-// of seconds and stays well clear of Ably rate limits.
-const MAX_GIF_BYTES   = 1.5 * 1024 * 1024;
-const MAX_AUDIO_BYTES = 800 * 1024;
-const ASSET_CHUNK_CHARS = 12000; // ~12KB per Ably message, comfortably under typical size caps
-const ASSET_CHUNK_DELAY_MS = 20;
+/* ── asset upload ──────────────────────────────────────────────────
+   Uploads POST straight to the Producer Dock, which writes a real file and
+   returns its URL. The overlay then loads media by URL.
+
+   This replaces base64-in-localStorage + a chunked Ably transfer, which existed
+   only because there was nowhere to put a file: every overlay on this origin
+   shared ONE localStorage quota (hence "storage full"), and TikTok Studio's
+   browser source has separate storage this page can't write to. Verified that
+   TikTok Studio's engine can load http://127.0.0.1 media directly.
+
+   Limits are the dock's route cap, not a transport constraint, so they're far
+   more generous than the old chunked path allowed. */
+const MAX_GIF_BYTES   = 16 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+
+/** Strips the `data:<mime>;base64,` prefix — the dock wants raw base64. */
+function stripDataUrlPrefix(dataURL) {
+  const comma = dataURL.indexOf(',');
+  return comma === -1 ? dataURL : dataURL.slice(comma + 1);
+}
 
 function fmUploadAsset(slot, kind, input) {
   const f = input.files[0]; if (!f) return;
   const max = kind === 'gif' ? MAX_GIF_BYTES : MAX_AUDIO_BYTES;
-  if (f.size > max) { alert(`Keep ${kind} files under ${Math.round(max / 1024 / 1024 * 10) / 10} MB (transfers to the overlay over the network).`); input.value = ''; return; }
+  if (f.size > max) {
+    alert(`Keep ${kind} files under ${Math.round(max / 1024 / 1024)} MB.`);
+    input.value = '';
+    return;
+  }
   const r = new FileReader();
-  r.onload = () => {
-    if (!ASSETS[slot]) ASSETS[slot] = {};
-    ASSETS[slot][kind] = { mime: f.type, dataURL: r.result };
-    try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
-    fmRefreshThumb(slot, kind);
-    sendAssetChunked(slot, kind, f.type, r.result);
+  r.onload = async () => {
+    setStatus(`uploading ${kind}…`);
+    try {
+      const res = await dockFetch(`/api/overlay/${OVERLAY_NAME}/asset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot, kind, mime: f.type, base64: stripDataUrlPrefix(r.result) }),
+      });
+      const { asset } = await res.json();
+      if (!ASSETS[slot]) ASSETS[slot] = {};
+      ASSETS[slot][kind] = { mime: asset.mime, url: asset.url };
+      try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+      fmRefreshThumb(slot, kind);
+      // One small message (a URL, not the file) tells every open overlay to use it.
+      send({ cmd: 'ASSET_UPDATE', data: { slot, kind, mime: asset.mime, url: asset.url } });
+      setStatus(`✓ ${kind} uploaded`);
+      setTimeout(() => setStatus('—'), 2500);
+    } catch (err) {
+      setStatus(`⚠ upload failed (${err.message}) — is the Producer Dock running?`);
+    }
   };
   r.readAsDataURL(f);
   input.value = '';
 }
-function fmClearAsset(slot, kind) {
+
+async function fmClearAsset(slot, kind) {
   if (ASSETS[slot]) delete ASSETS[slot][kind];
   try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
   fmRefreshThumb(slot, kind);
-  _assetSender.clear(slot, kind);
+  send({ cmd: 'ASSET_UPDATE', data: { slot, kind, dataURL: null, url: null } });
+  try {
+    await dockFetch(`/api/overlay/${OVERLAY_NAME}/asset/${slot}/${kind}`, { method: 'DELETE' });
+  } catch (err) {
+    setStatus('⚠ could not remove on dock (' + err.message + ')');
+  }
 }
 
-/* Chunked publishing lives in jjx-core (createAssetSender): ~12KB pieces,
-   reassembled by assetId on the overlay, one queue/worker so "resend all"
-   never runs parallel publish loops that could spike Ably's rate limit.
-   One-time cost per upload — not a per-event/per-follow expense. */
-const _assetSender = JJX.createAssetSender({
-  getChannel: () => assetsChannel,
-  chunkChars: ASSET_CHUNK_CHARS,
-  delayMs: ASSET_CHUNK_DELAY_MS,
-  onStatus: setStatus,
-});
-function sendAssetChunked(slot, kind, mime, dataURL) {
-  _assetSender.send(slot, kind, mime, dataURL);
-}
 function setStatus(text) {
   const st = document.getElementById('fm-status');
   if (st) st.textContent = text;
 }
-function fmResendAllAssets() {
-  let n = 0;
-  SLOTS.forEach(slot => {
-    const a = ASSETS[slot] || {};
-    if (a.gif && a.gif.dataURL)   { sendAssetChunked(slot, 'gif',   a.gif.mime,   a.gif.dataURL);   n++; }
-    if (a.audio && a.audio.dataURL) { sendAssetChunked(slot, 'audio', a.audio.mime, a.audio.dataURL); n++; }
-  });
-  if (!n) setStatus('no uploads saved locally to resend');
+
+/** Re-pull the dock's copy and tell open overlays to do the same. */
+async function fmResendAllAssets() {
+  try {
+    const res = await dockFetch(`/overlay-public/${OVERLAY_NAME}/config`);
+    const payload = await res.json();
+    ASSETS = payload.assets || {};
+    try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+    SLOTS.forEach(slot => { fmRefreshThumb(slot, 'gif'); fmRefreshThumb(slot, 'audio'); });
+    send({ cmd: 'ASSETS_REFRESH' });
+    setStatus('✓ overlays refreshed from dock');
+    setTimeout(() => setStatus('—'), 2500);
+  } catch (err) {
+    setStatus(`⚠ dock not reachable (${err.message})`);
+  }
+}
+
+/** Absolute src for a thumbnail, tolerating dock URLs and legacy dataURLs. */
+function assetSrc(a) {
+  if (!a) return null;
+  if (a.url) return a.url.startsWith('http') ? a.url : DOCK_BASE + a.url;
+  return a.dataURL || null;
 }
 
 function fmRefreshThumb(slot, kind) {
   const asset = (ASSETS[slot] || {})[kind];
+  const src = assetSrc(asset);
   if (kind === 'gif') {
     const img = document.getElementById(`thumb-${slot}-gif`);
     const ph  = document.getElementById(`thumb-${slot}-gif-ph`);
-    if (asset && asset.dataURL && !asset.mime.startsWith('video/')) {
-      img.src = asset.dataURL; img.style.display = ''; ph.style.display = 'none';
+    if (src && !(asset.mime || '').startsWith('video/')) {
+      img.src = src; img.style.display = ''; ph.style.display = 'none';
     } else {
       img.style.display = 'none'; ph.style.display = 'flex'; ph.textContent = asset ? 'video ✓' : 'GIF';
     }
@@ -523,9 +616,9 @@ function fmRefreshThumb(slot, kind) {
   }
 }
 function fmTestAudio(slot) {
-  const asset = (ASSETS[slot] || {}).audio;
-  if (!asset || !asset.dataURL) { const st = document.getElementById('fm-status'); st.textContent = 'no audio assigned for ' + slot; setTimeout(() => st.textContent = '—', 2000); return; }
-  new Audio(asset.dataURL).play().catch(() => {});
+  const src = assetSrc((ASSETS[slot] || {}).audio);
+  if (!src) { setStatus('no audio assigned for ' + slot); setTimeout(() => setStatus('—'), 2000); return; }
+  new Audio(src).play().catch(() => {});
 }
 function fmTestFire(slot) {
   const name = 'TestViewer' + Math.floor(Math.random() * 90 + 10);
@@ -533,8 +626,29 @@ function fmTestFire(slot) {
   const st = document.getElementById('fm-status'); st.textContent = `→ test fired: ${slot}`; setTimeout(() => st.textContent = '—', 2000);
 }
 
+/* ── init ──────────────────────────────────────────────────────────
+   The dock is the source of truth, so adopt its copy before painting the form —
+   otherwise this page would show a stale localStorage config and then silently
+   overwrite the dock with it on the next edit. Falls back to the cached copy
+   when the dock is off, so the page still works for local preview. */
+async function loadFromDock() {
+  try {
+    const res = await dockFetch(`/overlay-public/${OVERLAY_NAME}/config`);
+    const payload = await res.json();
+    if (payload.config && Object.keys(payload.config).length) CFG = deepMerge(CFG, payload.config);
+    if (payload.assets) ASSETS = payload.assets;
+    try {
+      localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG));
+      localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS));
+    } catch (e) {}
+  } catch (err) {
+    // Non-fatal: keep whatever was cached locally.
+  }
+}
+
 /* ── init form values from CFG/ASSETS ─────────────────────────────── */
-(function initForm() {
+(async function initForm() {
+  await loadFromDock();
   document.getElementById('fm-every').value = CFG.milestoneEvery;
   document.getElementById('every-label').textContent = CFG.milestoneEvery;
   document.getElementById('fm-meter-label').value = CFG.meter.label;
