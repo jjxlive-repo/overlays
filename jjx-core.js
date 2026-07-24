@@ -386,15 +386,21 @@
 
   /*
     Where the Producer Dock lives, for pages that read config/media from it.
-    Explicit ?dock=/#dock= always wins. Otherwise, a page the dock is serving
-    itself (mounted at /overlays/) talks to its OWN origin — which also makes its
-    writes same-origin, so no CORS is involved at all. Everything else falls back
-    to the default local port.
+    Explicit ?dock=/#dock= always wins. Otherwise a page already served from a
+    LOCAL origin is being served by the dock itself, so it talks to that same
+    origin (which also makes its writes same-origin — no CORS at all). A page
+    served from anywhere else is on public hosting and must reach the dock at the
+    default local address.
+
+    Detection is by ORIGIN, deliberately not by path: GitHub Pages serves this
+    project at jjxlive-repo.github.io/overlays/, so a "/overlays/ means the dock
+    is serving us" rule matches there too and points the live overlay at GitHub —
+    where /overlay-public/… is a 404, leaving it with no config and no media.
   */
   function dockBase(fallback) {
     var explicit = param('dock');
     if (explicit) return explicit.replace(/\/$/, '');
-    if (location.pathname.indexOf('/overlays/') === 0) return location.origin;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(location.origin)) return location.origin;
     return (fallback || 'http://127.0.0.1:4317').replace(/\/$/, '');
   }
 
