@@ -515,6 +515,170 @@
     };
   }
 
+  /*
+    DOCK REALTIME — a drop-in replacement for `new Ably.Realtime({key})` that speaks
+    the same API but carries everything over the Producer Dock's local WebSocket.
+
+        const ably = JJX.dockRealtime({ fallbackKey: ABLY_KEY });
+
+    Every existing call site keeps working unchanged: channels.get(x).publish(),
+    .subscribe(), .attach(), .detach(), connection.on('connected'|'disconnected'|
+    'failed'|'suspended'), .close(). That matters because the pages being migrated
+    have ~140 publish and ~80 subscribe sites between them — rewriting each one by
+    hand would be a far bigger diff, and a far bigger chance of breaking a stream.
+
+    Subscribe callbacks receive {data}, the Ably message shape, because that is what
+    every existing handler destructures.
+
+    Ably stays as an automatic fallback (pass fallbackKey): if the socket cannot be
+    reached, a real Ably client is constructed and every registered subscription is
+    replayed onto it, so an overlay degrades instead of going dark. Once in fallback
+    it stays there until reload — flipping back mid-stream would double-deliver
+    anything both transports carry.
+  */
+  function dockRealtime(opts) {
+    opts = opts || {};
+    var httpBase = (opts.dockBase || dockBase()).replace(/\/$/, '');
+    var wsUrl = httpBase.replace(/^http/, 'ws') + '/overlay-ws';
+    var subs = [];                 // {channel, event, cb}
+    var connListeners = { connected: [], disconnected: [], failed: [], suspended: [] };
+    var ws = null, retries = 0, closed = false, everOpen = false;
+    var realAbly = null;           // constructed only on fallback
+    var realChannels = {};
+    var onStatus = opts.onStatus || function () {};
+
+    function fire(state, arg) {
+      (connListeners[state] || []).forEach(function (f) { try { f(arg); } catch (e) {} });
+    }
+
+    function deliver(channel, event, data) {
+      for (var i = 0; i < subs.length; i++) {
+        var s = subs[i];
+        if (s.channel !== channel) continue;
+        if (s.event !== null && s.event !== event) continue;
+        try { s.cb({ data: data, name: event }); } catch (e) {}
+      }
+    }
+
+    /* ---- Ably fallback ---- */
+    function goAbly(why) {
+      if (realAbly || !opts.fallbackKey || typeof Ably === 'undefined') {
+        onStatus('socket-down', why);
+        fire('disconnected');
+        return;
+      }
+      onStatus('ably-fallback', why);
+      try {
+        realAbly = new Ably.Realtime({ key: opts.fallbackKey });
+        realAbly.connection.on('connected', function () { fire('connected'); });
+        realAbly.connection.on('disconnected', function () { fire('disconnected'); });
+        realAbly.connection.on('failed', function (e) { fire('failed', e); });
+        realAbly.connection.on('suspended', function () { fire('suspended'); });
+        subs.forEach(function (s) { attachRealSub(s); });
+      } catch (e) {
+        onStatus('socket-down', 'ably fallback failed: ' + e.message);
+      }
+    }
+    function realChannel(name) {
+      return realChannels[name] || (realChannels[name] = realAbly.channels.get(name));
+    }
+    function attachRealSub(s) {
+      try {
+        if (s.event === null) realChannel(s.channel).subscribe(s.cb);
+        else realChannel(s.channel).subscribe(s.event, s.cb);
+      } catch (e) {}
+    }
+
+    /* ---- socket ---- */
+    function connect() {
+      if (closed) return;
+      try { ws = new WebSocket(wsUrl); } catch (e) { goAbly('websocket constructor threw'); return; }
+      ws.onopen = function () {
+        retries = 0; everOpen = true;
+        if (!realAbly) { onStatus('socket', ''); fire('connected'); }
+      };
+      ws.onmessage = function (ev) {
+        if (realAbly) return;                       // Ably owns delivery now
+        var m;
+        try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (!m || m.channel === '_meta') return;
+        deliver(m.channel, m.name, m.data);
+      };
+      ws.onclose = function () {
+        if (closed || realAbly) return;
+        fire('disconnected');
+        retries++;
+        // Fast: every retry second is a second of a dark overlay.
+        if (retries <= 3) setTimeout(connect, 500 * retries);
+        else goAbly('socket unavailable after ' + retries + ' attempts');
+      };
+      ws.onerror = function () { /* onclose follows */ };
+    }
+    connect();
+
+    function makeChannel(name) {
+      return {
+        name: name,
+        publish: function (event, data) {
+          if (realAbly) return realChannel(name).publish(event, data);
+          // Ably's publish(msgObject) form isn't used by these pages, but be safe.
+          if (typeof event === 'object' && event !== null) { data = event.data; event = event.name; }
+          return fetch(httpBase + '/api/overlay-bus/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel: name, name: event, data: data }),
+          }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+          });
+        },
+        subscribe: function (event, cb) {
+          if (typeof event === 'function') { cb = event; event = null; }
+          var s = { channel: name, event: event, cb: cb };
+          subs.push(s);
+          if (realAbly) attachRealSub(s);
+          return Promise.resolve();
+        },
+        unsubscribe: function () {
+          subs = subs.filter(function (s) { return s.channel !== name; });
+        },
+        // Attach/detach were how pages avoided being billed for a channel while
+        // hidden. Socket delivery is free, so they are no-ops that keep the old
+        // call sites (and their .catch()) working.
+        attach: function () { return Promise.resolve(); },
+        detach: function () { return Promise.resolve(); },
+      };
+    }
+
+    var channelCache = {};
+    return {
+      channels: {
+        get: function (name) { return channelCache[name] || (channelCache[name] = makeChannel(name)); },
+        release: function (name) { delete channelCache[name]; },
+      },
+      connection: {
+        on: function (state, cb) {
+          if (typeof state === 'function') return;      // "any state" form — unused here
+          (connListeners[state] || (connListeners[state] = [])).push(cb);
+          // Late listener for an already-open socket still gets its 'connected'.
+          if (state === 'connected' && everOpen && !realAbly && ws && ws.readyState === 1) {
+            setTimeout(function () { try { cb(); } catch (e) {} }, 0);
+          }
+        },
+        once: function (state, cb) {
+          var self = this;
+          self.on(state, function once() { cb.apply(null, arguments); });
+        },
+        get state() { return realAbly ? realAbly.connection.state : (ws && ws.readyState === 1 ? 'connected' : 'disconnected'); },
+      },
+      close: function () {
+        closed = true;
+        try { if (ws) ws.close(); } catch (e) {}
+        try { if (realAbly) realAbly.close(); } catch (e) {}
+      },
+      isUsingAbly: function () { return !!realAbly; },
+    };
+  }
+
   function isMirror() {
     // Both a query param and a hash: static hosts with clean-URL redirects
     // (like `serve`) drop the query string, but a fragment always survives.
@@ -541,5 +705,6 @@
     param: param,
     dockBase: dockBase,
     createOverlayBus: createOverlayBus,
+    dockRealtime: dockRealtime,
   };
 })();
