@@ -68,32 +68,48 @@
   .receipt .r-tier { font-weight: 700; font-size: 22px; letter-spacing: .05em; text-transform: uppercase; }
   .receipt .r-pos  { font-size: 22px; color: rgba(255,255,255,0.7); font-weight: 600; }
 
-  /* ── WHEEL: placeholder spinner. Eight equal slices; a fixed pointer at
-     top; the disc rotates so the resolved result ends under the pointer.
-     Equal slice size is a spec requirement (equal probability is enforced
-     server-side, but the WHEEL must LOOK equal too). ── */
-  .wheel-wrap { position: relative; width: 620px; height: 620px; opacity: 0; transform: scale(0.82); transition: opacity .3s ease, transform .3s ease; }
-  .wheel-wrap.show { opacity: 1; transform: scale(1); }
-  .wheel-pointer { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); font-size: 52px; line-height: 1; z-index: 2; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.5)); }
-  .wheel-disc {
-    width: 100%; height: 100%; border-radius: 50%;
-    border: 10px solid rgba(255,255,255,0.9);
-    box-shadow: 0 0 0 6px rgba(0,0,0,0.35), 0 18px 50px rgba(0,0,0,0.5);
-    /* Alternating light/dark wedges via conic-gradient; labels sit on top. */
-    background: conic-gradient(
-      #2a2140 0deg 45deg, #4a3a6e 45deg 90deg,
-      #2a2140 90deg 135deg, #4a3a6e 135deg 180deg,
-      #2a2140 180deg 225deg, #4a3a6e 225deg 270deg,
-      #2a2140 270deg 315deg, #4a3a6e 315deg 360deg);
-    /* JS sets --spin-deg and toggles .spinning to animate to it. */
-    transform: rotate(0deg);
+  /* ── WHEEL: EDGE-ON SCROLLING REEL. Segments scroll vertically past a
+     centre window and DECELERATE to land the resolved result under the
+     pointer — labels stay upright and readable the whole time (spec: "you
+     can read what's on each one as they spin"), unlike a top-down disc whose
+     text rotates. All segments are the same height = equal, visible, equal
+     weight (equal probability is enforced server-side; the reel must LOOK
+     equal too). Placeholder art: glyph + label per segment, rendered in code
+     so text is crisp — designed segment art can swap in later. */
+  :root { --seg-h: 112px; }   /* one segment's height — shared by CSS + JS landing math */
+  .reel-frame {
+    position: relative; width: 760px; height: 560px; border-radius: 30px;
+    background: rgba(12,10,22,0.55); border: 3px solid rgba(255,255,255,0.28);
+    box-shadow: 0 22px 64px rgba(0,0,0,0.55);
+    overflow: hidden;
+    opacity: 0; transform: scale(0.9); transition: opacity .3s ease, transform .3s ease;
   }
-  .wheel-disc.spinning { transition: transform var(--spin-ms, 2000ms) cubic-bezier(.15,.82,.22,1); transform: rotate(var(--spin-deg, 0deg)); }
-  .wheel-label {
-    position: absolute; top: 50%; left: 50%; transform-origin: 0 0;
-    font-size: 26px; font-weight: 700; white-space: nowrap;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  .reel-frame.show { opacity: 1; transform: scale(1); }
+  /* The mask fades top & bottom to transparent so segments "roll in / roll
+     out" — the cheap, reliable way to sell the edge-of-a-cylinder look. */
+  .reel-viewport {
+    position: absolute; inset: 0; overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
   }
+  .reel-strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; transform: translateY(0); }
+  .reel-strip.spinning { transition: transform var(--spin-ms, 2200ms) cubic-bezier(.11,.68,.15,1); }
+  .reel-seg {
+    height: var(--seg-h); display: flex; align-items: center; gap: 22px; padding: 0 46px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .reel-seg .seg-icon  { font-size: 56px; line-height: 1; }
+  .reel-seg .seg-label { font-size: 46px; font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 5px rgba(0,0,0,0.55); }
+  /* Centre window + inward pointers mark the winning row. */
+  .reel-window {
+    position: absolute; left: 10px; right: 10px; top: 50%; height: var(--seg-h);
+    transform: translateY(-56px);
+    border: 3px solid #E879F9; border-radius: 18px;
+    box-shadow: 0 0 26px rgba(232,121,249,0.55), inset 0 0 24px rgba(232,121,249,0.18);
+    pointer-events: none;
+  }
+  .reel-ptr { position: absolute; top: 50%; transform: translateY(-50%); font-size: 40px; color: #E879F9; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+  .reel-ptr.l { left: -8px; } .reel-ptr.r { right: -8px; }
 
   /* ── IMPACT: the result reveal card. Tier is read from SHAPE + SCALE +
      ICON + TEXT, never hue alone (streamer is red-green colorblind). ── */
@@ -268,39 +284,55 @@ function pump() {
   startSpinning(active);
 }
 
-// ── Stage 1: SPINNING (skipped when the dock resolved a single-result pool) ──
+// ── Stage 1: SPINNING — edge-on reel. Segments scroll up and DECELERATE to
+// land the resolved result centred in the pink window. (Skipped when the dock
+// resolved a single-result pool — nothing to spin past.) ──
+const SEG_H = 112;    // keep in sync with CSS --seg-h
+const REEL_VP_H = 560; // .reel-frame height
+const REEL_CYCLES = 6; // how many times the 8 results repeat down the strip
+// translateY that puts strip segment `i` centred in the window.
+function reelCenter(i) { return (REEL_VP_H / 2 - SEG_H / 2) - i * SEG_H; }
+
 function startSpinning(run) {
   const spin = run.spin;
   if (spin.skippedSpinAnimation) { startImpact(run); return; }
 
-  const wrap = el('wheel-wrap');
-  wrap.appendChild(el('wheel-pointer', '▼'));
-  const disc = el('wheel-disc');
-  // Lay the eight labels around the disc.
-  RESULTS.forEach((r, i) => {
-    const lbl = el('wheel-label', `${r.glyph} ${r.label}`);
-    const angle = i * 45 + 22.5; // slice centre
-    lbl.style.transform = `rotate(${angle}deg) translate(150px) rotate(90deg)`;
-    lbl.style.left = '50%'; lbl.style.top = '50%';
-    disc.appendChild(lbl);
-  });
-  wrap.appendChild(disc);
-  runNode(run, laneWheel, wrap);
-  reveal(wrap, 'show');
+  const frame = el('reel-frame');
+  const vp = el('reel-viewport');
+  const strip = el('reel-strip');
+  // Build a long strip: the 8 results repeated REEL_CYCLES times, so there's
+  // plenty to scroll through before the landing row.
+  for (let c = 0; c < REEL_CYCLES; c++) {
+    for (const r of RESULTS) {
+      strip.appendChild(el('reel-seg', `<span class="seg-icon">${r.glyph}</span><span class="seg-label">${esc(r.label)}</span>`));
+    }
+  }
+  vp.appendChild(strip);
+  const win = el('reel-window');
+  win.appendChild(el('reel-ptr l', '▶'));
+  win.appendChild(el('reel-ptr r', '◀'));
+  frame.appendChild(vp);
+  frame.appendChild(win);
+  runNode(run, laneWheel, frame);
+  reveal(frame, 'show');
 
-  // Rotate so the resolved result's slice centre lands under the top pointer.
-  const idx = (RESULT_BY_KEY[spin.result]?.index ?? 0);
-  const sliceCentre = idx * 45 + 22.5;
-  const turns = 5; // full spins for drama before it settles
-  const targetDeg = turns * 360 - sliceCentre; // negative offset brings that slice to top
+  // Land the resolved result in the last-but-one cycle, after scrolling ~3
+  // cycles of build-up. Landing on a late copy guarantees there's always a
+  // long run-up regardless of which result won.
+  const idx = RESULT_BY_KEY[spin.result]?.index ?? 0;
+  const landIndex = (REEL_CYCLES - 1) * RESULTS.length + idx;
+  const startIndex = Math.max(0, landIndex - 3 * RESULTS.length);
+
   const spinMs = TIMING.spinning.spin;
-  disc.style.setProperty('--spin-ms', spinMs + 'ms');
-  disc.style.setProperty('--spin-deg', targetDeg + 'deg');
-  reveal(disc, 'spinning');
+  strip.style.setProperty('--spin-ms', spinMs + 'ms');
+  strip.style.transform = `translateY(${reelCenter(startIndex)}px)`;
+  void strip.offsetWidth; // commit the start position before transitioning
+  strip.classList.add('spinning');
+  strip.style.transform = `translateY(${reelCenter(landIndex)}px)`; // decelerate to the winner
 
   runStage(run, () => {
-    wrap.classList.remove('show');
-    runTimer(run, () => { wrap.remove(); run.nodes.delete(wrap); startImpact(run); }, 300);
+    frame.classList.remove('show');
+    runTimer(run, () => { frame.remove(); run.nodes.delete(frame); startImpact(run); }, 300);
   }, spinMs);
 }
 
