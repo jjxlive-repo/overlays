@@ -87,21 +87,16 @@ input[type="number"].ctrl-in { width: 60px; }
 .thumb.empty { display:flex; align-items:center; justify-content:center; font-size:9px; color:var(--txt-dim); }
 .slot-meter { font-size: 22px; font-weight: 700; color: var(--gold); }
 
-/* per-slot position/scale nudge controls */
+/* per-slot position/scale sliders */
 .nudge-hd { font-size: 9px; color: var(--txt-dim); letter-spacing: .05em; text-transform: uppercase; margin: 8px 0 3px; }
-.nudge-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+.nudge-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .nudge-row .nlabel { font-size: 9px; color: var(--txt-dim); width: 34px; flex-shrink: 0; }
-.nudge-btn {
-  background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.3); border-radius: 5px;
-  color: var(--txt); font-family: var(--mono); font-size: 11px; line-height: 1; padding: 5px 7px;
-  cursor: pointer; flex-shrink: 0;
+.nudge-row input[type="range"] {
+  flex: 1; min-width: 0; cursor: pointer; accent-color: var(--purple); height: 16px;
 }
-.nudge-btn:hover { background: rgba(168,85,247,.28); }
-.nudge-btn:active { transform: scale(0.94); }
 .nudge-ro {
-  flex: 1; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--txt);
-  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 5px; padding: 5px 4px;
-  min-width: 44px;
+  font-family: var(--mono); font-size: 10px; color: var(--txt);
+  width: 50px; text-align: right; flex-shrink: 0;
 }
 
 /* live mirror — a muted, always-on iframe copy of the overlay so position/
@@ -428,17 +423,28 @@ function fmPushText(input) {
   }, 200);
 }
 
-/* ── per-slot position & scale — nudge buttons update CFG.alerts[slot],
-   push a debounced CONFIG_UPDATE to everyone (including the real overlay),
-   and pin a mirror-only (skipAbly) preview so you see the move instantly
-   without spamming a test alert onto the live broadcast. ─────────────── */
-function fmNudge(slot, axis, delta) {
+/* ── per-slot position, scale & size ────────────────────────────────
+   Sliders, so a drag emits a continuous stream of values rather than discrete
+   clicks. That changes the send strategy: pushing every input event would fire
+   dozens of Ably messages per second across a single drag, so the live update is
+   THROTTLED (the readout still tracks the thumb at full rate, since that's local),
+   and a final exact value is sent on release. Writing to disk stays debounced. */
+const AXIS_RANGE = {
+  x:        { min: -540, max: 540, step: 5,    fmt: v => Math.round(v) + 'px' },
+  y:        { min: -960, max: 960, step: 5,    fmt: v => Math.round(v) + 'px' },
+  scale:    { min: 0.2,  max: 3,   step: 0.05, fmt: v => Number(v).toFixed(2) + '×' },
+  mediaPct: { min: 10,   max: 100, step: 5,    fmt: v => Math.round(v) + '%' },
+};
+const LIVE_PUSH_MS = 100; // ~10 updates/sec while dragging — smooth, but bounded
+
+function fmSlide(slot, axis, raw) {
   if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
-  const a = CFG.alerts[slot];
-  if (axis === 'scale') a.scale = Math.max(0.2, Math.min(3, Math.round((a.scale + delta) * 100) / 100));
-  else if (axis === 'mediaPct') a.mediaPct = Math.max(10, Math.min(100, (a.mediaPct == null ? 100 : a.mediaPct) + delta));
-  else a[axis] = (a[axis] || 0) + delta;
-  fmRenderNudgeReadouts(slot);
+  CFG.alerts[slot][axis] = axis === 'scale' ? parseFloat(raw) : parseInt(raw, 10);
+  fmRenderNudgeReadouts(slot);      // local only — always immediate
+  fmPushAlertsThrottled(slot);
+}
+/** Drag released (or keyboard commit): send the exact final value, no throttle. */
+function fmSlideEnd(slot) {
   fmPushAlertsConfig();
   fmPreviewSlot(slot);
 }
@@ -448,15 +454,27 @@ function fmResetPosition(slot) {
   fmPushAlertsConfig();
   fmPreviewSlot(slot);
 }
+
+let _livePushAt = 0, _livePushTimer = null;
+function fmPushAlertsThrottled(slot) {
+  const now = Date.now();
+  const wait = Math.max(0, LIVE_PUSH_MS - (now - _livePushAt));
+  clearTimeout(_livePushTimer);
+  // Trailing edge always runs, so the last value of a drag is never dropped even
+  // if the drag ends between throttle windows.
+  _livePushTimer = setTimeout(() => {
+    _livePushAt = Date.now();
+    fmPushAlertsConfig();
+    fmPreviewSlot(slot);
+  }, wait);
+}
+
 let alertsSaveTimer = null;
 function fmPushAlertsConfig() {
-  // The live nudge is sent immediately, not debounced: nudges are discrete clicks
-  // (not a continuous drag), and the preview fired right after this depends on the
-  // overlay already having the new position — a debounce here would race it.
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   send({ cmd: 'CONFIG_UPDATE', data: { alerts: CFG.alerts } });
-  // Persisting to disk IS debounced — holding a nudge button shouldn't write a
-  // file per click, and the in-flight look is already correct via the line above.
+  // Persisting to disk is debounced — a drag shouldn't write a file per frame,
+  // and the on-screen result is already correct via the message above.
   clearTimeout(alertsSaveTimer);
   alertsSaveTimer = setTimeout(saveConfigToDock, 400);
 }
@@ -465,28 +483,40 @@ function fmPreviewSlot(slot) {
   // skipAbly keeps this off the real broadcast overlay entirely.
   send({ cmd: 'TEST_FIRE', data: { slot, username: 'Preview' } }, { skipAbly: true });
 }
+/** Keeps both the number readout AND the slider thumb in sync — the thumb also has
+ *  to be set explicitly, or Reset (and the initial dock load) would move the value
+ *  while leaving the slider sitting where it was. */
 function fmRenderNudgeReadouts(slot) {
   const a = CFG.alerts[slot] || { x: 0, y: 0, scale: 1, mediaPct: 100 };
-  const xEl = document.getElementById(`ro-${slot}-x`); if (xEl) xEl.textContent = a.x + 'px';
-  const yEl = document.getElementById(`ro-${slot}-y`); if (yEl) yEl.textContent = a.y + 'px';
-  const sEl = document.getElementById(`ro-${slot}-scale`); if (sEl) sEl.textContent = a.scale.toFixed(2) + '×';
-  const mEl = document.getElementById(`ro-${slot}-mediaPct`); if (mEl) mEl.textContent = (a.mediaPct == null ? 100 : a.mediaPct) + '%';
+  for (const axis of Object.keys(AXIS_RANGE)) {
+    const v = axis === 'mediaPct' ? (a.mediaPct == null ? 100 : a.mediaPct) : (a[axis] ?? 0);
+    const ro = document.getElementById(`ro-${slot}-${axis}`);
+    if (ro) ro.textContent = AXIS_RANGE[axis].fmt(v);
+    const sl = document.getElementById(`sl-${slot}-${axis}`);
+    if (sl && document.activeElement !== sl) sl.value = v;
+  }
 }
 function fmBuildNudgeUI(slot) {
   const box = document.getElementById(`nudge-${slot}`);
   if (!box) return;
-  const row = (label, axis, small, big) => `
+  const row = (label, axis, title) => {
+    const r = AXIS_RANGE[axis];
+    return `
     <div class="nudge-row">
-      <span class="nlabel">${label}</span>
-      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${-big})" title="Big step down">«</button>
-      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${-small})" title="Step down">‹</button>
-      <span class="nudge-ro" id="ro-${slot}-${axis}">0</span>
-      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${small})" title="Step up">›</button>
-      <button class="nudge-btn" onclick="fmNudge('${slot}','${axis}',${big})" title="Big step up">»</button>
+      <span class="nlabel" title="${title}">${label}</span>
+      <input type="range" id="sl-${slot}-${axis}" min="${r.min}" max="${r.max}" step="${r.step}"
+             title="${title}"
+             oninput="fmSlide('${slot}','${axis}',this.value)"
+             onchange="fmSlideEnd('${slot}')">
+      <span class="nudge-ro" id="ro-${slot}-${axis}">—</span>
     </div>`;
-  // "Size" = how much of the full screen the gif may fill (100% = edge to edge).
-  box.innerHTML = row('X', 'x', 10, 50) + row('Y', 'y', 10, 50) + row('Scale', 'scale', 0.05, 0.2) + row('Size', 'mediaPct', 5, 25)
-    + `<button class="ctrl-btn" style="width:100%;margin-top:5px;font-size:10px;" onclick="fmResetPosition('${slot}')">Reset position &amp; size</button>`;
+  };
+  box.innerHTML =
+      row('X', 'x', 'Move left / right from centre')
+    + row('Y', 'y', 'Move up / down from centre')
+    + row('Scale', 'scale', 'Scales the whole alert (media + caption together)')
+    + row('Size', 'mediaPct', 'How much of the full screen the gif may fill — 100% = edge to edge')
+    + `<button class="ctrl-btn" style="width:100%;margin-top:6px;font-size:10px;" onclick="fmResetPosition('${slot}')">Reset position &amp; size</button>`;
   fmRenderNudgeReadouts(slot);
 }
 
