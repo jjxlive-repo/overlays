@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPIN THE SCREEN — Wheel Overlay</title>
+<!--
+  Spin the Screen — wheel overlay skeleton (checkpoint 3).
+
+  A DUMB RENDERER. It never decides anything: the Producer Dock resolves every spin
+  (result, variant, seed, signature, revision) and publishes ONE authoritative
+  `wheel.spin` on the Ably `splat-overlay` channel. This page receives that and plays
+  it — nothing here rolls randomness or picks a result.
+
+  ORIGIN: GitHub Pages, added to TikTok LIVE Studio as a browser source (1080×1920,
+  transparent). Test B (2026-07-24) confirmed Studio rejects http://localhost sources,
+  so the overlay lives on Pages and receives spins over Ably — exactly how every other
+  overlay already works. No localhost dependency in the skeleton. (The high-frequency
+  FACE-TRACKING transport is a separate, later question — checkpoint 5 / Test C.)
+
+  What this checkpoint delivers: the five rendering lanes, the
+  queued→acknowledged→spinning→impact→settled→complete state machine, in-order queue
+  handling that never interrupts an active wheel, per-stage watchdogs + cleanup with no
+  orphaned timers or DOM nodes, and revision-dedupe so a re-published or replayed spin
+  renders once. Visuals are deliberately PLACEHOLDER — the polished per-result effects
+  are checkpoints 4 (Stamp) and 7 (the rest).
+
+  Cache discipline: bump ?v=N on jjx-core (and this page's own source ref if split out)
+  on every change — Studio's browser-source cache serves stale copies otherwise.
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Fixed 1080×1920. No viewport units, no bottom-anchoring — Studio scales the whole
+     source, and vh/vw + bottom edges drift when it does (repo rule). */
+  html, body {
+    width: 1080px; height: 1920px;
+    overflow: hidden; background: transparent;
+    /* The overlay must never eat clicks meant for Studio's own UI. */
+    pointer-events: none;
+    font-family: 'Fredoka', 'DM Sans', system-ui, sans-serif;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  #stage { position: absolute; inset: 0; }
+
+  /* ── LANES ─────────────────────────────────────────────────────────
+     Five independent stacking contexts, spec order. Each lane owns one
+     class of visual so a Takeover impact can suppress ambient without
+     touching signatures, etc. z rises with "how much it interrupts". */
+  .lane { position: absolute; }
+  #lane-ambient   { inset: 0; z-index: 10; }                          /* lowest — persistent mood */
+  #lane-signature { top: 250px; right: 24px; width: 300px; z-index: 20; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+  #lane-receipt   { top: 90px; left: 0; width: 1080px; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #lane-wheel     { inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
+  #lane-impact    { inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+
+  /* ── RECEIPT: brief "acknowledged" banner with tier + queue position ── */
+  .receipt {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 30px; border-radius: 999px;
+    background: rgba(12,10,20,0.86); border: 2px solid rgba(255,255,255,0.2);
+    box-shadow: 0 6px 26px rgba(0,0,0,0.45);
+    opacity: 0; transform: translateY(-16px);
+    transition: opacity .28s ease, transform .28s ease;
+    max-width: 940px;
+  }
+  .receipt.show { opacity: 1; transform: translateY(0); }
+  .receipt .r-name { font-weight: 700; font-size: 30px; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .receipt .r-tier { font-weight: 700; font-size: 22px; letter-spacing: .05em; text-transform: uppercase; }
+  .receipt .r-pos  { font-size: 22px; color: rgba(255,255,255,0.7); font-weight: 600; }
+
+  /* ── WHEEL: placeholder spinner. Eight equal slices; a fixed pointer at
+     top; the disc rotates so the resolved result ends under the pointer.
+     Equal slice size is a spec requirement (equal probability is enforced
+     server-side, but the WHEEL must LOOK equal too). ── */
+  .wheel-wrap { position: relative; width: 620px; height: 620px; opacity: 0; transform: scale(0.82); transition: opacity .3s ease, transform .3s ease; }
+  .wheel-wrap.show { opacity: 1; transform: scale(1); }
+  .wheel-pointer { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); font-size: 52px; line-height: 1; z-index: 2; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.5)); }
+  .wheel-disc {
+    width: 100%; height: 100%; border-radius: 50%;
+    border: 10px solid rgba(255,255,255,0.9);
+    box-shadow: 0 0 0 6px rgba(0,0,0,0.35), 0 18px 50px rgba(0,0,0,0.5);
+    /* Alternating light/dark wedges via conic-gradient; labels sit on top. */
+    background: conic-gradient(
+      #2a2140 0deg 45deg, #4a3a6e 45deg 90deg,
+      #2a2140 90deg 135deg, #4a3a6e 135deg 180deg,
+      #2a2140 180deg 225deg, #4a3a6e 225deg 270deg,
+      #2a2140 270deg 315deg, #4a3a6e 315deg 360deg);
+    /* JS sets --spin-deg and toggles .spinning to animate to it. */
+    transform: rotate(0deg);
+  }
+  .wheel-disc.spinning { transition: transform var(--spin-ms, 2000ms) cubic-bezier(.15,.82,.22,1); transform: rotate(var(--spin-deg, 0deg)); }
+  .wheel-label {
+    position: absolute; top: 50%; left: 50%; transform-origin: 0 0;
+    font-size: 26px; font-weight: 700; white-space: nowrap;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  }
+
+  /* ── IMPACT: the result reveal card. Tier is read from SHAPE + SCALE +
+     ICON + TEXT, never hue alone (streamer is red-green colorblind). ── */
+  .impact {
+    text-align: center; padding: 40px 60px; border-radius: 28px;
+    background: rgba(10,8,18,0.72); border: 3px solid rgba(255,255,255,0.35);
+    box-shadow: 0 20px 70px rgba(0,0,0,0.6);
+    opacity: 0; transform: scale(0.8); transition: opacity .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .impact.show { opacity: 1; transform: scale(1); }
+  .impact .i-glyph { font-size: 92px; line-height: 1; margin-bottom: 8px; }
+  .impact .i-user  { font-size: 40px; font-weight: 700; margin-bottom: 6px; max-width: 820px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .impact .i-tier  { font-size: 30px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; }
+  .impact .i-result { font-size: 64px; font-weight: 800; letter-spacing: .04em; }
+  /* Tier accents: distinct BORDER + GLYPH, with color as a secondary cue only. */
+  .tier-spin     .i-tier { color: #9ecbff; }  .impact.tier-spin     { border-color: #4c9aff; }
+  .tier-power    .i-tier { color: #b6a6ff; }  .impact.tier-power    { border-color: #a98bff; transform: scale(0.8); }
+  .tier-takeover .i-tier { color: #ffd27a; }  .impact.tier-takeover { border-color: #ffb020; }
+  .tier-legend   .i-tier { color: #ffe08a; }  .impact.tier-legend   { border-color: #ffd700; box-shadow: 0 0 60px rgba(255,215,0,0.5), 0 20px 70px rgba(0,0,0,0.6); }
+
+  /* ── AMBIENT: low, readable, non-blocking mood layer after impact. ── */
+  .ambient {
+    position: absolute; left: 50%; top: 1500px; transform: translateX(-50%);
+    padding: 12px 28px; border-radius: 16px;
+    background: rgba(10,8,18,0.4); border: 1px solid rgba(255,255,255,0.18);
+    font-size: 24px; font-weight: 600; color: rgba(255,255,255,0.82);
+    opacity: 0; transition: opacity .6s ease;
+  }
+  .ambient.show { opacity: 1; }
+
+  /* ── SIGNATURE RAIL: persistent recognition; a chip per active name.
+     Class (small/medium/premium/legend) drives size + treatment. ── */
+  .sig {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-radius: 12px;
+    background: rgba(12,10,20,0.7); border: 2px solid rgba(255,255,255,0.22);
+    font-weight: 700; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    opacity: 0; transform: translateX(20px); transition: opacity .4s ease, transform .4s ease;
+    max-width: 300px;
+  }
+  .sig.show { opacity: 1; transform: translateX(0); }
+  .sig .s-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sig-small    { font-size: 18px; }
+  .sig-medium   { font-size: 21px; border-color: #a98bff; }
+  .sig-premium  { font-size: 24px; border-color: #ffb020; }
+  .sig-legend   { font-size: 26px; border-color: #ffd700; box-shadow: 0 0 24px rgba(255,215,0,0.45); }
+
+  /* Dev-only heads-up so an operator loading the page in a browser knows it's alive
+     and which transport it's on. Hidden inside Studio is fine — pointer-events off. */
+  #conn { position: absolute; left: 12px; top: 12px; z-index: 90; font-size: 14px;
+    color: rgba(255,255,255,0.5); font-family: 'DM Mono', monospace; }
+</style>
+</head>
+<body>
+<div id="conn">wheel: connecting…</div>
+<div id="stage">
+  <div class="lane" id="lane-ambient"></div>
+  <div class="lane" id="lane-signature"></div>
+  <div class="lane" id="lane-receipt"></div>
+  <div class="lane" id="lane-wheel"></div>
+  <div class="lane" id="lane-impact"></div>
+</div>
+
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="jjx-core.js?v=1"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════════
+const ABLY_KEY = JJX.ABLY_KEY;
+const ABLY_CH  = JJX.ABLY_MAIN_CHANNEL; // 'splat-overlay' — where the dock publishes wheel.spin
+
+// The eight results, short labels + a colorblind-safe glyph each. Order fixes the
+// wheel slice layout so the disc can be rotated to land the resolved result on the
+// pointer. (These are presentation; the dock owns the canonical result keys.)
+const RESULTS = [
+  { key: 'curse',     label: 'Curse',     glyph: '🎥' },
+  { key: 'stamp',     label: 'Stamp',     glyph: '🖋' },
+  { key: 'flood',     label: 'Flood',     glyph: '🌊' },
+  { key: 'weather',   label: 'Weather',   glyph: '⛈' },
+  { key: 'crack',     label: 'Crack',     glyph: '💥' },
+  { key: 'spotlight', label: 'Spotlight', glyph: '🔦' },
+  { key: 'frame',     label: 'Frame',     glyph: '🖼' },
+  { key: 'avatar',    label: 'Avatar',    glyph: '👾' },
+];
+const RESULT_BY_KEY = Object.fromEntries(RESULTS.map((r, i) => [r.key, { ...r, index: i }]));
+
+const TIER_LABEL = { spin: 'SPIN', power: 'POWER SPIN', takeover: 'TAKEOVER', legend: 'LEGEND SPIN' };
+const TIER_GLYPH = { spin: '●', power: '◆', takeover: '★', legend: '👑' };
+
+// Stage timings (ms), inside the spec's recommended envelopes. Impact and ambient
+// scale up by tier. Every stage also has a WATCHDOG (see runStage) a bit longer than
+// its own duration, so a stuck stage can never freeze the machine.
+const TIMING = {
+  receipt:  { show: 400, hold: 1400 },
+  spinning: { spin: 2000 },
+  reveal:   { show: 500 },
+  impact:   { spin: 2200, power: 2600, takeover: 3400, legend: 6000 },
+  ambient:  { spin: 10000, power: 16000, takeover: 26000, legend: 40000 },
+};
+const STAGE_WATCHDOG_PAD = 4000; // a stage's watchdog fires this long after its planned end
+const MASTER_WATCHDOG_MS = 16000; // absolute ceiling for one spin's active run
+
+// ═══════════════════════════════════════════════════════════════════
+// SMALL DOM + TIMER HELPERS — every timer and node is TRACKED so cleanup
+// can guarantee "no orphaned timers or DOM nodes" (spec).
+// ═══════════════════════════════════════════════════════════════════
+const $ = (id) => document.getElementById(id);
+const laneReceipt = $('lane-receipt'), laneWheel = $('lane-wheel'),
+      laneImpact = $('lane-impact'), laneAmbient = $('lane-ambient'), laneSignature = $('lane-signature');
+
+function el(cls, html) { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; }
+function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])); }
+/* Trigger a CSS enter-transition reliably. A forced reflow commits the pre-transition
+   state, then adding the class animates — works even in a throttled/hidden context where
+   requestAnimationFrame is paused (the repo's overlays use this `void offsetWidth` trick). */
+function reveal(node, cls) { void node.offsetWidth; node.classList.add(cls); }
+
+// ═══════════════════════════════════════════════════════════════════
+// QUEUE + STATE MACHINE
+//   queued → acknowledged → spinning → impact → settled → complete
+// The active wheel is NEVER interrupted; spins process strictly in order.
+// Ambient does NOT block the queue: the active slot is released as the
+// impact ends, and ambient runs detached in its own lane afterwards.
+// ═══════════════════════════════════════════════════════════════════
+const queue = [];             // WheelSpin objects awaiting play, arrival order
+let active = null;            // the run context of the spin currently playing
+const seenRevisions = new Set(); // dedupe: a re-published/replayed spin renders once
+
+/** One run context per active spin. Holds its timers + nodes so cleanup is total. */
+function makeRun(spin) {
+  return { spin, timers: new Set(), nodes: new Set(), master: null, done: false };
+}
+function runTimer(run, fn, ms) {
+  const t = setTimeout(() => { run.timers.delete(t); if (!run.done) fn(); }, ms);
+  run.timers.add(t);
+  return t;
+}
+function runNode(run, lane, node) { lane.appendChild(node); run.nodes.add(node); return node; }
+function cleanupRun(run) {
+  run.done = true;
+  for (const t of run.timers) clearTimeout(t);
+  run.timers.clear();
+  if (run.master) { clearTimeout(run.master); run.master = null; }
+  for (const n of run.nodes) n.remove(); // ambient/signature nodes are detached FIRST (below), so they survive
+  run.nodes.clear();
+}
+
+function onWheelSpin(spin) {
+  if (!spin || spin.type !== 'wheel.spin') return;
+  // Dedupe on the authoritative revision (monotonic, per the dock). Falls back to
+  // eventId if a malformed message lacks one.
+  const key = spin.revision != null ? `r${spin.revision}` : `e${spin.eventId}`;
+  if (seenRevisions.has(key)) return;
+  seenRevisions.add(key);
+  if (seenRevisions.size > 500) seenRevisions.clear();
+
+  queue.push(spin);
+  showReceipt(spin, queue.length + (active ? 0 : -1)); // position among those still waiting
+  pump();
+}
+
+function pump() {
+  if (active || queue.length === 0) return;
+  const spin = queue.shift();
+  active = makeRun(spin);
+  // Master watchdog: whatever happens inside, this spin's active slot is released.
+  active.master = setTimeout(() => {
+    console.warn('[wheel] master watchdog fired — force-completing', spin.eventId);
+    finishActive();
+  }, MASTER_WATCHDOG_MS);
+  startSpinning(active);
+}
+
+// ── Stage 1: SPINNING (skipped when the dock resolved a single-result pool) ──
+function startSpinning(run) {
+  const spin = run.spin;
+  if (spin.skippedSpinAnimation) { startImpact(run); return; }
+
+  const wrap = el('wheel-wrap');
+  wrap.appendChild(el('wheel-pointer', '▼'));
+  const disc = el('wheel-disc');
+  // Lay the eight labels around the disc.
+  RESULTS.forEach((r, i) => {
+    const lbl = el('wheel-label', `${r.glyph} ${r.label}`);
+    const angle = i * 45 + 22.5; // slice centre
+    lbl.style.transform = `rotate(${angle}deg) translate(150px) rotate(90deg)`;
+    lbl.style.left = '50%'; lbl.style.top = '50%';
+    disc.appendChild(lbl);
+  });
+  wrap.appendChild(disc);
+  runNode(run, laneWheel, wrap);
+  reveal(wrap, 'show');
+
+  // Rotate so the resolved result's slice centre lands under the top pointer.
+  const idx = (RESULT_BY_KEY[spin.result]?.index ?? 0);
+  const sliceCentre = idx * 45 + 22.5;
+  const turns = 5; // full spins for drama before it settles
+  const targetDeg = turns * 360 - sliceCentre; // negative offset brings that slice to top
+  const spinMs = TIMING.spinning.spin;
+  disc.style.setProperty('--spin-ms', spinMs + 'ms');
+  disc.style.setProperty('--spin-deg', targetDeg + 'deg');
+  reveal(disc, 'spinning');
+
+  runStage(run, () => {
+    wrap.classList.remove('show');
+    runTimer(run, () => { wrap.remove(); run.nodes.delete(wrap); startImpact(run); }, 300);
+  }, spinMs);
+}
+
+// ── Stage 2: IMPACT (reveal + hold) ──
+function startImpact(run) {
+  const spin = run.spin;
+  const res = RESULT_BY_KEY[spin.result] || { label: spin.result, glyph: '🎯' };
+  const card = el(`impact tier-${spin.tier}`);
+  card.innerHTML =
+    `<div class="i-glyph">${res.glyph}</div>` +
+    `<div class="i-user">${esc(displayName(spin))}</div>` +
+    `<div class="i-tier">${TIER_GLYPH[spin.tier] || ''} ${TIER_LABEL[spin.tier] || spin.tier}</div>` +
+    `<div class="i-result">${esc(res.label)}</div>`;
+  runNode(run, laneImpact, card);
+  reveal(card, 'show');
+
+  const hold = TIMING.impact[spin.tier] ?? TIMING.impact.spin;
+  runStage(run, () => {
+    card.classList.remove('show');
+    runTimer(run, () => { card.remove(); run.nodes.delete(card); startSettle(run); }, 300);
+  }, hold);
+}
+
+// ── Stage 3: SETTLED → hand off to ambient + signature, then release queue ──
+function startSettle(run) {
+  const spin = run.spin;
+  // Ambient + signature are DETACHED from the run (removed from run.nodes) so
+  // cleanupRun/finishActive won't delete them — they outlive the active slot.
+  startAmbient(spin);
+  addSignature(spin);
+  finishActive(); // release the queue NOW; ambient keeps playing independently
+}
+
+function finishActive() {
+  if (!active) return;
+  const run = active;
+  active = null;
+  cleanupRun(run); // clears timers + removes any still-attached (receipt/wheel/impact) nodes
+  pump();          // next spin, if any
+}
+
+/** Schedule a stage's advance with a watchdog that force-advances on hang. */
+function runStage(run, advance, plannedMs) {
+  let fired = false;
+  const go = () => { if (fired) return; fired = true; advance(); };
+  runTimer(run, go, plannedMs);
+  runTimer(run, () => { if (!fired) { console.warn('[wheel] stage watchdog'); go(); } }, plannedMs + STAGE_WATCHDOG_PAD);
+}
+
+// ── RECEIPT lane ──
+function showReceipt(spin, position) {
+  const r = el('receipt');
+  const posText = position > 0 ? `· #${position + 1}` : '· now';
+  r.innerHTML =
+    `<span class="r-name">${esc(displayName(spin))}</span>` +
+    `<span class="r-tier">${TIER_GLYPH[spin.tier] || ''} ${TIER_LABEL[spin.tier] || spin.tier}</span>` +
+    `<span class="r-pos">${posText}</span>`;
+  laneReceipt.appendChild(r);
+  reveal(r, 'show');
+  // Self-cleaning: receipts are transient and independent of the run machine.
+  setTimeout(() => r.classList.remove('show'), TIMING.receipt.show + TIMING.receipt.hold);
+  setTimeout(() => r.remove(), TIMING.receipt.show + TIMING.receipt.hold + 400);
+}
+
+// ── AMBIENT lane (detached, self-cleaning) ──
+function startAmbient(spin) {
+  const res = RESULT_BY_KEY[spin.result] || { label: spin.result, glyph: '' };
+  const a = el('ambient', `${res.glyph} ${esc(displayName(spin))} — ${esc(res.label)}`);
+  laneAmbient.appendChild(a);
+  reveal(a, 'show');
+  const life = TIMING.ambient[spin.tier] ?? TIMING.ambient.spin;
+  setTimeout(() => a.classList.remove('show'), life);
+  setTimeout(() => a.remove(), life + 700);
+}
+
+// ── SIGNATURE rail (persistent; honors expiresAt when present) ──
+function addSignature(spin) {
+  const cls = spin.signature?.class || 'small';
+  const s = el(`sig sig-${cls}`);
+  s.innerHTML = `<span>${TIER_GLYPH[spin.tier] || ''}</span><span class="s-name">${esc(displayName(spin))}</span>`;
+  laneSignature.appendChild(s);
+  reveal(s, 'show');
+  // Timed tiers auto-retire; session-scoped (expiresAt null) persist until the page
+  // reloads. Fuller session-reset handling arrives with the snapshot/hydration work.
+  const exp = spin.signature?.expiresAt;
+  if (typeof exp === 'number') {
+    const ms = Math.max(0, exp - Date.now());
+    setTimeout(() => s.classList.remove('show'), ms);
+    setTimeout(() => s.remove(), ms + 500);
+  }
+}
+
+function displayName(spin) {
+  return spin.user?.username || 'someone';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSPORT — Ably subscription to splat-overlay 'wheel.spin'. This is the
+// production path: the dock publishes there in bridge-mode. A local test hook
+// (window.wheelTest) lets the page be driven without Ably for verification.
+// ═══════════════════════════════════════════════════════════════════
+function connect() {
+  const conn = $('conn');
+  try {
+    const client = new Ably.Realtime({ key: ABLY_KEY });
+    const ch = client.channels.get(ABLY_CH);
+    client.connection.on('connected', () => { conn.textContent = 'wheel: live ✓'; });
+    client.connection.on('disconnected', () => { conn.textContent = 'wheel: reconnecting…'; });
+    ch.subscribe('wheel.spin', (msg) => onWheelSpin(msg.data));
+  } catch (e) {
+    conn.textContent = 'wheel: Ably unavailable';
+  }
+}
+connect();
+
+// Test hook — feed a WheelSpin-shaped object straight into the machine.
+window.wheelTest = (spin) => onWheelSpin(spin);
+</script>
+</body>
+</html>
