@@ -370,6 +370,20 @@
 
   /* ── misc ───────────────────────────────────────────────────────── */
 
+  /*
+    Reads a setting from either the query string or the hash. Both are checked for
+    the same reason isMirror() checks both: static hosts with clean-URL redirects
+    (like `serve`) drop the query string, but a fragment always survives — so
+    `?dock=http://…` silently becomes "use the default port" while `#dock=…` holds.
+    Getting this wrong points a page at the WRONG dock rather than failing loudly.
+  */
+  function param(name) {
+    var q = new URLSearchParams(location.search).get(name);
+    if (q) return q;
+    var m = location.hash.match(new RegExp('[#&]' + name + '=([^&]+)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
   function isMirror() {
     // Both a query param and a hash: static hosts with clean-URL redirects
     // (like `serve`) drop the query string, but a fragment always survives.
@@ -393,5 +407,6 @@
     parseGIF: parseGIF,
     playGifOnce: playGifOnce,
     isMirror: isMirror,
+    param: param,
   };
 })();

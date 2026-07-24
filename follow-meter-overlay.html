@@ -131,7 +131,7 @@
 <audio id="alert-audio"></audio>
 
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=1"></script>
+<script src="jjx-core.js?v=2"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG / CONSTANTS — shared helpers live in jjx-core.js (window.JJX)
@@ -175,8 +175,57 @@ const clone = JJX.clone;
 let CFG = clone(DEFAULT_CONFIG);
 try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s) CFG = deepMerge(CFG, s); } catch (e) {}
 
-let ASSETS = {}; // slot -> { gif:{mime,dataURL}, audio:{mime,dataURL} }
+// slot -> { gif:{mime,url|dataURL}, audio:{mime,url|dataURL} }
+// `url` = served by the Producer Dock (current); `dataURL` = legacy localStorage copy,
+// still honored so an overlay keeps working before/without a dock fetch.
+let ASSETS = {};
 try { ASSETS = JSON.parse(localStorage.getItem(FM_LS_ASSETS) || '{}'); } catch (e) {}
+
+// ── Producer Dock backend ──────────────────────────────────────────
+// Config and uploaded media come from the dock over HTTP instead of living in
+// browser localStorage (one quota shared by every overlay on this origin, which
+// is what eventually threw "storage full" — and TikTok Studio's browser source
+// has its own storage that the control page can't write to anyway).
+// Verified: TikTok Studio's engine can reach 127.0.0.1 for WS, fetch and <img>.
+// Override with ?dock=http://host:port (or #dock=… — some static hosts drop the
+// query string, and pointing at the wrong dock fails silently).
+const DOCK_BASE = (JJX.param('dock') || 'http://127.0.0.1:4317').replace(/\/$/, '');
+const OVERLAY_NAME = 'follow-meter';
+
+/** Absolute src for an asset, tolerating both the dock shape and the legacy one. */
+function assetSrc(a) {
+  if (!a) return null;
+  if (a.url) return a.url.startsWith('http') ? a.url : DOCK_BASE + a.url;
+  return a.dataURL || null;
+}
+
+/**
+ * Pull config + asset URLs from the dock in one request. Failure is non-fatal:
+ * whatever was cached in localStorage stays in use, so a dock that is off or
+ * still starting degrades to the last-known look rather than a blank overlay.
+ */
+async function loadFromDock() {
+  try {
+    const res = await fetch(`${DOCK_BASE}/overlay-public/${OVERLAY_NAME}/config`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const payload = await res.json();
+    if (payload.config && Object.keys(payload.config).length) {
+      CFG = deepMerge(CFG, payload.config);
+      try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+    }
+    if (payload.assets && Object.keys(payload.assets).length) {
+      ASSETS = payload.assets;
+      // Cached as URLs (a few hundred bytes), never as dataURLs — that distinction
+      // is the whole reason the storage quota stops being a problem.
+      try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
+    }
+    applyMeterLayout(); renderMeter();
+    return true;
+  } catch (err) {
+    console.warn('[follow-meter] dock unreachable, using cached config/assets:', err.message);
+    return false;
+  }
+}
 
 let count = 0;
 try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
@@ -265,11 +314,12 @@ function showAlert(item, done) {
 
   if (_currentGifStop) { _currentGifStop(); _currentGifStop = null; }
   wrap.innerHTML = '';
-  if (asset.gif && asset.gif.dataURL) {
+  const gifSrc = assetSrc(asset.gif);
+  if (gifSrc) {
     const mime = asset.gif.mime || '';
     if (mime.startsWith('video/')) {
       const v = document.createElement('video');
-      v.src = asset.gif.dataURL;
+      v.src = gifSrc;
       v.autoplay = true;
       v.playsInline = true;
       v.muted = false;
@@ -282,8 +332,7 @@ function showAlert(item, done) {
       const canvas = document.createElement('canvas');
       sizeMediaEl(canvas, item.slot);
       wrap.appendChild(canvas);
-      const gifDataURL = asset.gif.dataURL;
-      fetch(gifDataURL).then(r => r.arrayBuffer()).then(buf => {
+      fetch(gifSrc).then(r => r.arrayBuffer()).then(buf => {
         if (canvas !== wrap.firstChild) return; // a newer alert already replaced this one
         const gif = fmParseGIF(buf);
         if (gif.frames.length) _currentGifStop = fmPlayGifOnce(canvas, gif);
@@ -291,14 +340,14 @@ function showAlert(item, done) {
         // Corrupt/unsupported GIF — fall back to a plain (looping) <img> rather than showing nothing.
         if (canvas !== wrap.firstChild) return;
         const img = document.createElement('img');
-        img.src = gifDataURL;
+        img.src = gifSrc;
         sizeMediaEl(img, item.slot);
         wrap.innerHTML = '';
         wrap.appendChild(img);
       });
     } else {
       const img = document.createElement('img');
-      img.src = asset.gif.dataURL;
+      img.src = gifSrc;
       sizeMediaEl(img, item.slot);
       wrap.appendChild(img);
     }
@@ -310,8 +359,9 @@ function showAlert(item, done) {
   if (!MIRROR) {
     const audioEl = document.getElementById('alert-audio');
     audioEl.pause();
-    if (asset.audio && asset.audio.dataURL) {
-      audioEl.src = asset.audio.dataURL;
+    const audioSrc = assetSrc(asset.audio);
+    if (audioSrc) {
+      audioEl.src = audioSrc;
       audioEl.currentTime = 0;
       audioEl.play().catch(() => {});
     } else {
@@ -378,14 +428,16 @@ function handleCmdInner(msg) {
       applyMeterLayout(); renderMeter();
       break;
     case 'ASSET_UPDATE': {
-      // Only reaches here via BroadcastChannel/localStorage — i.e. control and
-      // overlay open in the SAME browser profile (local preview/testing). The real
-      // OBS/TikTok Studio browser source is a separate, isolated browser engine with
-      // its own storage, so production asset delivery rides the chunked Ably
-      // transfer below instead (see 'follow-meter-assets' channel).
+      // Carries a dock `url` now (a few hundred bytes) rather than a base64 dataURL,
+      // so this reaches the live overlay over Ably as a single small message —
+      // no chunked transfer, no localStorage quota.
       applyAssetUpdate(msg.data || {});
       break;
     }
+    case 'ASSETS_REFRESH':
+      // The control page saved something; re-pull the authoritative copy from the dock.
+      loadFromDock();
+      break;
     case 'TEST_FIRE':
       handleFollowEvent(msg.data.slot, msg.data.username || 'TestViewer');
       break;
@@ -394,19 +446,21 @@ function handleCmdInner(msg) {
       break;
   }
 }
-function applyAssetUpdate({ slot, kind, mime, dataURL }) {
+function applyAssetUpdate({ slot, kind, mime, dataURL, url }) {
   if (!SLOTS.includes(slot) || (kind !== 'gif' && kind !== 'audio')) return;
   if (!ASSETS[slot]) ASSETS[slot] = {};
-  if (dataURL) ASSETS[slot][kind] = { mime, dataURL }; else delete ASSETS[slot][kind];
+  // A dock upload sends `url`; the legacy Ably/localStorage path sends `dataURL`.
+  if (url) ASSETS[slot][kind] = { mime, url };
+  else if (dataURL) ASSETS[slot][kind] = { mime, dataURL };
+  else delete ASSETS[slot][kind];
   try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CHUNKED ASSET TRANSFER — the production delivery path for uploaded media
-// (dataURLs exceed Ably's per-message cap; localStorage can't cross browser
-// engines). Reassembly lives in jjx-core; reassembled assets are persisted to
-// this overlay's own localStorage (in applyAssetUpdate) so a reload doesn't
-// need a re-transfer.
+// CHUNKED ASSET TRANSFER — LEGACY. Media now comes from the dock by URL
+// (see loadFromDock), which is why uploads no longer touch the browser's
+// storage quota. This receiver stays so an older control page — one still
+// chunking base64 over Ably — keeps working against this overlay.
 // ═══════════════════════════════════════════════════════════════════
 const handleAssetChunk = JJX.createAssetReceiver({
   isValid: (slot, kind) => SLOTS.includes(slot) && (kind === 'gif' || kind === 'audio'),
@@ -428,6 +482,8 @@ function connectAbly() {
     OVERLAY_ENABLED = true;
     document.body.style.display = 'block';
     applyMeterLayout(); renderMeter();
+    // Config/media may have changed while this overlay was toggled off.
+    loadFromDock();
     if (_fmAttached) return;
     _fmAttached = true;
     ch.attach().catch(() => {});
@@ -483,6 +539,11 @@ if (MIRROR) {
 } else {
   connectAbly();
 }
+
+// Both modes read the same backend, so the mirror previews exactly what the live
+// overlay will show. Fire-and-forget: rendering already happened from the cached
+// copy, and this refreshes it in place once the dock answers.
+loadFromDock();
 
 renderMeter();
 </script>
