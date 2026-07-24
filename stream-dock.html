@@ -2432,7 +2432,7 @@ tr.el-checked td { background: rgba(56,189,248,.04); }
         </div>
         <div class="ctrl-bd" id="ctrl-bridgemode" style="padding:7px 9px 9px;gap:6px;">
           <div style="font-size:9px;color:var(--txt-dim);line-height:1.4;">
-            ON = the <strong>Producer Dock</strong> (local server, <code style="font-size:9px;background:rgba(255,255,255,0.07);padding:1px 4px;border-radius:3px;">OVERLAY_BRIDGE_ENABLED=true</code> in its .env) publishes real chat/follow/gift events to the overlays, and this page + tracker.html go quiet — never run both or every overlay double-fires. Flip BOTH sides together. Test-fire buttons keep working in either mode. Milestones &amp; viewer counts still come from this page for now.
+            ON = the <strong>Producer Dock</strong> (local server, <code style="font-size:9px;background:rgba(255,255,255,0.07);padding:1px 4px;border-radius:3px;">OVERLAY_BRIDGE_ENABLED=true</code> in its .env) publishes real chat/follow/gift events to the overlays, and this page + tracker.html go quiet — never run both or every overlay double-fires. Flip BOTH sides together; applies live, no reload. In bridge mode this page opens no chat sockets at all — chat lives in the Producer Dock; the viewer bar, milestones and !command boost feed off the dock's events. Test-fire buttons keep working in either mode.
           </div>
           <button class="ctrl-btn" id="bridge-mode-btn" onclick="dockToggleBridgeMode()" style="width:100%;">🌉 Dock Bridge Mode: OFF — this page publishes</button>
         </div>
@@ -3090,6 +3090,15 @@ function wsUpdateStatus(state) {
     dot.style.animation  = 'blink 1s ease-in-out infinite';
     lbl.textContent = 'SSN…';
     lbl.className = '';
+  } else if (state === 'bridge') {
+    // Bridge Mode: this page doesn't hold an SSN socket at all — events arrive
+    // from the Producer Dock. Purple = special state, not an error (colorblind-safe
+    // pairing: distinct label text, not color alone).
+    dot.style.background = '#A855F7';
+    dot.style.boxShadow  = '0 0 5px #A855F7';
+    dot.style.animation  = '';
+    lbl.textContent = 'SSN → DOCK';
+    lbl.className = '';
   } else {
     dot.style.background = '#F43F5E';
     dot.style.boxShadow  = '';
@@ -3100,6 +3109,11 @@ function wsUpdateStatus(state) {
 }
 
 function wsConnect() {
+  // Bridge Mode: the Producer Dock owns the SSN connection — this page opens no
+  // socket at all. Guard here (not at call sites) so the onclose reconnect timer
+  // is neutralized too: toggling bridge ON just closes the socket and every
+  // later reconnect attempt lands here and stops.
+  if (_dockBridgeMode) { wsUpdateStatus('bridge'); return; }
   if (ws) { try { ws.close(); } catch(e){} }
   wsUpdateStatus('connecting');
   ws = new WebSocket(`wss://io.socialstream.ninja/join/${SESSION}/4`);
@@ -3361,21 +3375,44 @@ const _DOCK_MAX_RAW = 200;  // kept so bean-boozled reset math works
    producer-dock-starter/src/server/overlay/overlayBridge.ts) owns publishing
    real events to the overlay channels, and this page's own real-event
    publishing goes silent — running both would double-fire every overlay.
-   Gates publishMilk() and the inline yt_superchat publish here, plus
-   tracker.html's gift-alert publishes (same localStorage flag, same origin).
+   In bridge mode this page opens NO SSN/TikFinity sockets (guards inside
+   wsConnect/_tfConnect), silences publishMilk(), the inline yt_superchat and
+   gift-alert publishes, plus tracker.html's gift-alerts (same localStorage
+   flag, same origin) — and its remaining chat-derived jobs (viewer bar,
+   follower/sub milestones, !command boost, event debug counters) feed off the
+   dock's 'milk-event'/'bridge-stats' subscriptions instead (bridgeSubsSync).
    Manual TEST-FIRE buttons stay live in either mode — they publish directly,
    on purpose, so previews still work during a bridge outage.
-   NOT gated (bridge v1 doesn't cover them): milestones, viewer counts,
-   milk-boost commands, config/toggle publishes. */
+   Still owned by this page in both modes: milestone thresholds/config, all
+   overlay config/toggle publishes, milk goal config. */
 let _dockBridgeMode = localStorage.getItem('dockBridgeMode') === '1';
 window.addEventListener('storage', e => {
-  if (e.key === 'dockBridgeMode') { _dockBridgeMode = e.newValue === '1'; dockRenderBridgeBtn(); }
+  if (e.key === 'dockBridgeMode') { _dockBridgeMode = e.newValue === '1'; dockApplyBridgeMode(); }
 });
 function dockToggleBridgeMode() {
   _dockBridgeMode = !_dockBridgeMode;
   localStorage.setItem('dockBridgeMode', _dockBridgeMode ? '1' : '0');
-  dockRenderBridgeBtn();
+  dockApplyBridgeMode();
   doFlash(_dockBridgeMode ? 'green' : 'red');
+}
+/* Applies the current mode live — no page reload needed in either direction.
+   ON: close both sockets (their reconnect timers land in the guards inside
+   wsConnect/_tfConnect and stop), subscribe to the dock's feed. OFF: drop the
+   subscriptions and reopen the sockets. */
+function dockApplyBridgeMode() {
+  dockRenderBridgeBtn();
+  dockRenderBridgeChatNote();
+  bridgeSubsSync();
+  if (_dockBridgeMode) {
+    try { if (typeof ws !== 'undefined' && ws) ws.close(); } catch (e) {}
+    try { if (typeof _tfWs !== 'undefined' && _tfWs) _tfWs.close(); } catch (e) {}
+    wsUpdateStatus('bridge');
+    const l = document.getElementById('tf-label');
+    if (l) l.textContent = 'TF → DOCK';
+  } else {
+    wsConnect();
+    _tfConnect();
+  }
 }
 function dockRenderBridgeBtn() {
   const btn = document.getElementById('bridge-mode-btn');
@@ -3383,6 +3420,77 @@ function dockRenderBridgeBtn() {
   btn.textContent = _dockBridgeMode ? '🌉 Dock Bridge Mode: ON — this page is quiet' : '🌉 Dock Bridge Mode: OFF — this page publishes';
   btn.style.background = _dockBridgeMode ? 'rgba(52,211,153,0.18)' : 'rgba(168,85,247,.12)';
   btn.style.borderColor = _dockBridgeMode ? 'rgba(52,211,153,0.6)' : 'rgba(168,85,247,.3)';
+}
+
+/* Command boost — one implementation for both input paths: handleMsg (raw SSN, normal
+   mode) and the Bridge Mode milk-event subscription (dock feed). Cooldown = the boost's
+   own duration so it can't re-fire until it expires. */
+function _mmCheckCommandBoost(msgLower) {
+  if (!_mmCommandStr || msgLower !== _mmCommandStr) return;
+  const now = Date.now();
+  if (now - _mmCommandLastFire <= _mmCommandDur * 1000) return;
+  _mmCommandLastFire = now;
+  if (ablyChannel) ablyChannel.publish('milk-boost', {
+    type: _mmCommandType, mult: _mmCommandMult, durSec: _mmCommandDur,
+    cta: _mmCommandCta || (_mmCommandType === 'likes' ? 'LIKES & FOLLOWS' : _mmCommandType === 'gifts' ? 'GIFTS & SUBS' : 'COMMENTS & JOINS'),
+    icon: _mmCommandType === 'likes' ? '👍' : _mmCommandType === 'gifts' ? '🎁' : '💬',
+    _src: 'command',
+  }).catch(() => {});
+}
+
+/* ── Bridge Mode consumers ──────────────────────────────────────────────
+   In bridge mode this page keeps its remaining chat-derived jobs — the viewer
+   bar, follower/sub milestones, the !command hype boost, and the event debug
+   counters — but sources them from the Producer Dock's published events
+   instead of its own SSN/TikFinity sockets. Subscriptions attach ONLY in
+   bridge mode (each splat-chat subscriber is billed per delivered message;
+   in normal mode this page hears chat for free over its own socket). */
+let _bridgeSubActive = false;
+function _bridgeOnMilk(msg) {
+  if (!_dockBridgeMode) return;
+  const d = msg.data || {};
+  if (d.type === 'comment') {
+    if (d.platform === 'tt') _evtCounts.tt_comment++; else if (d.platform === 'yt') _evtCounts.yt_comment++;
+    _updateEvtDebug();
+    if (d.message) _mmCheckCommandBoost(String(d.message).toLowerCase().trim());
+  } else if (d.type === 'join') {
+    if (d.platform === 'tt') _evtCounts.tt_join++; if (d.platform === 'yt') _evtCounts.yt_join++;
+    _updateEvtDebug();
+  } else if (d.type === 'like') {
+    if (d.platform === 'tt') _evtCounts.tt_like++; if (d.platform === 'yt') _evtCounts.yt_like++;
+    _updateEvtDebug();
+  }
+}
+function _bridgeOnStats(msg) {
+  if (!_dockBridgeMode) return;
+  const d = msg.data || {};
+  if (d.metric === 'viewers' && (d.platform === 'tt' || d.platform === 'yt')) updateViewerCount(d.platform, d.value);
+  else if (d.metric === 'followers') trackMilestone('followers', d.platform, d.value);
+  else if (d.metric === 'subs') trackMilestone('subs', d.platform, d.value);
+}
+function bridgeSubsSync() {
+  if (typeof chatChannel === 'undefined' || !chatChannel) return;
+  if (_dockBridgeMode && !_bridgeSubActive) {
+    _bridgeSubActive = true;
+    chatChannel.subscribe('milk-event', _bridgeOnMilk);
+    chatChannel.subscribe('bridge-stats', _bridgeOnStats);
+  } else if (!_dockBridgeMode && _bridgeSubActive) {
+    _bridgeSubActive = false;
+    chatChannel.unsubscribe('milk-event', _bridgeOnMilk);
+    chatChannel.unsubscribe('bridge-stats', _bridgeOnStats);
+    // Detach = stop being billed for every comment delivery; publishing does not
+    // require attachment, so publishMilk keeps working in normal mode.
+    chatChannel.detach().catch(() => {});
+  }
+}
+function dockRenderBridgeChatNote() {
+  const c = document.getElementById('msgs-all');
+  if (!c) return;
+  if (_dockBridgeMode) {
+    c.innerHTML = '<div id="bridge-chat-note" style="padding:18px 14px;text-align:center;font-size:11px;line-height:1.6;color:rgba(255,255,255,0.55);">🌉 <strong>Bridge Mode</strong> — chat lives in the <a href="http://127.0.0.1:4317" target="_blank" rel="noopener" style="color:#A855F7;">Producer Dock</a> now.<br>This panel is idle; events flow dock → overlays directly.</div>';
+  } else {
+    document.getElementById('bridge-chat-note')?.remove();
+  }
 }
 
 /* ── Publish engagement event → gift-bar hype meter ── */
@@ -3610,6 +3718,7 @@ function handleMsg(data) {
   // Regular chat messages add a small energy pulse; check command boost trigger
   if (!_hypeSent && data.chatmessage) {
     const msgLower = (data.chatmessage || '').toLowerCase().trim();
+    _mmCheckCommandBoost(msgLower);
     // League Sprint's command engine used to be called directly from here — it moved to
     // league-sprint-control.html, which has no access to this page's raw platform chat
     // feed, so it instead subscribes to the 'milk-event' comment published below (same
@@ -3619,21 +3728,8 @@ function handleMsg(data) {
     // NEW HERE crowd overlay — every-chatter growth. No dedicated per-comment
     // publish here: the overlay derives chatters from the 'milk-event' comment sent
     // by publishMilk('comment', …) below, so New Here adds ZERO extra Ably messages.
-    // Command boost: if message matches the configured command, trigger a boost
-    // Cooldown = the boost's own duration so it can't re-fire until it expires
-    if (_mmCommandStr && msgLower === _mmCommandStr) {
-      const now = Date.now();
-      const cooldownMs = _mmCommandDur * 1000;
-      if (now - _mmCommandLastFire > cooldownMs) {
-        _mmCommandLastFire = now;
-        if (ablyChannel) ablyChannel.publish('milk-boost', {
-          type: _mmCommandType, mult: _mmCommandMult, durSec: _mmCommandDur,
-          cta: _mmCommandCta || (_mmCommandType === 'likes' ? 'LIKES & FOLLOWS' : _mmCommandType === 'gifts' ? 'GIFTS & SUBS' : 'COMMENTS & JOINS'),
-          icon: _mmCommandType === 'likes' ? '👍' : _mmCommandType === 'gifts' ? '🎁' : '💬',
-          _src: 'command',
-        }).catch(() => {});
-      }
-    }
+    // Command boost check extracted to _mmCheckCommandBoost (called above) so the
+    // Bridge Mode milk-event subscription runs the identical logic off the dock's feed.
     if(isTT)_evtCounts.tt_comment++; if(isYT)_evtCounts.yt_comment++; _updateEvtDebug();
     publishMilk('comment', _platH, data.chatname, data.chatmessage, {
       userId: data.userid || data.userId || data.chatname,
@@ -3665,7 +3761,10 @@ function handleMsg(data) {
         if (imgM) contentImg = imgM[1];
       }
     }
-    if (alertAmount > 0 && ablyChannel) {
+    // Silenced in Dock Bridge Mode — the Producer Dock's overlay bridge publishes the
+    // same gift-alert then; two publishers double-fire the gift bar (this was the third
+    // gift-alert publisher after tracker.html's two).
+    if (alertAmount > 0 && ablyChannel && !_dockBridgeMode) {
       giftsChannel.publish('gift-alert', {
         name: data.chatname || 'Anonymous', amount: alertAmount,
         type: alertType, platform: alertPlat, contentImg, giftTitle,
@@ -5939,7 +6038,12 @@ document.addEventListener('DOMContentLoaded', () => {
   _mscRenderGifts();
   _mscRenderCmds();
   _mscRenderRanges();
+  // Bridge mode at load: render the button/chat-note state and attach the dock-feed
+  // subscriptions. No socket action needed here — the guards inside wsConnect()/
+  // _tfConnect() already handle bridge mode at their normal call sites.
   dockRenderBridgeBtn();
+  dockRenderBridgeChatNote();
+  bridgeSubsSync();
 
   // Restore hidden display spans for geyser/notif/splat-pos state (persisted via localStorage)
   const geyserLbl = document.getElementById('geyser-pos-lbl');
@@ -7799,6 +7903,13 @@ function _tfUpdateStatus(state) {
 }
 
 function _tfConnect() {
+  // Bridge Mode: TikFinity likes reach the overlays through the Producer Dock's
+  // bridge — no local socket. Same guard-inside pattern as wsConnect().
+  if (_dockBridgeMode) {
+    const l = document.getElementById('tf-label');
+    if (l) l.textContent = 'TF → DOCK';
+    return;
+  }
   if (_tfWs) { try { _tfWs.close(); } catch(e){} }
   _tfUpdateStatus('connecting');
   try {
