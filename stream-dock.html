@@ -2092,10 +2092,9 @@ tr.el-checked td { background: rgba(56,189,248,.04); }
         </div>
       </div>
 
-      <div class="send-bar">
-        <input class="send-input" id="send-input" type="text" placeholder="Send to all chats…" maxlength="300">
-        <button class="send-btn" id="send-btn" onclick="sendChatMessage()">Send</button>
-      </div>
+      <!-- Send-to-all-chats moved to the Producer Dock (Combined Chat panel, bottom).
+           Removed here 2026-07-23 along with click-to-feature — chat interaction lives
+           in the dock now; this page is the overlay control surface. -->
 
     </div><!-- /col-right (All Chat — left side) -->
 
@@ -3053,9 +3052,9 @@ tr.el-checked td { background: rgba(56,189,248,.04); }
 // Session ID is supplied via ?session=... in this page's URL (bookmark it with the param
 // set) — never hardcode a real ID here, this file is served publicly on GitHub Pages.
 // Must match the session the SSN-fed overlays (ssn-chat-overlay.html, jjxlive-chat-box.html,
-// guest-chat.html) are configured with in TikTok Studio, for the featureMessage()/gbUnfeature()
-// commands below to reach them. (Featured Splat used to be part of this pairing too — it was
-// archived to _retired/ on 2026-07-19, having no other Ably/dock wiring of its own.)
+// guest-chat.html) are configured with in TikTok Studio, for the gbUnfeature() command below
+// to reach them. (featureMessage()/sendChatMessage() moved to the Producer Dock 2026-07-23;
+// Featured Splat's featuring now comes from the dock's FeaturedChatPublisher on channel 2.)
 const SESSION   = new URLSearchParams(location.search).get("session") || "";
 const MAX_MSGS  = 80;
 const ABLY_KEY  = "Y8e-eA.l0VHlg:aJXsEfu1Be4BYsAeATRMI3w30YAKSs_LyF3DPoesIz0";
@@ -3167,50 +3166,12 @@ window.addEventListener('message', e => {
   }
 });
 
-/* sendChat via HTTP GET — simplest, no socket channel confusion */
-function sendChatMessage() {
-  const inp = document.getElementById('send-input');
-  const val = inp.value.trim();
-  if (!val) return;
-  const encoded = encodeURIComponent(val);
-  fetch(`https://io.socialstream.ninja/${SESSION}/sendChat/null/${encoded}`)
-    .catch(() => {});
-  inp.value = '';
-}
-
-document.getElementById('send-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') sendChatMessage();
-});
-
-/* Feature via HTTP GET — channel=2 targets featured.html with &server2 */
-function looksLikeMoneyDock(str) {
-  return /[$£€¥₩₹]/.test(str) || /\b(USD|EUR|GBP|CAD|AUD|JPY)\b/i.test(str);
-}
-function featureMessage(data) {
-  // Determine if this is a superchat/donation so featured-splat treats it right
-  const evt = (data.event || '').toLowerCase();
-  const isYT = (data.type || '').toLowerCase().includes('youtube');
-  const isTT = (data.type || '').toLowerCase().includes('tiktok');
-  const hasMoney = looksLikeMoneyDock(data.hasDonation || '');
-  const isScEvent = ['superchat','supersticker','superchatevent','superchatwithtext','donation','giftpurchase'].includes(evt);
-
-  // Build an augmented payload that featured-splat can unambiguously classify
-  const payload = { ...data };
-  // Only YouTube superchats get SC treatment — TikTok gifts are never superchats
-  if ((hasMoney || isScEvent) && (isYT || (!isYT && !isTT))) {
-    if (!isScEvent) payload.event = 'superchat';
-    if (!isYT)      payload._forceSuperchat = true;
-  }
-
-  if (data.mid && !payload._forceSuperchat) {
-    // SSN can replay by mid — only safe for YouTube where type/event survive replay
-    fetch(`https://io.socialstream.ninja/${SESSION}/mid/null/${data.mid}?channel=2`)
-      .catch(() => {});
-  } else {
-    fetch(`https://io.socialstream.ninja/${SESSION}/content/null/${encodeURIComponent(JSON.stringify(payload))}?channel=2`)
-      .catch(() => {});
-  }
-}
+/* Send-to-all-chats and click-to-feature MOVED to the Producer Dock (2026-07-23):
+   send lives at the bottom of its Combined Chat panel; featuring is the hover-arm
+   star on each chat row (FeaturedChatPublisher replicates the mid-replay/content
+   mechanism verbatim, including the superchat re-classification and — restored in
+   the move — the chatimg/membership fields featured-splat.html styles by). This
+   page is the overlay control surface; chat interaction belongs to the dock. */
 
 /* ═══════════════════════════════════════════
    MESSAGE HANDLING
@@ -4123,12 +4084,8 @@ function addUnified(data, platform, isTT, isYT) {
   body.appendChild(text);
   row.appendChild(body);
 
-  row.addEventListener('click', () => {
-    document.querySelectorAll('.umsg.featuring').forEach(el => el.classList.remove('featuring'));
-    row.classList.add('featuring');
-    featureMessage(data);
-    setTimeout(() => row.classList.remove('featuring'), 3000);
-  });
+  // Click-to-feature removed 2026-07-23 — featuring lives in the Producer Dock's
+  // Combined Chat panel now (hover-arm star per row). This feed is display-only.
 
   // Initial parent doesn't need to be exact — dockRebalanceChat() right below always
   // re-sorts every row into correct left/right order by its seq stamp.
@@ -4261,7 +4218,7 @@ function addMoneyRail(data, meta) {
     row.appendChild(amt);
   }
 
-  row.addEventListener('click', () => featureMessage(data));
+  // Click-to-feature removed 2026-07-23 — feature from the Producer Dock instead.
 
   list.appendChild(row);
   _moneyCount++;
