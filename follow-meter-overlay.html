@@ -82,10 +82,12 @@
     display: flex; align-items: center; justify-content: center;
   }
   #alert-media-wrap img, #alert-media-wrap video, #alert-media-wrap canvas {
-    /* max-width/height are set inline per-slot (mediaPct of the full canvas) */
+    /* width/height are set inline per-slot (mediaPct of the full canvas) */
     object-fit: contain;
     display: block;
-    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.55));
+    /* No drop-shadow: on a transparent gif it haloes the artwork, but on an opaque
+       rectangular one it outlines the whole frame — which reads as a border box
+       drawn around the gif. The overlay is meant to be a wide-open canvas. */
   }
   #alert-text {
     position: absolute; left: 50%; bottom: 150px;
@@ -256,14 +258,23 @@ function applyAlertLayoutFor(slot) {
   const a = (CFG.alerts && CFG.alerts[slot]) || { x: 0, y: 0, scale: 1 };
   el.style.transform = `translate(${a.x}px, ${a.y}px) scale(${a.scale})`;
 }
-// Size the media element to mediaPct% of the FULL canvas (not the small flex
-// box), so a gif can go edge-to-edge. object-fit:contain keeps aspect ratio, so
-// a portrait gif fills height and a landscape one fills width — up to this cap.
+// Give the media a box that is mediaPct% of the FULL canvas and let it fit inside.
+//
+// Deliberately width/height, NOT max-width/max-height: a max only ever shrinks, so
+// any gif whose own pixels were smaller than the cap rendered at its natural size
+// and the Size slider did nothing above that — a small gif sat marooned in the
+// middle of a 1080x1920 canvas, which reads as a frame around it. Setting the box
+// explicitly lets a small gif scale UP to fill the screen as well as down.
+//
+// object-fit:contain guarantees the whole frame stays visible (letterboxed at
+// worst) — 'cover' would fill the box by cropping the gif's edges off.
 function sizeMediaEl(el, slot) {
   const a = (CFG.alerts && CFG.alerts[slot]) || {};
   const pct = Math.max(10, Math.min(100, a.mediaPct == null ? 100 : a.mediaPct));
-  el.style.maxWidth  = (1080 * pct / 100) + 'px';
-  el.style.maxHeight = (1920 * pct / 100) + 'px';
+  el.style.width  = (1080 * pct / 100) + 'px';
+  el.style.height = (1920 * pct / 100) + 'px';
+  el.style.maxWidth = 'none';
+  el.style.maxHeight = 'none';
 }
 function renderMeter() {
   const every = Math.max(1, CFG.milestoneEvery || 10);
