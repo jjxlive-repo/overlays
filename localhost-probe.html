@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Localhost Reachability Probe</title>
+<!--
+  Answers ONE question: can a page served from public https (GitHub Pages) open a
+  WebSocket to the Producer Dock on 127.0.0.1?
+
+  Why it matters: if YES, the overlay can take live events + config straight from the
+  dock's /ws and skip Ably entirely — with no tunnel, no domain, no Cloudflare/ngrok.
+  If NO, reaching the dock needs a public hostname (tunnel), otherwise live events
+  have to keep riding Ably.
+
+  WebSocket is the right thing to probe: it's the transport the overlay would actually
+  use, it isn't subject to CORS the way fetch is, and it works against the dock as it
+  runs TODAY (no restart, no new routes needed). With no LOCAL_ACCESS_TOKEN set the
+  dock accepts the connection; if a token IS set, expect close code 4401 — which still
+  proves the network path works (that's reported as REACHABLE below).
+
+  Load this in TikTok Studio as a Browser Source (or just open the Pages URL in Chrome
+  to compare). The dock must be running.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0d12; color: #fff;
+    font-family: 'DM Sans', system-ui, sans-serif; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  #verdict { font-size: 44px; font-weight: 800; line-height: 1.15; margin-bottom: 14px; }
+  #detail { font-size: 20px; opacity: .85; max-width: 900px; line-height: 1.45; }
+  #meta { margin-top: 18px; font-size: 15px; opacity: .5; font-family: ui-monospace, monospace; }
+  .pending { color: #FBBF24; } .ok { color: #34D399; } .bad { color: #F87171; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="verdict" class="pending">Testing…</div>
+  <div id="detail">Trying to reach the Producer Dock at 127.0.0.1:4317</div>
+  <div id="meta"></div>
+</div>
+<script>
+var PORT = new URLSearchParams(location.search).get('port') || '4317';
+var URLS = 'ws://127.0.0.1:' + PORT + '/ws';
+var verdict = document.getElementById('verdict');
+var detail  = document.getElementById('detail');
+var meta    = document.getElementById('meta');
+var settled = false;
+
+function show(cls, title, note) {
+  if (settled) return;
+  settled = true;
+  verdict.className = cls;
+  verdict.textContent = title;
+  detail.textContent = note;
+  meta.textContent = 'page origin: ' + location.origin + '  →  ' + URLS;
+}
+
+try {
+  var ws = new WebSocket(URLS);
+
+  ws.onopen = function () {
+    show('ok', '✅ REACHABLE',
+      'This browser CAN reach the dock on localhost. No tunnel needed — the overlay can take live events straight from the dock and skip Ably.');
+    try { ws.close(); } catch (e) {}
+  };
+
+  // A 4401 close is the dock actively rejecting an untokened client, which still
+  // proves the connection got there — that's a pass, not a failure.
+  ws.onclose = function (e) {
+    if (e.code === 4401) {
+      show('ok', '✅ REACHABLE (auth required)',
+        'The dock answered and asked for its access token — the network path works. No tunnel needed.');
+    } else {
+      show('bad', '❌ BLOCKED',
+        'This browser could not reach localhost from an https page. Reaching the dock will need a public hostname (tunnel), or live events keep using Ably.');
+    }
+  };
+
+  ws.onerror = function () {
+    show('bad', '❌ BLOCKED',
+      'Connection refused or blocked. Check the dock is running, then assume a tunnel is required.');
+  };
+
+  // Never hang on a silent stall.
+  setTimeout(function () {
+    show('bad', '❌ BLOCKED (timed out)',
+      'No response in 8s — treat as blocked. Confirm the Producer Dock is running and retry.');
+  }, 8000);
+} catch (err) {
+  show('bad', '❌ BLOCKED', 'WebSocket rejected outright: ' + err.message);
+}
+</script>
+</body>
+</html>
