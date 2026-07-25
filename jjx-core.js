@@ -650,6 +650,96 @@
     };
   }
 
+  /*
+    CAMERA BEATS — make every overlay feel the same hit.
+
+    TikTok Studio composites each browser source separately, so no overlay can
+    transform another. When Spin The Screen bumps or shakes the frame, every other
+    source hangs perfectly still unless it moves itself — and a frame where one layer
+    shakes and the rest do not reads as a bug, not as depth.
+
+    So the wheel broadcasts its CAMERA-level beats on 'wheel-fx' and every overlay
+    applies them locally. This lives in jjx-core rather than in each page for the
+    reason this file exists at all: twelve hand-copies of the same animation would
+    drift, and the whole effect depends on them NOT drifting. Origin and curve are
+    fixed here and must match the wheel's own #bump exactly — change one, change both.
+
+    Usage is one line, reusing whatever transport the page already has:
+        JJX.cameraBeats({ client: ablyShapedClient });   // dockRealtime facade
+        JJX.cameraBeats({ bus: overlayBus });            // createOverlayBus
+        JJX.cameraBeats();                               // opens its own socket
+
+    TARGET defaults to #stage when the page has one, else <body>. Driving <body> is
+    deliberate and correct: most of these overlays position things `fixed`, and a
+    fixed element inside a transformed ancestor moves WITH the transform. Leaving
+    them viewport-fixed would make them the one thing that ignores the camera —
+    exactly the bug this fixes. Body is the full 1080x1920 stage in these pages, so
+    the containing-block change is visually a no-op otherwise.
+  */
+  var _beatsCSS = false;
+  function cameraBeats(opts) {
+    opts = opts || {};
+    var target = opts.target || document.getElementById('stage') || document.body;
+    if (!target) return null;
+
+    // A transform already on the target would be REPLACED by ours (and vice versa).
+    // Report it rather than silently fighting over the property.
+    var existing = getComputedStyle(target).transform;
+    if (existing && existing !== 'none' && existing !== 'matrix(1, 0, 0, 1, 0, 0)') {
+      console.warn('[jjx] cameraBeats: target already has a transform (' + existing +
+                   ') — it will be replaced during a beat. Pass a wrapper as opts.target.');
+    }
+
+    if (!_beatsCSS) {
+      _beatsCSS = true;
+      var st = document.createElement('style');
+      st.textContent =
+        '@keyframes jjx-cam-bump{0%{transform:scale(1)}34%{transform:scale(var(--jjx-bump,1.012))}100%{transform:scale(1)}}' +
+        '@keyframes jjx-cam-shake{0%,100%{transform:translate(0,0)}15%{transform:translate(-14px,6px)}' +
+        '35%{transform:translate(12px,-8px)}55%{transform:translate(-8px,-4px)}78%{transform:translate(6px,5px)}}' +
+        '.jjx-cam-bumping{transform-origin:50% 42%;animation:jjx-cam-bump var(--jjx-bump-ms,460ms) cubic-bezier(.2,.9,.2,1) both}' +
+        '.jjx-cam-shaking{animation:jjx-cam-shake 380ms ease-in-out both}';
+      document.head.appendChild(st);
+    }
+
+    var timers = {};
+    function play(cls, holdMs) {
+      target.classList.remove(cls);
+      void target.offsetWidth;             // restart even mid-beat
+      target.classList.add(cls);
+      clearTimeout(timers[cls]);
+      timers[cls] = setTimeout(function () { target.classList.remove(cls); }, holdMs);
+    }
+
+    function onBump(d) {
+      d = d || {};
+      var scale = Number(d.scale), ms = Number(d.ms);
+      // Range-checked: a malformed publish must not freeze an overlay mid-animation.
+      if (!(scale > 1 && scale < 1.2) || !(ms > 0 && ms < 4000)) return;
+      target.style.setProperty('--jjx-bump', scale);
+      target.style.setProperty('--jjx-bump-ms', ms + 'ms');
+      play('jjx-cam-bumping', ms + 60);
+    }
+    function onShake(d) {
+      var ms = Number((d || {}).ms) || 380;
+      if (ms > 0 && ms < 4000) play('jjx-cam-shaking', ms + 60);
+    }
+
+    try {
+      if (opts.bus) {
+        opts.bus.on('wheel-fx', 'bump', onBump).on('wheel-fx', 'shake', onShake);
+      } else {
+        var client = opts.client || dockRealtime({});
+        var ch = client.channels.get('wheel-fx');
+        ch.subscribe('bump', function (m) { onBump(m && m.data); });
+        ch.subscribe('shake', function (m) { onShake(m && m.data); });
+      }
+    } catch (e) {
+      console.warn('[jjx] cameraBeats: could not subscribe —', e.message);
+    }
+    return { target: target, bump: onBump, shake: onShake };
+  }
+
   function isMirror() {
     // Both a query param and a hash: static hosts with clean-URL redirects
     // (like `serve`) drop the query string, but a fragment always survives.
@@ -677,5 +767,6 @@
     dockBase: dockBase,
     createOverlayBus: createOverlayBus,
     dockRealtime: dockRealtime,
+    cameraBeats: cameraBeats,
   };
 })();

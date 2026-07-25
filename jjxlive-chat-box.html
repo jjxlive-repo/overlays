@@ -1006,10 +1006,14 @@ function connectSocialStreamSocket() {
 }
 
 function connectAblyControls() {
-  if (!CONFIG.ably.enabled || !window.Ably) return;
+  /* The old `window.Ably` guard is gone with the SDK: the transport is the dock socket
+     via JJX.dockRealtime, which needs no Ably global. Left in place it always tripped,
+     silently disabling this page's realtime. */
+  if (!CONFIG.ably.enabled) return;
   try {
     ablyClient = JJX.dockRealtime({ fallbackKey: CONFIG.ably.key });
     ablyChannel = ablyClient.channels.get(CONFIG.ably.channel);
+    JJX.cameraBeats({ client: ablyClient });   // shared camera beats (jjx-core)
     ablyChannel.subscribe("jjx-chat-settings", message => {
       applyOverlaySettings(message.data || {});
     });
