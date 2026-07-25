@@ -1037,6 +1037,7 @@ function runCrack(run) {
   canvasBump(k, 380);
   bumpEl.classList.remove('shaking-hard'); void bumpEl.offsetWidth;
   bumpEl.classList.add('shaking-hard');
+  publishFx('shake', { ms: 380 });     // the whole frame took the hit, not just this layer
   runTimer(run, () => bumpEl.classList.remove('shaking-hard'), 420);
   sparkBurst(run, o, Math.round(14 * k), k, legend);
 
@@ -1447,14 +1448,36 @@ function runStage(run, advance, plannedMs) {
 // EFFECT PRIMITIVES — shared by all nine effects.
 // ═══════════════════════════════════════════════════════════════════
 
+/**
+ * BROADCAST THE BEAT to the other overlays.
+ *
+ * Studio composites each browser source separately, so nothing here can transform
+ * Feed Jamie — and Jamie stands at the cam/gameplay seam, directly under everything
+ * this overlay does. Without this, the frame shakes and Jamie hangs there perfectly
+ * still, which reads as a bug rather than a layer. So the camera-level beats go out
+ * on the socket and every overlay that wants to move applies them ITSELF, using the
+ * same origin and the same curve.
+ *
+ * Only frame-level beats belong here (bump, hard shake). Effect-local motion stays
+ * local — a bucket of water is this overlay's business.
+ */
+let fxCh = null;
+function publishFx(kind, data) {
+  if (!fxCh) return;   // no dock yet: everything still plays here, just alone
+  try { fxCh.publish(kind, data).catch(() => {}); } catch (e) {}
+}
+
 /** Canvas bump on the beat. Amplitude scales with k. Lives on #bump so it can
  *  never collide with another element's transform. */
 function canvasBump(k, ms) {
-  bumpEl.style.setProperty('--bump', (1 + 0.012 * k).toFixed(4));
-  bumpEl.style.setProperty('--bump-ms', (ms || 420 + 100 * k) + 'ms');
+  const scale = +(1 + 0.012 * k).toFixed(4);
+  const dur = ms || 420 + 100 * k;
+  bumpEl.style.setProperty('--bump', scale);
+  bumpEl.style.setProperty('--bump-ms', dur + 'ms');
   bumpEl.classList.remove('bumping');
   void bumpEl.offsetWidth;              // restart the animation even mid-flight
   bumpEl.classList.add('bumping');
+  publishFx('bump', { scale, ms: dur });
 }
 // Drop the class once the bump finishes so #bump sits with no animation between
 // beats. `both` holds the final frame either way, but a permanently-animated
@@ -1886,6 +1909,8 @@ function connect() {
     targets.subscribe('cam-snapshot', (msg) => window.setCamStill(msg.data));
     // Ask for a fresh still up front and then periodically, so one is already in hand
     // when a Ball Drop fires — requesting at detach would arrive too late to cover.
+    // Camera-level beats, for the other overlays sharing this frame (see publishFx).
+    fxCh = client.channels.get('wheel-fx');
     const askForStill = () => targets.publish('cam-snapshot-request', {}).catch(() => {});
     askForStill();
     setInterval(askForStill, 30000);

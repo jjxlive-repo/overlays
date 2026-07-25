@@ -803,6 +803,26 @@ textarea:focus-visible,[tabindex]:focus-visible{
     </div>
   </div>
 
+  <div class="sheet" id="sheetRename" role="dialog" aria-modal="true" aria-labelledby="rnTitle" hidden style="width:520px">
+    <h2 id="rnTitle">Rename</h2>
+    <div class="sheet-sub">Display only. Nothing is re-attributed.</div>
+    <div class="field">
+      <span class="field-label">Current name</span>
+      <input id="rnCurrent" type="text" readonly style="background:var(--panel-2); color:var(--text-mute)">
+    </div>
+    <div class="field">
+      <label class="field-label" for="rnNew">New name</label>
+      <input id="rnNew" type="text" autocomplete="off">
+    </div>
+    <div class="ra-event" id="rnFacts"></div>
+    <div id="rnResult"></div>
+    <div class="sheet-foot">
+      <span class="spacer"></span>
+      <button class="btn ghost" id="rnCancel" type="button">Cancel</button>
+      <button class="btn primary" id="rnSubmit" type="button" disabled>Rename</button>
+    </div>
+  </div>
+
   <div class="sheet" id="sheetReattr" role="dialog" aria-modal="true" aria-labelledby="raTitle" hidden>
     <h2 id="raTitle">Reattribute this gift</h2>
     <div class="sheet-sub">The event is never rewritten — value, platform, gift name and timestamp
@@ -1591,6 +1611,76 @@ async function saveNote(){
 }
 
 /* ==========================================================================
+   Sheet: rename
+
+   Display only. Identity, gifts and handles are untouched — the dock stores a name the streamer
+   chose and prefers it wherever a name is read, including the on-stream slides.
+   ========================================================================== */
+function openRename(){
+  const r = state.record;
+  if (!r) return;
+  const p = r.profile || {};
+  const listed = state.viewers.filter((v) => v.platform === r.platform && v.username === r.ident)[0];
+  const current = (listed && listed.displayName) || p.preferredName || r.ident;
+  state.sheet = { kind: "rename", current: current };
+
+  $("rnCurrent").value = current;
+  $("rnNew").value = "";
+  $("rnResult").className = ""; $("rnResult").textContent = "";
+  $("rnSubmit").disabled = true;
+
+  const idents = Array.isArray(p.identities) ? p.identities : [];
+  const handles = idents.map((i) => (PLAT[i.platform] || i.platform) + " @" + (i.username || i.displayName || "")).join(" · ");
+  const prev = r.displayOverride && r.displayOverride.previous;
+  $("rnFacts").innerHTML =
+    raLine("identity", "unchanged — no gift moves") +
+    raLine("handles", handles || "—") +
+    raLine("keeps as alias", prev ? prev : current) +
+    raLine("shows on stream", "yes — the leaderboard slides use it too") +
+    raLine("revert", "from the corrections log");
+
+  $("sheetSetValue").hidden = true;
+  $("sheetFormula").hidden = true;
+  $("sheetReattr").hidden = true;
+  $("sheetRename").hidden = false;
+  $("overlay").hidden = false;
+  $("rnNew").focus();
+}
+
+async function submitRename(){
+  const s = state.sheet;
+  if (!s || s.kind !== "rename" || !state.selected) return;
+  const name = $("rnNew").value.trim();
+  if (!name) return;
+  $("rnSubmit").disabled = true;
+  $("rnSubmit").textContent = "Renaming…";
+  try{
+    const res = await fetch("/api/viewers/" + encodeURIComponent(state.selected.platform) + "/" +
+                            encodeURIComponent(state.selected.ident), {
+      method: "PATCH",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ displayName: name }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || (res.status + " " + res.statusText));
+    $("rnResult").className = "is-ok";
+    $("rnResult").innerHTML = "<b>Done.</b> " + esc((body.entry && body.entry.summary) || "Renamed.") +
+      '<div class="reason">Recorded in the corrections log · revertible</div>';
+    state.index.clear();
+    await Promise.all([loadViewers(), loadCorrections()]);
+    buildIndex();
+    if (state.board) loadBoard();
+    await loadRecord(state.selected.platform, state.selected.ident);
+    setTimeout(closeSheet, 1600);
+  }catch(err){
+    $("rnResult").className = "is-err";
+    $("rnResult").textContent = "The rename failed: " + err.message + " — nothing was changed.";
+    $("rnSubmit").disabled = false;
+    $("rnSubmit").textContent = "Rename";
+  }
+}
+
+/* ==========================================================================
    Sheet: reattribute a gift
    ========================================================================== */
 function openReattr(giftId){
@@ -2148,6 +2238,7 @@ function closeSheet(){
   $("overlay").hidden = true;
   $("sheetFormula").hidden = true;
   $("sheetReattr").hidden = true;
+  $("sheetRename").hidden = true;
   $("sheetSetValue").hidden = false;
 }
 
@@ -2345,6 +2436,7 @@ function renderRecord(){
   $("recChips").innerHTML = p.isVip
     ? '<span class="chip-vip">⬢ VIP · computed</span>'
     : '<span class="chip-plain" title="The dock scores VIP from lifetime totals at read time, never stored. This viewer is under the threshold.">not VIP · computed</span>';
+  $("recActions").innerHTML = '<button class="btn" id="recRename">Rename…</button>';
 
   const idents = Array.isArray(p.identities) ? p.identities : [];
   const byPlat = (pl) => idents.filter((i) => i.platform === pl)[0];
@@ -2357,8 +2449,6 @@ function renderRecord(){
   $("recIdentLine").innerHTML = pill("tiktok") + pill("youtube") +
     '<span title="The record API returns no alias list and no link date.">' +
     (isLiveOnly ? "live layer only · not in the historical baseline" : "baseline + live layer") + "</span>";
-
-  $("recActions").innerHTML = "";
 
   /* numbers strip */
   const liveCoins = gifts.reduce((a, g) => a + (Number(g.coinValue) || 0), 0);
@@ -2624,7 +2714,18 @@ $("raResults").addEventListener("click", (e) => {
 $("raSubmit").addEventListener("click", submitReattr);
 $("raCancel").addEventListener("click", closeSheet);
 
+$("rnNew").addEventListener("input", () => {
+  const v = $("rnNew").value.trim();
+  $("rnSubmit").disabled = v === "" || (state.sheet && v === state.sheet.current);
+});
+$("rnNew").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !$("rnSubmit").disabled){ e.preventDefault(); submitRename(); }
+});
+$("rnSubmit").addEventListener("click", submitRename);
+$("rnCancel").addEventListener("click", closeSheet);
+
 $("record").addEventListener("click", (e) => {
+  if (e.target.closest("#recRename")){ openRename(); return; }
   const ra = e.target.closest("[data-reattr]");
   if (ra){ openReattr(ra.dataset.reattr); return; }
   if (e.target.closest("#aiDelArm")){ state.aiDeleteArmed = true; state.aiDeleteError = null; renderRecord(); return; }

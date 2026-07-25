@@ -26,7 +26,36 @@
     pointer-events: none;
     font-family: 'DM Sans', sans-serif;
   }
+  /* #stage MUST NOT carry a transform of its own. Spin The Screen's camera beats
+     (bump / shake) drive this element, and a second transform here would silently
+     replace theirs — the same trap the wheel overlay hit with its own bump layer.
+     If this ever needs a static transform, add a wrapper for it instead. */
   #stage { position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; overflow: hidden; }
+
+  /* ── Spin The Screen camera beats ────────────────────────────────────
+     Jamie stands at the cam/gameplay seam, directly under everything the wheel
+     overlay does — but Studio composites the two as separate sources, so nothing
+     over there can move this. When the wheel bumps or shakes the frame and Jamie
+     hangs perfectly still, it reads as a bug rather than a layer. So the wheel
+     broadcasts the beat and this applies it locally.
+
+     Origin and curve are copied EXACTLY from the wheel's own bump, because the
+     point is that the two sources look like one camera moving. Change one, change
+     both. */
+  @keyframes fj-wheel-bump {
+    0%   { transform: scale(1); }
+    34%  { transform: scale(var(--wheel-bump, 1.012)); }
+    100% { transform: scale(1); }
+  }
+  @keyframes fj-wheel-shake {
+    0%,100% { transform: translate(0,0); }
+    15%  { transform: translate(-14px, 6px); }
+    35%  { transform: translate(12px,-8px); }
+    55%  { transform: translate(-8px,-4px); }
+    78%  { transform: translate(6px, 5px); }
+  }
+  #stage.wheel-bumping  { transform-origin: 50% 42%; animation: fj-wheel-bump var(--wheel-bump-ms, 460ms) cubic-bezier(.2,.9,.2,1) both; }
+  #stage.wheel-shaking  { animation: fj-wheel-shake 380ms ease-in-out both; }
 
   /* connection dot — hidden on the broadcast overlay; check feed-jamie-control.html for status */
   #conn-dot {
@@ -3912,6 +3941,32 @@ function initComms() {
       // Tell gesture-cam we have treats on screen so it only scans/publishes the
       // body while there's something to bounce (gated, keeps Ably cost down).
       _bodyPingCh = jamieCh;
+      /* Spin The Screen camera beats. Jamie sits at the cam/gameplay seam, right under
+         the wheel overlay's effects, but Studio composites them as separate sources —
+         so the wheel broadcasts its frame-level beats and we move ourselves. Effect-local
+         motion is NOT published and should not be: a bucket of water is the wheel's
+         business, a camera shake is everyone's. */
+      const wheelFxCh = ably.channels.get('wheel-fx');
+      const stageEl = $('stage');
+      function playWheelBeat(cls, done) {
+        stageEl.classList.remove(cls);
+        void stageEl.offsetWidth;              // restart even if a beat is already mid-flight
+        stageEl.classList.add(cls);
+        clearTimeout(playWheelBeat['_t_' + cls]);
+        playWheelBeat['_t_' + cls] = setTimeout(() => stageEl.classList.remove(cls), done);
+      }
+      wheelFxCh.subscribe('bump', m => {
+        const d = m.data || {};
+        const scale = Number(d.scale), ms = Number(d.ms);
+        if (!(scale > 1 && scale < 1.2) || !(ms > 0 && ms < 4000)) return;  // ignore nonsense
+        stageEl.style.setProperty('--wheel-bump', scale);
+        stageEl.style.setProperty('--wheel-bump-ms', ms + 'ms');
+        playWheelBeat('wheel-bumping', ms + 60);
+      });
+      wheelFxCh.subscribe('shake', m => {
+        const ms = Number((m.data || {}).ms) || 380;
+        if (ms > 0 && ms < 4000) playWheelBeat('wheel-shaking', ms + 60);
+      });
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
       ably.connection.on('suspended',    () => $('conn-dot').classList.remove('connected'));
