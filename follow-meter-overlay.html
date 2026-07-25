@@ -28,34 +28,44 @@
     z-index: 20;
   }
   #meter.show { opacity: 1; }
+  /* No pill/chip behind the text — it reads straight over the stream, so it leans
+     on a heavy text-shadow for legibility instead of a plate. */
   #meter-pill {
-    display: flex; align-items: center; gap: 10px;
-    background: linear-gradient(135deg, rgba(20,10,30,0.88), rgba(10,5,20,0.88));
-    border: 2px solid rgba(255,255,255,0.18);
-    border-radius: 999px;
-    padding: 10px 26px;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 0 4px;
   }
   #meter-label {
-    font-weight: 700; font-size: 22px; letter-spacing: .06em;
+    font-weight: 700; font-size: 26px; letter-spacing: .07em;
     color: #fff; text-transform: uppercase;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.85), 0 0 18px rgba(0,0,0,0.6);
   }
   #meter-count {
-    font-weight: 700; font-size: 30px; color: #FDE047;
-    text-shadow: 0 0 12px rgba(253,224,71,0.6);
+    font-weight: 800; font-size: 38px; color: #FDE047;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.9), 0 0 16px rgba(253,224,71,0.45);
   }
-  #meter-sub {
-    font-size: 15px; color: rgba(255,255,255,0.65); font-weight: 600;
-  }
+  /* Segmented track: one block per follow in the current tier, so progress is
+     countable at a glance instead of a smooth bar you have to eyeball. */
   #meter-track {
-    width: 260px; height: 10px; border-radius: 6px;
-    background: rgba(255,255,255,0.14); overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.15);
+    display: flex; gap: 5px;
+    width: 420px; height: 30px;
   }
-  #meter-fill {
-    height: 100%; width: 0%;
-    background: linear-gradient(90deg, #38BDF8, #FDE047);
-    transition: width .4s ease;
+  #meter-track .seg {
+    flex: 1 1 0; height: 100%;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.22);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+    transition: background .25s ease, box-shadow .25s ease;
+  }
+  #meter-track .seg.on {
+    background: linear-gradient(180deg, #7DE3FF, #38BDF8);
+    border-color: rgba(255,255,255,0.75);
+    box-shadow: 0 0 12px rgba(56,189,248,0.75), 0 2px 6px rgba(0,0,0,0.45);
+  }
+  /* The block that completes the tier lands on the milestone colour. */
+  #meter-track .seg.on.last {
+    background: linear-gradient(180deg, #FDE047, #F59E0B);
+    box-shadow: 0 0 14px rgba(253,224,71,0.85), 0 2px 6px rgba(0,0,0,0.45);
   }
 
   /* ── ALERT STAGE — the media is absolutely positioned over the FULL
@@ -117,10 +127,9 @@
 <div id="meter">
   <div id="meter-pill">
     <span id="meter-label">FOLLOWERS</span>
-    <span id="meter-count">0</span>
-    <span id="meter-sub">· 10 to milestone</span>
+    <span id="meter-count">0 / 10</span>
   </div>
-  <div id="meter-track"><div id="meter-fill"></div></div>
+  <div id="meter-track"></div>
 </div>
 
 <div id="alert-pos">
@@ -289,13 +298,36 @@ function sizeMediaEl(el, slot) {
   el.style.maxWidth = 'none';
   el.style.maxHeight = 'none';
 }
+/*
+ * Progress is shown per TIER, not as a lifetime total: the label reads
+ * count / nextMilestone (0/10 → 10/20 → 20/30 …) and the track holds one block
+ * per follow in the current tier, filling left to right and resetting each time a
+ * milestone lands. `every` drives both, so changing it re-segments the track.
+ */
 function renderMeter() {
   const every = Math.max(1, CFG.milestoneEvery || 10);
-  const rem = count % every === 0 ? every : every - (count % every);
-  document.getElementById('meter-count').textContent = count.toLocaleString();
-  document.getElementById('meter-sub').textContent = `· ${rem} to milestone`;
-  const pct = Math.round(((every - rem) / every) * 100);
-  document.getElementById('meter-fill').style.width = pct + '%';
+  const tierStart = Math.floor(count / every) * every;
+  const nextTarget = tierStart + every;
+  const filled = count - tierStart;              // 0 .. every-1
+
+  document.getElementById('meter-count').textContent =
+    `${count.toLocaleString()} / ${nextTarget.toLocaleString()}`;
+
+  // Rebuild only when the segment count changes — this runs on every event.
+  const track = document.getElementById('meter-track');
+  if (track.childElementCount !== every) {
+    track.innerHTML = '';
+    for (let i = 0; i < every; i++) {
+      const s = document.createElement('div');
+      s.className = 'seg';
+      track.appendChild(s);
+    }
+  }
+  for (let i = 0; i < every; i++) {
+    const on = i < filled;
+    track.children[i].className = 'seg' + (on ? ' on' : '') + (i === every - 1 ? ' last' : '');
+  }
+
   try { localStorage.setItem(FM_LS_COUNT, String(count)); } catch (e) {}
 }
 
@@ -339,6 +371,11 @@ function showAlert(item, done) {
 
   if (_currentGifStop) { _currentGifStop(); _currentGifStop = null; }
   wrap.innerHTML = '';
+  // Set to scheduleHide() at the end of this call. Media length is only known
+  // asynchronously (GIF frame delays after decode, video metadata after load), and
+  // this is a per-call closure so a slow decode from a superseded alert can't
+  // extend the alert that replaced it.
+  let extendHold = null;
   const gifSrc = assetSrc(asset.gif);
   if (gifSrc) {
     const mime = asset.gif.mime || '';
@@ -350,6 +387,11 @@ function showAlert(item, done) {
       v.muted = false;
       v.loop = false; // play once, freeze on last frame — never restart
       sizeMediaEl(v, item.slot);
+      // Hold at least as long as the clip runs, so it can't be cut mid-playback.
+      v.onloadedmetadata = () => {
+        if (v !== wrap.firstChild || !extendHold) return;
+        if (isFinite(v.duration)) extendHold(v.duration * 1000 + 400);
+      };
       wrap.appendChild(v);
     } else if (mime === 'image/gif') {
       // A plain <img> plays a GIF's own baked-in loop count forever with no
@@ -360,7 +402,12 @@ function showAlert(item, done) {
       fetch(gifSrc).then(r => r.arrayBuffer()).then(buf => {
         if (canvas !== wrap.firstChild) return; // a newer alert already replaced this one
         const gif = fmParseGIF(buf);
-        if (gif.frames.length) _currentGifStop = fmPlayGifOnce(canvas, gif);
+        if (!gif.frames.length) return;
+        _currentGifStop = fmPlayGifOnce(canvas, gif);
+        // The GIF's own runtime is the sum of its frame delays — hold at least that
+        // long so a long animation isn't chopped off partway through.
+        const gifMs = gif.frames.reduce((n, f) => n + Math.max(20, f.delay || 100), 0);
+        if (extendHold) extendHold(gifMs + 400);
       }).catch(() => {
         // Corrupt/unsupported GIF — fall back to a plain (looping) <img> rather than showing nothing.
         if (canvas !== wrap.firstChild) return;
@@ -399,18 +446,31 @@ function showAlert(item, done) {
 
   if (MIRROR) {
     // Pinned preview: stays on screen (silently) so position/scale nudges are
-    // visible without a 4.5s countdown running out mid-adjustment. The next
-    // preview just replaces it in place.
+    // visible without a countdown running out mid-adjustment. The next preview
+    // just replaces it in place.
     done();
     return;
   }
 
-  const durMs = Math.max(1000, (CFG.alertDurationSec || 4.5) * 1000);
-  clearTimeout(showAlert._t);
-  showAlert._t = setTimeout(() => {
-    stage.classList.remove('show');
-    setTimeout(() => { wrap.innerHTML = ''; done(); }, 300);
-  }, durMs);
+  // Hold is a MINIMUM, not a fixed cut-off. The configured duration was hiding the
+  // alert on a timer that knew nothing about the media, so any gif or clip longer
+  // than it got chopped mid-animation. scheduleHide() is called again once the
+  // media's real length is known (GIF frame delays / video metadata) and extends —
+  // never shortens — the hold, so an animation always gets to finish.
+  const minMs = Math.max(1000, (CFG.alertDurationSec || 4.5) * 1000);
+  let hideAt = 0;
+  const scheduleHide = ms => {
+    const at = Date.now() + ms;
+    if (at <= hideAt) return;          // never pull the hide earlier
+    hideAt = at;
+    clearTimeout(showAlert._t);
+    showAlert._t = setTimeout(() => {
+      stage.classList.remove('show');
+      setTimeout(() => { wrap.innerHTML = ''; done(); }, 300);
+    }, ms);
+  };
+  scheduleHide(minMs);
+  extendHold = scheduleHide;           // media handlers above call this once measured
 }
 
 // ═══════════════════════════════════════════════════════════════════
