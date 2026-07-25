@@ -107,7 +107,12 @@ textarea:focus-visible,[tabindex]:focus-visible{
 #views{flex:1; min-height:0; overflow:auto}
 .view{display:none}
 .view.is-active{display:block}
-#view-records.is-active{display:flex; align-items:stretch; min-height:900px}
+/* Fixed to the viewport, not to its content. With min-height the list pane grew to fit all 267
+   rows (≈16,000px), so #listScroll never overflowed, never scrolled, and the virtual window
+   rendered every row — virtualisation silently off. The panes scroll independently instead.
+   52px title bar + 44px nav = 96px of chrome. */
+#view-records.is-active{display:flex; align-items:stretch; height:calc(100vh - 96px); min-height:520px}
+#detailPane{overflow-y:auto}
 
 /* ---------- left pane: the viewer list ---------- */
 #listPane{
@@ -182,7 +187,7 @@ textarea:focus-visible,[tabindex]:focus-visible{
 @keyframes pulse{0%,100%{opacity:.45}50%{opacity:.9}}
 
 /* ---------- right pane ---------- */
-#detailPane{flex:1; min-width:0}
+#detailPane{flex:1; min-width:0; min-height:0}
 .pane-pad{padding:26px 28px 60px}
 .pane-head{display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:18px}
 .pane-title{font-size:19px; font-weight:600}
@@ -2458,7 +2463,11 @@ function renderRecord(){
   const ytUsd     = p.lifetimeGiftValue;
   const firstLogged = gifts.length ? gifts[gifts.length - 1].timestamp : null;
   const hasTt = ttCoins != null && ttCoins > 0;
-  const hasYt = ytUsd != null && ytUsd > 0;
+  /* Only ever a YouTube figure when there is a YouTube identity to own it. The baseline's
+     lifetime_usd column is a coin-to-dollar CONVERSION of a TikTok total, not money from YouTube —
+     a TikTok viewer on 16,977 coins was being shown "$169.77 · YouTube", which is the same number
+     twice in two currencies and exactly the merge this page must never make. */
+  const hasYt = ytUsd != null && ytUsd > 0 && !!byPlat("youtube");
 
   $("recNumbers").innerHTML = [
     numCard("Lifetime · TikTok",
