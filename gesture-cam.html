@@ -60,8 +60,7 @@
   .pill.on { color:var(--green); border-color:var(--green); }
   input[type=range] { accent-color: var(--acc); }
 </style>
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=7"></script>
+<script src="jjx-core.js?v=8"></script>
 </head>
 <body>
 <div class="wrap">
@@ -172,7 +171,7 @@
 'use strict';
 import { FilesetResolver, HandLandmarker, FaceLandmarker, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
-const ABLY_KEY = '***ABLY_KEY_REMOVED***';
+const ABLY_KEY = null;
 const OUT_W = 1080, OUT_H = 1920;
 
 // ── Ably + shared daily cap guard (same budget as stream-dock/tracker) ────
@@ -210,6 +209,170 @@ const ballCh = ably.channels.get('ball-signals');
     return orig(...args);
   };
 })(ch);
+/* ── HEAD TRACKING for Spin The Screen (integration contract 2) ──────────────
+   The wheel overlay's head-anchored effects (Stamp, Curse, Buckets, Avatar) read a
+   live head box every frame. This page is the only place that can produce one: it
+   already captures the projector pixels and already runs FaceLandmarker per frame,
+   and it runs in desktop Chrome — TikTok Studio cannot host getDisplayMedia.
+
+   DELIBERATELY NOT WRAPPED by the daily publish-cap guard above. That guard exists
+   to stop a runaway metered Ably bill, and it wraps `ch` only. Head tracking is a
+   CONTINUOUS stream — the exact shape the guard is meant to catch — so routing it
+   through the guard would trip the cap in minutes and silently kill gesture events
+   with it. It is safe here for one specific reason: Ably is off (jjx-core
+   ABLY_ENABLED = false) and dockRealtime carries this over the local WebSocket,
+   where delivery is free. If Ably is ever switched back on, THIS STREAM MUST NOT
+   GO WITH IT — give it a socket-only path first. */
+const headCh = ably.channels.get('head-track');
+const HEAD_HZ = 30;                 // publish ceiling; the render loop runs faster
+let lastHeadSent = 0, lastHeadBox = null;
+
+function publishHead(lm, now) {
+  if (now - lastHeadSent < 1000 / HEAD_HZ) return;
+
+  // Face-oval extremes → a head box. 10 = forehead crown, 152 = chin,
+  // 234/454 = the cheek edges. Mapped through the SAME transform gesture events
+  // use, so the box lands in the overlay's 1080x1920 space.
+  const top = mapPoint(lm[10].x, lm[10].y);
+  const chin = mapPoint(lm[152].x, lm[152].y);
+  const left = mapPoint(lm[234].x, lm[234].y);
+  const right = mapPoint(lm[454].x, lm[454].y);
+  // Roll from the MAPPED eye corners, not the raw ones: camToFrame/frameToOut can
+  // scale x and y differently, which would skew an angle measured before mapping.
+  const eyeA = mapPoint(lm[33].x, lm[33].y);
+  const eyeB = mapPoint(lm[263].x, lm[263].y);
+
+  const x = Math.min(left.x, right.x), w = Math.abs(right.x - left.x);
+  const y = Math.min(top.y, chin.y), h = Math.abs(chin.y - top.y);
+  if (!(w > 20 && h > 20)) return;                 // implausible box — drop it
+  const roll = Math.atan2(eyeB.y - eyeA.y, eyeB.x - eyeA.x) * 180 / Math.PI;
+
+  // Only send on meaningful change: a still head should cost nothing.
+  const b = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), roll: +roll.toFixed(1) };
+  if (lastHeadBox &&
+      Math.abs(b.x - lastHeadBox.x) < 2 && Math.abs(b.y - lastHeadBox.y) < 2 &&
+      Math.abs(b.w - lastHeadBox.w) < 2 && Math.abs(b.h - lastHeadBox.h) < 2 &&
+      Math.abs(b.roll - lastHeadBox.roll) < 0.6) return;
+
+  lastHeadSent = now; lastHeadBox = b;
+  headCh.publish('head', b).catch(() => {});
+}
+
+/* ── SPIN THE SCREEN, contract 3: game-scene tracking ────────────────────────
+   Ball Drop lands in the GAME'S OWN bucket, so the overlay needs its rect. Same
+   approach as the ball detector above and for the same reason — the game is
+   TikTok-rendered, so there is nothing to query and it has to be found visually
+   in the already-captured game region.
+
+   A bucket is not a ball: it is a wide, bright, flat-topped mass sitting LOW in
+   the game area. So rather than reuse the disc test, this scans the bottom half
+   of gameBox for the widest bright column-run, which is what a bucket mouth is.
+   Published change-gated, and absent-is-fine — the overlay draws its own bucket
+   when nothing arrives, which is the fallback the handoff requires. */
+const targetsCh = ably.channels.get('game-targets');
+const bktCanvas = document.createElement('canvas');
+const bktCtx = bktCanvas.getContext('2d', { willReadFrequently: true });
+const BKT_W = 160;
+let lastTargets = null, lastTargetsAt = 0;
+
+function detectBucket(source, sx, sy, sw, sh) {
+  const dw = BKT_W, dh = Math.max(8, Math.round(dw * sh / sw));
+  if (bktCanvas.width !== dw || bktCanvas.height !== dh) { bktCanvas.width = dw; bktCanvas.height = dh; }
+  bktCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
+  const img = bktCtx.getImageData(0, 0, dw, dh).data;
+
+  // Only the lower 55% — a bucket sits on the floor of the play area.
+  const y0 = Math.floor(dh * 0.45);
+  let best = null;
+  for (let y = y0; y < dh; y++) {
+    let runStart = -1;
+    for (let x = 0; x <= dw; x++) {
+      const q = (y * dw + x) * 4;
+      const bright = x < dw && (img[q] + img[q + 1] + img[q + 2]) / 3 > 96;
+      if (bright && runStart < 0) runStart = x;
+      else if (!bright && runStart >= 0) {
+        const w = x - runStart;
+        if (w >= 12 && (!best || w > best.w)) best = { x: runStart, y: y, w: w };
+        runStart = -1;
+      }
+    }
+  }
+  if (!best) return null;
+  // Walk down from the mouth row to find the floor — the bucket's own depth.
+  let bottom = best.y;
+  for (let y = best.y; y < dh; y++) {
+    const q = (y * dw + (best.x + (best.w >> 1))) * 4;
+    if ((img[q] + img[q + 1] + img[q + 2]) / 3 > 70) bottom = y; else break;
+  }
+  return { x: best.x / dw, y: best.y / dh, w: best.w / dw, h: Math.max(1, bottom - best.y) / dh };
+}
+
+function publishTargets(now) {
+  if (now - lastTargetsAt < 200) return;
+  lastTargetsAt = now;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  const b = detectBucket(video, gameBox.x * vw, gameBox.y * vh,
+    Math.max(2, gameBox.w * vw), Math.max(2, gameBox.h * vh));
+  if (!b) {
+    if (lastTargets) { lastTargets = null; targetsCh.publish('targets', null).catch(() => {}); }
+    return;
+  }
+  const tl = frameToOut(gameBox.x + b.x * gameBox.w, gameBox.y + b.y * gameBox.h);
+  const br = frameToOut(gameBox.x + (b.x + b.w) * gameBox.w, gameBox.y + (b.y + b.h) * gameBox.h);
+  const rect = { x: Math.round(tl.x), y: Math.round(tl.y),
+                 w: Math.round(br.x - tl.x), h: Math.round(br.y - tl.y) };
+  if (rect.w < 40 || rect.h < 10) return;
+  // Change-gate: a static bucket costs nothing.
+  if (lastTargets && Math.abs(rect.x - lastTargets.x) < 6 && Math.abs(rect.y - lastTargets.y) < 6 &&
+      Math.abs(rect.w - lastTargets.w) < 6) return;
+  lastTargets = rect;
+  targetsCh.publish('targets', rect).catch(() => {});
+}
+
+/* ── SPIN THE SCREEN, contract 4: the cam snapshot ───────────────────────────
+   Ball Drop needs the overlay to reshape the camera, which it does not own —
+   TikTok Studio does. It does NOT need to own it, though: the effect FREEZES the
+   cam at detach anyway ("snapshot the cam to a canvas once, keep that still in
+   place with a hole punched"). So the overlay covers the live cam rect with a
+   still of itself and from that instant owns those pixels — mask, hole-punch and
+   fly them wherever. This page already captures the cam strip, so it can supply
+   that still on request.
+
+   Sent as one dataURL on demand, NOT a stream. The alignment risk is real: the
+   still must land pixel-exact over the live cam or the freeze shows a seam, so
+   the cam rect in overlay coordinates is sent WITH the image rather than assumed. */
+const camSnapCanvas = document.createElement('canvas');
+const camSnapCtx = camSnapCanvas.getContext('2d');
+function camSnapshot() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const sx = camBox.x * vw, sy = camBox.y * vh;
+  const sw = Math.max(2, camBox.w * vw), sh = Math.max(2, camBox.h * vh);
+  const w = Math.min(720, Math.round(sw));
+  const h = Math.max(2, Math.round(w * sh / sw));
+  if (camSnapCanvas.width !== w || camSnapCanvas.height !== h) { camSnapCanvas.width = w; camSnapCanvas.height = h; }
+  camSnapCtx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+  const tl = frameToOut(camBox.x, camBox.y);
+  const br = frameToOut(camBox.x + camBox.w, camBox.y + camBox.h);
+  return {
+    dataURL: camSnapCanvas.toDataURL('image/jpeg', 0.82),
+    rect: { x: Math.round(tl.x), y: Math.round(tl.y), w: Math.round(br.x - tl.x), h: Math.round(br.y - tl.y) },
+  };
+}
+// The overlay asks; this answers. Request/response so a snapshot is only ever
+// taken when an effect actually needs one.
+targetsCh.subscribe('cam-snapshot-request', () => {
+  const snap = camSnapshot();
+  if (snap) targetsCh.publish('cam-snapshot', snap).catch(() => {});
+});
+
+// Verification hook — this file is a module, so nothing above is reachable from the
+// console otherwise. Same pattern as window.testFire / window.__gestTest below.
+window.__headTest = { publishHead, setChannel: (c) => { headCh.publish = c; } };
+window.__spinTest = { detectBucket, publishTargets, camSnapshot,
+                      setTargetsChannel: (c) => { targetsCh.publish = c; } };
+
 const ablyPill = document.getElementById('ablyPill');
 ably.connection.on(sc => {
   ablyPill.textContent = 'ably: ' + sc.current;
@@ -788,6 +951,10 @@ function loop(now) {
     pctx.fillStyle = '#f472b6'; pctx.font = '10px sans-serif'; pctx.fillText('🐕 pet zone', pzx + 4, pzy + 13);
   }
 
+  // Spin The Screen: publish the game's bucket rect (contract 3). Change-gated,
+  // and the overlay falls back to drawing its own bucket when nothing arrives.
+  publishTargets(now);
+
   // ── Ball Guys collider scan — only while a bomb is alive, change-gated ──
   if (enabled('colliders') && now < colliderWindowUntil && now - lastBallScanAt > 250) {
     lastBallScanAt = now;
@@ -967,6 +1134,7 @@ function loop(now) {
   // ── head down: calibrated nose-Y position, held ~400ms ──
   if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks[0]) {
     const lm = faceResult.faceLandmarks[0];
+    publishHead(lm, now);          // Spin The Screen head box — see publishHead()
     lastHeadY = headYMetric(lm);
     pitchStat.textContent = 'head-Y: ' + lastHeadY.toFixed(3)
       + (poseCal.neutral != null ? ' (neutral ' + poseCal.neutral.toFixed(3) + ')' : ' — calibrate!')

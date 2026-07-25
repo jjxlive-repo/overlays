@@ -8,14 +8,25 @@
 
   A DUMB RENDERER. It never decides anything: the Producer Dock resolves every spin
   (result, variant, seed, signature, revision) and publishes ONE authoritative
-  `wheel.spin` on the Ably `splat-overlay` channel. This page receives that and plays
-  it — nothing here rolls randomness or picks a result.
+  `wheel.spin` on the `splat-overlay` channel. This page receives that and plays it —
+  nothing here rolls randomness or picks a result. The design handoff's `spinGift({...,
+  result })` "omit and the wheel picks at random" is PROTOTYPE HARNESS framing and must
+  never be implemented here; `result` is authoritative input.
 
   ORIGIN: GitHub Pages, added to TikTok LIVE Studio as a browser source (1080×1920,
   transparent). Test B (2026-07-24) confirmed Studio rejects http://localhost sources,
-  so the overlay lives on Pages and receives spins over Ably — exactly how every other
-  overlay already works. No localhost dependency in the skeleton. (The high-frequency
-  FACE-TRACKING transport is a separate, later question — checkpoint 5 / Test C.)
+  so the overlay lives on Pages — exactly like every other overlay.
+
+  TRANSPORT (updated 2026-07-24, overlays 1939e8b): Ably is OFF (`ABLY_ENABLED = false`
+  in jjx-core — the account is being cancelled). Everything rides `JJX.dockRealtime()`
+  over ws://127.0.0.1:4317/overlay-ws to the dock. That works from an https Pages origin
+  because Chrome treats 127.0.0.1 as potentially-trustworthy, so ws:// to it is not
+  mixed-content-blocked — which is also the answer to Test C, and means the checkpoint-5
+  FACE-TRACKING stream has a transport (raw socket, never the batched publish path).
+
+  PAYLOAD: schemaVersion 2 (2026-07-25) added `platform`. There is deliberately no `usd`
+  field — `gift.totalValue` is in coin equivalents and 1 coin = 1 jewel = $0.01, so
+  dollars are derived here (usdOf). See spin-docs/WHEEL-OVERLAY-RECONCILIATION.md.
 
   What this checkpoint delivers: the five rendering lanes, the
   queued→acknowledged→spinning→impact→settled→complete state machine, in-order queue
@@ -50,26 +61,69 @@
      class of visual so a Takeover impact can suppress ambient without
      touching signatures, etc. z rises with "how much it interrupts". */
   .lane { position: absolute; }
-  #lane-ambient   { inset: 0; z-index: 10; }                          /* lowest — persistent mood */
-  #lane-signature { top: 250px; right: 24px; width: 300px; z-index: 20; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
-  #lane-receipt   { top: 90px; left: 0; width: 1080px; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #lane-wall      { left: 0; bottom: 0; width: 1080px; height: 350px; z-index: 5; }  /* scenery, not an event — and outside the bump */
+  #lane-flare     { inset: 0; z-index: 20; }   /* legendFlare: under every effect, Legend only */
   #lane-wheel     { inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
+  #lane-fx        { inset: 0; z-index: 45; }   /* the effect itself */
   #lane-impact    { inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
 
-  /* ── RECEIPT: brief "acknowledged" banner with tier + queue position ── */
-  .receipt {
-    display: flex; align-items: center; gap: 14px;
-    padding: 14px 30px; border-radius: 999px;
-    background: rgba(12,10,20,0.86); border: 2px solid rgba(255,255,255,0.2);
-    box-shadow: 0 6px 26px rgba(0,0,0,0.45);
-    opacity: 0; transform: translateY(-16px);
-    transition: opacity .28s ease, transform .28s ease;
-    max-width: 940px;
+  /* ── SUPPORTER WALL ────────────────────────────────────────────────
+     A LITERAL WALL. Bricks touch — every piece is laid against its
+     neighbours with a 3px mortar joint and nothing ever floats:
+
+       · 6 courses of 58.3px pitch fill the 350px band EXACTLY, so there
+         is no leftover slack for the wall to float on. Brick is 177×55.3,
+         which is the art's own 1024×320 aspect (3.2) — no squash.
+       · 1080 / 180 = 6 exactly, so full courses tile edge to edge with
+         no remainder and no end gap.
+       · Running bond offsets alternate courses by half a pitch, which
+         leaves a part-brick CLOSER at each end. Those are real masonry,
+         not empty slots: without them the offset courses would have a
+         90px hole at each edge. They carry no name.
+       · Fill is course-major from the ground up, so a brick can never
+         appear above an empty space.
+       · Bricks NEVER move and are never removed. See addSupporter().
+
+     No background band and no placeholder courses — the wall IS the
+     bricks, so an empty wall renders nothing at all. No drop shadow:
+     real bricks sit against their neighbours with no gap to cast into. */
+  .brick {
+    position: absolute; box-sizing: border-box;
+    background-size: 100% 100%; background-repeat: no-repeat;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    overflow: hidden;
   }
-  .receipt.show { opacity: 1; transform: translateY(0); }
-  .receipt .r-name { font-weight: 700; font-size: 30px; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .receipt .r-tier { font-weight: 700; font-size: 22px; letter-spacing: .05em; text-transform: uppercase; }
-  .receipt .r-pos  { font-size: 22px; color: rgba(255,255,255,0.7); font-weight: 600; }
+  .brick.b1 { background-image: url('assets/wheel/brick.png'); }
+  .brick.b2 { background-image: url('assets/wheel/brick-2.png'); }
+  .brick.b3 { background-image: url('assets/wheel/brick-3.png'); }
+  .brick.b-legend { background-image: url('assets/wheel/brick-legend.png'); }
+
+  /* Drop-in: falls from above, lands on the course below, squashes, rebounds
+     twice with decreasing amplitude, settles. Origin is the BOTTOM edge so the
+     squash compresses onto the course beneath rather than about the centre. */
+  @keyframes om-drop {
+    0%   { transform: translateY(-340px) scaleY(1);    }
+    58%  { transform: translateY(0)      scaleY(1);    }
+    68%  { transform: translateY(0)      scaleY(.84);  }  /* impact squash */
+    78%  { transform: translateY(-13px)  scaleY(1.05); }  /* rebound 1 */
+    88%  { transform: translateY(0)      scaleY(.94);  }
+    95%  { transform: translateY(-4px)   scaleY(1.01); }  /* rebound 2 */
+    100% { transform: translateY(0)      scaleY(1);    }
+  }
+  .brick.dropping { animation: om-drop 560ms cubic-bezier(.3,.05,.4,1) both; transform-origin: 50% 100%; }
+
+  /* Names are styled by DOLLARS, not tier — that is what makes the wall
+     readable as a ledger rather than a list of effects. */
+  .brick .b-name {
+    max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    line-height: 1.05;
+  }
+  .brick .b-usd { font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; color: rgba(250,245,255,.5); margin-top: 1px; }
+  .usd-0 .b-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 500; font-size: 20px; color: #A78BFA; }
+  .usd-1 .b-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 22px; color: #E879F9; text-shadow: 0 0 10px rgba(232,121,249,.85); }
+  .usd-2 .b-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 700; font-size: 23px; color: #FBBF24; text-shadow: 0 0 12px rgba(251,191,36,.85); }
+  .usd-3 .b-name { font-family: Boogaloo, Fredoka, system-ui, sans-serif; font-size: 27px; color: #FDE68A; text-shadow: 0 0 16px rgba(251,191,36,.95); }
+  .usd-3 { box-shadow: 0 0 16px rgba(251,191,36,.5); }  /* gold-edged brick, top tier only */
 
   /* ── WHEEL: EDGE-ON SCROLLING REEL. Segments scroll vertically past a
      centre window and DECELERATE to land the resolved result under the
@@ -93,6 +147,23 @@
     opacity: 0; transform: scale(0.9); transition: opacity .3s ease, transform .3s ease;
   }
   .reel-frame.show { opacity: 1; transform: scale(1); }
+  /* Gift chip — credits WHAT was sent while the reel is still spinning, so the
+     attribution and the tension are the same beat (handoff lifecycle). Sits on the
+     housing's upper plate, above the window hole. */
+  .gift-chip {
+    position: absolute; left: 50%; top: 15.5%; transform: translate(-50%, -50%) scale(.92);
+    display: flex; align-items: baseline; gap: 12px; white-space: nowrap;
+    padding: 10px 26px; border-radius: 999px;
+    background: rgba(42, 4, 71, .78); border: 2px solid rgba(232, 121, 249, .55);
+    opacity: 0; transition: opacity .32s ease, transform .32s cubic-bezier(.2,1.3,.3,1);
+  }
+  .reel-frame.show .gift-chip { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .gift-chip .g-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 30px; color: #FAF5FF; }
+  .gift-chip .g-amt  { font-family: Fredoka, system-ui, sans-serif; font-weight: 500; font-size: 25px; color: #C084FC; }
+  /* Money in mono so digits don't jitter between spins. */
+  .gift-chip .g-usd  { font-family: 'DM Mono', ui-monospace, monospace; font-size: 22px; color: #E879F9; }
+  .tier-legend .gift-chip { border-color: rgba(251, 191, 36, .7); }
+  .tier-legend .gift-chip .g-usd { color: #FBBF24; }
   /* Viewport = the art's window hole. Mask fades top & bottom so segments roll
      in/out (the edge-of-cylinder feel) inside the window. */
   .reel-viewport {
@@ -132,33 +203,220 @@
   .tier-takeover .i-tier { color: #ffd27a; }  .impact.tier-takeover { border-color: #ffb020; }
   .tier-legend   .i-tier { color: #ffe08a; }  .impact.tier-legend   { border-color: #ffd700; box-shadow: 0 0 60px rgba(255,215,0,0.5), 0 20px 70px rgba(0,0,0,0.6); }
 
-  /* ── AMBIENT: low, readable, non-blocking mood layer after impact. ── */
-  .ambient {
-    position: absolute; left: 50%; top: 1500px; transform: translateX(-50%);
-    display: flex; align-items: center; gap: 10px;
-    padding: 12px 28px; border-radius: 16px;
-    background: rgba(10,8,18,0.4); border: 1px solid rgba(255,255,255,0.18);
-    font-size: 24px; font-weight: 600; color: rgba(255,255,255,0.82); white-space: nowrap;
-    opacity: 0; transition: opacity .6s ease;
-  }
-  .ambient.show { opacity: 1; }
+  /* The AMBIENT and SIGNATURE lanes that checkpoint 3 shipped are gone, along with
+     the RECEIPT card. The handoff's lifecycle is three phases and states it twice:
+     "No receipt card, no ambient tail", and idle shows "supporter wall only". All
+     three competed with the hero line for the same attention beat, and persistent
+     recognition is now the wall's job — which is why the wall ignores expiry while
+     the dock still computes signature.expiresAt for checkpoint 8's operator tools. */
 
-  /* ── SIGNATURE RAIL: persistent recognition; a chip per active name.
-     Class (small/medium/premium/legend) drives size + treatment. ── */
-  .sig {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 16px; border-radius: 12px;
-    background: rgba(12,10,20,0.7); border: 2px solid rgba(255,255,255,0.22);
-    font-weight: 700; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-    opacity: 0; transform: translateX(20px); transition: opacity .4s ease, transform .4s ease;
-    max-width: 300px;
+  /* ── EFFECT LAYER ─────────────────────────────────────────────────
+     Head-anchored art. Anchors are px in the 1080×1920 stage, written by
+     JS from the live head box each frame, so an effect translates AND
+     rotates with head roll. */
+  .fx { position: absolute; will-change: transform, opacity; }
+
+  /* STAMP — the die that swings in and presses the name onto the face. */
+  .stamp-die {
+    background: url('assets/wheel/stamp-die.png') center / 100% 100% no-repeat;
+    transform-origin: 50% 100%;   /* pivots on its FACE, so the press reads as contact */
   }
-  .sig.show { opacity: 1; transform: translateX(0); }
-  .sig .s-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sig-small    { font-size: 18px; }
-  .sig-medium   { font-size: 21px; border-color: #a98bff; }
-  .sig-premium  { font-size: 24px; border-color: #ffb020; }
-  .sig-legend   { font-size: 26px; border-color: #ffd700; box-shadow: 0 0 24px rgba(255,215,0,0.45); }
+  .stamp-die.legend { background-image: url('assets/wheel/stamp-die-legend.png'); }
+
+  /* The pressed impression. Ink coverage comes from a real rubber-ink alpha texture
+     (ink-mask-*, whose ALPHA is the ink — the ink-alpha-* files are opaque and would
+     mask nothing), so coverage breaks up like a genuine pressed stamp instead of
+     printing a clean rectangle. */
+  .stamp-ink {
+    display: flex; align-items: center; justify-content: center;
+    font-family: Boogaloo, Fredoka, system-ui, sans-serif;
+    color: #3B0764; white-space: nowrap; overflow: hidden;
+    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  }
+  .stamp-ink.legend { color: #6B4B0B; text-shadow: 0 1px 0 rgba(253,230,138,.55); }
+
+  @keyframes om-ripple { from { transform: scale(.25); opacity: .55; } to { transform: scale(1); opacity: 0; } }
+  .ripple { border-radius: 50%; border: 3px solid rgba(232,121,249,.75); animation: om-ripple 520ms cubic-bezier(.2,.9,.2,1) both; }
+  .ripple.legend { border-color: rgba(251,191,36,.85); }
+
+  /* One keyframe, per-element custom properties — the pattern the handoff calls out
+     as worth keeping. Each spark carries its own vector instead of needing its own
+     animation. */
+  @keyframes om-spark { from { transform: translate(0,0) scale(1); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
+  .spark { border-radius: 50%; animation: om-spark var(--sd, 520ms) cubic-bezier(.2,.8,.3,1) both; }
+
+  /* Canvas bump. Lives on #bump, NOT on #stage — the handoff warns that a bump
+     sharing an element with another transform silently replaces it. The WALL is
+     outside #bump on purpose: scaling anchored masonry would lift it off the frame
+     edges and open exactly the gaps the wall must never have. */
+  @keyframes om-bump { 0% { transform: scale(1); } 34% { transform: scale(var(--bump, 1.012)); } 100% { transform: scale(1); } }
+  #bump { position: absolute; inset: 0; transform-origin: 50% 42%; }
+  #bump.bumping { animation: om-bump var(--bump-ms, 460ms) cubic-bezier(.2,.9,.2,1) both; }
+
+  /* ── LEGEND FLARE — renders UNDER every effect at Legend and nowhere else.
+     Quantity + frame takeover + gold + flourish, per the tier grammar. ── */
+  @keyframes om-flash  { 0% { opacity: 0; } 18% { opacity: .5; } 100% { opacity: 0; } }
+  @keyframes om-rays   { to { transform: rotate(360deg); } }
+  @keyframes om-vign   { 0% { opacity: 0; } 22% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
+  .lf-flash { position: absolute; inset: 0; background: #FBBF24; mix-blend-mode: screen; animation: om-flash 880ms ease-out both; }
+  .lf-rays {
+    position: absolute; left: 50%; top: 50%; width: 2600px; height: 2600px; margin: -1300px 0 0 -1300px;
+    background: repeating-conic-gradient(rgba(251,191,36,.16) 0deg 6deg, transparent 6deg 14deg);
+    /* Masked to fade past 60% radius so the rays never show a hard circular edge. */
+    -webkit-mask-image: radial-gradient(circle, #000 42%, transparent 60%);
+            mask-image: radial-gradient(circle, #000 42%, transparent 60%);
+    animation: om-rays 30s linear infinite;
+  }
+  .lf-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, transparent 46%, rgba(180,83,9,.5) 100%); animation: om-vign var(--hold, 2600ms) ease-in-out both; }
+
+  /* ── CURSE ◍ — the giver possesses the camera ──────────────────────
+     The curse IS the giver's avatar: their face screen-blended over the
+     tracked head in three layers — a core plus two hue-split clones on
+     STEPPED glitch loops — so it reads as something wearing the face. */
+  .curse-av { background-size: cover; background-position: center; border-radius: 50%; }
+  .curse-core  { mix-blend-mode: screen; opacity: .62; }
+  .curse-ghost { mix-blend-mode: screen; opacity: .38; }
+  @keyframes om-glitch {
+    0%,100% { transform: translate(0,0); } 20% { transform: translate(-11px, 2px); }
+    40% { transform: translate(9px,-3px); } 60% { transform: translate(-6px,-2px); }
+    80% { transform: translate(11px, 3px); }
+  }
+  /* steps() is the point — a smooth glitch is not a glitch. */
+  .curse-ghost.g1 { animation: om-glitch 640ms steps(4, end) infinite; filter: hue-rotate(-38deg); }
+  .curse-ghost.g2 { animation: om-glitch 820ms steps(4, end) infinite reverse; filter: hue-rotate(42deg); }
+  @keyframes om-breathe { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.06); opacity: .9; } }
+  .curse-halo { border-radius: 50%; box-shadow: 0 0 90px 30px rgba(232,121,249,.55); animation: om-breathe 1500ms ease-in-out infinite; }
+  .curse-halo.legend { box-shadow: 0 0 110px 36px rgba(251,191,36,.6); }
+  .curse-vignette { background: radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(42,4,71,.92) 100%); mix-blend-mode: multiply; }
+  .tear { mix-blend-mode: screen; background: linear-gradient(90deg, rgba(232,121,249,.75), rgba(56,189,248,.6)); animation: om-glitch var(--td, 500ms) steps(6, end) infinite; }
+  @keyframes om-drip { from { height: 0; opacity: .9; } to { height: var(--dh, 120px); opacity: .25; } }
+  .drip { background: linear-gradient(180deg, #2A0447, rgba(42,4,71,0)); animation: om-drip var(--dd, 900ms) ease-in both; }
+  .curse-frame { border: 3px dashed rgba(232,121,249,.85); }
+  .curse-corner { border: 4px solid #FBBF24; }
+  .curse-sigil { border-radius: 50%; background-size: cover; background-position: center; box-shadow: 0 0 0 3px #FBBF24; }
+
+  /* ── FLOOD ◒ — buckets thrown from the sides ──────────────────────── */
+  .bucket { background: url('assets/wheel/bucket.png') center / 100% 100% no-repeat; }
+  .bucket.legend { background-image: url('assets/wheel/bucket-legend.png'); }
+  /* Water travels a real ARC, so the path is x and y on different timings. */
+  @keyframes om-arc-x { from { transform: translateX(0); } to { transform: translateX(var(--ax, 0px)); } }
+  @keyframes om-arc-y { 0% { transform: translateY(0) rotate(0deg); } 40% { transform: translateY(calc(var(--ah, -130px))) rotate(18deg); } 100% { transform: translateY(var(--ay, 0px)) rotate(46deg); } }
+  .water-x { animation: om-arc-x var(--wd, 265ms) linear both; }
+  .water-y { background: url('assets/wheel/bucket-pour.png') center / 100% 100% no-repeat; animation: om-arc-y var(--wd, 265ms) cubic-bezier(.3,0,.7,1) both; }
+  .droplet { border-radius: 50%; background: #7DD3FC; animation: om-arc-y var(--wd, 265ms) cubic-bezier(.3,0,.7,1) both; }
+  @keyframes om-splash { 0% { transform: scale(.3); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
+  .splash { background: url('assets/wheel/water-splash-crown.png') center / 100% 100% no-repeat; animation: om-splash 620ms cubic-bezier(.2,.9,.2,1) both; }
+  .wet-film { background: url('assets/wheel/wet-film.png') center / 100% 100% no-repeat; transition: opacity .4s ease; }
+  /* A face bead is a bead PLUS a tapered trail behind it — same duration, same delay. */
+  @keyframes om-bead { from { transform: translateY(0); opacity: .95; } to { transform: translateY(var(--dy, 90px)); opacity: 0; } }
+  @keyframes om-run  { from { transform: scaleY(0); opacity: .7; } to { transform: scaleY(1); opacity: 0; } }
+  .bead { border-radius: 50%; background: #7DD3FC; animation: om-bead var(--bd, 900ms) ease-in both; }
+  .run  { background: linear-gradient(180deg, rgba(125,211,252,0), rgba(125,211,252,.75)); transform-origin: 50% 0; animation: om-run var(--bd, 900ms) ease-in both; }
+  @keyframes om-shakeoff { 0%,100% { transform: translateX(0) } 20% { transform: translateX(-9px) } 45% { transform: translateX(8px) } 70% { transform: translateX(-5px) } 88% { transform: translateX(3px) } }
+  .shaking { animation: om-shakeoff 460ms ease-in-out both; }
+
+  /* ── WEATHER ❉ — particle pool on randomised paths ────────────────── */
+  @keyframes om-fall { from { transform: translateY(-40px) translateX(0) rotate(var(--pr,0deg)); opacity: 0; }
+                       12% { opacity: 1; }
+                       to  { transform: translateY(var(--fy, 900px)) translateX(var(--fx, 40px)) rotate(var(--pr,0deg)); opacity: .1; } }
+  .storm-p { background: linear-gradient(180deg, rgba(192,132,252,0), #C084FC); animation: om-fall var(--fd, 1400ms) linear infinite both; }
+  .storm-p.gold { background: linear-gradient(180deg, rgba(251,191,36,0), #FBBF24); }
+  .bolt { background: #FDE68A; animation: om-flash 260ms ease-out both; }
+
+  /* ── CRACK ◆ — break the glass ─────────────────────────────────────── */
+  @keyframes om-crack { from { transform: rotate(var(--cr,0deg)) scaleX(0); } to { transform: rotate(var(--cr,0deg)) scaleX(1); } }
+  .spoke { transform-origin: 0 50%; background: rgba(250,245,255,.92); animation: om-crack var(--cd, 260ms) cubic-bezier(.1,.9,.2,1) both; }
+  .crack-web { background: url('assets/wheel/glass-crack-web.png') center / 100% 100% no-repeat; animation: om-splash 520ms ease-out both; }
+  @keyframes om-shake { 0%,100% { transform: translate(0,0) } 15% { transform: translate(-14px, 6px) } 35% { transform: translate(12px,-8px) } 55% { transform: translate(-8px,-4px) } 78% { transform: translate(6px, 5px) } }
+  #bump.shaking-hard { animation: om-shake 380ms ease-in-out both; }
+  @keyframes om-tumble { from { transform: translate(0,0) rotate(0deg); opacity: 1; } to { transform: translate(var(--dx,0px), 1400px) rotate(var(--dr, 420deg)); opacity: .2; } }
+  .shard { background: url('assets/wheel/glass-shards.png') center / cover no-repeat; animation: om-tumble var(--sd, 1100ms) cubic-bezier(.4,0,.9,1) both; }
+
+  /* ── SPOTLIGHT ▲ — the giver steals your light ────────────────────── */
+  .sl-cone { background: url('assets/wheel/spotlight-cone.png') center top / 100% 100% no-repeat; opacity: .82;
+             transition: left .5s cubic-bezier(.3,.8,.3,1), top .5s ease, width .44s ease, opacity .3s ease; }
+  .sl-pool { background: url('assets/wheel/spotlight-floor-pool.png') center / 100% 100% no-repeat;
+             transition: left .5s cubic-bezier(.3,.8,.3,1), width .44s ease, opacity .3s ease; }
+  .sl-dark { background: rgba(10,4,20,.72); transition: opacity .5s ease; }
+  @keyframes om-rise { from { transform: translateY(150px) scale(.9); opacity: 0; } 70% { transform: translateY(-16px) scale(1.03); opacity: 1; } to { transform: translateY(0) scale(1); opacity: 1; } }
+  .sl-giver { background-size: cover; background-position: center; border-radius: 50%; animation: om-rise 620ms cubic-bezier(.2,1.1,.3,1.2) both; }
+  .sl-shadow { background: radial-gradient(ellipse, rgba(0,0,0,.72), transparent 70%); }
+  .sl-plate { font-family: Boogaloo, Fredoka, system-ui, sans-serif; color: #FDE68A; text-align: center; white-space: nowrap; }
+  .sl-beam { background: linear-gradient(180deg, rgba(251,191,36,.35), transparent); transform-origin: 50% 0; animation: om-glitch 2600ms ease-in-out infinite; }
+
+  /* ── FRAME ▣ — claim the frame ─────────────────────────────────────
+     9-SLICED. border-image is inert on an <img> and inert without a real
+     border-width, so it must be a wrapper div that HAS a border-width. */
+  .marquee {
+    border-style: solid;
+    border-image-source: url('assets/wheel/frame-marquee.png');
+    border-image-slice: 34% fill;
+    border-image-repeat: stretch;
+  }
+  .marquee.legend { border-image-source: url('assets/wheel/frame-marquee-legend.png'); }
+  @keyframes om-marquee { to { transform: rotate(-360deg); } }
+  .marquee.counter { animation: om-marquee 26s linear infinite; }
+  @keyframes om-chase { from { left: 0; } to { left: 100%; } }
+  .stud { border-radius: 50%; background: #FDE68A; box-shadow: 0 0 12px rgba(251,191,36,.9); animation: om-chase var(--cd, 2600ms) linear infinite both; }
+
+  /* ── AVATAR ◉ — invade ─────────────────────────────────────────────── */
+  .invader { background-size: cover; background-position: center; border-radius: 50%; box-shadow: 0 0 0 4px #E879F9, 0 12px 40px rgba(0,0,0,.5); }
+  .invader.legend { box-shadow: 0 0 0 4px #FBBF24, 0 0 40px rgba(251,191,36,.6); }
+  .inv-tag {
+    font-family: Fredoka, system-ui, sans-serif; font-weight: 600; color: #FAF5FF; white-space: nowrap;
+    background: rgba(42,4,71,.85); border-radius: 999px; padding: 6px 18px;
+    opacity: 0; transform: scale(.7); transition: opacity .22s ease, transform .28s cubic-bezier(.2,1.4,.3,1);
+  }
+  .inv-tag.show { opacity: 1; transform: scale(1); }
+  @keyframes om-drift { to { transform: translateY(-260px); opacity: 0; } }
+  .drifting { animation: om-drift 700ms ease-in both; }
+
+  /* ── BALL DROP ● — the cam becomes a ball ──────────────────────────
+     Layer order is fixed by the art: circular cam crop → shell (multiply)
+     → gloss (screen) → rim ring. */
+  .ball { background-size: cover; background-position: center; overflow: hidden; will-change: transform, left, top; }
+  .ball-shell { background: url('assets/wheel/ball-shell.png') center / 100% 100% no-repeat; mix-blend-mode: multiply; }
+  .ball-gloss { background: url('assets/wheel/ball-gloss.png') center / 100% 100% no-repeat; mix-blend-mode: screen; }
+  .ball-ring  { background: url('assets/wheel/ball-ring.png') center / 100% 100% no-repeat; }
+  .ball-ring.legend { background-image: url('assets/wheel/ball-ring-legend.png'); }
+  .ball-shadow { background: radial-gradient(ellipse, rgba(0,0,0,.55), transparent 70%); border-radius: 50%; }
+  .ball-trail { background: linear-gradient(180deg, rgba(251,191,36,.85), rgba(251,191,36,0)); border-radius: 6px; }
+  /* The frozen cam still, covering the live cam so we own the pixels. */
+  .cam-frozen { background-size: cover; background-position: center; }
+  /* Tracked mode draws a lock-on reticle instead of a bucket — the game already
+     has one on screen, and drawing a second would read as a mistake. */
+  .ball-reticle {
+    border: 3px solid rgba(232,121,249,.9); border-radius: 10px;
+    box-shadow: 0 0 0 2px rgba(42,4,71,.6), 0 0 22px rgba(232,121,249,.5);
+    animation: om-breathe 900ms ease-in-out infinite;
+  }
+  .bucket-lip { background: url('assets/wheel/bucket-mouth.png') center top / 100% 100% no-repeat; }
+  .ball-plate {
+    position: absolute; font-family: Boogaloo, Fredoka, system-ui, sans-serif; color: #FAF5FF;
+    text-shadow: 2px 0 0 #2A0447, -2px 0 0 #2A0447, 0 2px 0 #2A0447, 0 -2px 0 #2A0447,
+                 2px 2px 0 #2A0447, -2px 2px 0 #2A0447, 2px -2px 0 #2A0447, -2px -2px 0 #2A0447;
+    opacity: 0; transform: translateY(14px); transition: opacity .3s ease, transform .3s cubic-bezier(.2,1.3,.3,1);
+  }
+  .ball-plate.show { opacity: 1; transform: translateY(0); }
+
+  /* ── HERO LINE — the ONE place the name is printed during impact.
+     Every name over gameplay carries an 8-direction ink outline so it stays
+     legible against arbitrary gameplay colour underneath. ── */
+  .hero {
+    position: absolute; left: 0; top: 760px; width: 1080px; text-align: center;
+    opacity: 0; transform: translateY(18px) scale(.96);
+    transition: opacity .52s cubic-bezier(.18,1.2,.3,1), transform .52s cubic-bezier(.18,1.2,.3,1);
+  }
+  .hero.show { opacity: 1; transform: translateY(0) scale(1); }
+  .hero .h-name {
+    font-family: Boogaloo, Fredoka, system-ui, sans-serif; font-size: 96px; color: #FAF5FF;
+    text-shadow: 2px 0 0 #2A0447, -2px 0 0 #2A0447, 0 2px 0 #2A0447, 0 -2px 0 #2A0447,
+                 2px 2px 0 #2A0447, -2px 2px 0 #2A0447, 2px -2px 0 #2A0447, -2px -2px 0 #2A0447;
+  }
+  .hero .h-what { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 38px; color: #C084FC; letter-spacing: .04em; }
+  .hero.tier-legend .h-name { color: #FDE68A; }
+  .hero.tier-legend .h-what { color: #FBBF24; }
 
   /* Dev-only heads-up so an operator loading the page in a browser knows it's alive
      and which transport it's on. Hidden inside Studio is fine — pointer-events off. */
@@ -169,15 +427,16 @@
 <body>
 <div id="conn">wheel: connecting…</div>
 <div id="stage">
-  <div class="lane" id="lane-ambient"></div>
-  <div class="lane" id="lane-signature"></div>
-  <div class="lane" id="lane-receipt"></div>
-  <div class="lane" id="lane-wheel"></div>
-  <div class="lane" id="lane-impact"></div>
+  <div class="lane" id="lane-wall"></div>
+  <div id="bump">
+    <div class="lane" id="lane-flare"></div>
+    <div class="lane" id="lane-wheel"></div>
+    <div class="lane" id="lane-fx"></div>
+    <div class="lane" id="lane-impact"></div>
+  </div>
 </div>
 
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=7"></script>
+<script src="jjx-core.js?v=8"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -223,6 +482,62 @@ function iconEl(key, box) {
 const TIER_LABEL = { spin: 'SPIN', power: 'POWER SPIN', takeover: 'TAKEOVER', legend: 'LEGEND SPIN' };
 const TIER_GLYPH = { spin: '●', power: '◆', takeover: '★', legend: '👑' };
 
+// ═══════════════════════════════════════════════════════════════════
+// TIER SCALING — `k` multiplies effect scale, stroke weights, particle
+// counts, glow radius and bump amplitude. GOLD APPEARS NOWHERE EXCEPT
+// LEGEND; that exclusivity is the whole reason Legend reads as rare.
+// ═══════════════════════════════════════════════════════════════════
+const TIER = {
+  spin:     { k: 1.00, hold: 1200, ornament: '✦',  ring: '#7B2FBE' },
+  power:    { k: 1.35, hold: 1600, ornament: '✦✦', ring: '#A855F7' },
+  takeover: { k: 1.75, hold: 2100, ornament: '✷',  ring: '#E879F9' },
+  legend:   { k: 2.15, hold: 2600, ornament: '♛',  ring: '#FBBF24' },
+};
+const tierOf = (spin) => TIER[spin?.tier] || TIER.spin;
+
+// ═══════════════════════════════════════════════════════════════════
+// HEAD TRACKING (integration contract 2)
+//
+// A tracker writes `headNow` every frame; everything head-anchored reads it
+// LIVE and translates *and* rotates with roll, including through hold periods.
+// Nothing exists to write it yet (checkpoint 5), so it starts at the layout's
+// static rect and effects degrade to a fixed anchor rather than breaking.
+//
+// DROPOUT RULE: freeze on the last known box, never snap back to a default —
+// a snap is far more visible than a stale anchor. On a cold start there is no
+// last known box, so the layout rect IS the opening fallback.
+// ═══════════════════════════════════════════════════════════════════
+const LAYOUTS = {
+  'cam-top':    { head: { x: 400, y: 62,   w: 280, h: 342, roll: 0 }, ground: 1740 },
+  'cam-bottom': { head: { x: 390, y: 1075, w: 300, h: 365, roll: 0 }, ground: 1620 },
+};
+let layout = 'cam-top';
+let headNow = { ...LAYOUTS[layout].head };
+let headSeenAt = 0;                    // 0 = never tracked; still on the layout fallback
+
+/** Tracker entry point. gesture-cam publishes here; also callable by hand for tests. */
+window.setHead = (h) => {
+  if (!h || !isFinite(h.x) || !isFinite(h.y) || !(h.w > 0) || !(h.h > 0)) return;
+  headNow = { x: h.x, y: h.y, w: h.w, h: h.h, roll: isFinite(h.roll) ? h.roll : 0 };
+  headSeenAt = Date.now();
+};
+/** DROPOUT: we simply stop updating, which freezes on the last known box — the
+ *  spec's rule, and the reason this is a no-op rather than a reset. Reported only
+ *  so an operator can see tracking died; the visuals must NOT change on dropout,
+ *  because a snap back to a default is far more visible than a stale anchor. */
+const HEAD_STALE_MS = 2000;
+const headTracked = () => headSeenAt > 0 && Date.now() - headSeenAt < HEAD_STALE_MS;
+
+/** A point in HEAD UNITS, rotated by roll. ox/oy are fractions of head width/height
+ *  from head centre — so an anchor keeps its place on the face as the head turns. */
+function headPoint(h, ox, oy) {
+  const cx = h.x + h.w / 2, cy = h.y + h.h / 2;
+  const dx = ox * h.w, dy = oy * h.h;
+  const r = (h.roll || 0) * Math.PI / 180, cos = Math.cos(r), sin = Math.sin(r);
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+const forehead = (h) => headPoint(h, 0, -0.26);
+
 // Stage timings (ms), inside the spec's recommended envelopes. Impact and ambient
 // scale up by tier. Every stage also has a WATCHDOG (see runStage) a bit longer than
 // its own duration, so a stuck stage can never freeze the machine.
@@ -241,8 +556,9 @@ const MASTER_WATCHDOG_MS = 16000; // absolute ceiling for one spin's active run
 // can guarantee "no orphaned timers or DOM nodes" (spec).
 // ═══════════════════════════════════════════════════════════════════
 const $ = (id) => document.getElementById(id);
-const laneReceipt = $('lane-receipt'), laneWheel = $('lane-wheel'),
-      laneImpact = $('lane-impact'), laneAmbient = $('lane-ambient'), laneSignature = $('lane-signature');
+const laneWheel = $('lane-wheel'), laneImpact = $('lane-impact'),
+      laneWall = $('lane-wall'), laneFx = $('lane-fx'), laneFlare = $('lane-flare'),
+      bumpEl = $('bump');
 
 function el(cls, html) { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; }
 function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])); }
@@ -264,7 +580,7 @@ const seenRevisions = new Set(); // dedupe: a re-published/replayed spin renders
 
 /** One run context per active spin. Holds its timers + nodes so cleanup is total. */
 function makeRun(spin) {
-  return { spin, timers: new Set(), nodes: new Set(), master: null, done: false };
+  return { spin, timers: new Set(), nodes: new Set(), rafs: new Set(), master: null, done: false };
 }
 function runTimer(run, fn, ms) {
   const t = setTimeout(() => { run.timers.delete(t); if (!run.done) fn(); }, ms);
@@ -276,6 +592,10 @@ function cleanupRun(run) {
   run.done = true;
   for (const t of run.timers) clearTimeout(t);
   run.timers.clear();
+  // Head-follow loops are rAF, not timers — they need their own cancel or an
+  // interrupted effect keeps painting into the next one's frames.
+  for (const r of run.rafs) cancelAnimationFrame(r);
+  run.rafs.clear();
   if (run.master) { clearTimeout(run.master); run.master = null; }
   for (const n of run.nodes) n.remove(); // ambient/signature nodes are detached FIRST (below), so they survive
   run.nodes.clear();
@@ -291,7 +611,6 @@ function onWheelSpin(spin) {
   if (seenRevisions.size > 500) seenRevisions.clear();
 
   queue.push(spin);
-  showReceipt(spin, queue.length + (active ? 0 : -1)); // position among those still waiting
   pump();
 }
 
@@ -319,9 +638,10 @@ function startSpinning(run) {
   const spin = run.spin;
   if (spin.skippedSpinAnimation) { startImpact(run); return; }
 
-  const frame = el('reel-frame');
+  const frame = el(`reel-frame tier-${spin.tier}`);
   const vp = el('reel-viewport');
   const strip = el('reel-strip');
+  frame.appendChild(giftChip(spin));
   // Build a long strip: the 8 results repeated REEL_CYCLES times, so there's
   // plenty to scroll through before the landing row. Each segment: real icon
   // (sprite) + upright label.
@@ -367,6 +687,23 @@ function startSpinning(run) {
 function startImpact(run) {
   const spin = run.spin;
   const res = RESULT_BY_KEY[spin.result] || { label: spin.result };
+  const fx = EFFECTS[spin.result];
+
+  // Legend flare goes UNDER the effect, so it is laid first and for every effect.
+  if (spin.tier === 'legend') legendFlare(run);
+
+  if (fx) {
+    const pressMs = fx.run(run) || 0;
+    // hero:false effects suppress the hero line entirely — their in-scene payoff IS
+    // the name, and printing it again would be the same voice twice.
+    if (fx.hero !== false) showHero(run, spin);
+    // Impact ends after the press sequence, the impression's dwell and its peel.
+    const hold = pressMs + tierOf(spin).hold + 640;
+    runStage(run, () => startSettle(run), hold);
+    return;
+  }
+
+  // PLACEHOLDER card — the seven effects checkpoint 7 still owes.
   const card = el(`impact tier-${spin.tier}`);
   const glyph = el('i-glyph');
   glyph.appendChild(iconEl(spin.result, 130));
@@ -385,14 +722,709 @@ function startImpact(run) {
   }, hold);
 }
 
-// ── Stage 3: SETTLED → hand off to ambient + signature, then release queue ──
+// ═══════════════════════════════════════════════════════════════════
+// CURSE ◍ — the giver possesses the camera.
+// The curse IS the giver's avatar, worn over the streamer's tracked head.
+// ═══════════════════════════════════════════════════════════════════
+function runCurse(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
+  const legend = spin.tier === 'legend';
+  // Legend: the corruption leaves the cam and takes the whole frame.
+  const box = legend ? { x: 0, y: 0, w: 1080, h: 1920 } : camRect();
+  const url = avatarUrl(spin);
+
+  runNode(run, laneFx, place(el('fx curse-vignette'), box.x, box.y, box.w, box.h));
+
+  if (legend) {
+    // Released from head tracking and painted SOLID: a screen-blended avatar over
+    // dark gameplay is invisible. Centre y is biased BELOW the hero band so the
+    // name and the face are not fighting for the same rows.
+    const s = 680, cx = box.w / 2, cy = 1180;
+    const ring = place(el('fx curse-halo legend'), cx - s / 2 - 26, cy - s / 2 - 26, s + 52, s + 52);
+    runNode(run, laneFx, ring);
+    // Orbit ghost offsets derive from the FRAME width, so they cannot clip out.
+    const orbit = box.w * 0.30;
+    for (let i = 0; i < 4; i++) {
+      const a = (Math.PI * 2 * i) / 4;
+      const g = place(el('fx curse-av curse-ghost g' + (i % 2 ? 2 : 1)),
+        cx + Math.cos(a) * orbit - 90, cy + Math.sin(a) * orbit - 90, 180, 180);
+      g.style.backgroundImage = `url('${url}')`;
+      runNode(run, laneFx, g);
+    }
+    const core = place(el('fx curse-av'), cx - s / 2, cy - s / 2, s, s);
+    core.style.backgroundImage = `url('${url}')`;   // solid, no blend mode
+    runNode(run, laneFx, core);
+  } else {
+    const h = headNow;
+    const s = Math.max(h.w, h.h) * 1.12;
+    const c = headPoint(h, 0, 0);
+    runNode(run, laneFx, place(el('fx curse-halo'), c.x - s / 2, c.y - s / 2, s, s));
+    // Three layers: a core at 62% plus two hue-split clones offset ±11px.
+    ['curse-core', 'curse-ghost g1', 'curse-ghost g2'].forEach((cls) => {
+      const n = place(el('fx curse-av ' + cls), c.x - s / 2, c.y - s / 2, s, s);
+      n.style.backgroundImage = `url('${url}')`;
+      runNode(run, laneFx, n);
+    });
+    // Four gold-ringed avatar sigils pinned to the cursed frame's corners.
+    [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([fx2, fy]) => {
+      const sg = place(el('fx curse-sigil'), box.x + fx2 * (box.w - 64) , box.y + fy * (box.h - 64), 64, 64);
+      sg.style.backgroundImage = `url('${url}')`;
+      runNode(run, laneFx, sg);
+    });
+  }
+
+  const frame = place(el('fx curse-frame'), box.x + 8, box.y + 8, box.w - 16, box.h - 16);
+  runNode(run, laneFx, frame);
+  [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([fx2, fy]) => {
+    const c2 = place(el('fx curse-corner'), box.x + fx2 * (box.w - 46), box.y + fy * (box.h - 46), 46, 46);
+    runNode(run, laneFx, c2);
+  });
+
+  const bars = legend ? 14 : 4 + ti * 2;
+  for (let i = 0; i < bars; i++) {
+    const b = place(el('fx tear'), box.x, box.y + rnd(0, box.h), box.w, rnd(3, 16) * k);
+    b.style.setProperty('--td', rnd(360, 700).toFixed(0) + 'ms');
+    runNode(run, laneFx, b);
+  }
+  const drips = legend ? 18 : 5 + ti * 2;
+  for (let i = 0; i < drips; i++) {
+    const d = place(el('fx drip'), box.x + rnd(0, box.w), box.y, rnd(4, 13), 0);
+    d.style.setProperty('--dh', rnd(70, 230 * k).toFixed(0) + 'px');
+    d.style.setProperty('--dd', rnd(700, 1500).toFixed(0) + 'ms');
+    runNode(run, laneFx, d);
+  }
+  canvasBump(k);
+  return 380;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FLOOD ◒ — buckets thrown from the sides. TIER = HOW MANY.
+// Each enters from off-frame on alternating sides, stops beside the head just
+// above crown height, and tips TOWARD the face on its trailing corner. The water
+// leaves the actual tipped mouth and travels a real arc.
+// ═══════════════════════════════════════════════════════════════════
+const FLOOD_COUNT = { spin: 1, power: 2, takeover: 3, legend: 5 };
+const FLOOD_GAP   = { spin: 560, power: 560, takeover: 490, legend: 430 };
+
+function runFlood(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
+  const legend = spin.tier === 'legend';
+  const n = FLOOD_COUNT[spin.tier], gap = FLOOD_GAP[spin.tier];
+  let wetness = 0, film = null;
+
+  for (let i = 0; i < n; i++) {
+    const at = i * gap;
+    const fromLeft = i % 2 === 0;                 // alternating sides
+    const dir = fromLeft ? 1 : -1;                // throw direction
+
+    runTimer(run, () => {
+      const h = headNow;
+      const bw = 190 * k, bh = 150 * k;
+      const crown = h.y;
+      // Hover clamps when the cam sits at the top of frame and there is no headroom.
+      const restY = Math.max(6, crown - bh * 0.86);
+      const restX = fromLeft ? h.x - bw * 0.72 : h.x + h.w - bw * 0.28;
+
+      const b = place(el('fx bucket' + (legend ? ' legend' : '')),
+        fromLeft ? -bw : 1080, restY, bw, bh);
+      b.style.transformOrigin = fromLeft ? '78% 86%' : '22% 86%';   // trailing corner
+      b.style.transition = 'left 230ms cubic-bezier(.2,.9,.25,1.1)';
+      runNode(run, laneFx, b);
+      void b.offsetWidth;
+      b.style.left = restX + 'px';
+
+      // TIP toward the face, 116°, pivoting on the trailing corner.
+      runTimer(run, () => {
+        b.style.transition = 'transform 250ms cubic-bezier(.4,0,.6,1)';
+        b.style.transform = `rotate(${dir * 116}deg)`;
+      }, 230);
+
+      // The mouth's position is SOLVED from the rim vector rotated about the pivot,
+      // so water always leaves the real rim rather than a guessed point.
+      runTimer(run, () => {
+        const pivX = restX + bw * (fromLeft ? 0.78 : 0.22), pivY = restY + bh * 0.86;
+        const rimX = restX + bw * (fromLeft ? 0.86 : 0.14) - pivX;
+        const rimY = restY + bh * 0.12 - pivY;
+        const a = dir * 116 * Math.PI / 180;
+        const mx = pivX + rimX * Math.cos(a) - rimY * Math.sin(a);
+        const my = pivY + rimX * Math.sin(a) + rimY * Math.cos(a);
+
+        const h2 = headNow, target = headPoint(h2, 0, -0.1);
+        const apex = -(112 + 48 * (k - 1));
+        const dx = target.x - mx, dy = target.y - my;
+
+        const wrap = place(el('fx water-x'), mx, my, 96 * k, 150 * k);
+        wrap.style.setProperty('--ax', dx.toFixed(0) + 'px');
+        wrap.style.setProperty('--wd', '265ms');
+        const w = el('water-y');
+        w.style.cssText = `position:absolute;inset:0;--ay:${dy.toFixed(0)}px;--ah:${apex.toFixed(0)}px;--wd:265ms`;
+        wrap.appendChild(w);
+        runNode(run, laneFx, wrap);
+
+        // Nine droplets trailing on their own offset arcs.
+        for (let d = 0; d < 9; d++) {
+          const dw = place(el('fx water-x'), mx + rnd(-18, 18), my + rnd(-14, 14), 0, 0);
+          dw.style.setProperty('--ax', (dx + rnd(-40, 40)).toFixed(0) + 'px');
+          dw.style.setProperty('--wd', (265 + d * 16) + 'ms');
+          const dot = el('droplet');
+          const ds = rnd(7, 17);
+          dot.style.cssText = `position:absolute;width:${ds}px;height:${ds}px;` +
+            `--ay:${(dy + rnd(-20, 30)).toFixed(0)}px;--ah:${(apex + rnd(-30, 30)).toFixed(0)}px;--wd:${265 + d * 16}ms`;
+          dw.appendChild(dot);
+          runNode(run, laneFx, dw);
+        }
+      }, 480);
+
+      // HIT at ~645ms. Impact is side-on, not top-down.
+      runTimer(run, () => {
+        const h2 = headNow, c = headPoint(h2, 0, -0.05);
+        canvasBump(k);
+        // Splash crown biased ALONG the throw direction.
+        const sw = 300 * k;
+        runNode(run, laneFx, place(el('fx splash'), c.x - sw / 2 + dir * sw * 0.18, c.y - sw * 0.42, sw, sw * 0.7));
+        // The impact ring rotates ±24° instead of lying flat.
+        const rg = el('fx ripple');
+        const rs = 200 * k;
+        rg.style.cssText = `left:${c.x - rs / 2}px;top:${c.y - rs / 4}px;width:${rs}px;height:${rs / 2}px;` +
+          `border-radius:50%;transform:rotate(${dir * 24}deg)`;
+        runNode(run, laneFx, rg);
+        // Comedy blobs fly downrange.
+        for (let bl = 0; bl < 7; bl++) {
+          const s2 = el('fx spark');
+          const sz = rnd(10, 26) * k;
+          s2.style.cssText = `left:${c.x}px;top:${c.y}px;width:${sz}px;height:${sz}px;background:#38BDF8;` +
+            `--dx:${(dir * rnd(80, 260)).toFixed(0)}px;--dy:${rnd(-120, 90).toFixed(0)}px;--sd:${rnd(500, 800)}ms`;
+          runNode(run, laneFx, s2);
+        }
+
+        // WETNESS IS CUMULATIVE — one film, +0.17 opacity per bucket.
+        wetness = Math.min(1, wetness + 0.17);
+        if (!film) {
+          const fw = h2.w * 1.25, fh = h2.h * 1.2;
+          film = place(el('fx wet-film'), c.x - fw / 2, h2.y - 10, fw, fh);
+          film.style.opacity = '0';
+          runNode(run, laneFx, film);
+        }
+        film.style.opacity = String(wetness);
+
+        // Face water: a bead WITH a tapered trail behind it — paired nodes, same
+        // duration and delay — plus fat drops that hang off the chin.
+        for (let bd = 0; bd < 4 + ti; bd++) {
+          const p = headPoint(h2, rnd(-0.3, 0.3), rnd(-0.15, 0.25));
+          const dur = rnd(700, 1200), fall = rnd(60, 150);
+          const trail = place(el('fx run'), p.x - 3, p.y, 6, fall);
+          trail.style.setProperty('--bd', dur + 'ms');
+          runNode(run, laneFx, trail);
+          const bead = place(el('fx bead'), p.x - 6, p.y, 12, 12);
+          bead.style.setProperty('--bd', dur + 'ms');
+          bead.style.setProperty('--dy', fall + 'px');
+          runNode(run, laneFx, bead);
+        }
+        for (let cd = 0; cd < 3; cd++) {
+          const p = headPoint(h2, rnd(-0.16, 0.16), 0.46);
+          const bead = place(el('fx bead'), p.x - 9, p.y, 18, 18);
+          bead.style.setProperty('--bd', '1400ms');
+          bead.style.setProperty('--dy', '190px');
+          runNode(run, laneFx, bead);
+        }
+        // Takeover/Legend add a frame veil with sparse tapered run-downs.
+        if (ti >= 2) {
+          for (let v = 0; v < 5 + ti * 2; v++) {
+            const vx = rnd(0, 1080);
+            // Never cross the head silhouette.
+            if (vx > h2.x - 30 && vx < h2.x + h2.w + 30) continue;
+            const r2 = place(el('fx run'), vx, rnd(0, 400), rnd(4, 9), rnd(120, 340));
+            r2.style.setProperty('--bd', rnd(1000, 1700).toFixed(0) + 'ms');
+            runNode(run, laneFx, r2);
+          }
+        }
+        // Then they shake it off.
+        runTimer(run, () => { if (film) film.classList.add('shaking'); }, 900);
+      }, 645);
+    }, at);
+  }
+  return (n - 1) * gap + 645 + 500;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WEATHER ❉ — summon a storm. Volume AND region are both tier-gated.
+// Particles stay CSS: storm-star.png is a composite with a bolt and rain marks,
+// far too busy to repeat 190 times.
+// ═══════════════════════════════════════════════════════════════════
+const WEATHER_N = { spin: 42, power: 90, takeover: 150, legend: 190 };
+
+function runWeather(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
+  const legend = spin.tier === 'legend';
+  const cam = camRect();
+  // 42 in a strip inside the cam / 90 spilling past it / 150 and 190 full-frame.
+  const region = ti === 0 ? { x: cam.x, y: cam.y, w: cam.w, h: cam.h * 0.6 }
+               : ti === 1 ? { x: cam.x, y: cam.y, w: cam.w, h: cam.h * 1.5 }
+                          : { x: 0, y: 0, w: 1080, h: 1920 };
+
+  for (let i = 0; i < WEATHER_N[spin.tier]; i++) {
+    const p = place(el('fx storm-p' + (legend ? ' gold' : '')),
+      region.x + rnd(0, region.w), region.y + rnd(0, region.h * 0.2), rnd(2, 5) * k, rnd(18, 46) * k);
+    p.style.setProperty('--fy', rnd(region.h * 0.5, region.h).toFixed(0) + 'px');
+    p.style.setProperty('--fx', rnd(-70, 70).toFixed(0) + 'px');
+    p.style.setProperty('--pr', rnd(-16, 16).toFixed(0) + 'deg');
+    p.style.setProperty('--fd', rnd(900, 2000).toFixed(0) + 'ms');
+    p.style.animationDelay = rnd(0, 1200).toFixed(0) + 'ms';
+    runNode(run, laneFx, p);
+  }
+
+  // Legend fires FOUR lightning strikes across the beat, each with its own bolt.
+  if (legend) {
+    for (let s = 0; s < 4; s++) {
+      runTimer(run, () => {
+        const x = rnd(120, 960);
+        // Its own shape: a jagged column of offset segments.
+        let y = 0;
+        for (let seg = 0; seg < 9; seg++) {
+          const segH = rnd(90, 190);
+          const b = place(el('fx bolt'), x + rnd(-60, 60), y, rnd(4, 11), segH);
+          runNode(run, laneFx, b);
+          y += segH;
+        }
+        runNode(run, laneFx, place(el('fx lf-flash'), 0, 0, 1080, 1920));
+        canvasBump(k);
+      }, 220 + s * 560);
+    }
+  }
+  return legend ? 2400 : 900;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CRACK ◆ — break the glass. Radial fracture, each spoke spawning a branch
+// at a random kink, over the production crack-web for the fine secondaries.
+// ═══════════════════════════════════════════════════════════════════
+const CRACK = {
+  spin:     { reach: 240, spokes: 6,  whole: false },
+  power:    { reach: 460, spokes: 10, whole: false },
+  takeover: { reach: 900, spokes: 15, whole: true  },
+  legend:   { reach: 900, spokes: 26, whole: true  },
+};
+
+function runCrack(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const legend = spin.tier === 'legend';
+  const cfg = CRACK[spin.tier];
+  const cam = camRect();
+  // Spin/Power fracture the CAM; Takeover/Legend fracture the whole frame from centre.
+  const o = cfg.whole ? { x: 540, y: 960 } : { x: cam.x + cam.w / 2, y: cam.y + cam.h / 2 };
+
+  for (let i = 0; i < cfg.spokes; i++) {
+    const ang = (360 / cfg.spokes) * i + rnd(-9, 9);
+    const len = cfg.reach * rnd(0.62, 1);
+    const dur = rnd(180, 340);
+    const s = el('fx spoke');
+    s.style.cssText = `left:${o.x}px;top:${o.y}px;width:${len}px;height:${(2.4 * k).toFixed(1)}px;` +
+      `--cr:${ang}deg;--cd:${dur}ms`;
+    runNode(run, laneFx, s);
+    // Each spoke spawns a branch at a random 28–60° kink.
+    const kink = ang + (Math.random() < 0.5 ? -1 : 1) * rnd(28, 60);
+    const bx = o.x + Math.cos(ang * Math.PI / 180) * len * 0.62;
+    const by = o.y + Math.sin(ang * Math.PI / 180) * len * 0.62;
+    const b = el('fx spoke');
+    b.style.cssText = `left:${bx}px;top:${by}px;width:${(len * 0.45).toFixed(0)}px;height:${(1.8 * k).toFixed(1)}px;` +
+      `--cr:${kink}deg;--cd:${(dur * 1.2).toFixed(0)}ms;animation-delay:${(dur * 0.5).toFixed(0)}ms`;
+    runNode(run, laneFx, b);
+  }
+
+  const ws = cfg.reach * 2;
+  runNode(run, laneFx, place(el('fx crack-web'), o.x - ws / 2, o.y - ws / 2, ws, ws));
+  runNode(run, laneFx, place(el('fx lf-flash'), o.x - 200, o.y - 200, 400, 400));
+  canvasBump(k, 380);
+  bumpEl.classList.remove('shaking-hard'); void bumpEl.offsetWidth;
+  bumpEl.classList.add('shaking-hard');
+  runTimer(run, () => bumpEl.classList.remove('shaking-hard'), 420);
+  sparkBurst(run, o, Math.round(14 * k), k, legend);
+
+  // Legend: the glass FALLS OUT — nine gold shards tumble off-screen.
+  if (legend) {
+    runTimer(run, () => {
+      for (let i = 0; i < 9; i++) {
+        const sz = rnd(90, 210);
+        const sh = place(el('fx shard'), rnd(0, 1080 - sz), rnd(0, 700), sz, sz);
+        sh.style.setProperty('--dx', rnd(-160, 160).toFixed(0) + 'px');
+        sh.style.setProperty('--dr', rnd(-540, 540).toFixed(0) + 'deg');
+        sh.style.setProperty('--sd', rnd(900, 1500).toFixed(0) + 'ms');
+        runNode(run, laneFx, sh);
+      }
+    }, 340);
+  }
+  return legend ? 1500 : 700;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SPOTLIGHT ▲ — built on a FAKE-OUT. The light hunts, finds your face and
+// holds one beat, then slides away and the giver rises into it. You sit in
+// the dark. `hero: false` — the in-scene payoff IS the name.
+// ═══════════════════════════════════════════════════════════════════
+function runSpotlight(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const legend = spin.tier === 'legend';
+  const ground = LAYOUTS[layout].ground;
+  const stage = layout === 'cam-top' ? { x: 540, y: 1400 } : { x: 540, y: 760 };
+
+  const dark = place(el('fx sl-dark'), 0, 0, 1080, 1920);
+  dark.style.opacity = '0';
+  runNode(run, laneFx, dark);
+
+  const W = 520 * k;
+  const cone = place(el('fx sl-cone'), 200 - W / 2, 0, W, ground);
+  const pool = place(el('fx sl-pool'), 200 - W / 2, ground - 70, W, 140);
+  runNode(run, laneFx, cone); runNode(run, laneFx, pool);
+
+  const moveTo = (x, w) => {
+    cone.style.left = (x - w / 2) + 'px'; cone.style.width = w + 'px';
+    pool.style.left = (x - w / 2) + 'px'; pool.style.width = w + 'px';
+  };
+
+  // HUNT: 600ms then 520ms to two decoys.
+  runTimer(run, () => { moveTo(860, W); dark.style.opacity = '1'; }, 20);
+  runTimer(run, () => moveTo(300, W), 620);
+  // FINDS YOUR FACE and holds one beat (460ms).
+  runTimer(run, () => moveTo(headPoint(headNow, 0, 0).x, W), 1140);
+  // SLIDES AWAY (440ms) — and the giver rises into it.
+  runTimer(run, () => moveTo(stage.x, W * 0.82), 1600);   // tightens to 0.82×
+
+  runTimer(run, () => {
+    const s = 300 * k;
+    // Hard cast shadow so they read as standing IN the beam, not pasted over it.
+    runNode(run, laneFx, place(el('fx sl-shadow'), stage.x - s * 0.8, ground - 40, s * 1.6, 90));
+    const g = place(el('fx sl-giver'), stage.x - s / 2, stage.y - s / 2, s, s);
+    g.style.backgroundImage = `url('${avatarUrl(spin)}')`;
+    runNode(run, laneFx, g);
+
+    const plate = place(el('fx sl-plate'), stage.x - 400, stage.y + s / 2 + 22, 800, 120);
+    plate.innerHTML = `<div style="font-size:${52 * k}px">${esc(displayName(spin))}</div>` +
+      `<div style="font-size:${30 * k}px;color:#C084FC">${legend ? 'OWNS THE STAGE' : 'HAS THE LIGHT'}</div>`;
+    runNode(run, laneFx, plate);
+
+    if (legend) {
+      runNode(run, laneFx, place(el('fx curse-halo legend'), stage.x - s / 2 - 24, stage.y - s / 2 - 24, s + 48, s + 48));
+      // Two extra sweeping beams.
+      for (let i = 0; i < 2; i++) {
+        const b = place(el('fx sl-beam'), stage.x - 40 + (i ? 260 : -260), 0, 80, ground);
+        b.style.transform = `rotate(${i ? 12 : -12}deg)`;
+        runNode(run, laneFx, b);
+      }
+      // 14 gold stars dropping through the beam.
+      for (let i = 0; i < 14; i++) {
+        const st = place(el('fx storm-p gold'), stage.x + rnd(-W / 2, W / 2), rnd(0, 300), 6, 22);
+        st.style.setProperty('--fy', (ground - 200).toFixed(0) + 'px');
+        st.style.setProperty('--fd', rnd(1200, 2400).toFixed(0) + 'ms');
+        st.style.animationDelay = rnd(0, 900).toFixed(0) + 'ms';
+        runNode(run, laneFx, st);
+      }
+    }
+    canvasBump(k);
+  }, 2040);
+
+  return 2400;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FRAME ▣ — claim the frame. Tier drives how much screen it claims.
+// ═══════════════════════════════════════════════════════════════════
+const FRAME_INSET = { spin: 120, power: 74, takeover: 40, legend: 18 };
+const FRAME_THICK = { spin: 14,  power: 22, takeover: 32, legend: 44 };
+
+function runFrame(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const legend = spin.tier === 'legend';
+  const ins = FRAME_INSET[spin.tier], th = FRAME_THICK[spin.tier];
+
+  // border-image needs a REAL border-width on a wrapper div to render at all.
+  const m = place(el('fx marquee' + (legend ? ' legend' : '')), ins, ins, 1080 - ins * 2, 1920 - ins * 2);
+  m.style.borderWidth = th + 'px';
+  runNode(run, laneFx, m);
+
+  if (legend) {
+    const o = Math.max(4, ins - 14);
+    const m2 = place(el('fx marquee legend counter'), o, o, 1080 - o * 2, 1920 - o * 2);
+    m2.style.borderWidth = Math.round(th * 0.6) + 'px';
+    runNode(run, laneFx, m2);
+    // 12 studs chasing along the top edge.
+    const rail = place(el('fx'), ins, ins, 1080 - ins * 2, th);
+    runNode(run, laneFx, rail);
+    for (let i = 0; i < 12; i++) {
+      const s = el('stud');
+      s.style.cssText = `position:absolute;top:${th / 2 - 7}px;width:14px;height:14px;` +
+        `--cd:2600ms;animation-delay:${(-i * 216)}ms`;
+      rail.appendChild(s);
+    }
+  }
+  canvasBump(k);
+  return 520;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AVATAR ◉ — invade. Anchored to the HEAD, not the cam rect, and clamped
+// into frame so an invader can never land off-screen.
+// ═══════════════════════════════════════════════════════════════════
+const AVATAR_EXTRA = { spin: 0, power: 0, takeover: 2, legend: 5 };
+
+function runAvatar(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const legend = spin.tier === 'legend';
+  const n = 1 + AVATAR_EXTRA[spin.tier];
+  const url = avatarUrl(spin);
+
+  for (let i = 0; i < n; i++) {
+    runTimer(run, () => {
+      const h = headNow;
+      const s = (190 - i * 14) * k;
+      const fromLeft = i % 2 === 0;
+      const anchor = headPoint(h, fromLeft ? -0.75 : 0.75, rnd(-0.35, 0.35));
+      // Clamp into frame — the head can sit near an edge.
+      const x = Math.min(1080 - s - 12, Math.max(12, anchor.x - s / 2));
+      const y = Math.min(1920 - s - 12, Math.max(12, anchor.y - s / 2));
+
+      const inv = place(el('fx invader' + (legend ? ' legend' : '')),
+        fromLeft ? -s : 1080, y, s, s);
+      inv.style.backgroundImage = `url('${url}')`;
+      inv.style.transition = 'left 520ms cubic-bezier(.2,.95,.3,1.35)';
+      runNode(run, laneFx, inv);
+      void inv.offsetWidth;
+      inv.style.left = x + 'px';
+
+      // Lands with a bump and a spark burst, name tag snapping out beside it.
+      runTimer(run, () => {
+        canvasBump(k * (1 - i * 0.1));
+        sparkBurst(run, { x: x + s / 2, y: y + s / 2 }, Math.round(9 * k), k, legend);
+        if (i === 0) {
+          const tag = el('fx inv-tag');
+          tag.style.cssText = `left:${x + s + 12}px;top:${y + s / 2 - 22}px;font-size:${30 * k}px`;
+          tag.textContent = displayName(spin);        // viewer input — textContent
+          runNode(run, laneFx, tag);
+          reveal(tag, 'show');
+        }
+      }, 520);
+
+      // Then drifts up and out.
+      runTimer(run, () => inv.classList.add('drifting'), 520 + tierOf(spin).hold);
+    }, i * 160);
+  }
+  return 520 + tierOf(spin).hold + 700;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BALL DROP ● — the cam becomes a ball.
+//
+// CONTRACT 3 (game-scene): when `targetsNow` is present the ball lands in the
+// GAME'S OWN bucket and we draw a lock-on reticle instead of a bucket. When it is
+// absent we draw our own bucket on the layout's ground line. BOTH PATHS MUST WORK.
+//
+// CONTRACT 4 (camera): the overlay does not own the cam — Studio does. It does not
+// need to. The effect freezes the cam at detach anyway, so we cover the live cam
+// rect with a STILL of it (supplied by gesture-cam, which already captures that
+// strip) and from that instant we own those pixels: the hole is punched in our own
+// copy. No still available => the ball is drawn from the sphere art alone and the
+// cam is left untouched, which still reads.
+//
+// THE BALL NEVER SCALES NON-UNIFORMLY — it is the camera, and any squash warps the
+// face inside. Impacts are uniform pulses only.
+// ═══════════════════════════════════════════════════════════════════
+let targetsNow = null;      // game bucket rect from the vision layer, or null
+let camStill = null;        // { dataURL, rect } from gesture-cam, or null
+window.setTargets = (t) => { targetsNow = (t && t.w > 0 && t.h > 0) ? t : null; };
+window.setCamStill = (s) => { camStill = (s && s.dataURL && s.rect) ? s : null; };
+
+const BALL_BOUNCES = { spin: 1, power: 1, takeover: 2, legend: 2 };
+
+function runBall(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const legend = spin.tier === 'legend';
+  const h = headNow;
+  const ground = LAYOUTS[layout].ground;
+
+  // Target: the game's own bucket when tracked, else one we draw ourselves.
+  const tracked = !!targetsNow;
+  const bw = 300 * k, bh = 230 * k;
+  const target = tracked
+    ? { x: targetsNow.x + targetsNow.w / 2, mouthY: targetsNow.y, floor: targetsNow.y + targetsNow.h,
+        w: targetsNow.w, h: targetsNow.h }
+    : { x: 540, mouthY: ground - bh, floor: ground, w: bw, h: bh };
+
+  let bucket = null;
+  if (tracked) {
+    // Tracked: NO bucket of ours — a lock-on reticle on the game's own.
+    const r = el('fx ball-reticle');
+    place(r, targetsNow.x - 8, targetsNow.y - 8, targetsNow.w + 16, targetsNow.h + 16);
+    runNode(run, laneFx, r);
+  } else {
+    bucket = place(el('fx bucket' + (legend ? ' legend' : '')), target.x - bw / 2, target.mouthY, bw, bh);
+    runNode(run, laneFx, bucket);
+  }
+
+  // ── Cover the live cam with a still, so the hole is punched in OUR pixels ──
+  const camR = camStill ? camStill.rect : camRect();
+  if (camStill) {
+    const frozen = place(el('fx cam-frozen'), camR.x, camR.y, camR.w, camR.h);
+    frozen.style.backgroundImage = `url('${camStill.dataURL}')`;
+    // The hole follows the head, because that is where the ball left from.
+    const c = headPoint(h, 0, 0);
+    const rad = Math.max(h.w, h.h) * 0.62;
+    const mask = `radial-gradient(circle ${rad}px at ${c.x - camR.x}px ${c.y - camR.y}px,` +
+                 ` transparent 0 98%, #000 100%)`;
+    frozen.style.webkitMaskImage = mask;
+    frozen.style.maskImage = mask;
+    runNode(run, laneFx, frozen);
+  }
+
+  // ── The cam rect shrinks and rounds into a circle on the tracked head ──
+  const size = Math.max(h.w, h.h) * 1.15;
+  const c0 = headPoint(h, 0, 0);
+  const ball = el('fx ball');
+  place(ball, camR.x, camR.y, camR.w, camR.h);
+  ball.style.borderRadius = '0px';
+  if (camStill) {
+    ball.style.backgroundImage = `url('${camStill.dataURL}')`;
+    ball.style.backgroundSize = 'cover';
+    ball.style.backgroundPosition = 'center';
+  }
+  const shell = el('ball-shell'); shell.style.cssText = 'position:absolute;inset:0';
+  const gloss = el('ball-gloss'); gloss.style.cssText = 'position:absolute;inset:0';
+  const ring  = el('ball-ring' + (legend ? ' legend' : '')); ring.style.cssText = 'position:absolute;inset:0;opacity:0;transition:opacity .3s ease';
+  ball.appendChild(shell); ball.appendChild(gloss); ball.appendChild(ring);
+  runNode(run, laneFx, ball);
+
+  ball.style.transition = 'left .42s cubic-bezier(.3,.05,.2,1), top .42s cubic-bezier(.3,.05,.2,1),' +
+                          ' width .42s cubic-bezier(.3,.05,.2,1), height .42s cubic-bezier(.3,.05,.2,1),' +
+                          ' border-radius .42s cubic-bezier(.3,.05,.2,1)';
+  void ball.offsetWidth;
+  ball.style.left = (c0.x - size / 2) + 'px';
+  ball.style.top = (c0.y - size / 2) + 'px';
+  ball.style.width = size + 'px';
+  ball.style.height = size + 'px';
+  ball.style.borderRadius = '50%';
+  ring.style.opacity = '1';
+
+  const shadow = place(el('fx ball-shadow'), c0.x - size / 2, ground - 18, size, 34);
+  runNode(run, laneFx, shadow);
+
+  // ── DETACHED: real physics. Not a head any more. ──
+  runTimer(run, () => {
+    sparkBurst(run, { x: c0.x, y: c0.y }, Math.round(12 * k), k, legend);
+    if (legend) {
+      const trail = place(el('fx ball-trail'), c0.x - 6, c0.y, 12, 0);
+      runNode(run, laneFx, trail);
+      trail.style.transition = 'height 1.2s linear';
+      void trail.offsetWidth;
+      trail.style.height = (ground - c0.y) + 'px';
+    }
+
+    let x = c0.x, y = c0.y, vx = (target.x - c0.x) / 1.15, vy = 0, rot = 0;
+    const G = 2700, REST = 0.58;
+    const bounces = BALL_BOUNCES[spin.tier];
+    let bounced = 0, last = performance.now(), settled = false;
+
+    const step = (now) => {
+      if (run.done) return;
+      const dt = Math.min(0.032, (now - last) / 1000); last = now;
+      vy += G * dt; x += vx * dt; y += vy * dt;
+      rot += vx * dt * 0.4;                        // rotation from horizontal velocity
+
+      const rest = target.floor - size / 2;
+      if (!settled && y >= rest) {
+        if (bounced < bounces) {
+          y = rest; vy = -vy * REST; vx *= 0.82; bounced++;
+          canvasBump(k);
+          // UNIFORM pulse only — a squash would warp the face inside.
+          ball.style.transform = `rotate(${rot}deg) scale(1.09)`;
+          setTimeout(() => { if (!run.done) ball.style.transform = `rotate(${rot}deg) scale(1)`; }, 110);
+        } else {
+          // Arc SOLVED ballistically to the mouth so the gag always lands.
+          settled = true;
+          y = rest; vy = 0; vx = 0;
+          landInBucket(run, ball, target, size, k, legend, bucket, tracked);
+          return;
+        }
+      }
+      // Ground shadow tightens as it falls.
+      const prox = Math.max(0.25, 1 - Math.abs(rest - y) / 900);
+      shadow.style.left = (x - (size * prox) / 2) + 'px';
+      shadow.style.width = (size * prox) + 'px';
+      shadow.style.opacity = String(0.18 + 0.4 * prox);
+
+      ball.style.left = (x - size / 2) + 'px';
+      ball.style.top = (y - size / 2) + 'px';
+      ball.style.transform = `rotate(${rot}deg) scale(1)`;
+      const id = requestAnimationFrame(step);
+      run.rafs.add(id);
+    };
+    ball.style.transition = 'none';
+    const id = requestAnimationFrame(step);
+    run.rafs.add(id);
+  }, 460);
+
+  return 460 + 1900;
+}
+
+/** Entry: the bucket squashes and springs back, the ball rattles with a damped
+ *  horizontal wobble, the front lip paints OVER it so it reads as genuinely inside. */
+function landInBucket(run, ball, target, size, k, legend, bucket, tracked) {
+  canvasBump(k, 520);
+  ball.style.transform = 'scale(1.06)';
+  setTimeout(() => { if (!run.done) ball.style.transform = 'scale(1)'; }, 120);
+
+  // Damped horizontal wobble inside the bucket.
+  let amp = 26 * k, i = 0;
+  const wob = setInterval(() => {
+    if (run.done || i++ > 7) { clearInterval(wob); return; }
+    ball.style.left = (target.x - size / 2 + (i % 2 ? amp : -amp)) + 'px';
+    amp *= 0.62;
+  }, 90);
+  run.timers.add(wob);
+
+  if (bucket) {
+    // Our own bucket squashes and springs back on entry.
+    bucket.style.transformOrigin = '50% 100%';
+    bucket.style.transition = 'transform .16s ease-out';
+    bucket.style.transform = 'scale(1.08, 0.9)';
+    setTimeout(() => { if (!run.done) bucket.style.transform = 'scale(1)'; }, 170);
+    // Front lip paints OVER the ball — this is what sells "inside" rather than "behind".
+    const lip = place(el('fx bucket-lip'), target.x - target.w / 2, target.mouthY - 6, target.w, target.h * 0.42);
+    runNode(run, laneFx, lip);
+  }
+
+  if (tierIndex(run.spin) >= 2) {
+    const n = legend ? 34 : 16;
+    for (let c = 0; c < n; c++) {
+      const s = el('fx spark');
+      const sz = rnd(8, 20);
+      s.style.cssText = `left:${target.x}px;top:${target.mouthY}px;width:${sz}px;height:${sz * 1.6}px;` +
+        `background:${legend ? '#FDE68A' : '#E879F9'};border-radius:2px;` +
+        `--dx:${rnd(-260, 260).toFixed(0)}px;--dy:${rnd(-420, -120).toFixed(0)}px;--sd:${rnd(700, 1300)}ms`;
+      runNode(run, laneFx, s);
+    }
+  }
+
+  const plate = el('fx ball-plate');
+  plate.style.cssText = `left:0;top:${target.mouthY - 120}px;width:1080px;text-align:center;font-size:${44 * k}px`;
+  plate.textContent = tracked ? 'IN THE BUCKET' : 'DUNKED';
+  runNode(run, laneFx, plate);
+  reveal(plate, 'show');
+}
+
+/** The hero line — the ONLY place the name is printed during impact. */
+function showHero(run, spin) {
+  const res = RESULT_BY_KEY[spin.result] || { label: spin.result };
+  const h = el(`hero tier-${spin.tier}`);
+  h.innerHTML = `<div class="h-name">${esc(displayName(spin))}</div>` +
+                `<div class="h-what">${esc(res.label)}</div>`;
+  runNode(run, laneImpact, h);
+  reveal(h, 'show');
+}
+
+// ── Stage 3: SETTLED → lay the brick, then release the queue ──
 function startSettle(run) {
-  const spin = run.spin;
-  // Ambient + signature are DETACHED from the run (removed from run.nodes) so
-  // cleanupRun/finishActive won't delete them — they outlive the active slot.
-  startAmbient(spin);
-  addSignature(spin);
-  finishActive(); // release the queue NOW; ambient keeps playing independently
+  // The wall is never attached to a run: a brick outlives every spin, so a
+  // teardown must not be able to reach it.
+  addSupporter(run.spin);
+  finishActive();
 }
 
 function finishActive() {
@@ -411,49 +1443,249 @@ function runStage(run, advance, plannedMs) {
   runTimer(run, () => { if (!fired) { console.warn('[wheel] stage watchdog'); go(); } }, plannedMs + STAGE_WATCHDOG_PAD);
 }
 
-// ── RECEIPT lane ──
-function showReceipt(spin, position) {
-  const r = el('receipt');
-  const posText = position > 0 ? `· #${position + 1}` : '· now';
-  r.innerHTML =
-    `<span class="r-name">${esc(displayName(spin))}</span>` +
-    `<span class="r-tier">${TIER_GLYPH[spin.tier] || ''} ${TIER_LABEL[spin.tier] || spin.tier}</span>` +
-    `<span class="r-pos">${posText}</span>`;
-  laneReceipt.appendChild(r);
-  reveal(r, 'show');
-  // Self-cleaning: receipts are transient and independent of the run machine.
-  setTimeout(() => r.classList.remove('show'), TIMING.receipt.show + TIMING.receipt.hold);
-  setTimeout(() => r.remove(), TIMING.receipt.show + TIMING.receipt.hold + 400);
-}
+// ═══════════════════════════════════════════════════════════════════
+// EFFECT PRIMITIVES — shared by all nine effects.
+// ═══════════════════════════════════════════════════════════════════
 
-// ── AMBIENT lane (detached, self-cleaning) ──
-function startAmbient(spin) {
-  const res = RESULT_BY_KEY[spin.result] || { label: spin.result };
-  const a = el('ambient');
-  a.appendChild(iconEl(spin.result, 30));
-  a.insertAdjacentHTML('beforeend', `<span>${esc(displayName(spin))} — ${esc(res.label)}</span>`);
-  laneAmbient.appendChild(a);
-  reveal(a, 'show');
-  const life = TIMING.ambient[spin.tier] ?? TIMING.ambient.spin;
-  setTimeout(() => a.classList.remove('show'), life);
-  setTimeout(() => a.remove(), life + 700);
+/** Canvas bump on the beat. Amplitude scales with k. Lives on #bump so it can
+ *  never collide with another element's transform. */
+function canvasBump(k, ms) {
+  bumpEl.style.setProperty('--bump', (1 + 0.012 * k).toFixed(4));
+  bumpEl.style.setProperty('--bump-ms', (ms || 420 + 100 * k) + 'ms');
+  bumpEl.classList.remove('bumping');
+  void bumpEl.offsetWidth;              // restart the animation even mid-flight
+  bumpEl.classList.add('bumping');
 }
+// Drop the class once the bump finishes so #bump sits with no animation between
+// beats. `both` holds the final frame either way, but a permanently-animated
+// element is one more thing that can interact badly with a later transform.
+bumpEl.addEventListener('animationend', (e) => {
+  if (e.animationName === 'om-bump') bumpEl.classList.remove('bumping');
+});
 
-// ── SIGNATURE rail (persistent; honors expiresAt when present) ──
-function addSignature(spin) {
-  const cls = spin.signature?.class || 'small';
-  const s = el(`sig sig-${cls}`);
-  s.innerHTML = `<span>${TIER_GLYPH[spin.tier] || ''}</span><span class="s-name">${esc(displayName(spin))}</span>`;
-  laneSignature.appendChild(s);
-  reveal(s, 'show');
-  // Timed tiers auto-retire; session-scoped (expiresAt null) persist until the page
-  // reloads. Fuller session-reset handling arrives with the snapshot/hydration work.
-  const exp = spin.signature?.expiresAt;
-  if (typeof exp === 'number') {
-    const ms = Math.max(0, exp - Date.now());
-    setTimeout(() => s.classList.remove('show'), ms);
-    setTimeout(() => s.remove(), ms + 500);
+/** N sparks off a point, each carrying its own vector as a custom property. */
+function sparkBurst(run, at, n, k, gold) {
+  for (let i = 0; i < n; i++) {
+    const a = (Math.PI * 2 * i) / n + Math.random() * 0.5;
+    const d = (60 + Math.random() * 120) * k;
+    const s = el('fx spark');
+    const size = (4 + Math.random() * 5) * k;
+    s.style.cssText = `left:${at.x}px;top:${at.y}px;width:${size}px;height:${size}px;` +
+      `background:${gold ? '#FDE68A' : '#E879F9'};` +
+      `--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d).toFixed(1)}px;` +
+      `--sd:${420 + Math.random() * 260}ms`;
+    runNode(run, laneFx, s);
   }
+}
+
+function ripple(run, at, k, gold) {
+  const size = 150 * k;
+  const r = el('fx ripple' + (gold ? ' legend' : ''));
+  r.style.cssText = `left:${at.x - size / 2}px;top:${at.y - size / 2}px;width:${size}px;height:${size}px;` +
+    `border-width:${(2.2 * k).toFixed(1)}px`;
+  runNode(run, laneFx, r);
+}
+
+/** LEGEND FLARE — renders under EVERY effect at Legend and nowhere else.
+ *  Gold flash + slow rotating rays + held vignette + an 18-spark burst off the head. */
+function legendFlare(run) {
+  const hold = TIER.legend.hold;
+  const flash = el('lf-flash');
+  const rays = el('lf-rays');
+  const vign = el('lf-vignette');
+  vign.style.setProperty('--hold', hold + 'ms');
+  runNode(run, laneFlare, rays);
+  runNode(run, laneFlare, vign);
+  runNode(run, laneFlare, flash);
+  sparkBurst(run, forehead(headNow), 18, TIER.legend.k, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EFFECT REGISTRY. `hero: false` means the effect's in-scene payoff IS the
+// name, so printing a hero line too would say it twice — ONE VOICE PER EFFECT.
+// Only `stamp` is built (checkpoint 4); the rest fall back to the placeholder
+// card until checkpoint 7, which is why `run` is dispatched, not assumed.
+// ═══════════════════════════════════════════════════════════════════
+const EFFECTS = {
+  stamp:     { hero: false, run: runStamp },
+  curse:     { hero: true,  run: runCurse },
+  flood:     { hero: true,  run: runFlood },
+  weather:   { hero: true,  run: runWeather },
+  crack:     { hero: true,  run: runCrack },
+  spotlight: { hero: false, run: runSpotlight },
+  frame:     { hero: true,  run: runFrame },
+  avatar:    { hero: true,  run: runAvatar },
+  ball:      { hero: true,  run: runBall },
+};
+
+const TIER_ORDER = ['spin', 'power', 'takeover', 'legend'];
+const tierIndex = (spin) => Math.max(0, TIER_ORDER.indexOf(spin.tier));
+const camRect = () => (layout === 'cam-top'
+  ? { x: 0, y: 0, w: 1080, h: 470 }
+  : { x: 170, y: 1040, w: 740, h: 420 });
+/** The giver's face, or the splat badge when they have no avatar. */
+const avatarUrl = (spin) => spin.user?.avatarUrl || 'assets/wheel/splat-badge.png';
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+function place(node, x, y, w, h) {
+  node.style.left = x + 'px'; node.style.top = y + 'px';
+  node.style.width = w + 'px'; node.style.height = h + 'px';
+  return node;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STAMP ✦ — the flagship. The name is physically stamped on the face.
+//
+// A die swings in on an arc, presses and squashes on a hard ease-in, and on
+// CONTACT fires the bump, ink burst and ripple — all anchored to the brow, not
+// the frame, so the beat lands on the face wherever the face is. It lifts away
+// revealing an ink impression masked through a real rubber-ink alpha texture,
+// which rides the head through the hold and then peels off toward the wall.
+//
+// Plate width is measured against HEAD WIDTH and capped under it, so even a
+// Legend stamp never overhangs the skull.
+// ═══════════════════════════════════════════════════════════════════
+const STAMP_PLATE = { spin: 0.54, power: 0.68, takeover: 0.80, legend: 0.90 };
+
+/** Legend presses FOUR marks — brow, both cheeks, chin — each on its own tracked
+ *  face point, the die walking between them. Cheek/chin marks run smaller. */
+const STAMP_MARKS_LEGEND = [
+  { ox: 0,     oy: -0.27, rot:  -5, scale: 1.00 },
+  { ox: -0.27, oy:  0.05, rot: -15, scale: 0.72 },
+  { ox:  0.27, oy:  0.05, rot:  13, scale: 0.72 },
+  { ox: 0,     oy:  0.31, rot:   6, scale: 0.66 },
+];
+
+function runStamp(run) {
+  const spin = run.spin;
+  const t = tierOf(spin);
+  const k = t.k;
+  const legend = spin.tier === 'legend';
+  const name = displayName(spin);
+
+  const marks = legend ? STAMP_MARKS_LEGEND
+                       : [{ ox: 0, oy: -0.27, rot: -5, scale: 1.00 }];
+
+  // Plate is a fraction of head width. The cap is per-MARK, not just on the plate:
+  // an off-centre mark at ox spans ox·hw ± w/2, so keeping it inside the head box
+  // needs w ≤ hw(1 − 2|ox|). Without that, Legend's cheek marks (ox ±0.27 at 72%)
+  // stick ~26px out past the skull on each side.
+  const baseW = headNow.w * STAMP_PLATE[spin.tier];
+  const markWidth = (m) => Math.min(baseW * m.scale, headNow.w * (1 - 2 * Math.abs(m.ox)) * 0.98);
+  const swingMs = 320 + 70 * k;
+  const pressMs = 86 + 22 * k;
+  const liftMs  = 400 + 70 * k;
+
+  // One die walks between the marks: move → press → beat, then on to the next.
+  const MOVE_MS = 165, BEAT_MS = 110;
+  const die = el('fx stamp-die' + (legend ? ' legend' : ''));
+  runNode(run, laneFx, die);
+
+  let clock = 0;
+  marks.forEach((m, i) => {
+    const w = markWidth(m), h = w * 0.62;
+    const first = i === 0;
+    const inMs = first ? swingMs : MOVE_MS;
+
+    // ARRIVE: swing in from off to the side on the first mark, walk across after.
+    runTimer(run, () => {
+      const p = headPoint(headNow, m.ox, m.oy);
+      const rot = (headNow.roll || 0) + m.rot;
+      die.style.width = w + 'px';
+      die.style.height = h + 'px';
+      if (first) {
+        // Pre-position off the arc so the swing has somewhere to come FROM.
+        die.style.transition = 'none';
+        die.style.left = (p.x - w / 2 + 190 * k) + 'px';
+        die.style.top  = (p.y - h / 2 - 250 * k) + 'px';
+        die.style.transform = `rotate(${rot + 26}deg) scale(1)`;
+        die.style.opacity = '0';
+        void die.offsetWidth;
+        die.style.transition = `left ${inMs}ms cubic-bezier(.2,.9,.25,1.25),` +
+                               `top ${inMs}ms cubic-bezier(.2,.9,.25,1.25),` +
+                               `transform ${inMs}ms cubic-bezier(.2,.9,.25,1.25),opacity 120ms ease`;
+      } else {
+        die.style.transition = `left ${inMs}ms ease-in-out, top ${inMs}ms ease-in-out, transform ${inMs}ms ease-in-out`;
+      }
+      die.style.opacity = '1';
+      die.style.left = (p.x - w / 2) + 'px';
+      // Centred ON the face point, so the die lands exactly over the footprint the
+      // impression will occupy and lifts to reveal it. Anchoring its BOTTOM edge here
+      // instead pushes the brow mark off the top of the skull.
+      die.style.top  = (p.y - h / 2) + 'px';
+      die.style.transform = `rotate(${rot}deg) scale(1)`;
+    }, clock);
+    clock += inMs;
+
+    // PRESS: hard ease-in, squashes 3.5% onto the face.
+    runTimer(run, () => {
+      const rot = (headNow.roll || 0) + m.rot;
+      die.style.transition = `transform ${pressMs}ms cubic-bezier(.5,0,1,1)`;
+      die.style.transform = `rotate(${rot}deg) scale(1, 0.965)`;
+    }, clock);
+    clock += pressMs;
+
+    // CONTACT: the beat. Everything here is anchored to the face point.
+    runTimer(run, () => {
+      const at = headPoint(headNow, m.ox, m.oy);
+      canvasBump(k * m.scale);
+      ripple(run, at, k * m.scale, legend);
+      sparkBurst(run, at, Math.round(10 * k * m.scale), k * m.scale, legend);
+      layInk(run, name, m, w, h, legend, k);
+    }, clock);
+
+    // LIFT away, revealing the impression underneath.
+    runTimer(run, () => {
+      const p = headPoint(headNow, m.ox, m.oy);
+      const rot = (headNow.roll || 0) + m.rot;
+      const last = i === marks.length - 1;
+      die.style.transition = `transform ${liftMs}ms ease, top ${liftMs}ms ease, opacity ${liftMs}ms ease`;
+      die.style.top = (p.y - h / 2 - 46 * k) + 'px';
+      die.style.transform = `rotate(${rot}deg) scale(1)`;
+      if (last) die.style.opacity = '0';
+    }, clock + 30);
+    clock += (i === marks.length - 1 ? liftMs : BEAT_MS);
+  });
+
+  return clock;   // when the press sequence ends; the impression's dwell follows
+}
+
+/** The pressed impression: the name, masked through a rubber-ink alpha texture so
+ *  coverage breaks up like real pressed ink. Rides the head through the hold on a
+ *  rAF follow, then peels off toward the wall. */
+function layInk(run, name, mark, w, h, legend, k) {
+  const ink = el('fx stamp-ink' + (legend ? ' legend' : ''));
+  const tex = `assets/wheel/ink-mask-${1 + Math.floor(Math.random() * 3)}.png`;
+  ink.style.cssText =
+    `width:${w}px;height:${h}px;font-size:${Math.max(14, h * 0.42)}px;` +
+    `-webkit-mask-image:url('${tex}');mask-image:url('${tex}');`;
+  ink.textContent = name;                     // textContent, not innerHTML — names are viewer input
+  runNode(run, laneFx, ink);
+
+  // FOLLOW the head live, including through the hold, translating AND rotating
+  // with roll. Stops the moment the run is torn down.
+  // Legend presses four marks, so four follow loops run at once. Each is tracked
+  // (not just the last) or an interrupted run leaves three of them painting.
+  let raf = null;
+  const follow = () => {
+    if (run.done || !ink.isConnected) return;
+    const p = headPoint(headNow, mark.ox, mark.oy);
+    ink.style.left = (p.x - w / 2) + 'px';
+    ink.style.top  = (p.y - h / 2) + 'px';   // centred on the mark, matching the die
+    ink.style.transform = `rotate(${(headNow.roll || 0) + mark.rot}deg)`;
+    raf = requestAnimationFrame(follow);
+    run.rafs.add(raf);
+  };
+  follow();
+
+  // PEEL off toward the wall once the dwell is done.
+  const dwell = tierOf(run.spin).hold;
+  runTimer(run, () => {
+    if (raf) { cancelAnimationFrame(raf); run.rafs.delete(raf); raf = null; }
+    ink.style.transition = 'transform 640ms cubic-bezier(.4,0,.2,1), opacity 640ms cubic-bezier(.4,0,.2,1)';
+    ink.style.transform += ` translate(${(Math.random() * 120 - 60).toFixed(0)}px, ${420 + 180 * k}px) rotate(28deg) scale(.7)`;
+    ink.style.opacity = '0';
+  }, dwell);
 }
 
 function displayName(spin) {
@@ -461,9 +1693,177 @@ function displayName(spin) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TRANSPORT — Ably subscription to splat-overlay 'wheel.spin'. This is the
-// production path: the dock publishes there in bridge-mode. A local test hook
-// (window.wheelTest) lets the page be driven without Ably for verification.
+// SUPPORTER WALL — a literal physical wall, laid brick by brick.
+//
+// GEOMETRY (see the CSS note): 6 courses × 58.3px = the 350px band exactly,
+// brick 177×55.3 at the art's own aspect, 3px mortar. 1080 = 6 × 180 exactly,
+// so full courses tile with no end gap. Offset courses carry a part-brick
+// CLOSER at each end — real masonry that stops the edges being holes.
+//
+// WHY BRICKS ARE NEVER REMOVED
+// The published spin carries signature.expiresAt (Spin ≈10min, Power ≈30min,
+// Takeover/Legend session-scoped) and the SIGNATURE lane honours it. The wall
+// deliberately does NOT: taking a brick out mid-wall leaves a hole, which
+// breaks running bond, breaks ground-up fill, and stops it reading as a wall
+// at all. A wall's forgetting mechanism is its capacity, not a timer — when
+// every slot is laid the pointer wraps and OVERWRITES the oldest brick in
+// place, so the masonry is never disturbed.
+// ═══════════════════════════════════════════════════════════════════
+// Brick width is DERIVED from the stage, never hardcoded. The handoff's nominal 177
+// leaves 1080 - (6×177 + 5×3) = 3px of bare stage at the right end of every flush
+// course — a sliver of nothing, which is exactly what a physical wall cannot have.
+// Solving 6w + 5m = 1080 gives 177.5, so the courses close flush on both edges.
+const WALL = { w: 1080, bandH: 350, courses: 6, perCourse: 6, mortar: 3 };
+WALL.brickW = (WALL.w - (WALL.perCourse - 1) * WALL.mortar) / WALL.perCourse;  // 177.5
+WALL.pitchX = WALL.brickW + WALL.mortar;              // 180.5
+WALL.pitchY = WALL.bandH / WALL.courses;              // 58.333…
+WALL.brickH = WALL.pitchY - WALL.mortar;              // 55.333… — art aspect 3.2, no squash
+
+/** Lay out every piece once, ground-up and left-to-right. Course-major order is
+ *  load-bearing: it is what guarantees a brick can never sit above a gap. */
+function buildWallSlots() {
+  const slots = [];
+  for (let c = 0; c < WALL.courses; c++) {
+    const offset = (c % 2) ? -WALL.pitchX / 2 : 0;    // running bond
+    for (let x = offset; x < WALL.w; x += WALL.pitchX) {
+      const left = Math.max(0, x), right = Math.min(WALL.w, x + WALL.brickW);
+      if (right - left <= 1) continue;
+      slots.push({
+        course: c, x: left, w: right - left,
+        // A closer is a clipped part-brick at a course end: structural, never named.
+        closer: (right - left) < WALL.brickW - 0.5,
+        bottom: c * WALL.pitchY,
+      });
+    }
+  }
+  return slots;
+}
+const WALL_SLOTS = buildWallSlots();
+const NAME_SLOTS = WALL_SLOTS.map((s, i) => i).filter((i) => !WALL_SLOTS[i].closer);
+
+const supporters = new Array(WALL_SLOTS.length).fill(null); // by slot index
+const laidCloser = new Set();
+let wallPtr = 0;   // index into NAME_SLOTS — next name-bearing slot to write
+
+/** Dollar band for name styling: ≥100 / 25–99 / 5–24 / <5. */
+function usdBand(usd) { return usd >= 100 ? 3 : usd >= 25 ? 2 : usd >= 5 ? 1 : 0; }
+
+function brickEl(slot, cls) {
+  const b = el(`brick ${cls}`);
+  b.style.left = slot.x + 'px';
+  b.style.width = slot.w + 'px';
+  b.style.height = WALL.brickH + 'px';
+  b.style.bottom = slot.bottom + 'px';
+  return b;
+}
+
+/** Closers are laid with the course, not awarded to anyone — otherwise an offset
+ *  course would show a 90px hole at its edge until the wall happened to fill. */
+function layCloser(slotIndex, silent) {
+  if (laidCloser.has(slotIndex)) return;
+  laidCloser.add(slotIndex);
+  const slot = WALL_SLOTS[slotIndex];
+  const b = brickEl(slot, 'b' + (1 + (slotIndex % 3)));
+  laneWall.appendChild(b);
+  if (!silent) reveal(b, 'dropping');
+}
+
+/** Write a supporter into a FIXED slot. The brick stays there for good. */
+/** Advance the write pointer, stepping OVER top-tier bricks while any lesser slot is
+ *  still available. A $100+ name is the wall's whole point; it should not be the first
+ *  thing a $1 spin erases just because it happens to be oldest. If every slot is
+ *  top-tier the guard yields and the oldest is overwritten — capacity still wins, and
+ *  the loop is bounded by the slot count so it can never spin. */
+function nextWallSlot() {
+  for (let step = 0; step < NAME_SLOTS.length; step++) {
+    const i = NAME_SLOTS[(wallPtr + step) % NAME_SLOTS.length];
+    const held = supporters[i];
+    if (!held || usdBand(held.usd) < 3) {
+      wallPtr = (wallPtr + step + 1) % NAME_SLOTS.length;
+      return i;
+    }
+  }
+  const i = NAME_SLOTS[wallPtr % NAME_SLOTS.length];   // all top-tier — oldest gives way
+  wallPtr = (wallPtr + 1) % NAME_SLOTS.length;
+  return i;
+}
+
+function addSupporter(spin, opts) {
+  const silent = !!(opts && opts.silent);   // hydration: rebuild, do not re-perform
+  const slotIndex = nextWallSlot();
+  const slot = WALL_SLOTS[slotIndex];
+  const usd = usdOf(spin);
+  const band = usdBand(usd);
+
+  // Overwrite in place — remove only the brick that occupied THIS slot.
+  const prev = supporters[slotIndex];
+  if (prev && prev.node) prev.node.remove();
+
+  const b = brickEl(slot, (band === 3 ? 'b-legend' : 'b' + (1 + (slotIndex % 3))) + ` usd-${band}`);
+  b.appendChild(el('b-name', esc(displayName(spin))));
+  b.appendChild(el('b-usd', usdLabel(spin)));
+  laneWall.appendChild(b);
+  supporters[slotIndex] = { node: b, usd, eventId: spin.eventId };
+
+  // Lay this course's closers so the wall has no open edge. The left closer goes
+  // in as soon as the course is started; the right one when the course completes.
+  for (let i = 0; i < WALL_SLOTS.length; i++) {
+    if (!WALL_SLOTS[i].closer || WALL_SLOTS[i].course !== slot.course) continue;
+    const isLeft = WALL_SLOTS[i].x === 0;
+    const courseNameSlots = NAME_SLOTS.filter((n) => WALL_SLOTS[n].course === slot.course);
+    const courseFull = courseNameSlots.every((n) => supporters[n]);
+    if (isLeft || courseFull) layCloser(i, silent);
+  }
+
+  if (!silent) reveal(b, 'dropping');
+}
+
+// ── Payload derivations (schemaVersion 2) ─────────────────────────────
+// The dock publishes value ONCE, in coin equivalents. Everything money-shaped is
+// derived from that here rather than shipped as extra fields that could drift.
+
+/** 1 TikTok coin = 1 YouTube jewel = $0.01 of VIEWER spend (dock pricing.ts). Super
+ *  Chats are already converted to coins upstream, so this one rate covers every
+ *  platform. NOT the streamer payout rate — this is what the viewer paid, which is
+ *  what a supporter wall should be a ledger of. */
+const COIN_USD = 0.01;
+function usdOf(spin) {
+  const coins = Number(spin?.gift?.totalValue);
+  return Number.isFinite(coins) && coins > 0 ? coins * COIN_USD : 0;
+}
+
+/** What to call the units on screen. Presentation only — tiering never reads this. */
+const PLATFORM_UNIT = { tiktok: 'coins', youtube: 'jewels', twitch: 'bits' };
+function unitOf(spin) { return PLATFORM_UNIT[spin?.platform] || 'coins'; }
+
+/** Money as shown on the wall/chip: whole dollars once we're past $1, cents below,
+ *  so a Rose reads "$0.25" and a Galaxy reads "$10" rather than "$10.00". */
+function usdLabel(spin) {
+  const usd = usdOf(spin);
+  return usd >= 1 ? '$' + Math.round(usd) : '$' + usd.toFixed(2);
+}
+
+/** The gift chip shown on the reel housing during the spin. Every part is optional:
+ *  an anonymous or unnamed gift still produces a valid chip rather than "undefined". */
+function giftChip(spin) {
+  const chip = el('gift-chip');
+  const name = spin?.gift?.name;
+  const count = Number(spin?.gift?.repeatCount);
+  const coins = Number(spin?.gift?.totalValue);
+  // el() assigns innerHTML, and gift names arrive from the platform — esc() them.
+  // The numbers are Number()-coerced above, so they cannot carry markup.
+  if (name) chip.appendChild(el('g-name', esc(name)));
+  if (Number.isFinite(count) && count > 1) chip.appendChild(el('g-amt', `×${count}`));
+  chip.appendChild(el('g-amt', `${Number.isFinite(coins) ? coins : 0} ${unitOf(spin)}`));
+  chip.appendChild(el('g-usd', usdLabel(spin)));
+  return chip;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSPORT — subscribe to splat-overlay 'wheel.spin' via JJX.dockRealtime, which
+// carries it over the dock's local WebSocket (Ably is off — see the header note).
+// The Ably-shaped channels.get()/subscribe() API below is the facade's, not Ably's.
+// A local test hook (window.wheelTest) drives the page with no dock for verification.
 // ═══════════════════════════════════════════════════════════════════
 function connect() {
   const conn = $('conn');
@@ -473,14 +1873,104 @@ function connect() {
     client.connection.on('connected', () => { conn.textContent = 'wheel: live ✓'; });
     client.connection.on('disconnected', () => { conn.textContent = 'wheel: reconnecting…'; });
     ch.subscribe('wheel.spin', (msg) => onWheelSpin(msg.data));
+    hydrate();
+    // Head tracking rides the same socket on its own channel (contract 2). It is a
+    // continuous stream, so it stays OFF the batched publish path and off Ably.
+    // Absent tracker = the layout fallback, which every head-anchored effect
+    // already renders correctly.
+    client.channels.get('head-track').subscribe('head', (msg) => window.setHead(msg.data));
+    // Contracts 3 + 4. Both are optional by design: absent targets => Ball Drop draws
+    // its own bucket, absent still => it flies the sphere art and leaves the cam alone.
+    const targets = client.channels.get('game-targets');
+    targets.subscribe('targets', (msg) => window.setTargets(msg.data));
+    targets.subscribe('cam-snapshot', (msg) => window.setCamStill(msg.data));
+    // Ask for a fresh still up front and then periodically, so one is already in hand
+    // when a Ball Drop fires — requesting at detach would arrive too late to cover.
+    const askForStill = () => targets.publish('cam-snapshot-request', {}).catch(() => {});
+    askForStill();
+    setInterval(askForStill, 30000);
   } catch (e) {
-    conn.textContent = 'wheel: Ably unavailable';
+    conn.textContent = 'wheel: transport unavailable';
   }
 }
 connect();
 
+// ── ART PRELOAD ──────────────────────────────────────────────────
+// Decode the whole set up front. Without this the first fire of an effect shows
+// gaps where art has not decoded yet — the ink texture and splash crown are simply
+// ABSENT on play one, which on a live stream is the first impression of the
+// flagship. Masks are preloaded too: a mask that has not decoded passes nothing
+// through, so the impression would be invisible rather than merely unstyled.
+const PRELOAD = [
+  'stamp-die.png', 'stamp-die-legend.png', 'stamp-die-press.png',
+  'ink-mask-1.png', 'ink-mask-2.png', 'ink-mask-3.png', 'seal-legend.png',
+  'bucket.png', 'bucket-legend.png', 'bucket-pour.png', 'bucket-mouth.png',
+  'water-splash-crown.png', 'water-sheet.png', 'wet-film.png',
+  'ball-shell.png', 'ball-gloss.png', 'ball-ring.png', 'ball-ring-legend.png',
+  'brick.png', 'brick-2.png', 'brick-3.png', 'brick-legend.png',
+  'frame-marquee.png', 'frame-marquee-legend.png',
+  'glass-crack-web.png', 'glass-shards.png',
+  'spotlight-cone.png', 'spotlight-floor-pool.png',
+  'splat-badge.png', 'storm-star.png',
+];
+let preloaded = 0;
+PRELOAD.forEach((f) => {
+  const img = new Image();
+  img.onload = () => { preloaded++; };
+  img.onerror = () => console.warn('[wheel] preload failed:', f);
+  img.src = 'assets/wheel/' + f;
+});
+window.wheelPreloadCount = () => ({ requested: PRELOAD.length, decoded: preloaded });
+
+// ═══════════════════════════════════════════════════════════════════
+// HYDRATION — rebuild the wall (and resume the queue) after a reload.
+//
+// The supporter wall is the one thing here that is meant to be PERMANENT, and
+// until this existed it lived only in memory: a Studio browser-source refresh,
+// a dock restart or a crash wiped every brick. The dock is the source of truth
+// (GET /api/wheel/snapshot), so recovery is a replay, not a cache.
+//
+// WHY REPLAY WORKS. Slot assignment is presentation and stays here, but it is
+// deterministic: same starting state, same arrival order, same slots — including
+// the guard that steps over top-tier bricks. So replaying the dock's ordered list
+// through addSupporter() reproduces the exact wall, and the dock never needs to
+// know what a course or a closer is.
+// ═══════════════════════════════════════════════════════════════════
+let hydrated = false;
+async function hydrate() {
+  if (hydrated) return;
+  const base = (JJX.param('dock') || 'http://127.0.0.1:4317').replace(/\/$/, '');
+  try {
+    const res = await fetch(base + '/api/wheel/snapshot', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const snap = await res.json();
+    hydrated = true;
+
+    // Rebuild the wall SILENTLY. These bricks were laid minutes ago; dropping 33
+    // of them again on load would read as 33 new supporters arriving at once.
+    for (const spin of snap.wall || []) addSupporter(spin, { silent: true });
+
+    // Seed the dedupe set from everything replayed, so a spin that also arrives
+    // live on the socket does not play (or lay a second brick) a second time.
+    for (const spin of snap.wall || []) {
+      if (spin.revision != null) seenRevisions.add('r' + spin.revision);
+    }
+    // Resume anything the dock still considers unfinished. These have NOT been
+    // marked seen, so they play properly — that is the point of resuming them.
+    for (const spin of snap.queued || []) onWheelSpin(spin);
+
+    console.info('[wheel] hydrated:', (snap.wall || []).length, 'wall,',
+                 (snap.queued || []).length, 'queued, revision', snap.revision);
+  } catch (e) {
+    // A dock that is not up yet is not an error worth going dark over — the
+    // socket keeps retrying, and the next connect calls this again.
+    console.warn('[wheel] hydrate failed (will retry on next connect):', e.message);
+  }
+}
+
 // Test hook — feed a WheelSpin-shaped object straight into the machine.
 window.wheelTest = (spin) => onWheelSpin(spin);
+window.wheelHydrate = hydrate;
 </script>
 </body>
 </html>
