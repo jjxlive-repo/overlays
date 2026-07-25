@@ -256,7 +256,14 @@ function applyMeterLayout() {
 function applyAlertLayoutFor(slot) {
   const el = document.getElementById('alert-pos');
   const a = (CFG.alerts && CFG.alerts[slot]) || { x: 0, y: 0, scale: 1 };
-  el.style.transform = `translate(${a.x}px, ${a.y}px) scale(${a.scale})`;
+  // Position only — NO scale() here. Scaling this element scaled the media with it,
+  // and the overlay canvas is a fixed 1080x1920 with overflow:hidden, so anything
+  // past the edge was cut off. At Size 100% ANY scale above 1 guaranteed clipping
+  // (scale 2.7 made the media 2916x5184). Scale now sizes the media directly
+  // (sizeMediaEl, clamped to the canvas) and the caption via its own transform.
+  el.style.transform = `translate(${a.x}px, ${a.y}px)`;
+  const txt = document.getElementById('alert-text');
+  txt.style.transform = `translateX(-50%) scale(${a.scale || 1})`;
 }
 // Give the media a box that is mediaPct% of the FULL canvas and let it fit inside.
 //
@@ -271,8 +278,14 @@ function applyAlertLayoutFor(slot) {
 function sizeMediaEl(el, slot) {
   const a = (CFG.alerts && CFG.alerts[slot]) || {};
   const pct = Math.max(10, Math.min(100, a.mediaPct == null ? 100 : a.mediaPct));
-  el.style.width  = (1080 * pct / 100) + 'px';
-  el.style.height = (1920 * pct / 100) + 'px';
+  // Size and Scale both used to enlarge the media — Size here, Scale via a CSS
+  // transform on the whole stage — so they multiplied. On a fixed 1080x1920 canvas
+  // with overflow:hidden that cut the artwork off (Size 100 x Scale 2.7 asked for
+  // 2916x5184). They're combined here instead, and CLAMPED to the canvas, so the
+  // media can never be bigger than the screen it has to fit on.
+  const frac = Math.min(1, (pct / 100) * (a.scale || 1));
+  el.style.width  = (1080 * frac) + 'px';
+  el.style.height = (1920 * frac) + 'px';
   el.style.maxWidth = 'none';
   el.style.maxHeight = 'none';
 }
