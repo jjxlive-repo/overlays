@@ -405,8 +405,30 @@
   }
 
   /*
+    ABLY: FULLY DISABLED (2026-07-24 — the account is being cancelled, no more metered
+    messages, no more bill).
+
+    One switch works because jjx-core.js is the ONLY place in this project that ever
+    constructs an Ably client: every page reaches Ably through dockRealtime() or
+    createOverlayBus(), and nothing calls `new Ably.Realtime` directly (verified across
+    all pages). So flipping this false makes it impossible for any overlay to open an
+    Ably connection or publish a metered message — no per-page edits, nothing missed.
+
+    The consequence that had to be handled: Ably WAS the safety net for a dropped dock
+    socket, and both transports below gave up on the socket after 3 attempts and switched.
+    With no net left, giving up would leave an overlay permanently dark until someone
+    reloaded it — a routine dock restart would do it. So while Ably is off, the socket
+    retries FOREVER with capped backoff (see the onclose handlers).
+
+    The Ably SDK <script> tags in the pages are harmless now: an unused SDK opens no
+    connection and costs nothing. Re-enabling is one line, but the fallback needs each
+    page's CONFIG.ABLY_KEY, which is public in this repo — rotate it before trusting it.
+  */
+  var ABLY_ENABLED = false;
+
+  /*
     OVERLAY EVENT BUS — live events over the Producer Dock's local WebSocket, with
-    Ably as an automatic fallback.
+    Ably as an automatic fallback (disabled — see ABLY_ENABLED above).
 
     Why: every overlay used to subscribe to Ably directly, so a single comment, like,
     follow or gift cost a metered message PER OVERLAY watching. The dock already
@@ -426,6 +448,8 @@
   */
   function createOverlayBus(opts) {
     opts = opts || {};
+    // Ably off: drop the client the caller handed us so no code path can reach it.
+    if (!ABLY_ENABLED) opts.ably = null;
     var base = (opts.dockBase || dockBase()).replace(/^http/, 'ws');
     var handlers = {};           // "channel/name" -> [fn]
     var ws = null;
@@ -497,7 +521,15 @@
         // assume the socket isn't coming back and switch to Ably rather than keep
         // a dark overlay hoping.
         if (retries <= 3) setTimeout(connect, 500 * retries);
-        else fallbackToAbly('socket unavailable after ' + retries + ' attempts');
+        else if (opts.ably) fallbackToAbly('socket unavailable after ' + retries + ' attempts');
+        else {
+          // No Ably net (ABLY_ENABLED false, or caller passed none): never stop trying.
+          // Giving up here is what would leave an overlay dark for the rest of a stream
+          // after nothing worse than a dock restart. Capped so a long outage does not
+          // hammer the socket.
+          onStatus('socket-retrying', 'attempt ' + retries);
+          setTimeout(connect, Math.min(500 * retries, 10000));
+        }
       };
     }
 
@@ -538,6 +570,8 @@
   */
   function dockRealtime(opts) {
     opts = opts || {};
+    // Ably off: discard the fallback key so goAbly() can never construct a client.
+    if (!ABLY_ENABLED) opts.fallbackKey = null;
     var httpBase = (opts.dockBase || dockBase()).replace(/\/$/, '');
     var wsUrl = httpBase.replace(/^http/, 'ws') + '/overlay-ws';
     var subs = [];                 // {channel, event, cb}
@@ -610,7 +644,13 @@
         retries++;
         // Fast: every retry second is a second of a dark overlay.
         if (retries <= 3) setTimeout(connect, 500 * retries);
-        else goAbly('socket unavailable after ' + retries + ' attempts');
+        else if (opts.fallbackKey) goAbly('socket unavailable after ' + retries + ' attempts');
+        else {
+          // No Ably net (see ABLY_ENABLED): keep trying the socket forever, capped, so a
+          // dock restart costs a few seconds of alerts rather than the rest of the stream.
+          onStatus('socket-retrying', 'attempt ' + retries);
+          setTimeout(connect, Math.min(500 * retries, 10000));
+        }
       };
       ws.onerror = function () { /* onclose follows */ };
     }
