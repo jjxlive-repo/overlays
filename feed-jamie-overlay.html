@@ -1814,8 +1814,15 @@ function tweenJamieX(fromX, toX, ms, onDone) {
 }
 function applyLayout() {
   const j = CFG.jamie;
-  const w = j.width * j.scale * growthScale();
-  const h = jamieHeightFor(j.width) * j.scale * growthScale();
+  /* An art package can declare how much of its canvas the character actually fills.
+     The v2 Cleanup6 frames inset every drawing by >=82px so nothing clips at the
+     canvas edge, which would otherwise render Jamie ~13% smaller than the previous
+     art at the same jamie.width. Dividing by contentScale keeps jamie.width meaning
+     the CHARACTER's on-screen width rather than the image box's, so swapping art
+     never silently resizes him out from under a tuned layout. */
+  const contentScale = (MANIFEST.canvas && MANIFEST.canvas.contentScale) || 1;
+  const w = j.width * j.scale * growthScale() / contentScale;
+  const h = jamieHeightFor(j.width) * j.scale * growthScale() / contentScale;
   const x = j.side === 'right' ? (1080 - j.x - w) : j.x;
   /* anchor: bottom of sprite sits at floorY + yOffset (top-positioned; never CSS bottom) */
   const mc = MANIFEST.canvas || { width: 1200, height: 1400, floorAnchor: { y: 1320 } };
