@@ -59,6 +59,9 @@
     position: absolute; border: 3px dashed var(--fj-accent); background: #E879F922;
     display: none; z-index: 40; box-sizing: border-box;
   }
+  #roam-band { position: absolute; height: 12px; display: none; z-index: 41;
+    background: repeating-linear-gradient(90deg, #22D3EE55 0 14px, transparent 14px 28px);
+    border-left: 2px solid #22D3EE; border-right: 2px solid #22D3EE; }
   #jamie-box { position: absolute; border: 2px dashed var(--fj-gold); display: none; z-index: 41; box-sizing: border-box; }
   #safe-area { position: absolute; inset: 60px 40px; border: 2px dotted #FAF5FF55; display: none; z-index: 79; box-sizing: border-box; }
   #debug-hud {
@@ -510,6 +513,7 @@
   <div id="prompt-pill"></div>
   <div id="event-label"></div>
   <div id="like-meter"></div>
+  <div id="roam-band"></div>
   <div id="milestone-bars"></div>
   <svg width="0" height="0" aria-hidden="true" style="position:absolute">
     <filter id="fj-rim" x="-12%" y="-12%" width="124%" height="124%" color-interpolation-filters="sRGB">
@@ -562,6 +566,16 @@ const FJ_DEFAULT_CONFIG = {
     guidanceEnabled: true, guidanceStrength: 0.6,
     cornerJackpot: true, cornerTolerance: 30, cornerWindowMs: 150,
     cornerRewardMultiplier: 1, squashStretch: true
+  },
+  /* Roaming. Default OFF: switching it on changes how Jamie behaves on every
+     catch, so it is opt-in rather than something an update turns on under you. */
+  roam: {
+    enabled: false,
+    xMin: 40, xMax: 820,        // the allotted band, in stage px (left edge of the sprite)
+    speed: 165,                 // px/sec walking
+    chase: true,                // walk toward loose objects instead of waiting
+    wander: true, wanderEverySec: 20,
+    returnHome: true, returnAfterSec: 12
   },
   events: {
     likesPerTreatEnabled: true, likesPerTreat: 50, likeQueueCap: 2,
@@ -744,6 +758,17 @@ function fjValidateConfig() {
   /* wooden gift sign (migrates the old floating-card giftShowcase config:
      x is kept as the manual fallback; old y/scale are ignored safely) */
   const num = (v, d) => { const n = +v; return Number.isFinite(n) ? n : d; };
+  /* roam — validated here rather than earlier because it needs num() above */
+  if (!c.roam || typeof c.roam !== 'object') c.roam = fjClone(FJ_DEFAULT_CONFIG.roam);
+  c.roam.enabled = !!c.roam.enabled;
+  c.roam.chase = c.roam.chase !== false;
+  c.roam.wander = c.roam.wander !== false;
+  c.roam.returnHome = c.roam.returnHome !== false;
+  c.roam.xMin = Math.min(Math.max(num(c.roam.xMin, 40), 0), 1000);
+  c.roam.xMax = Math.min(Math.max(num(c.roam.xMax, 820), c.roam.xMin + 80), 1080);
+  c.roam.speed = Math.min(Math.max(num(c.roam.speed, 165), 40), 600);
+  c.roam.wanderEverySec = Math.min(Math.max(num(c.roam.wanderEverySec, 20), 4), 120);
+  c.roam.returnAfterSec = Math.min(Math.max(num(c.roam.returnAfterSec, 12), 2), 120);
   if (!c.visuals.giftShowcase || typeof c.visuals.giftShowcase !== 'object') c.visuals.giftShowcase = {};
   const gsc = c.visuals.giftShowcase;
   gsc.enabled = gsc.enabled !== false;
@@ -1850,7 +1875,14 @@ function applyLayout() {
   const contentScale = (MANIFEST.canvas && MANIFEST.canvas.contentScale) || 1;
   const w = j.width * j.scale * growthScale() / contentScale;
   const h = jamieHeightFor(j.width) * j.scale * growthScale() / contentScale;
-  const x = j.side === 'right' ? (1080 - j.x - w) : j.x;
+  /* roamX is Jamie's live walked position. applyLayout runs on config changes and
+     once a second during growth decay, so if it recomputed x from config every
+     time it would teleport a roaming Jamie back home mid-step — the same class of
+     bug that used to make the Heart Me sprint stutter. Honouring roamX here means
+     roam survives every layout pass instead of needing a guard at each call site. */
+  const homeX = j.side === 'right' ? (1080 - j.x - w) : j.x;
+  jamieHomeX = homeX;
+  const x = (roamX === null) ? homeX : Math.min(Math.max(roamX, 0), 1080 - w);
   /* anchor: bottom of sprite sits at floorY + yOffset (top-positioned; never CSS bottom) */
   const mc = MANIFEST.canvas || { width: 1200, height: 1400, floorAnchor: { y: 1320 } };
   const anchorFrac = (mc.floorAnchor?.y ?? 1320) / mc.height;
@@ -1876,6 +1908,14 @@ function applyLayout() {
   gfl.style.display = CFG.debug.setupGuides ? 'block' : 'none';
   gfl.style.top = (CFG.floor.y - 34) + 'px';
   gfl.textContent = 'floor Y = ' + CFG.floor.y;
+  const rb = $('roam-band');
+  if (rb) {
+    const showBand = CFG.debug.setupGuides && CFG.roam.enabled;
+    rb.style.display = showBand ? 'block' : 'none';
+    rb.style.left = CFG.roam.xMin + 'px';
+    rb.style.width = Math.max(0, CFG.roam.xMax - CFG.roam.xMin) + 'px';
+    rb.style.top = (CFG.floor.y - 6) + 'px';
+  }
   const jb = $('jamie-box');
   jb.style.display = (CFG.debug.setupGuides && CFG.debug.showJamieBox) ? 'block' : 'none';
   jb.style.left = x + 'px'; jb.style.top = y + 'px';
@@ -2222,6 +2262,89 @@ function scheduleTwitch() {
     scheduleTwitch();
   }, 10000 + Math.random() * 15000);
 }
+/* ── ROAMING ───────────────────────────────────────────────────────
+   Jamie walks an allotted stretch of floor: toward loose objects when chasing
+   is on, otherwise wandering, then back home when things go quiet. Movement is
+   X-only along the floor line — every pose in the library is drawn standing on
+   the ground, so there is nothing to draw a Jamie hovering mid-air.
+
+   Frames: trot to walk, the 6-frame gallop when moving fast, skid to arrive,
+   and standIdle while stopped away from home (the sitting idle is used at home
+   because sitting down somewhere random reads as him being stuck). */
+let roamX = null;           // null = parked at the configured home position
+let jamieHomeX = 0;
+const RM = { targetX: null, vx: 0, seq: null, stoppedAt: 0, nextWanderAt: 0, skidUntil: 0 };
+function roamMoving() { return Math.abs(RM.vx) > 8; }
+function roamBusy() {
+  /* never steal the frame from a scripted sequence */
+  return heartMeActive || jackpotActive || _petActive ||
+         !['IDLE', 'TRACKING'].includes(J.state);
+}
+function roamPlay(name) {
+  if (RM.seq === name) return;
+  RM.seq = name;
+  playSeq(name, { loop: name === 'trot' || name === 'gallop' || name === 'standIdle' });
+}
+function roamPickTarget(now) {
+  const r = CFG.roam, w = jamieRect.w;
+  const clamp = v => Math.min(Math.max(v, r.xMin), Math.max(r.xMin, r.xMax - w));
+  if (r.chase) {
+    /* nearest uncaught object that is low enough to be worth walking to */
+    let best = null, bestD = 1e9;
+    for (const o of objects) {
+      if (o.captured || o.paused) continue;
+      const d = Math.abs((o.x + o.w / 2) - (jamieRect.x + w / 2));
+      if (d < bestD) { bestD = d; best = o; }
+    }
+    if (best && bestD > 70) return clamp(best.x + best.w / 2 - w / 2);
+  }
+  if (objects.length) return null;                       // something is in reach; stay put
+  if (r.returnHome && now - RM.stoppedAt > r.returnAfterSec * 1000 &&
+      Math.abs(jamieRect.x - jamieHomeX) > 12) return clamp(jamieHomeX);
+  if (r.wander && now > RM.nextWanderAt) {
+    RM.nextWanderAt = now + r.wanderEverySec * 1000 * (0.6 + Math.random() * 0.8);
+    return clamp(r.xMin + Math.random() * Math.max(1, r.xMax - r.xMin - w));
+  }
+  return null;
+}
+function updateRoam(dt, now) {
+  if (!CFG.roam.enabled) {
+    if (roamX !== null) { roamX = null; RM.vx = 0; RM.seq = null; applyLayout(); }
+    return;
+  }
+  if (roamBusy()) { RM.vx = 0; return; }
+  if (roamX === null) roamX = jamieRect.x;               // adopt the current spot on first run
+
+  const target = RM.targetX !== null ? RM.targetX : roamPickTarget(now);
+  RM.targetX = target;
+
+  if (target === null) {
+    RM.vx = 0;
+    if (now < RM.skidUntil) return;
+    /* stopped: stand where he is, or sit if he is home */
+    roamPlay(Math.abs(roamX - jamieHomeX) < 14 ? 'idle' : 'standIdle');
+    return;
+  }
+
+  const dx = target - roamX;
+  if (Math.abs(dx) < 6) {                                 // arrived
+    const wasFast = Math.abs(RM.vx) > 240;
+    roamX = target; RM.targetX = null; RM.vx = 0; RM.stoppedAt = now;
+    if (wasFast) { RM.seq = null; playSeq('heartMeSkid', { loop: false }); RM.skidUntil = now + 500; }
+    applyJamieTransform();
+    return;
+  }
+  /* chasing gets a sprint; wandering and going home are a walk */
+  const chasing = CFG.roam.chase && objects.some(o => !o.captured);
+  const speed = CFG.roam.speed * (chasing ? 1.9 : 1);
+  RM.vx = Math.sign(dx) * Math.min(speed, Math.abs(dx) / Math.max(dt, 0.001));
+  roamX += RM.vx * dt;
+  jamieRect.x = roamX;
+  poseMirror = RM.vx < 0;                                 // art faces right by default
+  roamPlay(Math.abs(RM.vx) > 240 ? 'gallop' : 'trot');
+  applyJamieTransform();
+}
+
 /* directional tracking */
 function updateTracking(obj) {
   if (J.state !== 'TRACKING') return;
@@ -2443,7 +2566,11 @@ function stepObject(obj, dt, now) {
      freely for most of their (also extended) lifetime instead of getting
      pulled in early, so bigger spends stay bouncing/on-screen longer. */
   const guideWindowMs = Math.max(1200, 5000 - (obj.intensityLevel || 0) * 700);
-  const guideStrengthMult = Math.max(0.4, 1 - (obj.intensityLevel || 0) * 0.1);
+  /* Objects are normally steered toward Jamie so he reliably catches them. If he
+     is ALSO walking to them, both sides converge and the catch looks robotic — so
+     back the steering off while chasing and let his legs do the work. */
+  const chaseMult = (CFG.roam.enabled && CFG.roam.chase) ? 0.4 : 1;
+  const guideStrengthMult = Math.max(0.4, 1 - (obj.intensityLevel || 0) * 0.1) * chaseMult;
   if (CFG.movement.guidanceEnabled && obj.maxLifetime - obj.age < guideWindowMs && !obj.captured) {
     const rz = reachZoneRect();
     const tx = rz.cx - (obj.x + obj.w / 2), ty = rz.cy - (obj.y + obj.h / 2);
@@ -3422,13 +3549,16 @@ function tick(now) {
       if (!heartMeActive && !jackpotActive) applyLayout();
     }
   }
-  if (CFG.events.sleepEnabled && J.state === 'IDLE' && !objects.length && !_petActive &&
+  if (CFG.events.sleepEnabled && J.state === 'IDLE' && !objects.length && !_petActive && !roamMoving() &&
       (now - lastEngagementAt) > CFG.events.sleepAfterSec * 1000) {
     setJamieState('SLEEPING');
   }
+  updateRoam(dt, now);
   const active = objects.filter(o => !o.captured);
   for (const o of objects) stepObject(o, dt, now);
-  if (J.state === 'TRACKING' && active.length) {
+  /* while he is walking, roam owns the frame — head-tracking poses would fight
+     the trot cycle for the same sprite */
+  if (J.state === 'TRACKING' && active.length && !roamMoving()) {
     const focus = active.reduce((a, b) => (b.priority > a.priority ? b : a), active[0]);
     updateTracking(focus);
   }
@@ -4157,6 +4287,23 @@ window.feedJamie = {
   triggerSubscribe,
   pet: handlePet,
   get petActive() { return _petActive; },
+  /* roam surface — lets the walk be driven and inspected without waiting on the
+     main loop (browser sources get their timers clamped when backgrounded) */
+  get roam() {
+    return { x: roamX, homeX: jamieHomeX, rectX: jamieRect.x,
+             targetX: RM.targetX, vx: RM.vx, moving: roamMoving(), seq: RM.seq,
+             mirror: poseMirror, enabled: CFG.roam.enabled };
+  },
+  _roamSet(o) {
+    o = o || {};
+    if (o.x !== undefined) roamX = o.x;
+    if (o.targetX !== undefined) RM.targetX = o.targetX;
+    if (o.stoppedAt !== undefined) RM.stoppedAt = o.stoppedAt;
+  },
+  _roamStep(dt, steps) {
+    for (let i = 0; i < (steps || 1); i++) updateRoam(dt || 0.05, performance.now());
+  },
+  _applyLayout: () => applyLayout(),
   get bodyParts() { return bodyParts; },
   _setBodyParts(parts) { bodyParts = parts; bodyPartsAt = performance.now(); },
   setFloorY: v => { CFG.floor.y = Math.min(Math.max(+v || 500, CFG.floor.min), CFG.floor.max); applyLayout(); },
