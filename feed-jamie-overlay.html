@@ -80,6 +80,11 @@
   /* crossfade-capable frame layers — stacked absolutely so old/new frames overlap exactly.
      JS drives opacity/transform transitions per-layer (duration = visuals.frameCrossfadeMs). */
   #jamie .fj-jamie-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* Runtime white sticker rim. The Cleanup6 art ships with a black outline only and
+     NO baked rim — 124 of its 143 frames sit within 10px of the canvas edge (some at
+     0px), so a baked rim would clip. One feMorphology dilate paints an even rim that
+     renders outside the sprite box. Gated on visuals.stickerBorder. */
+  #jamie.rimmed .fj-jamie-layer { filter: url(#fj-rim); }
 
   /* synthetic wobble/squash/hop/tilt — ONLY used as a fallback when no real drawn
      frame exists for the current pose (class .no-real-art). Real hand-drawn sprites
@@ -505,6 +510,14 @@
   <div id="event-label"></div>
   <div id="like-meter"></div>
   <div id="milestone-bars"></div>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <filter id="fj-rim" x="-12%" y="-12%" width="124%" height="124%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="3" result="fj-fat"/>
+      <feFlood flood-color="#ffffff" result="fj-white"/>
+      <feComposite in="fj-white" in2="fj-fat" operator="in" result="fj-rimmed"/>
+      <feMerge><feMergeNode in="fj-rimmed"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </svg>
   <div id="gift-showcase" aria-label="TikTok gift actions"></div>
   <div id="gift-float-layer" aria-live="polite"></div>
   <div id="debug-hud"></div>
@@ -1263,103 +1276,143 @@ const ITEM_DEFS = {
 /* ── 3. ANIMATION SEQUENCES (frame files + ms) — the asset report
        (FEED-JAMIE-ASSET-REQUIREMENTS.md) mirrors these exactly ── */
 const SEQ = {
-  idle:         [{ f: 'jamie-idle-01.png',            d: 2600 },
-                 { f: 'jamie-idle-03-breathe.png',    d: 1200 }],
-  blink:        [{ f: 'jamie-idle-02-blink.png',      d: 160  }],
-  trackLeft:    [{ f: 'jamie-track-left.png',         d: 0    }],
-  trackCenter:  [{ f: 'jamie-track-center.png',       d: 0    }],
-  trackRight:   [{ f: 'jamie-track-right.png',        d: 0    }],
-  trackHigh:    [{ f: 'jamie-track-high.png',         d: 0    }],
-  anticipation: [{ f: 'jamie-anticipation-01.png',    d: 350  },
-                 { f: 'jamie-anticipation-02-wiggle.png', d: 350 },
-                 { f: 'jamie-anticipation-04-wiggle-b.png', d: 350 },
-                 { f: 'jamie-anticipation-05-stalk.png', d: 400 }], /* loops */
-  launch:       [{ f: 'jamie-anticipation-03-launch.png', d: 180 }],
-  treat:        [{ f: 'jamie-treat-catch-01.png',     d: 250  },
-                 { f: 'jamie-treat-catch-02.png',     d: 350  },
-                 { f: 'jamie-treat-chew-01.png',      d: 250  },
-                 { f: 'jamie-treat-chew-02.png',      d: 250  },
-                 { f: 'jamie-treat-chew-01.png',      d: 200  }],
-  treatHappy:   [{ f: 'jamie-treat-happy.png',        d: 400  },
-                 { f: 'jamie-treat-happy-02.png',     d: 500  }],
-  fetch:        [{ f: 'jamie-fetch-ready.png',        d: 250  },
-                 { f: 'jamie-fetch-leap.png',         d: 400  },
-                 { f: 'jamie-fetch-catch.png',        d: 450  }],
-  fetchHold:    [{ f: 'jamie-ball-hold.png',          d: 450  },
-                 { f: 'jamie-fetch-shake.png',        d: 400  },
-                 { f: 'jamie-ball-hold.png',          d: 350  }],
-  premium:      [{ f: 'jamie-premium-ready.png',      d: 300  },
-                 { f: 'jamie-premium-catch.png',      d: 500  }],
-  premiumEnd:   [{ f: 'jamie-premium-celebrate.png',  d: 700  },
-                 { f: 'jamie-premium-celebrate-02.png', d: 500 },
-                 { f: 'jamie-premium-hold.png',       d: 700  }],
-  toy:          [{ f: 'jamie-toy-pounce.png',         d: 300  },
-                 { f: 'jamie-toy-paw.png',            d: 400  },
-                 { f: 'jamie-toy-surprised.png',      d: 400  }],
-  toyEnd:       [{ f: 'jamie-toy-shake.png',          d: 400  },
-                 { f: 'jamie-toy-happy.png',          d: 500  }],
-  duck:         [{ f: 'jamie-duck-head-tilt.png',     d: 400  },
-                 { f: 'jamie-duck-tilt-02.png',       d: 350  },
-                 { f: 'jamie-duck-paw.png',           d: 400  },
-                 { f: 'jamie-duck-boop.png',          d: 350  }],
-  duckEnd:      [{ f: 'jamie-duck-happy.png',         d: 500  }],
-  sock:         [{ f: 'jamie-sock-grab.png',          d: 400  },
-                 { f: 'jamie-sock-tug.png',           d: 450  },
-                 { f: 'jamie-sock-tug-02.png',        d: 450  }],
-  sockEnd:      [{ f: 'jamie-sock-shake.png',         d: 450  },
-                 { f: 'jamie-sock-victory.png',       d: 550  }],
-  bubble:       [{ f: 'jamie-bubble-watch.png',       d: 350  },
-                 { f: 'jamie-bubble-track.png',       d: 350  },
-                 { f: 'jamie-bubble-pop.png',         d: 350  }],
-  bubbleEnd:    [{ f: 'jamie-bubble-surprised.png',   d: 400  },
-                 { f: 'jamie-bubble-sneeze.png',      d: 450  }],
-  /* Heart Me: sprints to center screen, skids to a stop, holds the big
-     signature heart pose, then sprints back (see triggerHeartMe — the run
-     frame is reused mirrored for the return trip, so only one run pose
-     is needed). */
-  heartMeRun:   [{ f: 'jamie-heart-run.png',          d: 200  },
-                 { f: 'jamie-heart-run-02.png',       d: 200  }],
-  heartMeSkid:  [{ f: 'jamie-heart-skid.png',         d: 260  }],
-  heartMeBurst: [{ f: 'jamie-heart-burst.png',        d: 520  },
-                 { f: 'jamie-heart-burst-02.png',     d: 520  }],
-  /* Heart Me variant "classic" — the original in-place celebration, kept as
-     one of the 4 random variants instead of the only one. */
-  heartMeClassic:    [{ f: 'jamie-heart-celebrate-01.png', d: 450 },
-                       { f: 'jamie-heart-celebrate-02.png', d: 450 },
-                       { f: 'jamie-heart-celebrate-03.png', d: 700 },
-                       { f: 'jamie-heart-spin.png',         d: 500 }],
-  heartMeClassicEnd: [{ f: 'jamie-heart-land.png',          d: 600 }],
-  /* Heart Me variant "spin" */
-  heartMeSpinPose:   [{ f: 'jamie-heart-spin-01.png',       d: 180 },
-                      { f: 'jamie-heart-spin-02.png',       d: 180 },
-                      { f: 'jamie-heart-spin-03.png',       d: 180 }],
-  /* jackpot: L4/L5 MEGA gift/superchat — gold, deliberately distinct from
-     the purple Heart Me sequence above so a big spender reads differently
-     from an actual Heart Me. */
-  jackpot:      [{ f: 'jamie-jackpot-catch.png',      d: 900  }],
-  jackpotEnd:   [{ f: 'jamie-jackpot-land.png',       d: 600  }],
-  grownProud:   [{ f: 'jamie-grown-proud.png',        d: 1200 }],
-  mythicCelebrate: [{ f: 'jamie-mythic-celebrate.png', d: 1600 }],  /* squad tier-6 unlock */
-  grownMid:     [{ f: 'jamie-grown-mid.png',          d: 1000 }],
-  milestoneCheer: [{ f: 'jamie-milestone-cheer.png',  d: 900  }],
-  showerNom:    [{ f: 'jamie-shower-nom.png',         d: 450  }],
-  miss:         [{ f: 'jamie-miss.png',               d: 700  }],
-  confused:     [{ f: 'jamie-confused.png',           d: 800  }],
-  look:         [{ f: 'jamie-comment-look.png',       d: 900  }],
-  sleep:        [{ f: 'jamie-sleep.png',              d: 2400 },
-                 { f: 'jamie-sleep-02.png',           d: 2400 }],
-  wake:         [{ f: 'jamie-wake.png',               d: 400  }]
+  /* Cleanup6 frame library (2026-07-25). Real cycles with in-betweens replace the
+     old one-pose-per-beat set: 6-frame gallop, 4-frame trot, 9-frame jump arc,
+     L/R shake pairs. Art carries NO baked white rim — the overlay adds it at
+     runtime (#fj-rim, gated on visuals.stickerBorder). */
+  idle:         [{ f: 'jamie-idle-01-in.png', d: 900 },
+                 { f: 'jamie-idle-02-mid.png', d: 700 },
+                 { f: 'jamie-idle-03-out.png', d: 900 },
+                 { f: 'jamie-idle-04-mid.png', d: 700 }],
+  blink:        [{ f: 'jamie-blink-01-half.png', d: 70 },
+                 { f: 'jamie-blink-02-shut.png', d: 90 },
+                 { f: 'jamie-blink-01-half.png', d: 70 }],
+  earTwitch:    [{ f: 'jamie-ear-01.png', d: 160 }, { f: 'jamie-ear-02.png', d: 160 }],
+  tailWag:      [{ f: 'jamie-tail-01.png', d: 180 }, { f: 'jamie-tail-02.png', d: 180 }, { f: 'jamie-tail-03.png', d: 180 }, { f: 'jamie-tail-02.png', d: 180 }],
+  /* tracking is VERTICAL now (low/mid/top); horizontal facing comes from the
+     existing mirror/flip, so left/right no longer need their own frames. */
+  trackLow:     [{ f: 'jamie-track-low.png', d: 0 }],
+  trackCenter:  [{ f: 'jamie-track-mid.png', d: 0 }],
+  trackHigh:    [{ f: 'jamie-track-top.png', d: 0 }],
+  anticipation: [{ f: 'jamie-antic-01-bow.png', d: 300 },
+                 { f: 'jamie-antic-02-left.png', d: 260 },
+                 { f: 'jamie-antic-04-right.png', d: 260 },
+                 { f: 'jamie-antic-05-coil.png', d: 320 }],
+  launch:       [{ f: 'jamie-antic-05-coil.png', d: 180 }],
+  treat:        [{ f: 'jamie-treat-01-snap.png', d: 140 },
+                 { f: 'jamie-treat-02-catch.png', d: 200 },
+                 { f: 'jamie-treat-03-chew.png', d: 180 },
+                 { f: 'jamie-treat-04-chew.png', d: 180 },
+                 { f: 'jamie-treat-05-gulp.png', d: 200 }],
+  treatHappy:   [{ f: 'jamie-treat-06-lick.png', d: 420 }],
+  fetch:        [{ f: 'jamie-jump-01-load.png', d: 150 },
+                 { f: 'jamie-jump-02-launch.png', d: 90 },
+                 { f: 'jamie-jump-04-apex.png', d: 120 },
+                 { f: 'jamie-fetch-01-jaws.png', d: 260 }],
+  fetchHold:    [{ f: 'jamie-fetch-02-trot.png', d: 300 },
+                 { f: 'jamie-fetch-03-present.png', d: 600 }],
+  premium:      [{ f: 'jamie-jump-01-load.png', d: 150 },
+                 { f: 'jamie-jump-04-apex.png', d: 150 },
+                 { f: 'jamie-premium-01-catch.png', d: 260 }],
+  premiumEnd:   [{ f: 'jamie-premium-02-cradle.png', d: 300 },
+                 { f: 'jamie-premium-03-sparkle.png', d: 300 },
+                 { f: 'jamie-premium-04-peak.png', d: 600 }],
+  toy:          [{ f: 'jamie-toy-02-pounce.png', d: 200 },
+                 { f: 'jamie-toy-01-bat.png', d: 220 },
+                 { f: 'jamie-toy-03-grab.png', d: 220 }],
+  toyEnd:       [{ f: 'jamie-toy-04-shakeL.png', d: 110 },
+                 { f: 'jamie-toy-05-shakeR.png', d: 110 },
+                 { f: 'jamie-toy-06-proud.png', d: 520 }],
+  duck:         [{ f: 'jamie-duck-01-spot.png', d: 260 },
+                 { f: 'jamie-duck-02-approach.png', d: 260 },
+                 { f: 'jamie-duck-03-nose.png', d: 220 }],
+  duckEnd:      [{ f: 'jamie-duck-04-squeak.png', d: 260 },
+                 { f: 'jamie-duck-05-hold.png', d: 520 }],
+  sock:         [{ f: 'jamie-sock-01-snatch.png', d: 320 }],
+  sockEnd:      [{ f: 'jamie-sock-02-shakeL.png', d: 110 },
+                 { f: 'jamie-sock-03-shakeR.png', d: 110 },
+                 { f: 'jamie-sock-02-shakeL.png', d: 110 },
+                 { f: 'jamie-sock-04-drape.png', d: 520 }],
+  bubble:       [{ f: 'jamie-bubble-01-spot.png', d: 260 },
+                 { f: 'jamie-bubble-02-float.png', d: 260 },
+                 { f: 'jamie-bubble-03-touch.png', d: 200 },
+                 { f: 'jamie-bubble-04-pop.png', d: 160 }],
+  bubbleEnd:    [{ f: 'jamie-bubble-05-startle.png', d: 260 },
+                 { f: 'jamie-bubble-06-sneeze.png', d: 420 }],
+  /* Heart Me RUN: real gallop out, skid to a stop, hold the heart burst, gallop back. */
+  heartMeRun:   [{ f: 'jamie-run-01.png', d: 90 }, { f: 'jamie-run-02.png', d: 90 }, { f: 'jamie-run-03.png', d: 90 },
+                 { f: 'jamie-run-04.png', d: 90 }, { f: 'jamie-run-05.png', d: 90 }, { f: 'jamie-run-06.png', d: 90 }],
+  heartMeSkid:  [{ f: 'jamie-skid-01.png', d: 110 }, { f: 'jamie-skid-02.png', d: 110 }, { f: 'jamie-skid-03.png', d: 200 }],
+  heartMeBurst: [{ f: 'jamie-hm-run-02-burstA.png', d: 200 },
+                 { f: 'jamie-hm-run-03-burstB.png', d: 200 },
+                 { f: 'jamie-hm-run-04-burstC.png', d: 200 }],
+  heartMeClassic:    [{ f: 'jamie-hm-cls-01-crouch.png', d: 180 },
+                      { f: 'jamie-hm-cls-02-leap.png', d: 160 },
+                      { f: 'jamie-hm-cls-03-clutch.png', d: 220 },
+                      { f: 'jamie-hm-cls-04-chest.png', d: 240 },
+                      { f: 'jamie-hm-cls-05-lift.png', d: 240 }],
+  heartMeClassicEnd: [{ f: 'jamie-hm-cls-06-swayL.png', d: 200 }, { f: 'jamie-hm-cls-07-swayR.png', d: 200 }],
+  heartMeSpinPose:   [{ f: 'jamie-hm-spin-01-front.png', d: 120 },
+                      { f: 'jamie-hm-spin-02-q1.png', d: 120 },
+                      { f: 'jamie-hm-spin-03-profile.png', d: 120 },
+                      { f: 'jamie-hm-spin-04-back34.png', d: 120 },
+                      { f: 'jamie-hm-spin-05-back.png', d: 120 },
+                      { f: 'jamie-hm-spin-06-q3.png', d: 120 }],
+  heartMeProud:      [{ f: 'jamie-hm-prd-01-rise.png', d: 220 },
+                      { f: 'jamie-hm-prd-02-stand.png', d: 240 },
+                      { f: 'jamie-hm-prd-03-puffA.png', d: 200 },
+                      { f: 'jamie-hm-prd-04-puffB.png', d: 200 },
+                      { f: 'jamie-hm-prd-05-peak.png', d: 320 },
+                      { f: 'jamie-hm-prd-06-bashful.png', d: 480 }],
+  jackpot:      [{ f: 'jamie-jp-01-paws.png', d: 180 },
+                 { f: 'jamie-jp-02-snap.png', d: 160 },
+                 { f: 'jamie-jp-03-rainA.png', d: 180 },
+                 { f: 'jamie-jp-04-rainB.png', d: 180 },
+                 { f: 'jamie-jp-05-catch.png', d: 220 }],
+  jackpotEnd:   [{ f: 'jamie-jp-06-roll.png', d: 220 }, { f: 'jamie-jp-07-rise.png', d: 240 }, { f: 'jamie-jp-08-peak.png', d: 600 }],
+  grownProud:   [{ f: 'jamie-grow-04-tall.png', d: 400 }, { f: 'jamie-grow-05-puff.png', d: 800 }],
+  grownMid:     [{ f: 'jamie-grow-01-stretch.png', d: 260 }, { f: 'jamie-grow-02-mid.png', d: 300 }, { f: 'jamie-grow-03-rise.png', d: 440 }],
+  mythicCelebrate: [{ f: 'jamie-my-01-crouch.png', d: 200 },
+                    { f: 'jamie-my-02-rear.png', d: 200 },
+                    { f: 'jamie-my-03-peak.png', d: 280 },
+                    { f: 'jamie-my-04-pulseA.png', d: 180 },
+                    { f: 'jamie-my-05-pulseB.png', d: 180 },
+                    { f: 'jamie-my-06-land.png', d: 560 }],
+  milestoneCheer: [{ f: 'jamie-ms-01-leap.png', d: 300 }, { f: 'jamie-ms-02-land.png', d: 600 }],
+  showerNom:    [{ f: 'jamie-nom-01.png', d: 220 }, { f: 'jamie-nom-02.png', d: 230 }],
+  miss:         [{ f: 'jamie-miss-01-lunge.png', d: 200 }, { f: 'jamie-miss-02-whiff.png', d: 220 }, { f: 'jamie-miss-03-lookback.png', d: 520 }],
+  confused:     [{ f: 'jamie-conf-01-cock.png', d: 300 }, { f: 'jamie-conf-02-question.png', d: 360 }, { f: 'jamie-conf-03-shrug.png', d: 480 }],
+  look:         [{ f: 'jamie-look-01-turn.png', d: 220 }, { f: 'jamie-look-02-hold.png', d: 700 }],
+  sleep:        [{ f: 'jamie-sleep-01-in.png', d: 1400 }, { f: 'jamie-sleep-02-mid.png', d: 1400 }, { f: 'jamie-sleep-03-out.png', d: 1400 }],
+  sleepTwitch:  [{ f: 'jamie-sleep-twitch.png', d: 260 }],
+  wake:         [{ f: 'jamie-wake-01-crack.png', d: 260 },
+                 { f: 'jamie-wake-02-yawn.png', d: 260 },
+                 { f: 'jamie-wake-03-yawnpeak.png', d: 300 },
+                 { f: 'jamie-wake-04-stretch.png', d: 520 }],
+  /* Locomotion — delivered with this library and wired here so the frames are
+     preloaded and fallback-mapped, but no state drives them yet. These are what
+     the roam feature will use (trot to walk, gallop to chase, turn, jump, settle). */
+  trot:         [{ f: 'jamie-trot-01.png', d: 150 }, { f: 'jamie-trot-02.png', d: 150 }, { f: 'jamie-trot-03.png', d: 150 }, { f: 'jamie-trot-04.png', d: 150 }],
+  gallop:       [{ f: 'jamie-run-01.png', d: 90 }, { f: 'jamie-run-02.png', d: 90 }, { f: 'jamie-run-03.png', d: 90 },
+                 { f: 'jamie-run-04.png', d: 90 }, { f: 'jamie-run-05.png', d: 90 }, { f: 'jamie-run-06.png', d: 90 }],
+  turn:         [{ f: 'jamie-turn-01.png', d: 130 }, { f: 'jamie-turn-02.png', d: 130 }, { f: 'jamie-turn-03.png', d: 180 }],
+  jump:         [{ f: 'jamie-jump-01-load.png', d: 150 }, { f: 'jamie-jump-02-launch.png', d: 90 }, { f: 'jamie-jump-03-rise.png', d: 90 },
+                 { f: 'jamie-jump-04-apex.png', d: 120 }, { f: 'jamie-jump-05-descend.png', d: 90 }, { f: 'jamie-jump-06-land.png', d: 110 },
+                 { f: 'jamie-jump-07-absorb.png', d: 110 }, { f: 'jamie-jump-08-rebound.png', d: 110 }, { f: 'jamie-jump-09-sit.png', d: 400 }],
+  settle:       [{ f: 'jamie-settle-01-shake.png', d: 110 }, { f: 'jamie-settle-02-shake.png', d: 110 },
+                 { f: 'jamie-settle-01-shake.png', d: 110 }, { f: 'jamie-settle-02-shake.png', d: 110 },
+                 { f: 'jamie-settle-03-land.png', d: 350 }]
 };
 /* reaction -> payoff/celebrate sequence names; targetFrame = the frame whose
    mouth/paw target the captured item flies to */
 const REACTION_SEQ = {
-  treat:   { payoff: 'treat',   celebrate: 'treatHappy',  captureMs: 300, targetFrame: 'jamie-treat-catch-02.png' },
-  fetch:   { payoff: 'fetch',   celebrate: 'fetchHold',   captureMs: 320, targetFrame: 'jamie-fetch-leap.png' },
-  premium: { payoff: 'premium', celebrate: 'premiumEnd',  captureMs: 320, targetFrame: 'jamie-premium-catch.png' },
-  toy:     { payoff: 'toy',     celebrate: 'toyEnd',      captureMs: 300, targetFrame: 'jamie-toy-paw.png' },
-  duck:    { payoff: 'duck',    celebrate: 'duckEnd',     captureMs: 320, targetFrame: 'jamie-duck-paw.png' },
-  sock:    { payoff: 'sock',    celebrate: 'sockEnd',     captureMs: 300, targetFrame: 'jamie-sock-grab.png' },
-  bubble:  { payoff: 'bubble',  celebrate: 'bubbleEnd',   captureMs: 260, targetFrame: 'jamie-bubble-pop.png' }
+  treat:   { payoff: 'treat',   celebrate: 'treatHappy',  captureMs: 300, targetFrame: 'jamie-treat-02-catch.png' },
+  fetch:   { payoff: 'fetch',   celebrate: 'fetchHold',   captureMs: 320, targetFrame: 'jamie-fetch-01-jaws.png' },
+  premium: { payoff: 'premium', celebrate: 'premiumEnd',  captureMs: 320, targetFrame: 'jamie-premium-01-catch.png' },
+  toy:     { payoff: 'toy',     celebrate: 'toyEnd',      captureMs: 300, targetFrame: 'jamie-toy-01-bat.png' },
+  duck:    { payoff: 'duck',    celebrate: 'duckEnd',     captureMs: 320, targetFrame: 'jamie-duck-03-nose.png' },
+  sock:    { payoff: 'sock',    celebrate: 'sockEnd',     captureMs: 300, targetFrame: 'jamie-sock-01-snatch.png' },
+  bubble:  { payoff: 'bubble',  celebrate: 'bubbleEnd',   captureMs: 260, targetFrame: 'jamie-bubble-03-touch.png' }
 };
 /* fast/directional payoffs (leap, pounce) mirror toward the object's actual
    side; slower payoffs (treat, premium, duck, sock, bubble) and every
@@ -1367,77 +1420,139 @@ const REACTION_SEQ = {
 const MIRROR_PAYOFF_REACTIONS = new Set(['fetch', 'toy']);
 /* per-frame fallback: exact -> state fallback -> idle -> placeholder SVG */
 const FRAME_FALLBACK = {
-  'jamie-jackpot-catch.png':          'jamie-heart-celebrate-01.png',
-  'jamie-jackpot-land.png':           'jamie-jackpot-catch.png',
-  'jamie-grown-proud.png':            'jamie-idle-01.png',
-  'jamie-grown-mid.png':              'jamie-idle-01.png',
-  'jamie-milestone-cheer.png':        'jamie-heart-celebrate-01.png',
-  'jamie-shower-nom.png':             'jamie-treat-happy.png',
-  'jamie-heart-run.png':              'jamie-fetch-leap.png',
-  'jamie-heart-run-02.png':           'jamie-heart-run.png',
-  'jamie-heart-skid.png':             'jamie-heart-run.png',
-  'jamie-heart-burst.png':            'jamie-heart-celebrate-03.png',
-  'jamie-heart-burst-02.png':         'jamie-heart-burst.png',
-  'jamie-heart-spin-01.png':          'jamie-heart-spin.png',
-  'jamie-heart-spin-02.png':          'jamie-heart-spin-01.png',
-  'jamie-heart-spin-03.png':          'jamie-heart-spin-02.png',
-  'jamie-idle-02-blink.png':          'jamie-idle-01.png',
-  'jamie-idle-03-breathe.png':        'jamie-idle-01.png',
-  'jamie-idle-04-ear-twitch.png':     'jamie-idle-01.png',
-  'jamie-idle-05-tail-wag.png':       'jamie-idle-01.png',
-  'jamie-anticipation-04-wiggle-b.png': 'jamie-anticipation-02-wiggle.png',
-  'jamie-anticipation-05-stalk.png':  'jamie-anticipation-01.png',
-  'jamie-fetch-shake.png':            'jamie-ball-hold.png',
-  'jamie-premium-celebrate-02.png':   'jamie-premium-celebrate.png',
-  'jamie-premium-hold.png':           'jamie-premium-celebrate.png',
-  'jamie-toy-pounce.png':             'jamie-anticipation-01.png',
-  'jamie-toy-shake.png':              'jamie-toy-happy.png',
-  'jamie-duck-tilt-02.png':           'jamie-duck-head-tilt.png',
-  'jamie-duck-boop.png':              'jamie-duck-paw.png',
-  'jamie-duck-happy.png':             'jamie-treat-happy.png',
-  'jamie-sock-tug-02.png':            'jamie-sock-tug.png',
-  'jamie-sock-shake.png':             'jamie-sock-tug.png',
-  'jamie-sock-victory.png':           'jamie-treat-happy.png',
-  'jamie-bubble-track.png':           'jamie-bubble-watch.png',
-  'jamie-bubble-sneeze.png':          'jamie-bubble-surprised.png',
-  'jamie-heart-spin.png':             'jamie-heart-celebrate-02.png',
-  'jamie-confused.png':               'jamie-duck-head-tilt.png',
-  'jamie-track-left.png':             'jamie-idle-01.png',
-  'jamie-track-center.png':           'jamie-idle-01.png',
-  'jamie-track-right.png':            'jamie-idle-01.png',
-  'jamie-track-high.png':             'jamie-track-center.png',
-  'jamie-anticipation-02-wiggle.png': 'jamie-anticipation-01.png',
-  'jamie-anticipation-03-launch.png': 'jamie-anticipation-01.png',
-  'jamie-treat-catch-02.png':         'jamie-treat-catch-01.png',
-  'jamie-treat-chew-02.png':          'jamie-treat-chew-01.png',
-  'jamie-treat-chew-01.png':          'jamie-treat-catch-01.png',
-  'jamie-treat-happy.png':            'jamie-idle-01.png',
-  'jamie-treat-catch-01.png':         'jamie-anticipation-01.png',
-  'jamie-fetch-ready.png':            'jamie-anticipation-01.png',
-  'jamie-fetch-leap.png':             'jamie-fetch-ready.png',
-  'jamie-fetch-catch.png':            'jamie-treat-catch-01.png',
-  'jamie-ball-hold.png':              'jamie-treat-happy.png',
-  'jamie-premium-ready.png':          'jamie-fetch-ready.png',
-  'jamie-premium-catch.png':          'jamie-fetch-catch.png',
-  'jamie-premium-celebrate.png':      'jamie-heart-celebrate-01.png',
-  'jamie-toy-paw.png':                'jamie-anticipation-01.png',
-  'jamie-toy-surprised.png':          'jamie-toy-paw.png',
-  'jamie-toy-happy.png':              'jamie-treat-happy.png',
-  'jamie-duck-head-tilt.png':         'jamie-track-center.png',
-  'jamie-duck-paw.png':               'jamie-toy-paw.png',
-  'jamie-sock-grab.png':              'jamie-treat-catch-01.png',
-  'jamie-sock-tug.png':               'jamie-sock-grab.png',
-  'jamie-bubble-watch.png':           'jamie-track-high.png',
-  'jamie-bubble-pop.png':             'jamie-toy-paw.png',
-  'jamie-bubble-surprised.png':       'jamie-toy-surprised.png',
-  'jamie-heart-celebrate-01.png':     'jamie-treat-happy.png',
-  'jamie-heart-celebrate-02.png':     'jamie-heart-celebrate-01.png',
-  'jamie-heart-celebrate-03.png':     'jamie-heart-celebrate-01.png',
-  'jamie-heart-land.png':             'jamie-treat-happy.png',
-  'jamie-miss.png':                   'jamie-track-center.png',
-  'jamie-comment-look.png':           'jamie-idle-01.png',
-  'jamie-sleep.png':                  'jamie-idle-02-blink.png',
-  'jamie-wake.png':                   'jamie-idle-01.png'
+  /* every frame degrades to the neutral sit if its file is missing */
+  'jamie-idle-02-mid.png': 'jamie-idle-01-in.png',
+  'jamie-idle-03-out.png': 'jamie-idle-01-in.png',
+  'jamie-idle-04-mid.png': 'jamie-idle-01-in.png',
+  'jamie-blink-01-half.png': 'jamie-idle-01-in.png',
+  'jamie-blink-02-shut.png': 'jamie-blink-01-half.png',
+  'jamie-ear-01.png': 'jamie-idle-01-in.png',
+  'jamie-ear-02.png': 'jamie-ear-01.png',
+  'jamie-tail-01.png': 'jamie-idle-01-in.png',
+  'jamie-tail-02.png': 'jamie-tail-01.png',
+  'jamie-tail-03.png': 'jamie-tail-01.png',
+  'jamie-track-low.png': 'jamie-track-mid.png',
+  'jamie-track-top.png': 'jamie-track-mid.png',
+  'jamie-track-mid.png': 'jamie-idle-01-in.png',
+  'jamie-antic-02-left.png': 'jamie-antic-01-bow.png',
+  'jamie-antic-04-right.png': 'jamie-antic-01-bow.png',
+  'jamie-antic-05-coil.png': 'jamie-antic-01-bow.png',
+  'jamie-treat-02-catch.png': 'jamie-treat-01-snap.png',
+  'jamie-treat-04-chew.png': 'jamie-treat-03-chew.png',
+  'jamie-treat-05-gulp.png': 'jamie-treat-03-chew.png',
+  'jamie-treat-06-lick.png': 'jamie-idle-01-in.png',
+  'jamie-jump-02-launch.png': 'jamie-jump-01-load.png',
+  'jamie-jump-03-rise.png': 'jamie-jump-04-apex.png',
+  'jamie-jump-05-descend.png': 'jamie-jump-04-apex.png',
+  'jamie-jump-06-land.png': 'jamie-jump-09-sit.png',
+  'jamie-jump-07-absorb.png': 'jamie-jump-09-sit.png',
+  'jamie-jump-08-rebound.png': 'jamie-jump-09-sit.png',
+  'jamie-jump-09-sit.png': 'jamie-idle-01-in.png',
+  'jamie-fetch-01-jaws.png': 'jamie-jump-04-apex.png',
+  'jamie-fetch-02-trot.png': 'jamie-fetch-03-present.png',
+  'jamie-fetch-03-present.png': 'jamie-idle-01-in.png',
+  'jamie-premium-01-catch.png': 'jamie-fetch-01-jaws.png',
+  'jamie-premium-02-cradle.png': 'jamie-premium-04-peak.png',
+  'jamie-premium-03-sparkle.png': 'jamie-premium-04-peak.png',
+  'jamie-premium-04-peak.png': 'jamie-idle-01-in.png',
+  'jamie-toy-01-bat.png': 'jamie-toy-02-pounce.png',
+  'jamie-toy-03-grab.png': 'jamie-toy-02-pounce.png',
+  'jamie-toy-04-shakeL.png': 'jamie-toy-06-proud.png',
+  'jamie-toy-05-shakeR.png': 'jamie-toy-06-proud.png',
+  'jamie-toy-06-proud.png': 'jamie-idle-01-in.png',
+  'jamie-duck-02-approach.png': 'jamie-duck-01-spot.png',
+  'jamie-duck-03-nose.png': 'jamie-duck-01-spot.png',
+  'jamie-duck-04-squeak.png': 'jamie-duck-05-hold.png',
+  'jamie-duck-05-hold.png': 'jamie-idle-01-in.png',
+  'jamie-sock-02-shakeL.png': 'jamie-sock-04-drape.png',
+  'jamie-sock-03-shakeR.png': 'jamie-sock-04-drape.png',
+  'jamie-sock-04-drape.png': 'jamie-idle-01-in.png',
+  'jamie-bubble-02-float.png': 'jamie-bubble-01-spot.png',
+  'jamie-bubble-03-touch.png': 'jamie-bubble-01-spot.png',
+  'jamie-bubble-04-pop.png': 'jamie-bubble-05-startle.png',
+  'jamie-bubble-05-startle.png': 'jamie-idle-01-in.png',
+  'jamie-bubble-06-sneeze.png': 'jamie-bubble-05-startle.png',
+  'jamie-run-02.png': 'jamie-run-01.png',
+  'jamie-run-03.png': 'jamie-run-01.png',
+  'jamie-run-04.png': 'jamie-run-01.png',
+  'jamie-run-05.png': 'jamie-run-01.png',
+  'jamie-run-06.png': 'jamie-run-01.png',
+  'jamie-run-01.png': 'jamie-trot-01.png',
+  'jamie-trot-02.png': 'jamie-trot-01.png',
+  'jamie-trot-03.png': 'jamie-trot-01.png',
+  'jamie-trot-04.png': 'jamie-trot-01.png',
+  'jamie-trot-01.png': 'jamie-idle-01-in.png',
+  'jamie-turn-02.png': 'jamie-turn-01.png',
+  'jamie-turn-03.png': 'jamie-turn-01.png',
+  'jamie-turn-01.png': 'jamie-idle-01-in.png',
+  'jamie-skid-02.png': 'jamie-skid-01.png',
+  'jamie-skid-03.png': 'jamie-skid-01.png',
+  'jamie-skid-01.png': 'jamie-run-01.png',
+  'jamie-settle-02-shake.png': 'jamie-settle-01-shake.png',
+  'jamie-settle-03-land.png': 'jamie-idle-01-in.png',
+  'jamie-settle-01-shake.png': 'jamie-idle-01-in.png',
+  'jamie-hm-run-02-burstA.png': 'jamie-hm-cls-05-lift.png',
+  'jamie-hm-run-03-burstB.png': 'jamie-hm-run-02-burstA.png',
+  'jamie-hm-run-04-burstC.png': 'jamie-hm-run-02-burstA.png',
+  'jamie-hm-run-01-charge.png': 'jamie-run-01.png',
+  'jamie-hm-run-05-out.png': 'jamie-run-01.png',
+  'jamie-hm-cls-02-leap.png': 'jamie-hm-cls-01-crouch.png',
+  'jamie-hm-cls-03-clutch.png': 'jamie-hm-cls-05-lift.png',
+  'jamie-hm-cls-04-chest.png': 'jamie-hm-cls-05-lift.png',
+  'jamie-hm-cls-06-swayL.png': 'jamie-hm-cls-05-lift.png',
+  'jamie-hm-cls-07-swayR.png': 'jamie-hm-cls-05-lift.png',
+  'jamie-hm-cls-05-lift.png': 'jamie-idle-01-in.png',
+  'jamie-hm-cls-01-crouch.png': 'jamie-idle-01-in.png',
+  'jamie-hm-spin-02-q1.png': 'jamie-hm-spin-01-front.png',
+  'jamie-hm-spin-03-profile.png': 'jamie-hm-spin-01-front.png',
+  'jamie-hm-spin-04-back34.png': 'jamie-hm-spin-01-front.png',
+  'jamie-hm-spin-05-back.png': 'jamie-hm-spin-01-front.png',
+  'jamie-hm-spin-06-q3.png': 'jamie-hm-spin-01-front.png',
+  'jamie-hm-spin-01-front.png': 'jamie-idle-01-in.png',
+  'jamie-hm-prd-02-stand.png': 'jamie-hm-prd-01-rise.png',
+  'jamie-hm-prd-03-puffA.png': 'jamie-hm-prd-05-peak.png',
+  'jamie-hm-prd-04-puffB.png': 'jamie-hm-prd-05-peak.png',
+  'jamie-hm-prd-06-bashful.png': 'jamie-hm-prd-05-peak.png',
+  'jamie-hm-prd-05-peak.png': 'jamie-idle-01-in.png',
+  'jamie-hm-prd-01-rise.png': 'jamie-idle-01-in.png',
+  'jamie-jp-02-snap.png': 'jamie-jp-01-paws.png',
+  'jamie-jp-03-rainA.png': 'jamie-jp-01-paws.png',
+  'jamie-jp-04-rainB.png': 'jamie-jp-01-paws.png',
+  'jamie-jp-05-catch.png': 'jamie-jp-08-peak.png',
+  'jamie-jp-06-roll.png': 'jamie-jp-08-peak.png',
+  'jamie-jp-07-rise.png': 'jamie-jp-08-peak.png',
+  'jamie-jp-08-peak.png': 'jamie-idle-01-in.png',
+  'jamie-jp-01-paws.png': 'jamie-idle-01-in.png',
+  'jamie-my-02-rear.png': 'jamie-my-01-crouch.png',
+  'jamie-my-03-peak.png': 'jamie-my-06-land.png',
+  'jamie-my-04-pulseA.png': 'jamie-my-03-peak.png',
+  'jamie-my-05-pulseB.png': 'jamie-my-03-peak.png',
+  'jamie-my-06-land.png': 'jamie-idle-01-in.png',
+  'jamie-my-01-crouch.png': 'jamie-idle-01-in.png',
+  'jamie-grow-01-stretch.png': 'jamie-idle-01-in.png',
+  'jamie-grow-02-mid.png': 'jamie-grow-01-stretch.png',
+  'jamie-grow-03-rise.png': 'jamie-grow-04-tall.png',
+  'jamie-grow-05-puff.png': 'jamie-grow-04-tall.png',
+  'jamie-grow-04-tall.png': 'jamie-idle-01-in.png',
+  'jamie-ms-01-leap.png': 'jamie-ms-02-land.png',
+  'jamie-ms-02-land.png': 'jamie-idle-01-in.png',
+  'jamie-nom-02.png': 'jamie-nom-01.png',
+  'jamie-nom-01.png': 'jamie-treat-03-chew.png',
+  'jamie-miss-02-whiff.png': 'jamie-miss-01-lunge.png',
+  'jamie-miss-03-lookback.png': 'jamie-idle-01-in.png',
+  'jamie-miss-01-lunge.png': 'jamie-idle-01-in.png',
+  'jamie-conf-02-question.png': 'jamie-conf-01-cock.png',
+  'jamie-conf-03-shrug.png': 'jamie-conf-01-cock.png',
+  'jamie-conf-01-cock.png': 'jamie-idle-01-in.png',
+  'jamie-look-02-hold.png': 'jamie-look-01-turn.png',
+  'jamie-look-01-turn.png': 'jamie-idle-01-in.png',
+  'jamie-sleep-02-mid.png': 'jamie-sleep-01-in.png',
+  'jamie-sleep-03-out.png': 'jamie-sleep-01-in.png',
+  'jamie-sleep-twitch.png': 'jamie-sleep-01-in.png',
+  'jamie-wake-02-yawn.png': 'jamie-wake-01-crack.png',
+  'jamie-wake-03-yawnpeak.png': 'jamie-wake-01-crack.png',
+  'jamie-wake-04-stretch.png': 'jamie-idle-01-in.png',
+  'jamie-wake-01-crack.png': 'jamie-sleep-01-in.png'
 };
 
 /* ── 4. ASSET MANIFEST + AVAILABILITY ──────────────────────────── */
@@ -1483,7 +1598,7 @@ function fjResolveFrame(file) {
   let f = file, hops = 0;
   while (f && hops < 6) {
     if (assetAvailable[f]) return f;
-    f = FRAME_FALLBACK[f] || (f === 'jamie-idle-01.png' ? null : 'jamie-idle-01.png');
+    f = FRAME_FALLBACK[f] || (f === 'jamie-idle-01-in.png' ? null : 'jamie-idle-01-in.png');
     hops++;
   }
   return null;
@@ -1699,6 +1814,7 @@ function applyLayout() {
   const anchorFrac = (mc.floorAnchor?.y ?? 1320) / mc.height;
   const y = CFG.floor.y + j.yOffset - h * anchorFrac;
   jamieRect = { x, y, w, h };
+  jamieEl.classList.toggle('rimmed', CFG.visuals.stickerBorder !== false);
   jamieEl.style.width  = w + 'px';
   jamieEl.style.height = h + 'px';
   applyJamieTransform();
@@ -1826,7 +1942,7 @@ function mapArtPoint(pt) {
   };
 }
 function reachZoneRect() {
-  const mouth = targetPoint('mouth', 'jamie-idle-01.png'); /* anchor-aware */
+  const mouth = targetPoint('mouth', 'jamie-idle-01-in.png'); /* anchor-aware */
   // Scales with growth to match the control panel's own copy ("his reach zone grows
   // too, so a fed Jamie catches easier") — previously this was fixed regardless of growth.
   const gs = growthScale();
@@ -1838,7 +1954,7 @@ function reachZoneRect() {
   };
 }
 function targetPoint(kind, frameFile) {
-  const meta = fjFrameMeta(frameFile || currentFrameFile || 'jamie-idle-01.png');
+  const meta = fjFrameMeta(frameFile || currentFrameFile || 'jamie-idle-01-in.png');
   const p = kind === 'paw'
     ? (meta.rightPawTarget || meta.leftPawTarget || meta.mouthTarget)
     : meta.mouthTarget;
@@ -1864,7 +1980,7 @@ const J = {
   paused: false,
   hidden: false
 };
-let currentFrameFile = 'jamie-idle-01.png';
+let currentFrameFile = 'jamie-idle-01-in.png';
 /* timeout protection: no state may outlive its budget */
 const STATE_MAX_MS = { IDLE: 0, TRACKING: 0, ANTICIPATION: 12000, PAYOFF: 4000, CELEBRATE: 4000, RESET: 1500, SLEEPING: 0, PAUSED: 0, HIDDEN: 0 };
 
@@ -2027,8 +2143,8 @@ function scheduleBlink() {
   J.blinkTimer = setTimeout(() => {
     if (J.state === 'IDLE' || J.state === 'TRACKING') {
       const before = currentFrameFile;
-      if (assetAvailable['jamie-idle-02-blink.png'] && J.state === 'IDLE') {
-        showFrame('jamie-idle-02-blink.png', { instant: true });
+      if (assetAvailable['jamie-blink-02-shut.png'] && J.state === 'IDLE') {
+        showFrame('jamie-blink-02-shut.png', { instant: true });
         setTimeout(() => { if (J.state === 'IDLE') showFrame(before, { instant: true }); }, 160);
       } else {
         jamieEl.classList.add('ph-blink');
@@ -2042,7 +2158,7 @@ function scheduleTwitch() {
   clearTimeout(J.twitchTimer);
   J.twitchTimer = setTimeout(() => {
     if (J.state === 'IDLE') {
-      const micro = ['jamie-idle-04-ear-twitch.png', 'jamie-idle-05-tail-wag.png'].filter(f => assetAvailable[f]);
+      const micro = ['jamie-ear-01.png', 'jamie-tail-01.png'].filter(f => assetAvailable[f]);
       if (micro.length) {
         const pick = micro[Math.floor(Math.random() * micro.length)];
         const before = currentFrameFile;
@@ -2059,19 +2175,15 @@ function updateTracking(obj) {
   const rz = reachZoneRect();
   const dx = (obj.x + obj.w / 2) - rz.cx;
   const dy = (obj.y + obj.h / 2) - rz.cy;
-  let dir = 'trackCenter', pose = '';
-  if (dy < -260 && assetAvailable['jamie-track-high.png']) dir = 'trackHigh';
-  else if (dx < -90) { dir = 'trackLeft'; pose = 'pose-track-left'; }
-  else if (dx > 90)  { dir = 'trackRight'; pose = 'pose-track-right'; }
-  if (isFlipped()) {
-    if (dir === 'trackLeft')  { dir = 'trackRight'; }
-    else if (dir === 'trackRight') { dir = 'trackLeft'; }
-  }
+  /* The Cleanup6 library tracks VERTICALLY (low / mid / top). Horizontal facing is
+     already expressed by the global flip + per-pose mirror, so dedicated left/right
+     frames no longer exist and dx only decides how far the gaze tilts. */
+  let dir = 'trackCenter';
+  if (dy < -260) dir = 'trackHigh';
+  else if (dy > 140) dir = 'trackLow';
   const frame = SEQ[dir][0].f;
   if (currentFrameFile !== frame) showFrame(frame);
-  /* placeholder fallback: subtle rotation only */
   jamieEl.classList.remove('pose-track-left', 'pose-track-right');
-  if (!fjResolveFrame(frame) && pose) jamieEl.classList.add(pose);
 }
 
 /* one-shot look/miss interrupts (only from calm states) */
@@ -2099,7 +2211,7 @@ function handlePet() {
     jamieEl.classList.remove('breathe', 'pose-sleep');
     jamieEl.classList.add('pet-nuzzle');
   }
-  showFrame('jamie-treat-happy.png');
+  showFrame('jamie-treat-06-lick.png');
   if (now - _petLastHeart > 240) {
     _petLastHeart = now;
     spawnFx('heart', jamieRect.x + jamieRect.w * 0.5, jamieRect.y + jamieRect.h * 0.18, 2);
@@ -2406,9 +2518,9 @@ function checkReachZone(obj, now) {
       ['TRACKING', 'IDLE'].includes(J.state)) {
     obj.anticipated = true;
     const mirror = cx < (jamieRect.x + jamieRect.w / 2);
-    if (obj.def.reaction === 'bubble' && (assetAvailable['jamie-bubble-watch.png'])) {
+    if (obj.def.reaction === 'bubble' && (assetAvailable['jamie-bubble-01-spot.png'])) {
       setJamieState('ANTICIPATION', { mirror }); playSeq('bubble', { loop: false });
-    } else if (obj.premium && assetAvailable['jamie-premium-ready.png']) {
+    } else if (obj.premium && assetAvailable['jamie-premium-01-catch.png']) {
       setJamieState('ANTICIPATION', { mirror }); playSeq('premium', { loop: false });
     } else {
       setJamieState('ANTICIPATION', { mirror });
@@ -2421,7 +2533,7 @@ function checkReachZone(obj, now) {
     obj.nearMissArmed = false;
     lastMissAt = now;
     if (['TRACKING', 'ANTICIPATION'].includes(J.state)) {
-      const seq = (assetAvailable['jamie-confused.png'] && Math.random() < 0.4) ? 'confused' : 'miss';
+      const seq = (assetAvailable['jamie-conf-01-cock.png'] && Math.random() < 0.4) ? 'confused' : 'miss';
       jamieOneShot(seq, seq === 'confused' ? 900 : 800);
     }
   }
@@ -2483,7 +2595,7 @@ function captureObject(obj) {
   /* during an L5 item shower, occasionally swap in the "still hungry" nom pose
      as the celebrate beat so the rapid-fire catches don't feel identical */
   let celebrateSeq = r.celebrate;
-  if (obj.sourceEvent === 'gift-shower' && assetAvailable['jamie-shower-nom.png'] && Math.random() < 0.5) {
+  if (obj.sourceEvent === 'gift-shower' && assetAvailable['jamie-nom-01.png'] && Math.random() < 0.5) {
     celebrateSeq = 'showerNom';
   }
   const mirror = MIRROR_PAYOFF_REACTIONS.has(obj.def.reaction)
@@ -2865,7 +2977,7 @@ function heartMeProudVariant(username, highGiftName, opts) {
   jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
   applyJamieTransform();
   jamieEl.style.transform += ' scale(1.2)';
-  playSeq('grownProud', { loop: true });
+  playSeq('heartMeProud', { loop: true });
   $('heartme-veil').style.opacity = 1;
   const fxMul = opts.fxMul || 1;
   spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.25, Math.round(12 * fxMul));
@@ -3492,7 +3604,7 @@ function sqApplyTier() {
     playSound('subscribe');
     if (['IDLE', 'TRACKING'].includes(J.state)) {
       /* MYTHIC unlock gets its dedicated celebration frame */
-      if (tier >= 6 && assetAvailable['jamie-mythic-celebrate.png']) jamieOneShot('mythicCelebrate', 1600);
+      if (tier >= 6 && assetAvailable['jamie-my-03-peak.png']) jamieOneShot('mythicCelebrate', 1600);
       else jamieOneShot('grownProud', 1200);
     }
   }
@@ -3985,7 +4097,7 @@ window.feedJamie = {
 /* ── 17. BOOT ──────────────────────────────────────────────────── */
 applyLayout();
 applyMotionVar();
-showFrame('jamie-idle-01.png', { instant: true });
+showFrame('jamie-idle-01-in.png', { instant: true });
 setJamieState('IDLE');
 promptLoop();
 giftShowcaseLoop();
