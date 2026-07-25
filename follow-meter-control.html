@@ -128,6 +128,15 @@ input[type="number"].ctrl-in { width: 60px; }
   border: 1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--txt-dim);
 }
 .cv-chip.on { border-color: var(--purple); color: #f5d0fe; background: rgba(168,85,247,0.2); }
+/* Platform UI zones — y<170 live badge, y>1270 comments, x>900 action rail.
+   Shaded so dragging something out of the usable band is visible here. */
+.cv-safe {
+  position: absolute; left: 0; right: 0; pointer-events: none;
+  background: repeating-linear-gradient(45deg, rgba(244,63,94,0.16) 0 6px, transparent 6px 12px);
+  border-top: 1px solid rgba(244,63,94,0.35); border-bottom: 1px solid rgba(244,63,94,0.35);
+}
+.cv-el.e-gif { border-style: dashed; border-color: rgba(56,189,248,0.6); }
+#cv-sliders { margin-top: 10px; }
 
 /* live mirror — a muted, always-on iframe copy of the overlay so position/
    scale changes are visible instantly without touching the real broadcast */
@@ -164,7 +173,8 @@ input[type="number"].ctrl-in { width: 60px; }
     <h2>Drag to place <span style="font-weight:400;color:var(--txt-dim);text-transform:none;letter-spacing:0;">— the whole 1080×1920 overlay, to scale</span></h2>
     <div class="ctrl-row" id="cv-chips" style="justify-content:center;gap:4px;margin-bottom:8px;"></div>
     <div id="cv"></div>
-    <div id="cv-cap">pick one above · drag to place · arrow keys nudge (shift = 1px)</div>
+    <div id="cv-cap">pick one above · drag to place · arrow keys nudge (shift = 1px)<br><span style="opacity:.75">hatched = covered by TikTok/YouTube UI</span></div>
+    <div id="cv-sliders"></div>
   </div>
 
   <div class="card">
@@ -178,9 +188,8 @@ input[type="number"].ctrl-in { width: 60px; }
     <!-- SLOT: TikTok follow -->
     <div class="slot-card slot-tiktok_follow">
       <div class="slot-hd">🎵 TikTok Follow</div>
-      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="tiktok_follow" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
-      <p class="hint" style="margin:4px 0 0;">Use <code>{username}</code> — replaced with the follower's name.</p>
-      <div class="thumb-row">
+      <p class="hint" style="margin:4px 0 0;">Chip reads “♪ Followed on TikTok”, verb “followed!”, name in cyan.</p>
+            <div class="thumb-row">
         <img class="thumb" id="thumb-tiktok_follow-gif" style="display:none;">
         <div class="thumb empty" id="thumb-tiktok_follow-gif-ph">GIF</div>
         <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('tiktok_follow','gif',this)"></label>
@@ -200,9 +209,8 @@ input[type="number"].ctrl-in { width: 60px; }
     <!-- SLOT: YouTube follow -->
     <div class="slot-card slot-youtube_follow">
       <div class="slot-hd">▶ YouTube Follow</div>
-      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="youtube_follow" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
-      <p class="hint" style="margin:4px 0 0;">Use <code>{username}</code> — replaced with the follower's name.</p>
-      <div class="thumb-row">
+      <p class="hint" style="margin:4px 0 0;">Chip reads “▶ Followed on YouTube”, verb “followed!”, name in red.</p>
+            <div class="thumb-row">
         <img class="thumb" id="thumb-youtube_follow-gif" style="display:none;">
         <div class="thumb empty" id="thumb-youtube_follow-gif-ph">GIF</div>
         <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('youtube_follow','gif',this)"></label>
@@ -222,9 +230,8 @@ input[type="number"].ctrl-in { width: 60px; }
     <!-- SLOT: YouTube sub -->
     <div class="slot-card slot-youtube_sub">
       <div class="slot-hd">🔔 YouTube Sub</div>
-      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="youtube_sub" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
-      <p class="hint" style="margin:4px 0 0;">Use <code>{username}</code> — replaced with the subscriber's name.</p>
-      <div class="thumb-row">
+      <p class="hint" style="margin:4px 0 0;">Chip reads “★ Subscribed on YouTube”, verb “subscribed!”, name in gold.</p>
+            <div class="thumb-row">
         <img class="thumb" id="thumb-youtube_sub-gif" style="display:none;">
         <div class="thumb empty" id="thumb-youtube_sub-gif-ph">GIF</div>
         <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('youtube_sub','gif',this)"></label>
@@ -245,9 +252,8 @@ input[type="number"].ctrl-in { width: 60px; }
     <div class="slot-card slot-milestone">
       <div class="slot-hd">🎉 Milestone (every N)</div>
       <div class="ctrl-row"><label style="width:44px;">Every</label><input class="ctrl-in" id="fm-every" type="number" min="1" value="10" style="width:60px;" oninput="fmPushConfigMisc()"><span style="font-size:10px;color:var(--txt-dim);">combined follows/subs</span></div>
-      <div class="ctrl-row"><label style="width:44px;">Text</label><input class="ctrl-in" data-slot="milestone" data-field="text" type="text" style="flex:1;min-width:0;" oninput="fmPushText(this)"></div>
-      <p class="hint" style="margin:4px 0 0;">Use <code>{count}</code> — replaced with the current combined total.</p>
-      <div class="thumb-row">
+      <p class="hint" style="margin:4px 0 0;">Hero reads “{count} {meter label}!” with the purple MILESTONE UNLOCKED chip.</p>
+            <div class="thumb-row">
         <img class="thumb" id="thumb-milestone-gif" style="display:none;">
         <div class="thumb empty" id="thumb-milestone-gif-ph">GIF</div>
         <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('milestone','gif',this)"></label>
@@ -264,6 +270,27 @@ input[type="number"].ctrl-in { width: 60px; }
       <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmTestFire('milestone')">Test fire</button>
     </div>
 
+    <!-- ANTHEM DROP -->
+    <div class="slot-card" style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.32);">
+      <div class="slot-hd" style="color:#EF4444;">★ Anthem Drop</div>
+      <p class="hint" style="margin:2px 0 6px;">Manual hype moment — full-frame fireworks + anthem clip with a red chip. Ships with defaults; upload to override. Position it on the canvas as <b>Fireworks</b> / <b>Anthem chip</b>.</p>
+      <div class="thumb-row">
+        <img class="thumb" id="thumb-anthem-gif" style="display:none;">
+        <div class="thumb empty" id="thumb-anthem-gif-ph">GIF</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload gif/video<input type="file" accept="image/gif,image/webp,image/png,video/mp4,video/webm" style="display:none;" onchange="fmUploadAsset('anthem','gif',this)"></label>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('anthem','gif')">✕</button>
+      </div>
+      <div class="thumb-row">
+        <div class="thumb empty" id="thumb-anthem-audio-ph">♪</div>
+        <label class="ctrl-btn" style="cursor:pointer;">Upload audio<input type="file" accept="audio/*" style="display:none;" onchange="fmUploadAsset('anthem','audio',this)"></label>
+        <button class="ctrl-btn" onclick="fmTestAudio('anthem')">▶</button>
+        <button class="ctrl-btn danger" onclick="fmClearAsset('anthem','audio')">✕</button>
+      </div>
+      <div class="ctrl-row"><label style="width:70px;" title="On-screen time. The shipped fireworks run 10.9s.">Hold (sec)</label>
+        <input class="ctrl-in" id="fm-anthem-dur" type="number" step="0.5" min="4" max="11" value="10.4" style="width:64px;" oninput="fmPushConfigMisc()"></div>
+      <button class="ctrl-btn c-act" style="width:100%;margin-top:8px;" onclick="fmFireAnthem()">▶ Fire anthem drop</button>
+    </div>
+
     <!-- METER / TIMING -->
     <div class="card">
       <h2>Meter &amp; timing</h2>
@@ -274,6 +301,7 @@ input[type="number"].ctrl-in { width: 60px; }
         <input type="checkbox" id="fm-meter-visible" checked onchange="fmPushConfigMisc()">
       </div>
       <div class="ctrl-row"><label style="width:80px;" title="How long each gif/text/audio alert stays on screen before the next one plays.">Hold (sec)</label><input class="ctrl-in" id="fm-duration" type="number" step="0.5" min="1" value="4.5" style="width:60px;" oninput="fmPushConfigMisc()"></div>
+      <div class="ctrl-row"><label style="width:80px;" title="Nudges when the text lands relative to the gif impact. GIF decode timing varies between machines — dial this against the real stream.">Sync (ms)</label><input class="ctrl-in" id="fm-impact" type="number" step="10" min="-300" max="300" value="0" style="width:64px;" oninput="fmPushConfigMisc()"></div>
       <p class="hint" style="margin:6px 0 0;">Each alert's own position &amp; scale is set on its slot card above, next to its Test fire button.</p>
     </div>
 
@@ -476,21 +504,18 @@ function fmPushConfigMisc() {
   CFG.meter.scale = parseFloat(document.getElementById('fm-meter-scale').value) || 1;
   CFG.meter.visible = document.getElementById('fm-meter-visible').checked;
   CFG.alertDurationSec = parseFloat(document.getElementById('fm-duration').value) || 4.5;
+  const anthemEl = document.getElementById('fm-anthem-dur');
+  if (anthemEl) CFG.anthemDurationSec = parseFloat(anthemEl.value) || 10.4;
+  const impactEl = document.getElementById('fm-impact');
+  if (impactEl) CFG.impactOffsetMs = Math.max(-300, Math.min(300, parseInt(impactEl.value, 10) || 0));
   renderCanvas();                    // meter x/y/scale edits move its box on the canvas
   try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
   clearTimeout(cfgTimer);
   cfgTimer = setTimeout(() => { send({ cmd: 'CONFIG_UPDATE', data: CFG }); saveConfigToDock(); }, 150);
 }
-function fmPushText(input) {
-  const slot = input.dataset.slot;
-  CFG.texts[slot] = input.value;
-  try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
-  clearTimeout(cfgTimer);
-  cfgTimer = setTimeout(() => {
-    send({ cmd: 'CONFIG_UPDATE', data: { texts: { [slot]: CFG.texts[slot] } } });
-    saveConfigToDock();
-  }, 200);
-}
+/* fmPushText removed: alert copy is no longer a free-text template. The design
+   fixes chip copy, verb and username colour per event type (TYPE_TOKENS in the
+   overlay), which is what makes the three types readable as one component. */
 
 /* ── per-slot position, scale & size ────────────────────────────────
    Sliders, so a drag emits a continuous stream of values rather than discrete
@@ -602,78 +627,212 @@ function fmBuildNudgeUI(slot) {
    and the meter hangs from the top edge — so each element converts between its
    own anchor and absolute canvas coordinates rather than sharing one origin. */
 const CV_S = 0.21, OW = 1080, OH = 1920;
-const METER_ANCHOR_Y = 100;               // meter sits near the top, not centred
-const SLOT_LABEL = {
-  tiktok_follow: 'TikTok', youtube_follow: 'YT Follow',
-  youtube_sub: 'YT Sub', milestone: 'Milestone',
+
+/* Every on-screen element is placeable, so the canvas is a registry rather than a
+   special case per thing. Each entry knows its DESIGN anchor (the handoff's
+   measured centre) and reads/writes only the x/y offset from it — so 0,0 is
+   always exactly the design, and "reset" stays meaningful. */
+const EL_DEFS = {
+  meter:      { label: 'Meter',       ax: 270, ay: 266,  w: 452,  h: 133,  get: () => CFG.meter, kind: 'meter' },
+  alertText:  { label: 'Alert text',  ax: 525, ay: 1118, w: 910,  h: 286,  get: () => elCfg('alertText') },
+  milestone:  { label: 'Milestone',   ax: 540, ay: 1020, w: 900,  h: 400,  get: () => elCfg('milestone') },
+  anthemGif:  { label: 'Fireworks',   ax: 540, ay: 960,  w: 1080, h: 1920, get: () => elCfg('anthemGif') },
+  anthemChip: { label: 'Anthem chip', ax: 295, ay: 1015, w: 450,  h: 80,   get: () => elCfg('anthemChip') },
 };
-let cvSel = 'milestone', cvDrag = null;
+/* The four splat GIFs share the handoff's 650x850 box at (215,280); each is
+   independently placed and sized, and Size runs to 200% so an uploaded gif can be
+   blown up as well as shrunk. */
+const GIF_SLOTS = { tiktok_follow: 'TikTok gif', youtube_follow: 'YT follow gif', youtube_sub: 'YT sub gif', milestone: 'Milestone gif' };
+const GIF_ANCHOR = { ax: 540, ay: 705, w: 650, h: 850 };
+
+function elCfg(key) {
+  if (!CFG.elements) CFG.elements = {};
+  return CFG.elements[key] || (CFG.elements[key] = { x: 0, y: 0, scale: 1 });
+}
+let cvSel = 'meter', cvDrag = null;
 
 function cvEls() {
-  const els = SLOTS.map(slot => {
+  const out = [];
+  for (const id of Object.keys(EL_DEFS)) {
+    const d = EL_DEFS[id], c = d.get(), sc = c.scale || 1;
+    out.push({
+      id: id, label: d.label, kind: d.kind,
+      w: d.w * sc, h: d.h * sc,
+      cx: d.ax + (c.x || 0), cy: d.ay + (c.y || 0),
+      setPos: (x, y) => { c.x = Math.round(x - d.ax); c.y = Math.round(y - d.ay); },
+      onMoved: () => { syncElInputs(id); pushElThrottled(); },
+    });
+  }
+  for (const slot of Object.keys(GIF_SLOTS)) {
     const a = CFG.alerts[slot] || (CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 });
-    const pct = (a.mediaPct == null ? 100 : a.mediaPct) / 100;
-    return {
-      id: slot, label: SLOT_LABEL[slot],
-      w: OW * pct * a.scale, h: OH * pct * a.scale,
-      cx: OW / 2 + (a.x || 0), cy: OH / 2 + (a.y || 0),
-      setPos: (x, y) => { a.x = Math.round(x - OW / 2); a.y = Math.round(y - OH / 2); },
+    const frac = ((a.mediaPct == null ? 100 : a.mediaPct) / 100) * (a.scale || 1);
+    out.push({
+      id: 'gif:' + slot, label: GIF_SLOTS[slot], slot: slot,
+      w: GIF_ANCHOR.w * frac, h: GIF_ANCHOR.h * frac,
+      cx: GIF_ANCHOR.ax + (a.x || 0), cy: GIF_ANCHOR.ay + (a.y || 0),
+      setPos: (x, y) => { a.x = Math.round(x - GIF_ANCHOR.ax); a.y = Math.round(y - GIF_ANCHOR.ay); },
       onMoved: () => { fmRenderNudgeReadouts(slot); fmPushAlertsThrottled(slot); },
-    };
-  });
-  const m = CFG.meter;
-  els.push({
-    id: 'meter', label: 'Meter',
-    w: 340 * m.scale, h: 84 * m.scale,
-    cx: OW / 2 + (m.x || 0), cy: METER_ANCHOR_Y + (m.y || 0),
-    setPos: (x, y) => { m.x = Math.round(x - OW / 2); m.y = Math.round(y - METER_ANCHOR_Y); },
-    onMoved: () => {
-      const xi = document.getElementById('fm-meter-x'), yi = document.getElementById('fm-meter-y');
-      if (xi) xi.value = m.x; if (yi) yi.value = m.y;
-      fmPushMeterThrottled();
-    },
-  });
-  return els;
+    });
+  }
+  return out;
 }
 const cvFind = id => cvEls().find(e => e.id === id);
+
+/* Safe-zone guides: platform UI covers y<170, y>1270 and x>900. Drawn so a
+   dragged element visibly leaves the usable band instead of silently ending up
+   behind the comment feed on stream. */
+function drawSafeZones(cv) {
+  const mk = (top, height, left, right) => {
+    const g = document.createElement('div');
+    g.className = 'cv-safe';
+    g.style.top = (top * CV_S) + 'px';
+    g.style.height = (height * CV_S) + 'px';
+    if (left != null) g.style.left = (left * CV_S) + 'px';
+    if (right != null) g.style.right = right + 'px';
+    cv.appendChild(g);
+  };
+  mk(0, 170);
+  mk(1270, 650);
+  mk(170, 1100, 900, 0);
+}
+
+function boxEl(el) {
+  const d = document.createElement('div');
+  d.className = 'cv-el' + (cvSel === el.id ? ' sel' : '') + (el.id.indexOf('gif:') === 0 ? ' e-gif' : '');
+  const w = Math.max(10, el.w * CV_S), h = Math.max(8, el.h * CV_S);
+  d.style.width = w.toFixed(1) + 'px';
+  d.style.height = h.toFixed(1) + 'px';
+  d.style.left = (el.cx * CV_S - w / 2).toFixed(1) + 'px';
+  d.style.top = (el.cy * CV_S - h / 2).toFixed(1) + 'px';
+  if (el.kind === 'meter') d.style.borderRadius = '8px';
+  const sp = document.createElement('span');
+  sp.textContent = el.label;
+  d.appendChild(sp);
+  d.onpointerdown = ev => {
+    ev.preventDefault();
+    cvSel = el.id;
+    cvDrag = { id: el.id, sx: ev.clientX, sy: ev.clientY, ox: el.cx, oy: el.cy };
+    renderCanvas();
+  };
+  return d;
+}
+
+/* Only the selected GIF box is drawn — all four default to the same 650x850
+   footprint, so drawing them together stacks identical boxes with smeared labels
+   and only the top one is grabbable. Everything else is always shown. */
+function visibleEls() {
+  return cvEls().filter(e => e.id.indexOf('gif:') !== 0 || e.id === cvSel);
+}
 
 function renderCanvas() {
   const cv = document.getElementById('cv');
   if (!cv) return;
   cv.innerHTML = '';
-  // Only the selected alert is drawn, plus the meter. Every alert defaults to the
-  // FULL canvas, so drawing all four stacks four identical full-size boxes on top
-  // of each other with their labels smeared together — unreadable, and you can
-  // only grab whichever happens to be on top. Tuning happens one alert at a time.
-  for (const el of cvEls().filter(e => e.id === 'meter' || e.id === cvSel)) {
-    const d = document.createElement('div');
-    d.className = `cv-el e-${el.id}` + (cvSel === el.id ? ' sel' : '');
-    const w = Math.max(10, el.w * CV_S), h = Math.max(8, el.h * CV_S);
-    d.style.width = w.toFixed(1) + 'px';
-    d.style.height = h.toFixed(1) + 'px';
-    d.style.left = (el.cx * CV_S - w / 2).toFixed(1) + 'px';
-    d.style.top  = (el.cy * CV_S - h / 2).toFixed(1) + 'px';
-    if (el.id === 'meter') d.style.borderRadius = '999px';
-    const sp = document.createElement('span');
-    sp.textContent = el.label;
-    d.appendChild(sp);
-    d.onpointerdown = ev => {
-      ev.preventDefault();
-      cvSel = el.id;
-      cvDrag = { id: el.id, sx: ev.clientX, sy: ev.clientY, ox: el.cx, oy: el.cy };
-      renderCanvas(); renderCvChips();
-    };
-    cv.appendChild(d);
-  }
+  drawSafeZones(cv);
+  visibleEls().forEach(el => cv.appendChild(boxEl(el)));
   renderCvChips();
+  renderElSliders();
 }
+
+/* Redraw boxes only. Rebuilding the slider DOM mid-drag would destroy the input
+   under the cursor and kill the drag. */
+function renderCanvasBoxesOnly() {
+  const cv = document.getElementById('cv');
+  if (!cv) return;
+  cv.querySelectorAll('.cv-el').forEach(n => n.remove());
+  visibleEls().forEach(el => cv.appendChild(boxEl(el)));
+}
+
 function renderCvChips() {
   const box = document.getElementById('cv-chips');
   if (!box) return;
   box.innerHTML = cvEls().map(e =>
-    `<span class="cv-chip${cvSel === e.id ? ' on' : ''}" onclick="cvSelect('${e.id}')">${e.label}</span>`).join('');
+    '<span class="cv-chip' + (cvSel === e.id ? ' on' : '') + '" onclick="cvSelect(\'' + e.id + '\')">' + e.label + '</span>').join('');
 }
 function cvSelect(id) { cvSel = id; renderCanvas(); }
+
+/* One slider group under the canvas acting on the current selection, so every
+   element gets the same controls without needing a card each. */
+function selCfg() {
+  if (cvSel.indexOf('gif:') === 0) return CFG.alerts[cvSel.slice(4)];
+  return EL_DEFS[cvSel] ? EL_DEFS[cvSel].get() : null;
+}
+function fmtAxis(key, v) {
+  if (key === 'scale') return Number(v).toFixed(2) + '×';
+  if (key === 'mediaPct') return Math.round(v) + '%';
+  return Math.round(v) + 'px';
+}
+function renderElSliders() {
+  const box = document.getElementById('cv-sliders');
+  if (!box) return;
+  const isGif = cvSel.indexOf('gif:') === 0;
+  const c = selCfg();
+  if (!c) { box.innerHTML = ''; return; }
+  const row = (label, key, min, max, step) => {
+    const v = c[key] == null ? (key === 'scale' ? 1 : key === 'mediaPct' ? 100 : 0) : c[key];
+    return '<div class="nudge-row"><span class="nlabel">' + label + '</span>' +
+      '<input type="range" id="els-' + key + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + v + '"' +
+      ' oninput="elSlide(\'' + key + '\', this.value)" onchange="elSlideEnd()">' +
+      '<span class="nudge-ro" id="elro-' + key + '">' + fmtAxis(key, v) + '</span></div>';
+  };
+  box.innerHTML =
+    row('X', 'x', -1080, 1080, 5) +
+    row('Y', 'y', -1920, 1920, 5) +
+    row('Scale', 'scale', 0.2, 3, 0.05) +
+    (isGif ? row('Size', 'mediaPct', 10, 200, 5) : '') +
+    '<button class="ctrl-btn" style="width:100%;margin-top:6px;font-size:10px;" onclick="elReset()">Reset this element</button>';
+}
+function elSlide(key, raw) {
+  const isGif = cvSel.indexOf('gif:') === 0;
+  const c = selCfg();
+  if (!c) return;
+  c[key] = (key === 'scale') ? parseFloat(raw) : parseInt(raw, 10);
+  const ro = document.getElementById('elro-' + key);
+  if (ro) ro.textContent = fmtAxis(key, raw);
+  renderCanvasBoxesOnly();
+  if (isGif) { fmRenderNudgeReadouts(cvSel.slice(4)); fmPushAlertsThrottled(cvSel.slice(4)); }
+  else pushElThrottled();
+}
+function elSlideEnd() {
+  if (cvSel.indexOf('gif:') === 0) fmPushAlertsConfig(); else pushElNow();
+  renderCanvas();
+}
+function elReset() {
+  if (cvSel.indexOf('gif:') === 0) {
+    CFG.alerts[cvSel.slice(4)] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
+    fmRenderNudgeReadouts(cvSel.slice(4));
+    fmPushAlertsConfig();
+  } else {
+    CFG.elements[cvSel] = { x: 0, y: 0, scale: 1 };
+    pushElNow();
+  }
+  renderCanvas();
+}
+function syncElInputs(id) {
+  if (cvSel !== id) return;
+  const c = selCfg();
+  if (!c) return;
+  ['x', 'y'].forEach(k => {
+    const sl = document.getElementById('els-' + k), ro = document.getElementById('elro-' + k);
+    if (sl && document.activeElement !== sl) sl.value = c[k] || 0;
+    if (ro) ro.textContent = fmtAxis(k, c[k] || 0);
+  });
+}
+
+let _elPushAt = 0, _elPushTimer = null, _elSaveTimer = null;
+function pushElThrottled() {
+  const w = Math.max(0, LIVE_PUSH_MS - (Date.now() - _elPushAt));
+  clearTimeout(_elPushTimer);
+  _elPushTimer = setTimeout(pushElNow, w);
+}
+function pushElNow() {
+  _elPushAt = Date.now();
+  try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
+  send({ cmd: 'CONFIG_UPDATE', data: { meter: CFG.meter, elements: CFG.elements } });
+  clearTimeout(_elSaveTimer);
+  _elSaveTimer = setTimeout(saveConfigToDock, 400);
+}
+const fmPushMeterThrottled = pushElThrottled;   // the meter rides the same path now
 
 window.addEventListener('pointermove', ev => {
   if (!cvDrag) return;
@@ -683,12 +842,11 @@ window.addEventListener('pointermove', ev => {
   const ny = clampN(Math.round(cvDrag.oy + (ev.clientY - cvDrag.sy) / CV_S), -OH, OH * 2);
   el.setPos(nx, ny);
   el.onMoved();
-  renderCanvas();
+  renderCanvasBoxesOnly();
 });
-window.addEventListener('pointerup', () => { cvDrag = null; });
+window.addEventListener('pointerup', () => { if (cvDrag) { cvDrag = null; renderCanvas(); } });
 
-// Arrow-key nudge for the selected element (5px, shift = 1px), ignored while
-// typing so it can't hijack the text/number fields.
+// Arrow-key nudge for the selection (5px, shift = 1px), ignored while typing.
 window.addEventListener('keydown', ev => {
   if (!cvSel) return;
   const t = ev.target;
@@ -705,18 +863,9 @@ window.addEventListener('keydown', ev => {
 });
 function clampN(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
-let _meterPushAt = 0, _meterPushTimer = null, _meterSaveTimer = null;
-function fmPushMeterThrottled() {
-  const wait = Math.max(0, LIVE_PUSH_MS - (Date.now() - _meterPushAt));
-  clearTimeout(_meterPushTimer);
-  _meterPushTimer = setTimeout(() => {
-    _meterPushAt = Date.now();
-    try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
-    send({ cmd: 'CONFIG_UPDATE', data: { meter: CFG.meter } });
-    clearTimeout(_meterSaveTimer);
-    _meterSaveTimer = setTimeout(saveConfigToDock, 400);
-  }, wait);
-}
+/* The meter's own push path folded into pushElThrottled above — it is just
+   another placeable element now, and two publishers for one config invited them
+   to disagree about what had been saved. */
 
 /* ── live mirror — a muted iframe copy of the overlay (?mirror=1) so
    position/scale nudges are visible without touching the real broadcast.
@@ -850,6 +999,11 @@ function fmTestAudio(slot) {
   if (!src) { setStatus('no audio assigned for ' + slot); setTimeout(() => setStatus('—'), 2000); return; }
   new Audio(src).play().catch(() => {});
 }
+function fmFireAnthem() {
+  send({ cmd: 'FIRE_ANTHEM' });
+  setStatus('→ anthem drop fired');
+  setTimeout(() => setStatus('—'), 2500);
+}
 function fmTestFire(slot) {
   const name = 'TestViewer' + Math.floor(Math.random() * 90 + 10);
   send({ cmd: 'TEST_FIRE', data: { slot, username: name } });
@@ -887,9 +1041,8 @@ async function loadFromDock() {
   document.getElementById('fm-meter-scale').value = CFG.meter.scale;
   document.getElementById('fm-meter-visible').checked = CFG.meter.visible !== false;
   document.getElementById('fm-duration').value = CFG.alertDurationSec;
-  document.querySelectorAll('input[data-field="text"]').forEach(inp => {
-    inp.value = CFG.texts[inp.dataset.slot] || '';
-  });
+  const _ad = document.getElementById('fm-anthem-dur'); if (_ad) _ad.value = CFG.anthemDurationSec == null ? 10.4 : CFG.anthemDurationSec;
+  const _io = document.getElementById('fm-impact');     if (_io) _io.value = CFG.impactOffsetMs || 0;
   SLOTS.forEach(slot => {
     if (!CFG.alerts[slot]) CFG.alerts[slot] = { x: 0, y: 0, scale: 1, mediaPct: 100 };
     if (CFG.alerts[slot].mediaPct == null) CFG.alerts[slot].mediaPct = 100; // migrate configs saved before per-gif size existed
