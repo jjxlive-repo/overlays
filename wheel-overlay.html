@@ -1939,7 +1939,12 @@ window.wheelPreloadCount = () => ({ requested: PRELOAD.length, decoded: preloade
 let hydrated = false;
 async function hydrate() {
   if (hydrated) return;
-  const base = (JJX.param('dock') || 'http://127.0.0.1:4317').replace(/\/$/, '');
+  // Resolve the dock the same way every other page does — never hardcode it. When
+  // stream-launch hands Studio http://127.0.0.1:4317/overlays/wheel-overlay.html,
+  // dockBase() returns location.origin, so the page asks the host that served it.
+  // That is what makes a tunnel or a non-default port work; a literal address here
+  // would hydrate from the wrong place (or nowhere) the moment either changed.
+  const base = JJX.dockBase();
   try {
     const res = await fetch(base + '/api/wheel/snapshot', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
