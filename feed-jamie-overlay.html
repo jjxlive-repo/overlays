@@ -85,6 +85,7 @@
      0px), so a baked rim would clip. One feMorphology dilate paints an even rim that
      renders outside the sprite box. Gated on visuals.stickerBorder. */
   #jamie.rimmed .fj-jamie-layer { filter: url(#fj-rim); }
+  #jamie.rimmed.rim-baked .fj-jamie-layer { filter: none; }
 
   /* synthetic wobble/squash/hop/tilt — ONLY used as a fallback when no real drawn
      frame exists for the current pose (class .no-real-art). Real hand-drawn sprites
@@ -1397,6 +1398,15 @@ const SEQ = {
                  { f: 'jamie-wake-02-yawn.png', d: 260 },
                  { f: 'jamie-wake-03-yawnpeak.png', d: 300 },
                  { f: 'jamie-wake-04-stretch.png', d: 520 }],
+  /* Net-new 2026-07-25 — the poses the reaction/roam brief asked for.
+     NOTE: unlike the 143 Cleanup6 frames these ship with a BAKED white rim, so
+     they opt out of the runtime rim (see PREBAKED_RIM). */
+  shake:        [{ f: 'jamie-shake-01.png', d: 180 },
+                 { f: 'jamie-shake-02.png', d: 160 },
+                 { f: 'jamie-shake-03.png', d: 180 }],
+  flinch:       [{ f: 'jamie-flinch.png', d: 700 }],
+  standIdle:    [{ f: 'jamie-stand-idle-01.png', d: 2600 },
+                 { f: 'jamie-stand-idle-02.png', d: 1200 }],
   /* Locomotion — delivered with this library and wired here so the frames are
      preloaded and fallback-mapped, but no state drives them yet. These are what
      the roam feature will use (trot to walk, gallop to chase, turn, jump, settle). */
@@ -1560,8 +1570,25 @@ const FRAME_FALLBACK = {
   'jamie-wake-02-yawn.png': 'jamie-wake-01-crack.png',
   'jamie-wake-03-yawnpeak.png': 'jamie-wake-01-crack.png',
   'jamie-wake-04-stretch.png': 'jamie-idle-01-in.png',
-  'jamie-wake-01-crack.png': 'jamie-sleep-01-in.png'
+  'jamie-wake-01-crack.png': 'jamie-sleep-01-in.png',
+  'jamie-shake-02.png': 'jamie-shake-01.png',
+  'jamie-shake-03.png': 'jamie-shake-01.png',
+  'jamie-shake-01.png': 'jamie-settle-01-shake.png',
+  'jamie-flinch.png': 'jamie-conf-01-cock.png',
+  'jamie-stand-idle-02.png': 'jamie-stand-idle-01.png',
+  'jamie-stand-idle-01.png': 'jamie-idle-01-in.png'
 };
+
+/* These six were drawn with the white sticker rim already baked in, while the
+   143-frame Cleanup6 library is black-outline-only and gets its rim painted at
+   runtime. Running the runtime filter over them too would double the rim, so
+   they opt out. Stripping the baked rim instead was tried and rejected: on the
+   shake frames the flung water droplets overlap the rim band, so removing it
+   also hollowed out the droplets. */
+const PREBAKED_RIM = new Set([
+  'jamie-shake-01.png', 'jamie-shake-02.png', 'jamie-shake-03.png',
+  'jamie-flinch.png', 'jamie-stand-idle-01.png', 'jamie-stand-idle-02.png'
+]);
 
 /* ── 4. ASSET MANIFEST + AVAILABILITY ──────────────────────────── */
 /* Safe built-in default: normalized 1200x1400 art canvas. All Jamie
@@ -2140,6 +2167,8 @@ function setJamieImage(url, dyPct, instant) {
 function showFrame(file, opts = {}) {
   currentFrameFile = file;
   const resolved = fjResolveFrame(file);
+  /* frames that already carry a drawn rim must not get the runtime one on top */
+  jamieEl.classList.toggle('rim-baked', PREBAKED_RIM.has(resolved || file));
   if (resolved) {
     jamieEl.classList.remove('no-real-art');
     if (jamieInner.querySelector('svg')) { jamieInner.innerHTML = ''; jamieImgLayers = []; lastShownUrl = null; }
@@ -3026,6 +3055,31 @@ function triggerHeartMe(username, highGiftName = '', opts = {}) {
   HEARTME_VARIANT_FNS[variant](username, highGiftName, opts);
   publishStatus();
 }
+/* ── Spin The Screen reactions ───────────────────────────────────
+   The wheel plays effects over the whole frame and Jamie stands underneath
+   them. It publishes camera beats today; the semantic 'impact' beat is
+   specified in spin-docs/DESIGN-overlay-reactions.md but not yet emitted, so
+   this listener is harmless until the wheel starts sending it — and needs no
+   further work once it does.
+
+   Deliberately conservative: a reaction never interrupts a Heart Me, a Jackpot
+   or an in-flight catch, because a stuttered celebration is worse than a
+   missed flinch. */
+function reactToFx(kind, x) {
+  if (heartMeActive || jackpotActive) return;
+  if (!['IDLE', 'TRACKING'].includes(J.state)) return;
+  if (kind === 'water') {
+    /* only if it actually landed near him — he stands beside the streamer's
+       head, not under it, so a splash across the frame is often a near miss */
+    if (typeof x === 'number' && Math.abs(x - (jamieRect.x + jamieRect.w / 2)) > 260) {
+      jamieOneShot('look', 900);
+      return;
+    }
+    jamieOneShot('shake', 620);
+  } else if (kind === 'glass' || kind === 'strike') {
+    jamieOneShot('flinch', 800);
+  }
+}
 let jackpotActive = false;
 function triggerJackpot(username, rawGiftName = '', opts = {}) {
   if (jackpotActive || heartMeActive) return;
@@ -3885,6 +3939,7 @@ function processMessage(msg) {
       if (goal) fireMilestoneAction(goal);
       break;
     }
+    case 'FX_REACT': { const d = msg.data || {}; reactToFx(String(d.kind || ''), +d.x); break; }
     case 'GIFT_SIGN_NEXT': giftShowcaseLoop(); break;   /* advance the wooden sign immediately */
     case 'TEST_GIFT_FLOAT': {
       const d = msg.data || {};
@@ -4063,6 +4118,16 @@ function initComms() {
          curve and origin; the effect depends entirely on them not drifting apart.
          Reuses this page's existing socket rather than opening a second one. */
       JJX.cameraBeats({ client: ably });
+      /* semantic wheel beats — see reactToFx. Validated here rather than trusted:
+         a malformed publish must never leave Jamie stuck in a reaction pose. */
+      try {
+        ably.channels.get('wheel-fx').subscribe('impact', m => {
+          const d = (m && m.data) || {};
+          const x = Number(d.x);
+          if (!['water', 'glass', 'strike', 'object', 'press'].includes(d.kind)) return;
+          reactToFx(d.kind, Number.isFinite(x) ? x : undefined);
+        });
+      } catch (e) {}
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
       ably.connection.on('suspended',    () => $('conn-dot').classList.remove('connected'));
