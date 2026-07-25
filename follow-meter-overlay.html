@@ -124,9 +124,11 @@
   /* ══ SCREEN 3 — MILESTONE ══════════════════════════════════════ */
   #ms-scene {
     position: absolute; left: 0; top: 820px; width: 1080px; z-index: 7;
-    display: flex; flex-direction: column; align-items: center; gap: 22px;
     opacity: 0; pointer-events: none;
   }
+  /* Layout sits on the inner wrapper so the outer one is free to carry placement. */
+  #ms-anim { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  #alert-anim, #anthem-anim { display: inline-block; }
   #ms-kicker {
     background: #A855F7;                   /* purple appears ONLY here */
     border: 7px solid #0d0d12; border-radius: 10px 34px 14px 30px;
@@ -191,24 +193,30 @@
 
 <div id="anthem-gifbox"></div>
 <div id="anthem-band">
-  <div id="anthem-rot"><span id="anthem-chip">★ Anthem drop</span></div>
+  <div id="anthem-anim">
+    <div id="anthem-rot"><span id="anthem-chip">★ Anthem drop</span></div>
+  </div>
 </div>
 
 <div id="alert-scene">
   <div id="alert-gifbox"></div>
   <div id="alert-band">
-    <div id="alert-rot">
-      <div id="alert-halo"></div>
-      <div id="alert-chip"></div>
-      <div id="alert-hero"><span id="alert-user"></span><br><span id="alert-verb"></span></div>
+    <div id="alert-anim">
+      <div id="alert-rot">
+        <div id="alert-halo"></div>
+        <div id="alert-chip"></div>
+        <div id="alert-hero"><span id="alert-user"></span><br><span id="alert-verb"></span></div>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="ms-scene">
-  <div id="ms-kicker">Milestone unlocked</div>
-  <div id="ms-hero"></div>
-  <div id="ms-next"></div>
+  <div id="ms-anim">
+    <div id="ms-kicker">Milestone unlocked</div>
+    <div id="ms-hero"></div>
+    <div id="ms-next"></div>
+  </div>
 </div>
 <div id="confetti"></div>
 
@@ -332,10 +340,10 @@ function applyLayout() {
   meter.classList.toggle('show', OVERLAY_ENABLED && m.visible !== false);
   document.getElementById('meter-label').textContent = m.label || 'FOLLOWS/SUBS';
 
-  place('alert-band', 'alertText', 'center center');
+  place('alert-band', 'alertText', '70px center');
   place('ms-scene', 'milestone', 'center center');
   place('anthem-gifbox', 'anthemGif', 'center center');
-  place('anthem-band', 'anthemChip', 'center center');
+  place('anthem-band', 'anthemChip', '70px center');
 }
 
 function applyAlertOffset(slot) {
@@ -499,6 +507,7 @@ async function runAlert(item) {
 
   applyAlertOffset(item.slot);
   const band = document.getElementById('alert-band');
+  const bandAnim = document.getElementById('alert-anim');
   band.style.opacity = '0';
 
   const gifMs = await mountGif(gifUrl, document.getElementById('alert-gifbox'));
@@ -507,7 +516,7 @@ async function runAlert(item) {
   // Impact at 0.22s — the whole alert is timed to the smack peak.
   await wait(Math.max(0, 220 + (CFG.impactOffsetMs || 0)));
   band.style.opacity = '1';
-  band.animate(
+  bandAnim.animate(
     [{ transform: 'translateY(46px) scale(.86)', opacity: 0 },
      { transform: 'translateY(0) scale(1)', opacity: 1 }],
     { duration: 260, easing: OVERSHOOT, fill: 'both' });
@@ -516,7 +525,7 @@ async function runAlert(item) {
   // Never cut the animation off part-way — hold at least as long as the gif runs.
   await wait(Math.max(holdMs, gifMs + 400) - 220);
 
-  await band.animate(
+  await bandAnim.animate(
     [{ transform: 'translateY(0) scale(1)', opacity: 1 },
      { transform: 'translateY(50px) scale(.9)', opacity: 0 }],
     { duration: 280, easing: 'ease-in', fill: 'both' }).finished.catch(() => {});
@@ -564,8 +573,9 @@ async function runMilestone(value) {
   // 0.6 → 1.0s: centre group in.
   await wait(250);
   scene.style.opacity = '1';
-  scene.animate([{ transform: 'translateY(40px) scale(.8)', opacity: 0 },
-                 { transform: 'translateY(0) scale(1)', opacity: 1 }],
+  document.getElementById('ms-anim').animate(
+    [{ transform: 'translateY(40px) scale(.8)', opacity: 0 },
+     { transform: 'translateY(0) scale(1)', opacity: 1 }],
     { duration: 400, easing: OVERSHOOT, fill: 'both' });
 
   await wait(200);
@@ -585,7 +595,8 @@ async function runMilestone(value) {
   }
   setTimeout(() => setCountText(value, value + every), 400);   // 20 / 30
 
-  scene.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.9)', opacity: 0 }],
+  document.getElementById('ms-anim').animate(
+    [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.9)', opacity: 0 }],
     { duration: 800, easing: 'ease-in', fill: 'both' });
   await wait(800);                                     // → 5.0s
   scene.style.opacity = '0';
@@ -614,7 +625,7 @@ async function runAnthem() {
   // First burst at 0.21s — the chip lands on it, same curve as the alert but slower.
   await wait(Math.max(0, 210 + (CFG.impactOffsetMs || 0)));
   band.style.opacity = '1';
-  band.animate(
+  document.getElementById('anthem-anim').animate(
     [{ transform: 'translateY(46px) scale(.86)', opacity: 0 },
      { transform: 'translateY(0) scale(1)', opacity: 1 }],
     { duration: 340, easing: OVERSHOOT, fill: 'both' });
@@ -623,8 +634,9 @@ async function runAnthem() {
   await wait(Math.max(holdMs, gifMs + 400) - 210);
 
   await Promise.all([
-    band.animate([{ transform: 'translateY(0) scale(1)', opacity: 1 },
-                  { transform: 'translateY(50px) scale(.9)', opacity: 0 }],
+    document.getElementById('anthem-anim').animate(
+      [{ transform: 'translateY(0) scale(1)', opacity: 1 },
+       { transform: 'translateY(50px) scale(.9)', opacity: 0 }],
       { duration: 400, easing: 'ease-in', fill: 'both' }).finished.catch(() => {}),
     box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'both' }).finished.catch(() => {}),
   ]);
