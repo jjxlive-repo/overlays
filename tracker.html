@@ -1154,10 +1154,7 @@ function visibleViewers(){
   if (state.filter === "tiktok")  out = out.filter((v) => v.platform === "tiktok");
   if (state.filter === "youtube") out = out.filter((v) => v.platform === "youtube");
   if (state.filter === "review")  out = out.filter((v) => state.needsReview.has(v.platform + "|" + v.username));
-  if (state.filter === "vip")     out = out.filter((v) => {
-    const ix = state.index.get(keyOf(v));
-    return ix && ix.isVip;
-  });
+  if (state.filter === "vip")     out = out.filter((v) => v.isVip);
   if (state.sort === "gifts")      out.sort((a, b) => b.giftCount - a.giftCount || b.lastGiftAt - a.lastGiftAt);
   else if (state.sort === "name")  out.sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
   else                             out.sort((a, b) => b.lastGiftAt - a.lastGiftAt);
@@ -1178,19 +1175,13 @@ function renderChips(){
   const tt  = state.viewers.filter((v) => v.platform === "tiktok").length;
   const yt  = state.viewers.filter((v) => v.platform === "youtube").length;
   const rev = state.viewers.filter((v) => state.needsReview.has(v.platform + "|" + v.username)).length;
-  // VIP is not on the list payload — it comes from the index, which reads every record. Until
-  // that finishes the count is genuinely unknown and reads ⊘ rather than a premature 0.
-  const vipReady = state.indexState === "ready" || state.indexState === "partial";
-  const vipN = state.viewers.filter((v) => {
-    const ix = state.index.get(keyOf(v));
-    return ix && ix.isVip;
-  }).length;
+  // VIP comes from the dock, computed by its own scorer against the streamer's threshold. The
+  // page does not score anyone: that is the source of truth's job, not the front-end's.
+  const vipN = state.viewers.filter((v) => v.isVip).length;
   const chips = [
     { k: "all", label: "All", n: String(all) },
-    { k: "vip", label: "⬢ VIP", n: vipReady ? String(vipN) : "⊘",
-      title: vipReady
-        ? "VIP is computed per record at read time, never stored."
-        : "Still reading every record — GET /api/viewers carries no VIP flag." },
+    { k: "vip", label: "⬢ VIP", n: String(vipN),
+      title: "Computed by the dock at read time against your VIP threshold, never stored." },
     { k: "review", label: "⚑ Needs review", n: String(rev), amber: true,
       title: "Viewers with a gift the dock could not place (GET /api/problems)." },
     { k: "tiktok", label: "TT", n: String(tt) },
@@ -1221,15 +1212,6 @@ function renderList(){
     $("listFootMain").textContent = "no list · the request failed";
     return;
   }
-  if (state.filter === "vip" && !(state.indexState === "ready" || state.indexState === "partial")){
-    $("listRows").style.transform = "";
-    $("listRows").innerHTML = '<div style="padding:18px 16px">' +
-      u("Still reading every record. GET /api/viewers carries no VIP flag, so this filter waits for the index rather than showing a partial answer.") + "</div>";
-    $("listSizer").style.height = "0px";
-    $("listFootMain").textContent = "waiting on the index";
-    return;
-  }
-
   $("listSizer").style.height = (listRows.length * ROW_H) + "px";
   $("listFootMain").textContent =
     "scrolls · virtualised · " + listRows.length + " of " + state.viewers.length + " loaded";
@@ -2676,10 +2658,18 @@ $("chips").addEventListener("click", (e) => {
   renderList();
 });
 
-// Filtering is local, so this is instant and needs no debounce.
+/**
+ * Name and @handle filter locally off the list the dock already sent — instant, no round-trip.
+ *
+ * Note text and alternate names are NOT on that payload, so reaching them still costs one read
+ * per viewer. That index is built on FIRST SEARCH rather than at boot: it is 267 requests, it is
+ * the page doing work the dock should be doing, and making the page pay it on load — for a search
+ * the streamer may never run — was the wrong trade. The real fix is a search endpoint on the dock.
+ */
 $("search").addEventListener("input", (e) => {
   state.search = e.target.value;
   $("listScroll").scrollTop = 0;
+  if (state.search.trim() && state.indexState === "idle" && state.viewers.length) buildIndex();
   renderList();
 });
 
@@ -2908,8 +2898,6 @@ setInterval(() => {
 (async function boot(){
   await Promise.all([loadViewers(), loadProblems(), loadRates()]);
   fromHash();
-  // The note/alias index needs one read per viewer, so it is built after the page is usable.
-  if (state.viewers.length) buildIndex();
 })();
 </script>
 </body>
