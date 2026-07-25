@@ -1298,22 +1298,30 @@ const SEQ = {
                  { f: 'jamie-antic-02-left.png', d: 260 },
                  { f: 'jamie-antic-04-right.png', d: 260 },
                  { f: 'jamie-antic-05-coil.png', d: 320 }],
-  launch:       [{ f: 'jamie-antic-05-coil.png', d: 180 }],
+  launch:       [{ f: 'jamie-antic-05-coil.png', d: 130 }],
   treat:        [{ f: 'jamie-treat-01-snap.png', d: 140 },
                  { f: 'jamie-treat-02-catch.png', d: 200 },
                  { f: 'jamie-treat-03-chew.png', d: 180 },
                  { f: 'jamie-treat-04-chew.png', d: 180 },
                  { f: 'jamie-treat-05-gulp.png', d: 200 }],
   treatHappy:   [{ f: 'jamie-treat-06-lick.png', d: 420 }],
+  /* Module 02 draws jump 01-09 as ONE continuous leap. Load->apex is the catch —
+     apex deliberately leaves clear space in front of the open mouth for the item to
+     be composited into, which is why it is the capture targetFrame — and the
+     descend/land/absorb beats belong to the celebrate half so the landing has weight. */
   fetch:        [{ f: 'jamie-jump-01-load.png', d: 150 },
                  { f: 'jamie-jump-02-launch.png', d: 90 },
-                 { f: 'jamie-jump-04-apex.png', d: 120 },
-                 { f: 'jamie-fetch-01-jaws.png', d: 260 }],
-  fetchHold:    [{ f: 'jamie-fetch-02-trot.png', d: 300 },
-                 { f: 'jamie-fetch-03-present.png', d: 600 }],
+                 { f: 'jamie-jump-03-rise.png', d: 90 },
+                 { f: 'jamie-jump-04-apex.png', d: 160 }],
+  fetchHold:    [{ f: 'jamie-jump-05-descend.png', d: 90 },
+                 { f: 'jamie-jump-06-land.png', d: 110 },
+                 { f: 'jamie-jump-07-absorb.png', d: 110 },
+                 { f: 'jamie-fetch-01-jaws.png', d: 240 },
+                 { f: 'jamie-fetch-03-present.png', d: 560 }],
   premium:      [{ f: 'jamie-jump-01-load.png', d: 150 },
-                 { f: 'jamie-jump-04-apex.png', d: 150 },
-                 { f: 'jamie-premium-01-catch.png', d: 260 }],
+                 { f: 'jamie-jump-02-launch.png', d: 90 },
+                 { f: 'jamie-jump-04-apex.png', d: 160 },
+                 { f: 'jamie-premium-01-catch.png', d: 200 }],
   premiumEnd:   [{ f: 'jamie-premium-02-cradle.png', d: 300 },
                  { f: 'jamie-premium-03-sparkle.png', d: 300 },
                  { f: 'jamie-premium-04-peak.png', d: 600 }],
@@ -1982,7 +1990,7 @@ const J = {
 };
 let currentFrameFile = 'jamie-idle-01-in.png';
 /* timeout protection: no state may outlive its budget */
-const STATE_MAX_MS = { IDLE: 0, TRACKING: 0, ANTICIPATION: 12000, PAYOFF: 4000, CELEBRATE: 4000, RESET: 1500, SLEEPING: 0, PAUSED: 0, HIDDEN: 0 };
+const STATE_MAX_MS = { IDLE: 0, TRACKING: 0, ANTICIPATION: 12000, PAYOFF: 4000, CELEBRATE: 4000, RESET: 2200, SLEEPING: 0, PAUSED: 0, HIDDEN: 0 };
 
 function setJamieState(next, opts = {}) {
   clearTimeout(J.watchdog);
@@ -2014,9 +2022,14 @@ function setJamieState(next, opts = {}) {
       jamieEl.classList.remove('breathe');
       jamieEl.classList.add('pose-payoff');
       const seqName = opts.seq || 'treat';
-      playSeq(seqName, {
+      /* 130ms coil in front of EVERY reaction (module 05) — the wound-up beat that
+         makes a payoff read as a release rather than a pose swap. */
+      playSeq('launch', {
         loop: false,
-        onDone: () => setJamieState('CELEBRATE', { seq: opts.celebrateSeq, happy: true })
+        onDone: () => playSeq(seqName, {
+          loop: false,
+          onDone: () => setJamieState('CELEBRATE', { seq: opts.celebrateSeq, happy: true })
+        })
       });
       break;
     }
@@ -2028,6 +2041,10 @@ function setJamieState(next, opts = {}) {
     }
     case 'RESET':
       jamieEl.classList.remove('ph-happy');
+      /* the settle is a full-body shake-off drawn specifically to play after every
+         celebration, landing on a pose near-identical to the neutral sit so the
+         handoff into idle is invisible (module 05). */
+      playSeq('settle', { loop: false });
       setTimeout(() => {
         if (J.state !== 'RESET') return;
         setJamieState(objects.length ? 'TRACKING' : 'IDLE');
