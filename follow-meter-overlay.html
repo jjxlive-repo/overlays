@@ -81,7 +81,19 @@
   }
 
   /* ══ SCREEN 1 — FOLLOWER ALERT ═════════════════════════════════ */
-  #alert-scene { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  /* LAYER LADDER (fixed behaviour, not a per-stream setting). Alerts and gifs must paint
+     ABOVE #meter (z 5) — they used to sit at 2, so the meter covered every follower gif and
+     band. Set as a deliberate ladder with gaps rather than one nudge, so the next element
+     added has an obvious slot instead of colliding:
+         splat / background art   0
+         #meter                   5
+         anthem gifbox + band    20
+         #alert-scene            22   (gif + band + hero are INSIDE this stacking context —
+                                       their own z-index values are relative to it and cannot
+                                       escape, which is why this number is the one that matters)
+         #ms-scene               24
+         #confetti               30                                                        */
+  #alert-scene { position: absolute; inset: 0; z-index: 22; pointer-events: none; }
   /* 650x850 at (215,280) is the solution to three constraints at once — the splat
      body fills only the middle ~63% of the GIF box, the impact squash reaches
      y339 (meter bottom is y321), and the band must end above y1270. Do not tidy. */
@@ -122,8 +134,10 @@
   }
 
   /* ══ SCREEN 3 — MILESTONE ══════════════════════════════════════ */
+  /* Was 7 — already above #meter, so this was not part of the bug, but it is raised into the
+     ladder so milestone still outranks a follower alert (22) as it always did. */
   #ms-scene {
-    position: absolute; left: 0; top: 820px; width: 1080px; z-index: 7;
+    position: absolute; left: 0; top: 820px; width: 1080px; z-index: 24;
     opacity: 0; pointer-events: none;
   }
   /* Layout sits on the inner wrapper so the outer one is free to carry placement. */
@@ -150,17 +164,19 @@
     font-size: 30px; letter-spacing: .10em; text-transform: uppercase; color: #38BDF8;
   }
   /* ══ SCREEN 4 — ANTHEM DROP ════════════════════════════════════ */
-  /* Fireworks sit BEHIND everything (z1). 486x864 is exactly 9:16, so it fills
-     the frame with no crop. */
+  /* Fireworks sit behind the anthem's OWN text (band + chip paint over them, by DOM order at
+     the same z) but above #meter — an anthem drop is a full-frame takeover, and at z1 the meter
+     used to punch a hole through the middle of it. 486x864 is exactly 9:16, so it fills the
+     frame with no crop. See the layer ladder on #alert-scene. */
   #anthem-gifbox {
     position: absolute; left: 0; top: 0; width: 1080px; height: 1920px;
-    z-index: 1; opacity: 0; pointer-events: none;
+    z-index: 20; opacity: 0; pointer-events: none;
   }
   #anthem-gifbox > * { width: 100%; height: 100%; object-fit: cover; display: block; }
   /* Reuses the alert's band geometry, but red-on-bursts with no hero line under it. */
   #anthem-band {
     position: absolute; left: 0; top: 975px; width: 1080px;
-    padding: 0 70px; z-index: 4; opacity: 0;
+    padding: 0 70px; z-index: 20; opacity: 0;
   }
   #anthem-rot { display: inline-block; transform: rotate(-2deg); }
   #anthem-chip {
@@ -172,7 +188,8 @@
     font-size: 38px; letter-spacing: .12em; text-transform: uppercase;
   }
 
-  #confetti { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
+  /* Top of the ladder: confetti belongs over every scene it celebrates. */
+  #confetti { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
   #confetti i {
     position: absolute; display: block;
     border: 4px solid #0d0d12;             /* outline is what keeps dabs visible over bright gameplay */
