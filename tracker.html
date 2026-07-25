@@ -320,6 +320,20 @@ textarea:focus-visible,[tabindex]:focus-visible{
 .ra-cand[aria-pressed="true"]{background:var(--row-selected); box-shadow:inset 2px 0 0 var(--blue)}
 .ra-cand .nm{flex:1; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .ra-cand .tot{font-family:var(--mono); font-size:11.5px; color:var(--text-mute-2)}
+.ra-cand .why{font-family:var(--mono); font-size:10.5px; color:var(--text-mute-2); margin-top:2px}
+
+/* ---------- merge / match sheet ----------
+   Both sides side by side, always. A merge is committed against what is on screen, so the two
+   records are shown in full BEFORE the button is live — never a name and a reassurance. */
+.mg-sides{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px}
+.mg-side{background:var(--panel-2); border:1px solid var(--line-input); border-radius:9px; padding:12px 14px; min-width:0}
+.mg-side.is-keep{border-color:var(--blue)}
+.mg-role{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-mute-2)}
+.mg-side.is-keep .mg-role{color:var(--blue)}
+.mg-name{font-size:13px; margin:4px 0 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.mg-empty{font-family:var(--mono); font-size:11.5px; color:var(--text-mute-2); padding:14px 0}
+.mg-swap{display:flex; align-items:center; gap:10px; margin-top:10px}
+@media (max-width:1400px){ .mg-sides{grid-template-columns:1fr} }
 
 /* ---------- corrections log ---------- */
 #clShell{border:1px solid var(--line); border-radius:10px; overflow:hidden}
@@ -847,6 +861,52 @@ textarea:focus-visible,[tabindex]:focus-visible{
     </div>
   </div>
 
+  <!-- One sheet for both halves of the same act: two rows on one platform that are one person,
+       and a live handle that is one person with a row in the imported history. The pair differs;
+       the decision, the evidence and the consequences do not. -->
+  <div class="sheet" id="sheetMerge" role="dialog" aria-modal="true" aria-labelledby="mgTitle" hidden style="width:760px">
+    <div style="display:flex; align-items:flex-start; gap:12px">
+      <div style="flex:1; min-width:0">
+        <h2 id="mgTitle">This is the same person as…</h2>
+        <div class="sheet-sub" id="mgSub"></div>
+      </div>
+      <span class="sheet-pill">⇄ NEVER AUTOMATIC</span>
+    </div>
+
+    <div class="mg-sides">
+      <div class="mg-side" id="mgLeft"></div>
+      <div class="mg-side" id="mgRight"></div>
+    </div>
+    <div class="mg-swap" id="mgSwapWrap" hidden>
+      <button class="btn ghost sm" id="mgSwap" type="button">Swap which one is kept</button>
+      <span class="meta" id="mgSwapNote"></span>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="mgSearch" id="mgSearchLabel">Same person as</label>
+      <input id="mgSearch" type="search" autocomplete="off" placeholder="Search name or @handle…">
+      <div class="ra-results" id="mgResults"></div>
+      <div class="field-hint" id="mgSearchHint"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="mgReason">Why they are the same person <span class="field-req">· required</span></label>
+      <input id="mgReason" type="text" autocomplete="off" placeholder="e.g. he said so in chat after renaming">
+      <div class="field-hint">There is no automatic evidence behind a hand match — this is the whole
+        of it. Stored on the merge and shown in the corrections log.</div>
+    </div>
+
+    <div id="mgEffect"></div>
+    <div id="mgResult"></div>
+
+    <div class="sheet-foot">
+      <span class="meta" id="mgFoot"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="mgCancel" type="button">Cancel</button>
+      <button class="btn primary" id="mgSubmit" type="button" disabled>Confirm</button>
+    </div>
+  </div>
+
   <div class="sheet" id="sheetFormula" role="dialog" aria-modal="true" aria-labelledby="fxTitle" hidden>
     <div style="display:flex; align-items:flex-start; gap:12px">
       <div style="flex:1; min-width:0">
@@ -1274,6 +1334,7 @@ function renderTriage(){
   const er  = p.errors              || { count: 0, items: [] };
   const gp  = p.knownGaps           || { count: 0, items: [] };
   const uv  = p.unvaluedGiftTypes   || { count: 0, events: 0, items: [] };
+  const um  = p.unmatchedGifters    || { count: 0, items: [] };
 
   const cards = [];
 
@@ -1326,7 +1387,28 @@ function renderTriage(){
         )).join("")
   ));
 
-  /* 4 — flagged summaries. The dock returns 0 WITH a reason; print the reason, not the zero. */
+  /* 4 — gifters with no imported history. All of them, including the ones with no candidate. */
+  cards.push(card(
+    "Gifters with no imported history",
+    um.count + " to decide",
+    "Either new, or filed under a name this handle does not match. Only you can tell which.",
+    um.count === 0
+      ? emptyRow("Every logged gifter joins a row in the imported history.")
+      : um.items.slice(0, 3).map((it) => {
+          const d = it.detail || {};
+          const cands = Array.isArray(d.candidates) ? d.candidates : [];
+          return insetRow(
+            esc(PLAT[d.platform] || d.platform || "?"),
+            '<span style="font-size:12.5px">' + esc(d.displayName || d.username || "unknown") + "</span>" +
+            '<div class="meta" style="margin-top:3px">' +
+            esc(cands.length ? cands.length + " possible match" + (cands.length === 1 ? "" : "es") +
+                               " · suggestions only" : "no candidate found · decide by hand") + "</div>",
+            "", ""
+          );
+        }).join("") + (um.count > 3 ? '<div class="meta" style="margin-top:8px">+ ' + (um.count - 3) + " more</div>" : "")
+  ));
+
+  /* 5 — flagged summaries. The dock returns 0 WITH a reason; print the reason, not the zero. */
   cards.push(card(
     "AI summaries flagged",
     fs.unavailableReason ? "⊘" : String(fs.count),
@@ -1339,7 +1421,7 @@ function renderTriage(){
           : fs.items.slice(0, 2).map((f) => insetRow("", esc(f.reason || ""), "", "")).join(""))
   ));
 
-  /* 5 — errors and dropouts */
+  /* 6 — errors and dropouts */
   cards.push(card(
     "Errors and dropouts",
     String(er.count),
@@ -1351,7 +1433,7 @@ function renderTriage(){
           '<div class="meta" style="margin-top:3px">' + esc(e.effect) + "</div>", "", "")).join("")
   ));
 
-  /* 6 — active last stream, derived from the real list */
+  /* 7 — active last stream, derived from the real list */
   cards.push(card(
     "Active last stream",
     activeLabel(),
@@ -1359,7 +1441,7 @@ function renderTriage(){
     activeRows()
   ));
 
-  /* 7 — known gaps sit OUTSIDE the total: facts, not tasks */
+  /* 8 — known gaps sit OUTSIDE the total: facts, not tasks */
   cards.push(card(
     "Known gaps",
     gp.count + " · outside the " + p.total,
@@ -1374,10 +1456,11 @@ function renderTriage(){
   $("triageCards").innerHTML = cards.join("");
 
   // The three places this number appears must agree, and the parts must add up on screen.
-  const sum = uv.count + un.count + dup.count + fs.count + er.count;
+  const sum = uv.count + un.count + dup.count + um.count + fs.count + er.count;
   $("triageSeeAll").title = sum === p.total
     ? p.total + " = " + uv.count + " unvalued types + " + un.count + " unplaced + " + dup.count +
-      " duplicates + " + fs.count + " flagged + " + er.count + " errors. Known gaps sit outside the total."
+      " duplicates + " + um.count + " unmatched + " + fs.count + " flagged + " + er.count +
+      " errors. Known gaps sit outside the total."
     : "The dock reports " + p.total + "; its parts sum to " + sum + ".";
 }
 
@@ -1433,6 +1516,7 @@ function renderQueue(){
   const uv = p.unvaluedGiftTypes || { count: 0, events: 0, items: [] };
   const un = p.unplacedGifts     || { count: 0, items: [] };
   const dup = p.duplicateIdentities || { count: 0, items: [] };
+  const um = p.unmatchedGifters  || { count: 0, items: [] };
   const fs = p.flaggedSummaries  || { count: 0, items: [] };
   const er = p.errors            || { count: 0, items: [] };
   const gp = p.knownGaps         || { count: 0, items: [] };
@@ -1442,6 +1526,7 @@ function renderQueue(){
     { k: "unvalued", label: "⚑ Unknown gift value", n: uv.count, amber: true },
     { k: "unplaced", label: "Unplaced gifts",    n: un.count },
     { k: "dup",     label: "Duplicate identities", n: dup.count },
+    { k: "unmatched", label: "Unmatched gifters", n: um.count },
     { k: "flagged", label: "Flagged summaries",  n: fs.unavailableReason ? "⊘" : fs.count },
     { k: "errors",  label: "Errors & dropouts",  n: er.count },
   ];
@@ -1453,10 +1538,11 @@ function renderQueue(){
     '<span class="qchip is-gap">Known gaps<span class="n">' + gp.count + "</span> · nothing to do</span>";
 
   // The counts must reconcile on screen — this line is the arithmetic, printed.
-  const sum = uv.count + un.count + dup.count + fs.count + er.count;
+  const sum = uv.count + un.count + dup.count + um.count + fs.count + er.count;
   $("qReconcile").textContent =
     p.total + " = " + uv.count + " unvalued types + " + un.count + " unplaced gifts + " +
-    dup.count + " duplicate suggestions + " + fs.count + " flagged summaries + " + er.count + " errors." +
+    dup.count + " duplicate suggestions + " + um.count + " unmatched gifters + " +
+    fs.count + " flagged summaries + " + er.count + " errors." +
     (sum === p.total ? "" : "  ⚑ the dock reports " + p.total + " but its parts sum to " + sum + ".") +
     "  Known gaps sit outside the total — they are facts, not tasks.";
 
@@ -1514,6 +1600,33 @@ function renderQueue(){
           '<span class="mono" style="font-size:12px">' + esc((d.primary || {}).displayName || "") +
           " ⇄ " + esc((d.duplicate || {}).displayName || "") + "</span>",
           esc(d.evidence || ""), "")).join("")));
+
+  /* Every unmatched gifter, not a shortlist. The ones with no candidate are the point: leaving
+     them out would decide "new person" for them silently, which is the call this queue exists to
+     hand back. Candidates ride along as suggestions and are never applied. */
+  if (show("unmatched")) panels.push(card(
+    "Gifters with no imported history", um.count + " to decide",
+    "Either new, or filed under a name this handle does not match. Only you can tell which.",
+    um.count === 0 ? emptyRow("Every logged gifter joins a row in the imported history.")
+      : um.items.map((it) => {
+          const d = it.detail || {};
+          const cands = Array.isArray(d.candidates) ? d.candidates : [];
+          const rv = d.platform === "youtube"
+            ? (d.usd > 0 ? nUsd(d.usd) : null)
+            : (d.coins > 0 ? nInt(d.coins) + " coins" : null);
+          const sug = cands.length
+            ? '<div class="meta" style="margin-top:3px">' + cands.length +
+              (cands.length === 1 ? " possible match" : " possible matches") + " · " +
+              esc(cands[0].name) + (cands.length > 1 ? " and others" : "") + " — suggestions only</div>"
+            : '<div class="meta" style="margin-top:3px">no candidate found · decide by hand</div>';
+          return insetRow(esc(PLAT[d.platform] || d.platform || "?"),
+            '<span style="font-size:12.5px">' + esc(d.displayName || d.username || "unknown") + "</span>" +
+            '<div class="meta" style="margin-top:3px">' + esc(it.reason) + " · " +
+            esc(rv || (d.giftCount + " unpriced")) + "</div>" + sug,
+            "",
+            '<button class="btn sm" data-match="' + esc(d.platform) + "|" + esc(d.username || d.displayName) +
+            '">Match…</button>');
+        }).join("")));
 
   if (show("flagged")) panels.push(card(
     "AI summaries flagged", fs.unavailableReason ? "⊘" : String(fs.count),
@@ -1802,11 +1915,286 @@ async function submitReattr(){
 }
 
 /* ==========================================================================
+   Sheet: this is the same person
+
+   TWO PAIRS, ONE SHEET. Merging two rows on one platform and matching a live handle to a row in
+   the imported history are the same act — "these are one person" — across two different seams, so
+   they get one sheet rather than two that drift apart. Only the endpoint differs.
+
+   THREE RULES THE SHEET ENFORCES:
+     1. Both sides are shown in full before the button goes live. A merge is committed against what
+        is on screen; a name and a reassurance is not enough to decide on.
+     2. Nothing is ever pre-selected. Candidates are offered — the dock's own suggestions included
+        — and every one of them is a starting point, never a default. Searching the old tracker for
+        "Ayla" returns eight different accounts.
+     3. Totals are NOT summed. The merge records that two handles are one person; each keeps its
+        own platform total, and the sheet says so where the number would otherwise be invented.
+   ========================================================================== */
+
+/** Facts about one side. `record` is best-effort — absent fields say so rather than showing 0. */
+function mgSideFacts(row, record){
+  if (!row) return '<div class="mg-empty">Nothing picked yet.</div>';
+  const rv = rowValue(row);
+  const gifts = record && Array.isArray(record.gifts) ? record.gifts : null;
+  const notes = record && Array.isArray(record.notes) ? record.notes : null;
+  const isLive = String(row.viewerId || "").indexOf("live-") === 0;
+  const noRecord = "the record for this handle did not load, so this cannot be read from the list row alone";
+
+  const line = (k, v) => '<div class="ra-line"><span>' + esc(k) + "</span><span>" + v + "</span></div>";
+  const val = (s) => "<span>" + esc(s) + "</span>";
+  const unk = (why) => '<span class="unavail" title="' + esc(why) + '"><span class="g" aria-hidden="true">⊘</span></span>';
+
+  return line("handle", val((PLAT[row.platform] || row.platform) + " @" + (row.username || "—"))) +
+    line("lifetime", rv.has
+      ? val(rv.unit === "USD" ? nUsd(rv.n) : nInt(rv.n) + " coins")
+      : '<span class="unavail"><span class="g" aria-hidden="true">⊘</span>unpriced</span>') +
+    line("gifts logged", val(String(row.giftCount == null ? "—" : row.giftCount))) +
+    line("first logged", gifts
+      ? val(gifts.length ? (dateShort(gifts[gifts.length - 1].timestamp) || "—") : "no rows in the dock's log")
+      : unk(noRecord)) +
+    line("notes", notes ? val(String(notes.length)) : unk(noRecord)) +
+    line("ai summary", record ? val(record.aiSummary ? "stored" : "none stored") : unk(noRecord)) +
+    line("layer", val(isLive ? "live only — no imported history" : row.viewerId ? "baseline + live" : "live log")) +
+    line("last gift", val(row.lastGiftAt ? stamp(row.lastGiftAt) : "—"));
+}
+
+/**
+ * Open the sheet.
+ *  mode "same"     — two rows on one platform. `row` is the side opened from.
+ *  mode "baseline" — a live gifter and a row in the imported history. `row` is the live side,
+ *                    `candidates` are the dock's folded-name suggestions for it.
+ */
+async function openMerge(mode, row, candidates){
+  if (!row) return;
+  state.sheet = {
+    kind: "merge", mode: mode, left: row, right: null,
+    leftRecord: null, rightRecord: null,
+    // Which side survives. Defaults to the bigger history — folding an 83,465-coin record into a
+    // 32-coin one is the mistake this decision exists to prevent — but it is always overridable.
+    keepLeft: true,
+    suggested: Array.isArray(candidates) ? candidates : [],
+  };
+
+  const same = mode === "same";
+  $("mgTitle").textContent = same ? "This is the same person as…" : "Match to the imported history";
+  $("mgSub").textContent = same
+    ? "Two rows on one platform, one person. The gift log is never rewritten — the merge records that the handles belong together."
+    : "This gifter has no row in the imported history. Either they are new, or their earlier history is filed under a name this handle does not match.";
+  $("mgSearchLabel").textContent = same ? "Same person as" : "Their row in the imported history";
+  $("mgSearchHint").textContent = same
+    ? "Rows on the same platform only — a TikTok handle and a YouTube one are a different question, and this page cannot join them."
+    : "Every viewer the imported history knows. The suggestions above the line are folded-name matches from the dock; they are starting points, not answers.";
+  $("mgSearch").value = "";
+  $("mgReason").value = "";
+  $("mgResult").className = ""; $("mgResult").textContent = "";
+  $("mgFoot").textContent = same
+    ? "Revertible from the corrections log."
+    : "Applied ahead of name matching, and revertible from the corrections log.";
+
+  renderMergeSides();
+  renderMergeCandidates();
+
+  $("sheetSetValue").hidden = true;
+  $("sheetFormula").hidden = true;
+  $("sheetReattr").hidden = true;
+  $("sheetRename").hidden = true;
+  $("sheetMerge").hidden = false;
+  $("overlay").hidden = false;
+  $("mgSearch").focus();
+
+  // Best effort, after the sheet is already usable: the facts fill in, or say why they could not.
+  const rec = await mgFetchRecord(row);
+  if (state.sheet && state.sheet.kind === "merge"){ state.sheet.leftRecord = rec; renderMergeSides(); }
+}
+
+/** The full record behind a list row. Null on any failure — the sheet prints ⊘ and the reason. */
+async function mgFetchRecord(row){
+  if (!row || !row.username) return null;
+  try{
+    return await api("/api/viewers/" + encodeURIComponent(row.platform) + "/" + encodeURIComponent(row.username));
+  }catch(err){
+    return null;
+  }
+}
+
+function renderMergeSides(){
+  const s = state.sheet;
+  if (!s || s.kind !== "merge") return;
+  const same = s.mode === "same";
+  const keep = same ? (s.keepLeft ? s.left : s.right) : null;
+
+  const box = (el, row, record, role) => {
+    const kept = same && row && keep === row;
+    el.className = "mg-side" + (kept ? " is-keep" : "");
+    el.innerHTML = '<div class="mg-role">' + esc(role) + "</div>" +
+      '<div class="mg-name">' + esc(row ? row.displayName : "—") + "</div>" +
+      mgSideFacts(row, record);
+  };
+
+  if (same){
+    box($("mgLeft"), s.left, s.leftRecord, s.keepLeft ? "kept" : "folded in");
+    box($("mgRight"), s.right, s.rightRecord, s.right ? (s.keepLeft ? "folded in" : "kept") : "not picked yet");
+  } else {
+    box($("mgLeft"), s.left, s.leftRecord, "this gifter");
+    box($("mgRight"), s.right, s.rightRecord, s.right ? "their imported history" : "not picked yet");
+  }
+
+  $("mgSwapWrap").hidden = !(same && s.right);
+  if (same && s.right){
+    $("mgSwapNote").textContent = "The kept row keeps its name. Neither total changes.";
+  }
+  renderMergeEffect();
+}
+
+function renderMergeCandidates(){
+  const s = state.sheet;
+  if (!s || s.kind !== "merge") return;
+  const q = $("mgSearch").value.trim().toLowerCase();
+  const same = s.mode === "same";
+
+  /* Same-platform: rows on this platform, excluding the one we opened from.
+     Baseline: only rows the imported history actually knows — a row the dock synthesised from its
+     own log has no history to match to, so offering it would be offering nothing. */
+  const pool = state.viewers.filter((v) => {
+    if (same){
+      if (v.platform !== s.left.platform) return false;
+      return !(v.username === s.left.username);
+    }
+    return !!v.viewerId && String(v.viewerId).indexOf("live-") !== 0;
+  });
+
+  const hit = (v) => !q || String(v.displayName).toLowerCase().indexOf(q) !== -1 ||
+                          String(v.username).toLowerCase().indexOf(q) !== -1;
+
+  // The dock's own suggestions first, labelled with why — then everything else, unlabelled.
+  const sugIds = new Set(s.suggested.map((c) => c.viewerId));
+  const suggested = same ? [] : pool.filter((v) => sugIds.has(v.viewerId)).filter(hit);
+  const rest = pool.filter((v) => !sugIds.has(v.viewerId)).filter(hit).slice(0, 40);
+
+  const why = (v) => {
+    const c = s.suggested.filter((x) => x.viewerId === v.viewerId)[0];
+    return c && c.why ? '<div class="why">suggested — ' + esc(c.why) + "</div>" : "";
+  };
+  const cand = (v) => {
+    const rv = rowValue(v);
+    const tot = v.giftCount === 0 ? "⊘ no logged gifts"
+      : rv.has ? (rv.unit === "USD" ? nUsd(rv.n) : nInt(rv.n) + " coins")
+      : "⊘ " + v.giftCount + " unpriced";
+    const on = s.right && s.right.username === v.username && s.right.platform === v.platform;
+    return '<button class="ra-cand" aria-pressed="' + (!!on) + '" data-mgcand="' +
+      esc(v.platform) + "|" + esc(v.username) + '">' +
+      '<span class="nm">' + esc(v.displayName) + why(v) + "</span>" +
+      '<span class="tot">' + esc(tot) + "</span></button>";
+  };
+
+  const rows = suggested.map(cand).join("") + rest.map(cand).join("");
+  $("mgResults").innerHTML = rows ||
+    '<div style="padding:12px"><span class="meta">' +
+    esc(q ? "Nothing matches that." : same
+      ? "No other rows on this platform."
+      : "The imported history returned no rows to match against.") + "</span></div>";
+}
+
+function renderMergeEffect(){
+  const s = state.sheet;
+  if (!s || s.kind !== "merge") return;
+  const reason = $("mgReason").value.trim();
+  const ready = !!s.right && reason !== "";
+  $("mgSubmit").disabled = !ready;
+  $("mgSubmit").textContent = s.mode === "same" ? "Merge" : "Match";
+  $("mgSubmit").title = !s.right ? "Pick the other side first." : !reason ? "A reason is required." : "";
+
+  if (!s.right){
+    $("mgEffect").innerHTML = "";
+    return;
+  }
+  const keep = s.mode === "same" ? (s.keepLeft ? s.left : s.right) : null;
+  const fold = s.mode === "same" ? (s.keepLeft ? s.right : s.left) : null;
+
+  const lines = s.mode === "same"
+    ? [
+        ["kept record", keep.displayName],
+        ["folded in", fold.displayName],
+        ["lifetime totals", "unchanged — each handle keeps its own"],
+        ["gift log", "untouched — no gift moves"],
+        ["basis", "manual · your reason is the only evidence recorded"],
+      ]
+    : [
+        ["this gifter", s.left.displayName],
+        ["resolves to", s.right.displayName],
+        ["their record", "shows the imported history from now on"],
+        ["applied", "ahead of name matching, on every later read"],
+        ["gift log", "untouched — no gift moves"],
+      ];
+
+  $("mgEffect").innerHTML = '<div class="ra-event"><div class="field-label">What this changes</div>' +
+    lines.map((l) => raLine(l[0], l[1])).join("") +
+    '<div class="reason">Nothing is merged automatically, and this is recorded in the corrections ' +
+    "log where it can be reverted.</div></div>";
+}
+
+async function submitMerge(){
+  const s = state.sheet;
+  if (!s || s.kind !== "merge" || !s.right) return;
+  const reason = $("mgReason").value.trim();
+  if (!reason) return;
+
+  const same = s.mode === "same";
+  $("mgSubmit").disabled = true;
+  $("mgSubmit").textContent = same ? "Merging…" : "Matching…";
+  try{
+    const keep = same ? (s.keepLeft ? s.left : s.right) : null;
+    const fold = same ? (s.keepLeft ? s.right : s.left) : null;
+    const url = same ? "/api/viewers/merge" : "/api/viewers/baseline-link";
+    const body = same
+      ? {
+          platform: s.left.platform,
+          primary: { key: keep.username, displayName: keep.displayName, coins: keep.coins, giftCount: keep.giftCount },
+          duplicate: { key: fold.username, displayName: fold.displayName, coins: fold.coins, giftCount: fold.giftCount },
+          reason: reason,
+        }
+      : {
+          platform: s.left.platform,
+          username: s.left.username,
+          viewerId: s.right.viewerId,
+          label: s.right.displayName,
+          reason: reason,
+        };
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || (res.status + " " + res.statusText));
+
+    $("mgResult").className = "is-ok";
+    $("mgResult").innerHTML = "<b>Done.</b> " +
+      esc((out.entry && out.entry.summary) || (same ? "Merged." : "Matched.")) +
+      '<div class="reason">Recorded in the corrections log · revertible</div>';
+    state.index.clear();
+    await Promise.all([loadViewers(), loadProblems(), loadCorrections()]);
+    buildIndex();
+    if (state.board) loadBoard();
+    if (state.selected) await loadRecord(state.selected.platform, state.selected.ident);
+    setTimeout(closeSheet, 1800);
+  }catch(err){
+    $("mgResult").className = "is-err";
+    $("mgResult").textContent = (same ? "The merge failed: " : "The match failed: ") + err.message +
+      " — nothing was changed.";
+    $("mgSubmit").disabled = false;
+    $("mgSubmit").textContent = same ? "Merge" : "Match";
+  }
+}
+
+/* ==========================================================================
    Corrections log
    ========================================================================== */
 /* Colour-keyed, but the kind is always spelled out — never colour alone. */
 const KIND_COLOUR = {
-  merge: "var(--blue-text)", summary: "var(--purple-text)", note: "var(--amber-text)",
+  merge: "var(--blue-text)", baseline_link: "var(--blue-text)",
+  summary: "var(--purple-text)", note: "var(--amber-text)",
   deletion: "var(--red-text)", gift_edit: "var(--text-3)", value: "var(--text-3)",
 };
 
@@ -2226,6 +2614,7 @@ function closeSheet(){
   $("sheetFormula").hidden = true;
   $("sheetReattr").hidden = true;
   $("sheetRename").hidden = true;
+  $("sheetMerge").hidden = true;
   $("sheetSetValue").hidden = false;
 }
 
@@ -2423,7 +2812,8 @@ function renderRecord(){
   $("recChips").innerHTML = p.isVip
     ? '<span class="chip-vip">⬢ VIP · computed</span>'
     : '<span class="chip-plain" title="The dock scores VIP from lifetime totals at read time, never stored. This viewer is under the threshold.">not VIP · computed</span>';
-  $("recActions").innerHTML = '<button class="btn" id="recRename">Rename…</button>';
+  $("recActions").innerHTML = '<button class="btn" id="recRename">Rename…</button>' +
+    (listed ? '<button class="btn" id="recMerge">Same person as…</button>' : "");
 
   const idents = Array.isArray(p.identities) ? p.identities : [];
   const byPlat = (pl) => idents.filter((i) => i.platform === pl)[0];
@@ -2725,6 +3115,12 @@ $("rnCancel").addEventListener("click", closeSheet);
 
 $("record").addEventListener("click", (e) => {
   if (e.target.closest("#recRename")){ openRename(); return; }
+  if (e.target.closest("#recMerge")){
+    const r = state.record;
+    const row = state.viewers.filter((v) => v.platform === r.platform && v.username === r.ident)[0];
+    openMerge("same", row, []);
+    return;
+  }
   const ra = e.target.closest("[data-reattr]");
   if (ra){ openReattr(ra.dataset.reattr); return; }
   if (e.target.closest("#aiDelArm")){ state.aiDeleteArmed = true; state.aiDeleteError = null; renderRecord(); return; }
@@ -2751,10 +3147,60 @@ $("qChips").addEventListener("click", (e) => {
 
 $("qBody").addEventListener("click", (e) => {
   const b = e.target.closest("[data-setval]");
-  if (!b) return;
-  const parts = b.dataset.setval.split("|");
-  openSetValue(parts[0], parts.slice(1).join("|"));
+  if (b){
+    const parts = b.dataset.setval.split("|");
+    openSetValue(parts[0], parts.slice(1).join("|"));
+    return;
+  }
+  const m = e.target.closest("[data-match]");
+  if (m){
+    const parts = m.dataset.match.split("|");
+    const platform = parts[0];
+    const username = parts.slice(1).join("|");
+    const row = state.viewers.filter((v) => v.platform === platform && v.username === username)[0];
+    // The queue item carries the dock's own candidates; they open with the sheet as suggestions.
+    const item = ((state.problems && state.problems.unmatchedGifters &&
+                   state.problems.unmatchedGifters.items) || [])
+      .filter((it) => (it.detail || {}).platform === platform &&
+                      ((it.detail || {}).username || (it.detail || {}).displayName) === username)[0];
+    openMerge("baseline", row, item && item.detail ? item.detail.candidates : []);
+  }
 });
+
+$("mgSearch").addEventListener("input", renderMergeCandidates);
+$("mgReason").addEventListener("input", renderMergeEffect);
+$("mgResults").addEventListener("click", async (e) => {
+  const c = e.target.closest("[data-mgcand]");
+  if (!c || !state.sheet || state.sheet.kind !== "merge") return;
+  const parts = c.dataset.mgcand.split("|");
+  const platform = parts[0];
+  const username = parts.slice(1).join("|");
+  const picked = state.viewers.filter((v) => v.platform === platform && v.username === username)[0] || null;
+  state.sheet.right = picked;
+  state.sheet.rightRecord = null;
+  /* Default the kept side to the bigger history. Folding an 83,465-coin record into a 32-coin one
+     is the exact mistake this sheet exists to prevent — and it stays overridable, because "bigger"
+     is a heuristic and the streamer knows which handle he wants to keep. */
+  if (state.sheet.mode === "same" && picked){
+    const size = (v) => (v.platform === "youtube" ? v.usd : v.coins) || 0;
+    state.sheet.keepLeft = size(state.sheet.left) >= size(picked);
+  }
+  renderMergeSides();
+  renderMergeCandidates();
+
+  const rec = await mgFetchRecord(picked);
+  if (state.sheet && state.sheet.kind === "merge" && state.sheet.right === picked){
+    state.sheet.rightRecord = rec;
+    renderMergeSides();
+  }
+});
+$("mgSwap").addEventListener("click", () => {
+  if (!state.sheet || state.sheet.kind !== "merge") return;
+  state.sheet.keepLeft = !state.sheet.keepLeft;
+  renderMergeSides();
+});
+$("mgSubmit").addEventListener("click", submitMerge);
+$("mgCancel").addEventListener("click", closeSheet);
 
 $("lbWindow").addEventListener("click", (e) => {
   const b = e.target.closest("[data-win]");
