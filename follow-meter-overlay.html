@@ -3,542 +3,596 @@
 <head>
 <meta charset="utf-8">
 <title>FOLLOW METER — Overlay</title>
-<!-- The house fonts, same link gift-bar.html uses. This page declared 'Fredoka'
-     but never LOADED a font, so it silently fell back to the system sans-serif —
-     which is why it read flat next to the other Splatty overlays. Boogaloo is the
-     playful hero face those overlays use for big numbers and banners. -->
+<!--
+  Implements the "Painted Splat" design handoff (design_handoff_splatties_overlay).
+  Sticker language: heavy near-black knockout strokes, hard zero-blur offset
+  shadows, hand-cut radii, slight tilt, and NO translucent plates — a half-opaque
+  plate reads as default UI and inverts against dark gameplay.
+
+  Platform safe zones are hard constraints, not preferences:
+    y 0-170 live badge · y 1270+ comments/gifts · x 900+ action rail.
+  Everything lives in the y170-1270 band.
+-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Fredoka:wght@500;600;700&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    width: 1080px;
-    height: 1920px;
-    background: transparent;
+    width: 1080px; height: 1920px;
+    background: transparent;              /* OBS composites real alpha */
     overflow: hidden;
-    font-family: 'Fredoka', 'Nunito', sans-serif;
-  }
-  #conn-dot {
-    display: none;
-    position: fixed; top: 12px; right: 12px;
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #555; z-index: 9999;
+    font-family: 'Fredoka', sans-serif;
   }
 
-  /* ── METER PILL ───────────────────────────────────────────────── */
+  /* ── Knockout type: the core technique. paint-order is MANDATORY — without it
+     the stroke paints over the glyph from the inside and eats the letterform. */
+  .ko {
+    color: #FFFFFF;
+    -webkit-text-stroke: 12px #0d0d12;
+    paint-order: stroke fill;
+    text-shadow: 0 10px 0 #0d0d12;        /* hard, zero blur */
+  }
+
+  /* ══ SCREEN 2 — PROGRESS METER (always on) ══════════════════════ */
   #meter {
-    position: fixed; left: 50%; top: 60px;
-    transform-origin: top center;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    position: absolute; left: 44px; top: 200px;
+    z-index: 5;                            /* above the splat */
     opacity: 0; transition: opacity .35s ease;
-    z-index: 20;
   }
   #meter.show { opacity: 1; }
-  /* No pill/chip behind the text — it reads straight over the stream, so it leans
-     on a heavy text-shadow for legibility instead of a plate. */
-  #meter-pill {
-    display: flex; align-items: baseline; gap: 12px;
-    padding: 0 4px;
+  #meter-rot { transform: rotate(-1.25deg); transform-origin: left center; }
+  #meter-labelrow {
+    display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px;
   }
   #meter-label {
-    font-family: 'Fredoka', sans-serif;
-    font-weight: 700; font-size: 28px; letter-spacing: .05em;
-    color: #fff; text-transform: uppercase;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.85), 0 0 18px rgba(0,0,0,0.6);
+    font-family: 'Fredoka', sans-serif; font-weight: 700;
+    font-size: 34px; letter-spacing: .14em; text-transform: uppercase;
+    color: #fff; -webkit-text-stroke: 5px #0d0d12; paint-order: stroke fill;
+    text-shadow: 0 10px 0 #0d0d12;
   }
   #meter-count {
-    font-family: 'Boogaloo', cursive;
-    font-weight: 400; font-size: 46px; letter-spacing: .02em; color: #FDE047;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.9), 0 0 16px rgba(253,224,71,0.45);
+    font-family: 'Boogaloo', cursive; font-size: 58px; color: #FDE047;
+    -webkit-text-stroke: 6px #0d0d12; paint-order: stroke fill;
+    text-shadow: 0 10px 0 #0d0d12; white-space: nowrap;
   }
-  /* Segmented track: one block per follow in the current tier, so progress is
-     countable at a glance instead of a smooth bar you have to eyeball. */
+  #meter-count .tgt { font-size: 44px; color: #fff; }
   #meter-track {
-    display: flex; gap: 5px;
-    width: 420px; height: 30px;
+    display: flex; gap: 5px; align-items: stretch;
+    width: 452px; height: 52px; padding: 6px;
+    background: rgba(13,13,18,0.8);
+    border: 6px solid #0d0d12;
+    border-radius: 16px;
+    box-shadow: 0 8px 0 rgba(13,13,18,0.6), inset 0 3px 0 rgba(0,0,0,0.5);
   }
   #meter-track .seg {
-    flex: 1 1 0; height: 100%;
-    border-radius: 5px;
-    background: rgba(255,255,255,0.13);
-    border: 1px solid rgba(255,255,255,0.22);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
-    transition: background .25s ease, box-shadow .25s ease;
+    flex: 1; border-radius: 5px;
+    background: rgba(255,255,255,0.15);    /* empty must stay visible over light gameplay */
+    transform-origin: center;
   }
   #meter-track .seg.on {
-    background: linear-gradient(180deg, #7DE3FF, #38BDF8);
-    border-color: rgba(255,255,255,0.75);
-    box-shadow: 0 0 12px rgba(56,189,248,0.75), 0 2px 6px rgba(0,0,0,0.45);
+    background: #38BDF8;
+    box-shadow: inset 0 4px 0 rgba(255,255,255,0.5);
   }
-  /* The block that completes the tier lands on the milestone colour. */
-  #meter-track .seg.on.last {
-    background: linear-gradient(180deg, #FDE047, #F59E0B);
-    box-shadow: 0 0 14px rgba(253,224,71,0.85), 0 2px 6px rgba(0,0,0,0.45);
+  /* The cap marks the GOAL, not progress — wider, and gold in every resting state. */
+  #meter-track .seg.cap {
+    flex: 1.35; background: #FDE047;
+    box-shadow: inset 0 4px 0 rgba(255,255,255,0.6), 0 0 14px rgba(253,224,71,0.9);
   }
 
-  /* ── ALERT STAGE — the media is absolutely positioned over the FULL
-     1080×1920 canvas so a gif can go edge-to-edge (its cap is mediaPct, set
-     per slot from the control). The text is an overlaid caption pinned near
-     the bottom, so it never steals height from the media the way an in-flow
-     column did (which boxed even a "100%" gif into the upper ~half). */
-  #alert-pos {
-    position: fixed; left: 0; top: 0; width: 1080px; height: 1920px;
-    z-index: 30; pointer-events: none;
-  }
-  #alert-stage {
-    position: absolute; inset: 0;
-    opacity: 0;
-    transform: scale(0.92);
-    transform-origin: center;
-    transition: opacity .28s ease, transform .28s ease;
-  }
-  #alert-stage.show {
-    opacity: 1; transform: scale(1);
-  }
-  #alert-media-wrap {
-    position: absolute; inset: 0;
+  /* ══ SCREEN 1 — FOLLOWER ALERT ═════════════════════════════════ */
+  #alert-scene { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  /* 650x850 at (215,280) is the solution to three constraints at once — the splat
+     body fills only the middle ~63% of the GIF box, the impact squash reaches
+     y339 (meter bottom is y321), and the band must end above y1270. Do not tidy. */
+  #alert-gifbox {
+    position: absolute; left: 215px; top: 280px; width: 650px; height: 850px;
     display: flex; align-items: center; justify-content: center;
   }
-  #alert-media-wrap img, #alert-media-wrap video, #alert-media-wrap canvas {
-    /* width/height are set inline per-slot (mediaPct of the full canvas) */
-    object-fit: contain;
-    display: block;
-    /* No drop-shadow: on a transparent gif it haloes the artwork, but on an opaque
-       rectangular one it outlines the whole frame — which reads as a border box
-       drawn around the gif. The overlay is meant to be a wide-open canvas. */
+  #alert-gifbox > * { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #alert-band {
+    position: absolute; left: 0; top: 975px; width: 1080px;
+    padding: 0 70px; z-index: 4;
+    opacity: 0;
   }
-  #alert-text {
-    position: absolute; left: 50%; bottom: 150px;
-    transform: translateX(-50%);
-    max-width: 900px;
-    text-align: center;
-    font-family: 'Boogaloo', cursive;
-    font-weight: 400; font-size: 58px; line-height: 1.15; letter-spacing: .01em;
-    color: #fff;
-    padding: 12px 34px;
-    border-radius: 18px;
-    background: rgba(10,10,16,0.55);
-    border: 2px solid rgba(255,255,255,0.2);
-    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  #alert-rot {
+    display: inline-block; transform: rotate(-2deg); isolation: isolate;
+    position: relative;
   }
-  #alert-text.tiktok { border-color: rgba(56,189,248,0.7); }
-  #alert-text.youtube { border-color: rgba(248,113,113,0.7); }
-  #alert-text.milestone {
-    border-color: rgba(253,224,71,0.85);
-    background: rgba(40,30,0,0.55);
-    color: #FDE047;
+  /* Halo must be a child of the ROTATED wrapper and sized with inset — sizing it
+     off the full-width band leaves a dark smudge past the text and misses the
+     lower line. This is what buys legibility over busy video. */
+  #alert-halo {
+    position: absolute; inset: -40px -60px -30px -50px; z-index: -1;
+    background: rgba(13,13,18,0.72); filter: blur(46px); border-radius: 50%;
+  }
+  #alert-chip {
+    display: inline-block; margin-bottom: 14px;
+    border: 7px solid #0d0d12;
+    border-radius: 10px 34px 14px 30px;    /* hand-cut */
+    box-shadow: 0 10px 0 rgba(13,13,18,.9);
+    padding: 9px 38px 11px;
+    font-family: 'Fredoka', sans-serif; font-weight: 700;
+    font-size: 38px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  #alert-hero {
+    font-family: 'Boogaloo', cursive; font-size: 94px; line-height: 1.05;
+    color: #fff; -webkit-text-stroke: 12px #0d0d12; paint-order: stroke fill;
+    text-shadow: 0 10px 0 #0d0d12;
+  }
+
+  /* ══ SCREEN 3 — MILESTONE ══════════════════════════════════════ */
+  #ms-scene {
+    position: absolute; left: 0; top: 820px; width: 1080px; z-index: 7;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    opacity: 0; pointer-events: none;
+  }
+  #ms-kicker {
+    background: #A855F7;                   /* purple appears ONLY here */
+    border: 7px solid #0d0d12; border-radius: 10px 34px 14px 30px;
+    box-shadow: 0 10px 0 rgba(13,13,18,.9);
+    padding: 9px 40px 11px; transform: rotate(-2deg);
+    font-family: 'Fredoka', sans-serif; font-weight: 700;
+    font-size: 38px; letter-spacing: .16em; text-transform: uppercase; color: #fff;
+  }
+  #ms-hero {
+    font-family: 'Boogaloo', cursive; font-size: 118px; line-height: .98;
+    text-align: center; color: #FDE047; transform: rotate(-2deg);
+    -webkit-text-stroke: 12px #0d0d12; paint-order: stroke fill;
+    text-shadow: 0 10px 0 #0d0d12;
+  }
+  #ms-next {
+    background: #0d0d12; border: 5px solid #fff; border-radius: 14px;
+    padding: 7px 26px 9px; opacity: 0;
+    font-family: 'Fredoka', sans-serif; font-weight: 600;
+    font-size: 30px; letter-spacing: .10em; text-transform: uppercase; color: #38BDF8;
+  }
+  #confetti { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
+  #confetti i {
+    position: absolute; display: block;
+    border: 4px solid #0d0d12;             /* outline is what keeps dabs visible over bright gameplay */
   }
 </style>
 </head>
 <body>
-<div id="conn-dot"></div>
 
 <div id="meter">
-  <div id="meter-pill">
-    <span id="meter-label">FOLLOWERS</span>
-    <span id="meter-count">0 / 10</span>
-  </div>
-  <div id="meter-track"></div>
-</div>
-
-<div id="alert-pos">
-  <div id="alert-stage">
-    <div id="alert-media-wrap"></div>
-    <div id="alert-text"></div>
+  <div id="meter-rot">
+    <div id="meter-labelrow">
+      <span id="meter-label">FOLLOWS/SUBS</span>
+      <span id="meter-count">0 <span class="tgt">/ 10</span></span>
+    </div>
+    <div id="meter-track"></div>
   </div>
 </div>
 
-<audio id="alert-audio"></audio>
+<div id="alert-scene">
+  <div id="alert-gifbox"></div>
+  <div id="alert-band">
+    <div id="alert-rot">
+      <div id="alert-halo"></div>
+      <div id="alert-chip"></div>
+      <div id="alert-hero"><span id="alert-user"></span><br><span id="alert-verb"></span></div>
+    </div>
+  </div>
+</div>
+
+<div id="ms-scene">
+  <div id="ms-kicker">Milestone unlocked</div>
+  <div id="ms-hero"></div>
+  <div id="ms-next"></div>
+</div>
+<div id="confetti"></div>
+
+<audio id="sfx"></audio>
 
 <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <script src="jjx-core.js?v=7"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
-// CONFIG / CONSTANTS — shared helpers live in jjx-core.js (window.JJX)
+// CONFIG
 // ═══════════════════════════════════════════════════════════════════
-const ABLY_KEY = JJX.ABLY_KEY;
-const ABLY_CH  = JJX.ABLY_MAIN_CHANNEL;
-
-const FM_LS_COUNT   = 'followMeter.count.v1';
-const FM_LS_CONFIG  = 'followMeter.config.v1';
-const FM_LS_ASSETS  = 'followMeter.assets.v1';
-const FM_LS_MSG     = 'followMeter.msg';
-const FM_BC_NAME    = 'follow-meter-control';
+const FM_LS_COUNT  = 'followMeter.count.v1';
+const FM_LS_CONFIG = 'followMeter.config.v1';
+const FM_LS_ASSETS = 'followMeter.assets.v1';
+const FM_LS_MSG    = 'followMeter.msg';
+const FM_BC_NAME   = 'follow-meter-control';
 
 const SLOTS = ['tiktok_follow', 'youtube_follow', 'youtube_sub', 'milestone'];
 
+// Per the handoff: one component, three tokens. Only chip fill/ink/copy, the verb
+// and the username colour change between event types.
+const TYPE_TOKENS = {
+  tiktok_follow:  { fill: '#38BDF8', ink: '#0d0d12', chip: '♪ Followed on TikTok',    verb: 'followed!',   user: '#38BDF8' },
+  youtube_follow: { fill: '#EF4444', ink: '#FFFFFF', chip: '▶ Followed on YouTube',   verb: 'followed!',   user: '#F87171' },
+  youtube_sub:    { fill: '#FDE047', ink: '#0d0d12', chip: '★ Subscribed on YouTube', verb: 'subscribed!', user: '#FDE047' },
+};
+
 const DEFAULT_CONFIG = {
   milestoneEvery: 10,
-  meter: { label: 'FOLLOWERS', x: 0, y: 0, scale: 1, visible: true },
-  alertDurationSec: 4.5,
-  // Each alert type gets its own position/scale — a milestone banner and a
-  // tiny follow ping don't belong in the same spot. mediaPct is how much of the
-  // full 1080×1920 canvas the gif/video may fill (100 = edge to edge), so a big
-  // celebration gif isn't boxed into a small centered tile.
+  meter: { label: 'FOLLOWS/SUBS', x: 0, y: 0, scale: 1, visible: true },
+  alertDurationSec: 6,            // handoff default; 4–11 supported
+  impactOffsetMs: 0,              // ±300ms sync fine-tune against the real stream
+  // x/y/scale nudge the handoff's measured positions rather than replacing them.
   alerts: {
     tiktok_follow:  { x: 0, y: 0, scale: 1, mediaPct: 100 },
     youtube_follow: { x: 0, y: 0, scale: 1, mediaPct: 100 },
     youtube_sub:    { x: 0, y: 0, scale: 1, mediaPct: 100 },
     milestone:      { x: 0, y: 0, scale: 1, mediaPct: 100 },
   },
-  texts: {
-    tiktok_follow:  '{username} followed on TikTok!',
-    youtube_follow: '{username} followed on YouTube!',
-    youtube_sub:    '{username} subscribed on YouTube!',
-    milestone:      '{count} FOLLOWERS! 🎉',
-  },
 };
 
-const deepMerge = JJX.deepMerge;
-const clone = JJX.clone;
-
+const deepMerge = JJX.deepMerge, clone = JJX.clone;
 let CFG = clone(DEFAULT_CONFIG);
 try { const s = JSON.parse(localStorage.getItem(FM_LS_CONFIG) || 'null'); if (s) CFG = deepMerge(CFG, s); } catch (e) {}
 
-// slot -> { gif:{mime,url|dataURL}, audio:{mime,url|dataURL} }
-// `url` = served by the Producer Dock (current); `dataURL` = legacy localStorage copy,
-// still honored so an overlay keeps working before/without a dock fetch.
 let ASSETS = {};
 try { ASSETS = JSON.parse(localStorage.getItem(FM_LS_ASSETS) || '{}'); } catch (e) {}
 
-// ── Producer Dock backend ──────────────────────────────────────────
-// Config and uploaded media come from the dock over HTTP instead of living in
-// browser localStorage (one quota shared by every overlay on this origin, which
-// is what eventually threw "storage full" — and TikTok Studio's browser source
-// has its own storage that the control page can't write to anyway).
-// Verified: TikTok Studio's engine can reach 127.0.0.1 for WS, fetch and <img>.
-// Override with ?dock=http://host:port (or #dock=… — some static hosts drop the
-// query string, and pointing at the wrong dock fails silently). A page already
-// served from a local origin is the dock serving it, and uses that same origin.
 const DOCK_BASE = JJX.dockBase('http://127.0.0.1:4317');
 const OVERLAY_NAME = 'follow-meter';
+const MIRROR = JJX.isMirror();
 
-/** Absolute src for an asset, tolerating both the dock shape and the legacy one. */
+// Shipped defaults. A per-slot upload overrides these; without one the overlay
+// still looks like the design instead of showing nothing.
+const DEFAULT_MEDIA = {
+  splat:  'assets/follow-meter/follow-alert.gif',
+  smack:  'assets/follow-meter/smack.mp3',
+};
+
+let count = 0;
+try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
+let OVERLAY_ENABLED = false;
+document.body.style.display = 'none';
+
 function assetSrc(a) {
   if (!a) return null;
   if (a.url) return a.url.startsWith('http') ? a.url : DOCK_BASE + a.url;
   return a.dataURL || null;
 }
 
-/**
- * Pull config + asset URLs from the dock in one request. Failure is non-fatal:
- * whatever was cached in localStorage stays in use, so a dock that is off or
- * still starting degrades to the last-known look rather than a blank overlay.
- */
 async function loadFromDock() {
   try {
     const res = await fetch(`${DOCK_BASE}/overlay-public/${OVERLAY_NAME}/config`, { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const payload = await res.json();
-    if (payload.config && Object.keys(payload.config).length) {
-      CFG = deepMerge(CFG, payload.config);
+    const p = await res.json();
+    if (p.config && Object.keys(p.config).length) {
+      CFG = deepMerge(CFG, p.config);
       try { localStorage.setItem(FM_LS_CONFIG, JSON.stringify(CFG)); } catch (e) {}
     }
-    if (payload.assets && Object.keys(payload.assets).length) {
-      ASSETS = payload.assets;
-      // Cached as URLs (a few hundred bytes), never as dataURLs — that distinction
-      // is the whole reason the storage quota stops being a problem.
+    if (p.assets && Object.keys(p.assets).length) {
+      ASSETS = p.assets;
       try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
     }
-    applyMeterLayout(); renderMeter();
+    applyLayout(); renderMeter();
     return true;
   } catch (err) {
-    console.warn('[follow-meter] dock unreachable, using cached config/assets:', err.message);
+    console.warn('[follow-meter] dock unreachable, using cached config:', err.message);
     return false;
   }
 }
 
-let count = 0;
-try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
-
-let OVERLAY_ENABLED = false;
-document.body.style.display = 'none';
-
-// Mirror mode: a lightweight, muted, always-visible copy embedded as an iframe
-// inside follow-meter-control.html so position/scale changes can be seen live
-// while tuning — no Ably connection (so it can't double-process real follows
-// or make noise), driven purely by the same BroadcastChannel/localStorage
-// commands the control page already sends. See connectAbly() below.
-const MIRROR = JJX.isMirror();
-
 // ═══════════════════════════════════════════════════════════════════
-// RENDER: meter
+// LAYOUT — config x/y/scale are offsets ON TOP of the handoff positions
 // ═══════════════════════════════════════════════════════════════════
-function applyMeterLayout() {
-  const el = document.getElementById('meter');
-  const m = CFG.meter;
-  el.style.transform = `translateX(calc(-50% + ${m.x}px)) translateY(${m.y}px) scale(${m.scale})`;
-  el.classList.toggle('show', OVERLAY_ENABLED && m.visible !== false);
-  document.getElementById('meter-label').textContent = m.label || 'FOLLOWERS';
+function applyLayout() {
+  const m = CFG.meter || {};
+  const meter = document.getElementById('meter');
+  meter.style.transform = `translate(${m.x || 0}px, ${m.y || 0}px) scale(${m.scale || 1})`;
+  meter.style.transformOrigin = 'left top';
+  meter.classList.toggle('show', OVERLAY_ENABLED && m.visible !== false);
+  document.getElementById('meter-label').textContent = m.label || 'FOLLOWS/SUBS';
 }
-function applyAlertLayoutFor(slot) {
-  const el = document.getElementById('alert-pos');
-  const a = (CFG.alerts && CFG.alerts[slot]) || { x: 0, y: 0, scale: 1 };
-  // Position only — NO scale() here. Scaling this element scaled the media with it,
-  // and the overlay canvas is a fixed 1080x1920 with overflow:hidden, so anything
-  // past the edge was cut off. At Size 100% ANY scale above 1 guaranteed clipping
-  // (scale 2.7 made the media 2916x5184). Scale now sizes the media directly
-  // (sizeMediaEl, clamped to the canvas) and the caption via its own transform.
-  el.style.transform = `translate(${a.x}px, ${a.y}px)`;
-  const txt = document.getElementById('alert-text');
-  txt.style.transform = `translateX(-50%) scale(${a.scale || 1})`;
-}
-// Give the media a box that is mediaPct% of the FULL canvas and let it fit inside.
-//
-// Deliberately width/height, NOT max-width/max-height: a max only ever shrinks, so
-// any gif whose own pixels were smaller than the cap rendered at its natural size
-// and the Size slider did nothing above that — a small gif sat marooned in the
-// middle of a 1080x1920 canvas, which reads as a frame around it. Setting the box
-// explicitly lets a small gif scale UP to fill the screen as well as down.
-//
-// object-fit:contain guarantees the whole frame stays visible (letterboxed at
-// worst) — 'cover' would fill the box by cropping the gif's edges off.
-function sizeMediaEl(el, slot) {
+function applyAlertOffset(slot) {
   const a = (CFG.alerts && CFG.alerts[slot]) || {};
-  const pct = Math.max(10, Math.min(100, a.mediaPct == null ? 100 : a.mediaPct));
-  // Size and Scale both used to enlarge the media — Size here, Scale via a CSS
-  // transform on the whole stage — so they multiplied. On a fixed 1080x1920 canvas
-  // with overflow:hidden that cut the artwork off (Size 100 x Scale 2.7 asked for
-  // 2916x5184). They're combined here instead, and CLAMPED to the canvas, so the
-  // media can never be bigger than the screen it has to fit on.
-  const frac = Math.min(1, (pct / 100) * (a.scale || 1));
-  el.style.width  = (1080 * frac) + 'px';
-  el.style.height = (1920 * frac) + 'px';
-  el.style.maxWidth = 'none';
-  el.style.maxHeight = 'none';
+  document.getElementById('alert-scene').style.transform =
+    `translate(${a.x || 0}px, ${a.y || 0}px)`;
+  // Size the splat box: mediaPct x scale, clamped so it can't exceed its 650x850
+  // footprint and collide with the meter or cross into the comment zone.
+  const frac = Math.min(1, ((a.mediaPct == null ? 100 : a.mediaPct) / 100) * (a.scale || 1));
+  const box = document.getElementById('alert-gifbox');
+  box.style.width = (650 * frac) + 'px';
+  box.style.height = (850 * frac) + 'px';
+  box.style.left = (215 + (650 - 650 * frac) / 2) + 'px';
+  box.style.top = (280 + (850 - 850 * frac) / 2) + 'px';
 }
-/*
- * Progress is shown per TIER, not as a lifetime total: the label reads
- * count / nextMilestone (0/10 → 10/20 → 20/30 …) and the track holds one block
- * per follow in the current tier, filling left to right and resetting each time a
- * milestone lands. `every` drives both, so changing it re-segments the track.
- */
-function renderMeter() {
+
+// ═══════════════════════════════════════════════════════════════════
+// METER — shows only the CURRENT TIER of `every`
+// ═══════════════════════════════════════════════════════════════════
+function tier() {
   const every = Math.max(1, CFG.milestoneEvery || 10);
-  const tierStart = Math.floor(count / every) * every;
-  const nextTarget = tierStart + every;
-  const filled = count - tierStart;              // 0 .. every-1
-
-  document.getElementById('meter-count').textContent =
-    `${count.toLocaleString()} / ${nextTarget.toLocaleString()}`;
-
-  // Rebuild only when the segment count changes — this runs on every event.
+  const base = Math.floor(count / every) * every;
+  return { every, base, lit: count - base, target: base + every };
+}
+function buildTrack(every) {
   const track = document.getElementById('meter-track');
-  if (track.childElementCount !== every) {
-    track.innerHTML = '';
-    for (let i = 0; i < every; i++) {
-      const s = document.createElement('div');
-      s.className = 'seg';
-      track.appendChild(s);
-    }
-  }
+  if (track.childElementCount === every) return track;
+  track.innerHTML = '';
+  for (let i = 0; i < every; i++) track.appendChild(document.createElement('div'));
+  return track;
+}
+function paintSegments(lit, every, allGold) {
+  const track = buildTrack(every);
   for (let i = 0; i < every; i++) {
-    const on = i < filled;
-    track.children[i].className = 'seg' + (on ? ' on' : '') + (i === every - 1 ? ' last' : '');
+    const isCap = i === every - 1;
+    // The cap stays gold in EVERY resting state, including right after a drain.
+    track.children[i].className = 'seg' + (isCap || allGold ? ' cap' : (i < lit ? ' on' : ''));
   }
-
+  return track;
+}
+function renderMeter() {
+  const t = tier();
+  paintSegments(t.lit, t.every, false);
+  setCountText(count, t.target);
   try { localStorage.setItem(FM_LS_COUNT, String(count)); } catch (e) {}
 }
-
-// GIF play-once decoding/rendering lives in jjx-core.js (JJX.parseGIF /
-// JJX.playGifOnce) — see the rationale there for why it's hand-rolled.
-const fmParseGIF = JJX.parseGIF;
-const fmPlayGifOnce = JJX.playGifOnce;
+function setCountText(cur, target) {
+  document.getElementById('meter-count').innerHTML =
+    `${cur.toLocaleString()} <span class="tgt">/ ${target.toLocaleString()}</span>`;
+}
+function popSegment(i) {
+  const track = document.getElementById('meter-track');
+  const el = track.children[i];
+  if (!el) return;
+  el.animate([{ transform: 'scaleY(1)' }, { transform: 'scaleY(1.4)' }, { transform: 'scaleY(1)' }],
+    { duration: 260, easing: 'ease-out' });
+}
 
 // ═══════════════════════════════════════════════════════════════════
-// ALERT QUEUE
+// MEDIA — GIFs play ONCE. The handoff flags that follow-alert.gif loops every
+// 1.5s, so over a 6s alert the splat smacks four times and slides through the
+// text each time; intent is one smack. Rather than re-cutting the asset, decode
+// it and play each frame once on a canvas, freezing on the last frame.
+// ═══════════════════════════════════════════════════════════════════
+let _gifStop = null;
+const _gifCache = new Map();          // url -> parsed gif (decode once, replay free)
+
+async function mountGif(url, container) {
+  if (_gifStop) { _gifStop(); _gifStop = null; }
+  container.innerHTML = '';
+  const canvas = document.createElement('canvas');
+  container.appendChild(canvas);
+  try {
+    let gif = _gifCache.get(url);
+    if (!gif) {
+      const buf = await (await fetch(url)).arrayBuffer();
+      gif = JJX.parseGIF(buf);
+      _gifCache.set(url, gif);
+    }
+    if (canvas !== container.firstChild) return 0;   // superseded
+    if (!gif.frames.length) throw new Error('no frames');
+    _gifStop = JJX.playGifOnce(canvas, gif);
+    return gif.frames.reduce((n, f) => n + Math.max(20, f.delay || 100), 0);
+  } catch (e) {
+    if (canvas !== container.firstChild) return 0;
+    const img = document.createElement('img');       // last resort: let it loop
+    img.src = url;
+    container.innerHTML = '';
+    container.appendChild(img);
+    return 0;
+  }
+}
+
+// One sound at a time — an anthem landing mid-alert must not double up.
+function playSfx(url) {
+  if (MIRROR || !url) return;
+  const el = document.getElementById('sfx');
+  el.pause(); el.currentTime = 0;
+  el.src = url;
+  el.play().catch(() => {});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// QUEUE — alerts play one at a time; a milestone pre-empts and plays alone.
+// The COUNT increments on arrival, not on play, or the meter drifts in a storm.
 // ═══════════════════════════════════════════════════════════════════
 let queue = [];
-let processing = false;
-let _currentGifStop = null; // cancels a still-playing GIF when the alert changes
+let busy = false;
 
-function fillTemplate(tmpl, vars) {
-  return String(tmpl || '')
-    .replace(/\{username\}/g, vars.username || 'someone')
-    .replace(/\{count\}/g, (vars.count != null ? vars.count : count).toLocaleString());
-}
-
-function enqueueAlert(slot, username) {
-  if (!SLOTS.includes(slot)) return;
-  queue.push({ slot, username: username || '' });
-  processQueue();
-}
-
-function processQueue() {
-  if (processing || !queue.length || !OVERLAY_ENABLED) return;
-  processing = true;
-  const item = queue.shift();
-  showAlert(item, () => { processing = false; processQueue(); });
-}
-
-function showAlert(item, done) {
-  const wrap  = document.getElementById('alert-media-wrap');
-  const stage = document.getElementById('alert-stage');
-  const txt   = document.getElementById('alert-text');
-  const asset = ASSETS[item.slot] || {};
-  const platformClass = item.slot === 'milestone' ? 'milestone' : (item.slot === 'tiktok_follow' ? 'tiktok' : 'youtube');
-
-  if (_currentGifStop) { _currentGifStop(); _currentGifStop = null; }
-  wrap.innerHTML = '';
-  // Set to scheduleHide() at the end of this call. Media length is only known
-  // asynchronously (GIF frame delays after decode, video metadata after load), and
-  // this is a per-call closure so a slow decode from a superseded alert can't
-  // extend the alert that replaced it.
-  let extendHold = null;
-  const gifSrc = assetSrc(asset.gif);
-  if (gifSrc) {
-    const mime = asset.gif.mime || '';
-    if (mime.startsWith('video/')) {
-      const v = document.createElement('video');
-      v.src = gifSrc;
-      v.autoplay = true;
-      v.playsInline = true;
-      v.muted = false;
-      v.loop = false; // play once, freeze on last frame — never restart
-      sizeMediaEl(v, item.slot);
-      // Hold at least as long as the clip runs, so it can't be cut mid-playback.
-      v.onloadedmetadata = () => {
-        if (v !== wrap.firstChild || !extendHold) return;
-        if (isFinite(v.duration)) extendHold(v.duration * 1000 + 400);
-      };
-      wrap.appendChild(v);
-    } else if (mime === 'image/gif') {
-      // A plain <img> plays a GIF's own baked-in loop count forever with no
-      // way to override it, so decode it ourselves and play it once on a canvas.
-      const canvas = document.createElement('canvas');
-      sizeMediaEl(canvas, item.slot);
-      wrap.appendChild(canvas);
-      fetch(gifSrc).then(r => r.arrayBuffer()).then(buf => {
-        if (canvas !== wrap.firstChild) return; // a newer alert already replaced this one
-        const gif = fmParseGIF(buf);
-        if (!gif.frames.length) return;
-        _currentGifStop = fmPlayGifOnce(canvas, gif);
-        // The GIF's own runtime is the sum of its frame delays — hold at least that
-        // long so a long animation isn't chopped off partway through.
-        const gifMs = gif.frames.reduce((n, f) => n + Math.max(20, f.delay || 100), 0);
-        if (extendHold) extendHold(gifMs + 400);
-      }).catch(() => {
-        // Corrupt/unsupported GIF — fall back to a plain (looping) <img> rather than showing nothing.
-        if (canvas !== wrap.firstChild) return;
-        const img = document.createElement('img');
-        img.src = gifSrc;
-        sizeMediaEl(img, item.slot);
-        wrap.innerHTML = '';
-        wrap.appendChild(img);
-      });
-    } else {
-      const img = document.createElement('img');
-      img.src = gifSrc;
-      sizeMediaEl(img, item.slot);
-      wrap.appendChild(img);
-    }
-  }
-
-  txt.className = platformClass;
-  txt.textContent = fillTemplate(CFG.texts[item.slot], { username: item.username, count });
-
-  if (!MIRROR) {
-    const audioEl = document.getElementById('alert-audio');
-    audioEl.pause();
-    const audioSrc = assetSrc(asset.audio);
-    if (audioSrc) {
-      audioEl.src = audioSrc;
-      audioEl.currentTime = 0;
-      audioEl.play().catch(() => {});
-    } else {
-      audioEl.removeAttribute('src');
-    }
-  }
-
-  applyAlertLayoutFor(item.slot);
-  stage.classList.add('show');
-
-  if (MIRROR) {
-    // Pinned preview: stays on screen (silently) so position/scale nudges are
-    // visible without a countdown running out mid-adjustment. The next preview
-    // just replaces it in place.
-    done();
-    return;
-  }
-
-  // Hold is a MINIMUM, not a fixed cut-off. The configured duration was hiding the
-  // alert on a timer that knew nothing about the media, so any gif or clip longer
-  // than it got chopped mid-animation. scheduleHide() is called again once the
-  // media's real length is known (GIF frame delays / video metadata) and extends —
-  // never shortens — the hold, so an animation always gets to finish.
-  const minMs = Math.max(1000, (CFG.alertDurationSec || 4.5) * 1000);
-  let hideAt = 0;
-  const scheduleHide = ms => {
-    const at = Date.now() + ms;
-    if (at <= hideAt) return;          // never pull the hide earlier
-    hideAt = at;
-    clearTimeout(showAlert._t);
-    showAlert._t = setTimeout(() => {
-      stage.classList.remove('show');
-      setTimeout(() => { wrap.innerHTML = ''; done(); }, 300);
-    }, ms);
-  };
-  scheduleHide(minMs);
-  extendHold = scheduleHide;           // media handlers above call this once measured
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// EVENT HANDLING — a follow/sub bumps the combined counter and fires
-// its individual alert; crossing a multiple of milestoneEvery queues
-// the milestone alert right after it.
-// ═══════════════════════════════════════════════════════════════════
 function handleFollowEvent(slot, username) {
   if (!OVERLAY_ENABLED) return;
   count++;
+  const t = tier();
   renderMeter();
-  enqueueAlert(slot, username);
+  queue.push({ kind: 'alert', slot, username: username || 'someone' });
+  if (count % t.every === 0) queue.push({ kind: 'milestone', value: count });
+  pump();
+}
+function resetCount() { count = 0; renderMeter(); }
+
+async function pump() {
+  if (busy || !queue.length || !OVERLAY_ENABLED) return;
+  busy = true;
+  const item = queue.shift();
+  try {
+    if (item.kind === 'milestone') await runMilestone(item.value);
+    else await runAlert(item);
+  } catch (e) { console.warn('[follow-meter]', e); }
+  busy = false;
+  pump();
+}
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const OVERSHOOT = 'cubic-bezier(.34,1.56,.64,1)';
+
+// ── Screen 1 ──────────────────────────────────────────────────────
+async function runAlert(item) {
+  const tok = TYPE_TOKENS[item.slot] || TYPE_TOKENS.tiktok_follow;
+  const up = ASSETS[item.slot] || {};
+  const gifUrl = assetSrc(up.gif) || DEFAULT_MEDIA.splat;
+  const sfxUrl = assetSrc(up.audio) || DEFAULT_MEDIA.smack;
+
+  const chip = document.getElementById('alert-chip');
+  chip.textContent = tok.chip;
+  chip.style.background = tok.fill;
+  chip.style.color = tok.ink;
+
+  const user = document.getElementById('alert-user');
+  const verb = document.getElementById('alert-verb');
+  user.textContent = item.username;
+  user.style.color = tok.user;
+  verb.textContent = tok.verb;
+  // Auto-shrink rather than wrap mid-name or push the verb to a third line.
+  const n = item.username.length;
+  document.getElementById('alert-hero').style.fontSize = n > 16 ? '62px' : n > 12 ? '76px' : '94px';
+
+  applyAlertOffset(item.slot);
+  const band = document.getElementById('alert-band');
+  band.style.opacity = '0';
+
+  const gifMs = await mountGif(gifUrl, document.getElementById('alert-gifbox'));
+  playSfx(sfxUrl);
+
+  // Impact at 0.22s — the whole alert is timed to the smack peak.
+  await wait(Math.max(0, 220 + (CFG.impactOffsetMs || 0)));
+  band.style.opacity = '1';
+  band.animate(
+    [{ transform: 'translateY(46px) scale(.86)', opacity: 0 },
+     { transform: 'translateY(0) scale(1)', opacity: 1 }],
+    { duration: 260, easing: OVERSHOOT, fill: 'both' });
+
+  const holdMs = Math.max(4000, Math.min(11000, (CFG.alertDurationSec || 6) * 1000));
+  // Never cut the animation off part-way — hold at least as long as the gif runs.
+  await wait(Math.max(holdMs, gifMs + 400) - 220);
+
+  await band.animate(
+    [{ transform: 'translateY(0) scale(1)', opacity: 1 },
+     { transform: 'translateY(50px) scale(.9)', opacity: 0 }],
+    { duration: 280, easing: 'ease-in', fill: 'both' }).finished.catch(() => {});
+  band.style.opacity = '0';
+  if (_gifStop) { _gifStop(); _gifStop = null; }
+  document.getElementById('alert-gifbox').innerHTML = '';
+}
+
+// ── Screen 3 ──────────────────────────────────────────────────────
+async function runMilestone(value) {
   const every = Math.max(1, CFG.milestoneEvery || 10);
-  if (count % every === 0) enqueueAlert('milestone', username);
-}
+  const scene = document.getElementById('ms-scene');
+  const hero = document.getElementById('ms-hero');
+  const next = document.getElementById('ms-next');
+  const meter = document.getElementById('meter');
+  const up = ASSETS.milestone || {};
 
-function resetCount() {
-  count = 0;
+  hero.textContent = `${value.toLocaleString()} ${(CFG.meter && CFG.meter.label) || 'FOLLOWS'}!`;
+  next.textContent = `Next up — ${(value + every).toLocaleString()}`;
+  next.style.opacity = '0';
+
+  const gifUrl = assetSrc(up.gif);
+  if (gifUrl) mountGif(gifUrl, document.getElementById('alert-gifbox'));
+  playSfx(assetSrc(up.audio));
+
+  // 0 → 0.35s: the meter pops in place, alone.
+  meter.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.28)' }, { transform: 'scale(1)' }],
+    { duration: 350, easing: 'ease-in-out' });
+  meter.animate([{ filter: 'drop-shadow(0 0 0 rgba(253,224,71,0))' },
+                 { filter: 'drop-shadow(0 0 60px rgba(253,224,71,.9))' },
+                 { filter: 'drop-shadow(0 0 0 rgba(253,224,71,0))' }],
+    { duration: 350, easing: 'ease-in-out' });
+  await wait(350);
+
+  // 0.35 → 0.75s: the bar completes, left → right.
+  const track = document.getElementById('meter-track');
+  for (let i = 0; i < every; i++) {
+    setTimeout(() => {
+      if (track.children[i]) track.children[i].className = 'seg cap';
+      popSegment(i);
+    }, i * 40);
+  }
+  setTimeout(() => setCountText(value, value), 400);   // 20 / 20, not 20 / 30
+
+  // 0.6 → 1.0s: centre group in.
+  await wait(250);
+  scene.style.opacity = '1';
+  scene.animate([{ transform: 'translateY(40px) scale(.8)', opacity: 0 },
+                 { transform: 'translateY(0) scale(1)', opacity: 1 }],
+    { duration: 400, easing: OVERSHOOT, fill: 'both' });
+
+  await wait(200);
+  spawnConfetti();                                     // 0.8s
+
+  await wait(2400);                                    // → 3.2s
+  next.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'both' });
+  next.style.opacity = '1';
+
+  await wait(1000);                                    // → 4.2s: drain right → left
+  for (let i = every - 1; i >= 0; i--) {
+    setTimeout(() => {
+      if (!track.children[i]) return;
+      track.children[i].className = 'seg' + (i === every - 1 ? ' cap' : '');
+      popSegment(i);
+    }, (every - 1 - i) * 40);
+  }
+  setTimeout(() => setCountText(value, value + every), 400);   // 20 / 30
+
+  scene.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.9)', opacity: 0 }],
+    { duration: 800, easing: 'ease-in', fill: 'both' });
+  await wait(800);                                     // → 5.0s
+  scene.style.opacity = '0';
+  document.getElementById('confetti').innerHTML = '';
+  if (_gifStop) { _gifStop(); _gifStop = null; }
+  document.getElementById('alert-gifbox').innerHTML = '';
   renderMeter();
 }
 
+// 54 dabs from (540,980). The 4px ink outline is what keeps them readable over
+// bright gameplay — without it they vanish into light backgrounds.
+function spawnConfetti() {
+  const layer = document.getElementById('confetti');
+  layer.innerHTML = '';
+  const COLORS = ['#FDE047', '#A855F7', '#38BDF8', '#F87171'];
+  const bits = [];
+  for (let i = 0; i < 54; i++) {
+    const el = document.createElement('i');
+    const size = 18 + Math.random() * 28;
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.background = COLORS[i % COLORS.length];
+    el.style.borderRadius = Math.random() < 0.5 ? '50%' : '8px';
+    layer.appendChild(el);
+    const ang = Math.random() * Math.PI * 2;
+    const sp = 380 + Math.random() * 720;
+    bits.push({ el, x: 540, y: 980, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 320,
+                rot: Math.random() * 360, vr: (Math.random() - 0.5) * 420 });
+  }
+  let last = performance.now(), alive = true;
+  setTimeout(() => { alive = false; }, 4200);
+  (function step(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    for (const b of bits) {
+      b.vy += 780 * dt;                    // gravity
+      b.vx *= (1 - 0.5 * dt);              // horizontal drag
+      b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
+      b.el.style.transform = `translate(${b.x}px, ${b.y}px) rotate(${b.rot}deg)`;
+    }
+    if (alive) requestAnimationFrame(step);
+  })(last);
+}
+
 // ═══════════════════════════════════════════════════════════════════
-// COMMS — three-transport receive via jjx-core: BroadcastChannel +
-// localStorage wired by createReceiver (same browser profile), and the Ably
-// subscription below routes through the SAME dispatcher so a command heard
-// on two transports still fires exactly once.
+// COMMS
 // ═══════════════════════════════════════════════════════════════════
-const handleCmd = JJX.createReceiver({
-  bcName: FM_BC_NAME,
-  lsMsgKey: FM_LS_MSG,
-  handler: handleCmdInner,
-});
+const handleCmd = JJX.createReceiver({ bcName: FM_BC_NAME, lsMsgKey: FM_LS_MSG, handler: handleCmdInner });
 
 function handleCmdInner(msg) {
   switch (msg.cmd) {
     case 'CONFIG_UPDATE':
       CFG = deepMerge(CFG, msg.data || {});
-      // Alert x/y/scale is applied per-slot at show time (applyAlertLayoutFor),
-      // not globally here — each alert type has its own position now.
-      applyMeterLayout(); renderMeter();
+      applyLayout(); renderMeter();
       break;
-    case 'ASSET_UPDATE': {
-      // Carries a dock `url` now (a few hundred bytes) rather than a base64 dataURL,
-      // so this reaches the live overlay over Ably as a single small message —
-      // no chunked transfer, no localStorage quota.
+    case 'ASSET_UPDATE':
       applyAssetUpdate(msg.data || {});
       break;
-    }
     case 'ASSETS_REFRESH':
-      // The control page saved something; re-pull the authoritative copy from the dock.
       loadFromDock();
       break;
-    case 'TEST_FIRE':
-      handleFollowEvent(msg.data.slot, msg.data.username || 'TestViewer');
+    case 'TEST_FIRE': {
+      const slot = msg.data && msg.data.slot;
+      if (slot === 'milestone') { queue.push({ kind: 'milestone', value: count || (CFG.milestoneEvery || 10) }); pump(); }
+      else handleFollowEvent(slot, (msg.data && msg.data.username) || 'TestViewer');
       break;
-    case 'RESET_COUNT':
-      resetCount();
-      break;
+    }
+    case 'RESET_COUNT': resetCount(); break;
     case 'SET_ENABLED':
       if (handleToggle) handleToggle(!!(msg.data && msg.data.enabled));
       break;
@@ -547,100 +601,62 @@ function handleCmdInner(msg) {
 function applyAssetUpdate({ slot, kind, mime, dataURL, url }) {
   if (!SLOTS.includes(slot) || (kind !== 'gif' && kind !== 'audio')) return;
   if (!ASSETS[slot]) ASSETS[slot] = {};
-  // A dock upload sends `url`; the legacy Ably/localStorage path sends `dataURL`.
   if (url) ASSETS[slot][kind] = { mime, url };
   else if (dataURL) ASSETS[slot][kind] = { mime, dataURL };
   else delete ASSETS[slot][kind];
   try { localStorage.setItem(FM_LS_ASSETS, JSON.stringify(ASSETS)); } catch (e) {}
 }
 
-// The chunked-over-Ably asset receiver is gone: media comes from the dock by URL
-// (loadFromDock), so nothing publishes chunks any more. Subscribing to that channel
-// would have kept an Ably attachment alive purely to receive nothing.
-
-// ═══════════════════════════════════════════════════════════════════
-// ABLY — toggle channel (always attached) + chat/config channels
-// (attached only while enabled), same pattern as new-here-overlay.html.
-// ═══════════════════════════════════════════════════════════════════
-let _fmAttached = false;
+let handleToggle = null;
 let eventBus = null;
-function connectAbly() {
-  // Ably is constructed ONLY as the bus's fallback. When the dock's socket is
-  // reachable — the normal case — no channel is ever attached, so this overlay
-  // costs zero Ably messages and holds no realtime connection of its own.
-  // ABLY_FALLBACK=0 opts out entirely for a socket-only setup.
+function connectTransport() {
+  // Ably only as the bus's fallback — a reachable dock means zero Ably messages.
   const wantFallback = JJX.param('ablyFallback') !== '0';
-  const client = wantFallback ? JJX.dockRealtime({ fallbackKey: ABLY_KEY }) : null;
+  const client = wantFallback ? new Ably.Realtime({ key: JJX.ABLY_KEY }) : null;
 
-  function attachMain() {
+  function attach() {
     OVERLAY_ENABLED = true;
     document.body.style.display = 'block';
-    applyMeterLayout(); renderMeter();
-    // Config/media may have changed while this overlay was toggled off.
+    applyLayout(); renderMeter();
     loadFromDock();
-    _fmAttached = true;
   }
-  function detachMain() {
+  function detach() {
     OVERLAY_ENABLED = false;
     document.body.style.display = 'none';
-    _fmAttached = false;
   }
+  handleToggle = on => (on ? attach() : detach());
 
-  // Real follow/sub traffic comes off the dock's local socket, with Ably as an
-  // automatic fallback (JJX.createOverlayBus). Same 'milk-event' payload either way.
-  // 'follow' is a dedicated, unambiguous signal — added alongside the existing 'join'
-  // event so nothing else breaks — that fires only on a genuine TikTok/YouTube
-  // follow, never a room-join/viewer-enter.
   eventBus = JJX.createOverlayBus({
     ably: client,
-    onStatus: (state, why) => console.info('[follow-meter] event transport:', state, why || ''),
+    onStatus: (s, why) => console.info('[follow-meter] transport:', s, why || ''),
   });
   eventBus.on('splat-chat', 'milk-event', d => {
     if (!OVERLAY_ENABLED) return;
     d = d || {};
     if (d.type === 'follow' && d.username) {
-      const slot = d.platform === 'tt' ? 'tiktok_follow' : 'youtube_follow';
-      handleFollowEvent(slot, d.username);
+      handleFollowEvent(d.platform === 'tt' ? 'tiktok_follow' : 'youtube_follow', d.username);
     } else if (d.type === 'yt_sub' && d.username) {
       handleFollowEvent('youtube_sub', d.username);
     }
   });
-
-  // Control-plane (config nudges, test fires, on/off) over the same socket, relayed
-  // by the dock's /api/overlay/:name/cmd. Ably carries it only in fallback mode.
   eventBus.on(`overlay-cmd:${OVERLAY_NAME}`, 'cmd', d => handleCmd(d));
-  eventBus.on(ABLY_CH, 'follow-meter-cmd', d => handleCmd(d));   // fallback shape
+  eventBus.on(JJX.ABLY_MAIN_CHANNEL, 'follow-meter-cmd', d => handleCmd(d));
 
-  // The on/off toggle rides the same command stream now.
-  handleToggle = enabled => { if (enabled) attachMain(); else detachMain(); };
-
-  // Ask the dock what the current on/off state is, since a toggle sent while this
-  // overlay was closed isn't replayed by a socket.
+  // A socket can't replay a toggle sent while this page was closed.
   fetch(`${DOCK_BASE}/overlay-public/${OVERLAY_NAME}/config`, { cache: 'no-store' })
-    .then(r => r.json())
-    .then(p => { if (p.config && p.config.enabled) attachMain(); })
+    .then(r => r.json()).then(p => { if (p.config && p.config.enabled) attach(); })
     .catch(() => {});
 }
-// Set once connectAbly runs; kept module-level so handleCmd can reach it.
-let handleToggle = null;
 
 if (MIRROR) {
-  // No Ably here — the mirror must never process real follows/subs a second
-  // time or make sound. It's driven entirely by the BroadcastChannel/
-  // localStorage listeners above, which follow-meter-control.html already
-  // sends CONFIG_UPDATE/ASSET_UPDATE/TEST_FIRE over regardless of Ably.
   OVERLAY_ENABLED = true;
   document.body.style.display = 'block';
-  applyMeterLayout();
+  handleToggle = () => {};
+  applyLayout();
 } else {
-  connectAbly();
+  connectTransport();
 }
-
-// Both modes read the same backend, so the mirror previews exactly what the live
-// overlay will show. Fire-and-forget: rendering already happened from the cached
-// copy, and this refreshes it in place once the dock answers.
 loadFromDock();
-
 renderMeter();
 </script>
 </body>
