@@ -27,11 +27,16 @@
 (function () {
   'use strict';
 
-  // Shared Ably key. NOTE: full-capability key, present in public files — the
-  // plan of record is to swap overlays to a subscribe-only key once the
-  // Producer Dock owns all publishing. Keep every consumer on this one constant
-  // so that swap is a one-line change.
-  var ABLY_KEY = '***ABLY_KEY_REMOVED***';
+  // ABLY IS GONE (2026-07-25). Not disabled — REMOVED. There is no fallback path
+  // left in this file, no key, and no SDK loaded by any page. The dock's local
+  // WebSocket is the only transport, and it retries forever rather than degrading
+  // to anything. The old full-capability key that used to live here is revoked-by-
+  // deletion: even if a code path were reintroduced, there is nothing to authenticate
+  // with. Kept as an exported null so the ~14 call sites still reading JJX.ABLY_KEY
+  // get a defined value rather than throwing.
+  var ABLY_KEY = null;
+  // Channel NAME only — this is just a routing string on the socket now, and the
+  // dock still publishes wheel.spin and everything else to it.
   var ABLY_MAIN_CHANNEL = 'splat-overlay';
 
   /* ── config helpers ─────────────────────────────────────────────── */
@@ -405,30 +410,32 @@
   }
 
   /*
-    ABLY: FULLY DISABLED (2026-07-24 — the account is being cancelled, no more metered
-    messages, no more bill).
+    ABLY: REMOVED, 2026-07-25 (the account is being cancelled).
 
-    One switch works because jjx-core.js is the ONLY place in this project that ever
-    constructs an Ably client: every page reaches Ably through dockRealtime() or
-    createOverlayBus(), and nothing calls `new Ably.Realtime` directly (verified across
-    all pages). So flipping this false makes it impossible for any overlay to open an
-    Ably connection or publish a metered message — no per-page edits, nothing missed.
+    This was previously a single `ABLY_ENABLED = false` switch, on the stated grounds
+    that jjx-core was "the ONLY place that ever constructs an Ably client". That was
+    NOT TRUE — follow-meter-overlay.html built its own `new Ably.Realtime` directly and
+    never consulted the switch, so it kept opening a billable connection after the flag
+    went off. A kill switch that one page can walk around is not a kill switch, which is
+    why the code is now deleted rather than flagged:
+
+      · no fallback path in createOverlayBus or dockRealtime
+      · no key anywhere (ABLY_KEY is null; the 16 hardcoded literals across the pages
+        are gone, so nothing can authenticate even if a path came back)
+      · no SDK — the 19 `cdn.ably.com` <script> tags are removed, so the `Ably` global
+        does not exist and any reintroduced call fails loudly at once instead of
+        quietly reconnecting and billing
 
     The consequence that had to be handled: Ably WAS the safety net for a dropped dock
-    socket, and both transports below gave up on the socket after 3 attempts and switched.
-    With no net left, giving up would leave an overlay permanently dark until someone
-    reloaded it — a routine dock restart would do it. So while Ably is off, the socket
-    retries FOREVER with capped backoff (see the onclose handlers).
-
-    The Ably SDK <script> tags in the pages are harmless now: an unused SDK opens no
-    connection and costs nothing. Re-enabling is one line, but the fallback needs each
-    page's CONFIG.ABLY_KEY, which is public in this repo — rotate it before trusting it.
+    socket, and both transports gave up after 3 attempts and switched. With no net,
+    giving up would leave an overlay dark until someone reloaded it — a routine dock
+    restart would do it. So both transports now retry the socket FOREVER with capped
+    backoff (see the onclose handlers).
   */
-  var ABLY_ENABLED = false;
 
   /*
-    OVERLAY EVENT BUS — live events over the Producer Dock's local WebSocket, with
-    Ably as an automatic fallback (disabled — see ABLY_ENABLED above).
+    OVERLAY EVENT BUS — live events over the Producer Dock's local WebSocket. This is
+    the only transport; there is no fallback.
 
     Why: every overlay used to subscribe to Ably directly, so a single comment, like,
     follow or gift cost a metered message PER OVERLAY watching. The dock already
@@ -448,13 +455,11 @@
   */
   function createOverlayBus(opts) {
     opts = opts || {};
-    // Ably off: drop the client the caller handed us so no code path can reach it.
-    if (!ABLY_ENABLED) opts.ably = null;
+    // `opts.ably` is accepted and IGNORED. Call sites still pass it; there is no
+    // longer anything to pass it to.
     var base = (opts.dockBase || dockBase()).replace(/^http/, 'ws');
     var handlers = {};           // "channel/name" -> [fn]
     var ws = null;
-    var usingAbly = false;
-    var ablyChannels = {};
     var retries = 0;
     var closed = false;
     var onStatus = opts.onStatus || function () {};
@@ -469,67 +474,32 @@
       }
     }
 
-    // Ably is only touched when the socket cannot serve us, so a healthy dock means
-    // zero Ably messages. Subscriptions are attached lazily and per channel.
-    function fallbackToAbly(why) {
-      if (usingAbly || !opts.ably) { onStatus('socket-down', why); return; }
-      usingAbly = true;
-      onStatus('ably-fallback', why);
-      Object.keys(handlers).forEach(function (k) {
-        var parts = k.split('/');
-        subscribeAbly(parts[0], parts.slice(1).join('/'));
-      });
-    }
-
-    function subscribeAbly(channel, name) {
-      if (!opts.ably) return;
-      try {
-        var ch = ablyChannels[channel] || (ablyChannels[channel] = opts.ably.channels.get(channel));
-        ch.subscribe(name, function (m) { emit(channel, name, m.data); });
-      } catch (e) { /* Ably unavailable too — nothing further we can do */ }
-    }
-
     function connect() {
       if (closed) return;
       try {
         ws = new WebSocket(base + '/overlay-ws');
       } catch (e) {
-        fallbackToAbly('websocket constructor threw');
+        onStatus('socket-down', 'websocket constructor threw');
+        setTimeout(connect, 1000);
         return;
       }
-      ws.onopen = function () {
-        retries = 0;
-        // Reaching the dock again after a fallback does NOT tear the Ably
-        // subscriptions down: they would then deliver the same event twice.
-        // Ably-mode is sticky until reload; the socket simply idles.
-        onStatus(usingAbly ? 'socket-up-but-ably-sticky' : 'socket', '');
-      };
+      ws.onopen = function () { retries = 0; onStatus('socket', ''); };
       ws.onmessage = function (ev) {
         var msg;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }
         if (!msg || msg.channel === '_meta') return;
-        if (usingAbly) return;   // Ably owns delivery now — ignore, don't double-fire
         emit(msg.channel, msg.name, msg.data);
       };
       ws.onerror = function () { /* onclose always follows; handle it there */ };
       ws.onclose = function () {
         if (closed) return;
         retries++;
-        // Fast on purpose: every second spent retrying is a second of alerts not
-        // firing on a live stream. Three quick tries (~3.5s total, plus whatever the
-        // connection attempts themselves cost) cover a dock restart; past that,
-        // assume the socket isn't coming back and switch to Ably rather than keep
-        // a dark overlay hoping.
-        if (retries <= 3) setTimeout(connect, 500 * retries);
-        else if (opts.ably) fallbackToAbly('socket unavailable after ' + retries + ' attempts');
-        else {
-          // No Ably net (ABLY_ENABLED false, or caller passed none): never stop trying.
-          // Giving up here is what would leave an overlay dark for the rest of a stream
-          // after nothing worse than a dock restart. Capped so a long outage does not
-          // hammer the socket.
-          onStatus('socket-retrying', 'attempt ' + retries);
-          setTimeout(connect, Math.min(500 * retries, 10000));
-        }
+        // The socket is the ONLY transport now, so giving up is never an option —
+        // that would leave an overlay dark for the rest of a stream after nothing
+        // worse than a dock restart. Fast at first (a restart is back in seconds),
+        // then capped so a long outage does not hammer the socket.
+        onStatus(retries <= 3 ? 'socket' : 'socket-retrying', 'attempt ' + retries);
+        setTimeout(connect, Math.min(500 * retries, 10000));
       };
     }
 
@@ -539,16 +509,15 @@
       on: function (channel, name, fn) {
         var k = key(channel, name);
         (handlers[k] || (handlers[k] = [])).push(fn);
-        if (usingAbly) subscribeAbly(channel, name);
         return this;
       },
-      isUsingAbly: function () { return usingAbly; },
+      isUsingAbly: function () { return false; },   // kept so call sites still answer
       close: function () { closed = true; try { if (ws) ws.close(); } catch (e) {} },
     };
   }
 
   /*
-    DOCK REALTIME — a drop-in replacement for `new Ably.Realtime({key})` that speaks
+    DOCK REALTIME — speaks the Ably client API shape (channels.get().publish/
     the same API but carries everything over the Producer Dock's local WebSocket.
 
         const ably = JJX.dockRealtime({ fallbackKey: ABLY_KEY });
@@ -562,23 +531,16 @@
     Subscribe callbacks receive {data}, the Ably message shape, because that is what
     every existing handler destructures.
 
-    Ably stays as an automatic fallback (pass fallbackKey): if the socket cannot be
-    reached, a real Ably client is constructed and every registered subscription is
-    replayed onto it, so an overlay degrades instead of going dark. Once in fallback
-    it stays there until reload — flipping back mid-stream would double-deliver
-    anything both transports carry.
+    There is NO Ably fallback. `fallbackKey` is accepted and IGNORED so the ~14 call
+    sites that still pass it keep working; the socket simply retries forever instead.
   */
   function dockRealtime(opts) {
     opts = opts || {};
-    // Ably off: discard the fallback key so goAbly() can never construct a client.
-    if (!ABLY_ENABLED) opts.fallbackKey = null;
     var httpBase = (opts.dockBase || dockBase()).replace(/\/$/, '');
     var wsUrl = httpBase.replace(/^http/, 'ws') + '/overlay-ws';
     var subs = [];                 // {channel, event, cb}
     var connListeners = { connected: [], disconnected: [], failed: [], suspended: [] };
     var ws = null, retries = 0, closed = false, everOpen = false;
-    var realAbly = null;           // constructed only on fallback
-    var realChannels = {};
     var onStatus = opts.onStatus || function () {};
 
     function fire(state, arg) {
@@ -594,63 +556,35 @@
       }
     }
 
-    /* ---- Ably fallback ---- */
-    function goAbly(why) {
-      if (realAbly || !opts.fallbackKey || typeof Ably === 'undefined') {
-        onStatus('socket-down', why);
-        fire('disconnected');
-        return;
-      }
-      onStatus('ably-fallback', why);
-      try {
-        realAbly = new Ably.Realtime({ key: opts.fallbackKey });
-        realAbly.connection.on('connected', function () { fire('connected'); });
-        realAbly.connection.on('disconnected', function () { fire('disconnected'); });
-        realAbly.connection.on('failed', function (e) { fire('failed', e); });
-        realAbly.connection.on('suspended', function () { fire('suspended'); });
-        subs.forEach(function (s) { attachRealSub(s); });
-      } catch (e) {
-        onStatus('socket-down', 'ably fallback failed: ' + e.message);
-      }
-    }
-    function realChannel(name) {
-      return realChannels[name] || (realChannels[name] = realAbly.channels.get(name));
-    }
-    function attachRealSub(s) {
-      try {
-        if (s.event === null) realChannel(s.channel).subscribe(s.cb);
-        else realChannel(s.channel).subscribe(s.event, s.cb);
-      } catch (e) {}
-    }
-
-    /* ---- socket ---- */
+    /* ---- socket: the only transport ---- */
     function connect() {
       if (closed) return;
-      try { ws = new WebSocket(wsUrl); } catch (e) { goAbly('websocket constructor threw'); return; }
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        onStatus('socket-down', 'websocket constructor threw');
+        fire('disconnected');
+        setTimeout(connect, 1000);
+        return;
+      }
       ws.onopen = function () {
         retries = 0; everOpen = true;
-        if (!realAbly) { onStatus('socket', ''); fire('connected'); }
+        onStatus('socket', ''); fire('connected');
       };
       ws.onmessage = function (ev) {
-        if (realAbly) return;                       // Ably owns delivery now
         var m;
         try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (!m || m.channel === '_meta') return;
         deliver(m.channel, m.name, m.data);
       };
       ws.onclose = function () {
-        if (closed || realAbly) return;
+        if (closed) return;
         fire('disconnected');
         retries++;
-        // Fast: every retry second is a second of a dark overlay.
-        if (retries <= 3) setTimeout(connect, 500 * retries);
-        else if (opts.fallbackKey) goAbly('socket unavailable after ' + retries + ' attempts');
-        else {
-          // No Ably net (see ABLY_ENABLED): keep trying the socket forever, capped, so a
-          // dock restart costs a few seconds of alerts rather than the rest of the stream.
-          onStatus('socket-retrying', 'attempt ' + retries);
-          setTimeout(connect, Math.min(500 * retries, 10000));
-        }
+        // The socket is the only transport, so retry forever. Fast at first (a dock
+        // restart is back in seconds), then capped so a long outage does not hammer it.
+        onStatus(retries <= 3 ? 'socket' : 'socket-retrying', 'attempt ' + retries);
+        setTimeout(connect, Math.min(500 * retries, 10000));
       };
       ws.onerror = function () { /* onclose follows */ };
     }
@@ -660,7 +594,6 @@
       return {
         name: name,
         publish: function (event, data) {
-          if (realAbly) return realChannel(name).publish(event, data);
           // Ably's publish(msgObject) form isn't used by these pages, but be safe.
           if (typeof event === 'object' && event !== null) { data = event.data; event = event.name; }
           return fetch(httpBase + '/api/overlay-bus/publish', {
@@ -675,7 +608,6 @@
           if (typeof event === 'function') { cb = event; event = null; }
           var s = { channel: name, event: event, cb: cb };
           subs.push(s);
-          if (realAbly) attachRealSub(s);
           return Promise.resolve();
         },
         unsubscribe: function () {
@@ -700,7 +632,7 @@
           if (typeof state === 'function') return;      // "any state" form — unused here
           (connListeners[state] || (connListeners[state] = [])).push(cb);
           // Late listener for an already-open socket still gets its 'connected'.
-          if (state === 'connected' && everOpen && !realAbly && ws && ws.readyState === 1) {
+          if (state === 'connected' && everOpen && ws && ws.readyState === 1) {
             setTimeout(function () { try { cb(); } catch (e) {} }, 0);
           }
         },
@@ -708,14 +640,13 @@
           var self = this;
           self.on(state, function once() { cb.apply(null, arguments); });
         },
-        get state() { return realAbly ? realAbly.connection.state : (ws && ws.readyState === 1 ? 'connected' : 'disconnected'); },
+        get state() { return ws && ws.readyState === 1 ? 'connected' : 'disconnected'; },
       },
       close: function () {
         closed = true;
         try { if (ws) ws.close(); } catch (e) {}
-        try { if (realAbly) realAbly.close(); } catch (e) {}
       },
-      isUsingAbly: function () { return !!realAbly; },
+      isUsingAbly: function () { return false; },   // kept so call sites still answer
     };
   }
 

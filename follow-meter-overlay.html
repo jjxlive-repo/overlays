@@ -239,8 +239,7 @@
 
 <audio id="sfx"></audio>
 
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
-<script src="jjx-core.js?v=7"></script>
+<script src="jjx-core.js?v=8"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -742,9 +741,11 @@ function applyAssetUpdate({ slot, kind, mime, dataURL, url }) {
 let handleToggle = null;
 let eventBus = null;
 function connectTransport() {
-  // Ably only as the bus's fallback — a reachable dock means zero Ably messages.
-  const wantFallback = JJX.param('ablyFallback') !== '0';
-  const client = wantFallback ? new Ably.Realtime({ key: JJX.ABLY_KEY }) : null;
+  // Ably removed 2026-07-25. This page used to construct its OWN Ably.Realtime here,
+  // bypassing jjx-core entirely — which meant it kept opening a billable connection
+  // after the project-wide switch was turned off. The dock socket is the only
+  // transport now; createOverlayBus retries it forever rather than degrading.
+  const client = null;
 
   function attach() {
     OVERLAY_ENABLED = true;
