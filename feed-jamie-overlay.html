@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>FEED JAMIE — Overlay</title>
 <script src="jjx-core.js?v=8"></script>
-<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Fredoka:wght@400;500;600;700&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet">
 <style>
   /* ── FEED JAMIE overlay — 1080x1920 transparent browser source ── */
   :root {
@@ -13,6 +13,14 @@
     --fj-purple-bright: #A855F7;
     --fj-purple-light:  #C084FC;
     --fj-accent:        #E879F9;
+    /* Painted Splat tokens — shared construction with follow-meter-overlay.html
+       (heavy ink strokes, hard zero-blur shadows, hand-cut radii, no translucent
+       plates). Feed Jamie keeps PURPLE as its accent where the follow meter uses
+       blue, and tilts the opposite way, so the two read as siblings on a shared
+       screen rather than as duplicates of one component. */
+    --fj-ink:           #0d0d12;
+    --fj-plate:         #A855F7;
+    --fj-goldui:        #FDE047;
     --fj-white:         #FAF5FF;
     --fj-blue:          #3B82F6;
     --fj-gold:          #F5C518;
@@ -143,64 +151,97 @@
   .fj-object.splat-glow   { filter: drop-shadow(0 0 10px #A855F7AA); }
   .fj-object.dimmed { opacity: .25; transition: opacity .3s; }
 
+  /* Knockout type — the core Painted Splat technique. paint-order is MANDATORY:
+     without it the stroke paints over the glyph from the inside and eats the
+     letterform. Blur is always 0 so the shadow reads as a printed offset, not a glow. */
+  .fj-ko {
+    color: #fff; -webkit-text-stroke: 7px var(--fj-ink);
+    paint-order: stroke fill; text-shadow: 0 6px 0 var(--fj-ink);
+  }
+
   /* item username tag */
   .fj-obj-tag {
     position: absolute; left: 50%; top: -30px; transform: translateX(-50%);
-    font: 700 22px 'DM Sans'; color: #fff; white-space: nowrap;
-    text-shadow: 0 2px 4px #000, 0 0 6px #000;
+    font: 700 24px 'Fredoka', sans-serif; letter-spacing: .04em;
+    color: #fff; white-space: nowrap;
+    -webkit-text-stroke: 6px var(--fj-ink); paint-order: stroke fill;
+    text-shadow: 0 5px 0 var(--fj-ink);
   }
 
   /* prompt pill */
+  /* A solid chip, not a translucent plate — a half-opaque plate reads as default
+     UI and inverts against dark gameplay. Hand-cut radius + hard offset shadow. */
   #prompt-pill {
     position: absolute; z-index: 60; transform: translateX(-50%);
-    padding: 10px 26px; border-radius: 999px;
-    background: rgba(30, 8, 56, 0.45);
-    border: 2px solid #C084FC88;
-    font: 400 34px 'Boogaloo', sans-serif; letter-spacing: 1px;
-    color: var(--fj-white); text-align: center; white-space: nowrap;
+    padding: 11px 34px 13px; border-radius: 10px 34px 14px 30px;
+    background: var(--fj-plate);
+    border: 7px solid var(--fj-ink);
+    box-shadow: 0 10px 0 rgba(13,13,18,.9);
+    font: 700 30px 'Fredoka', sans-serif; letter-spacing: .1em; text-transform: uppercase;
+    color: #fff; text-align: center; white-space: nowrap;
     opacity: 0; transition: opacity .5s;
-    text-shadow: 0 2px 4px #00000099;
   }
 
   /* event label (follow / heart me / sub / gift) */
   #event-label {
-    position: absolute; z-index: 61; padding: 8px 22px; border-radius: 999px;
-    background: rgba(59, 7, 100, 0.55); border: 2px solid var(--fj-accent);
-    font: 400 32px 'Boogaloo'; color: #fff; white-space: nowrap;
-    opacity: 0; transition: opacity .3s, left .25s ease-out, top .25s ease-out; text-shadow: 0 2px 4px #000;
+    position: absolute; z-index: 61; padding: 9px 30px 11px;
+    border-radius: 10px 34px 14px 30px;
+    background: var(--fj-ink); border: 6px solid var(--fj-plate);
+    box-shadow: 0 10px 0 rgba(13,13,18,.9);
+    font: 700 30px 'Fredoka', sans-serif; letter-spacing: .04em;
+    color: #fff; white-space: nowrap;
+    opacity: 0; transition: opacity .3s, left .25s ease-out, top .25s ease-out;
   }
-  #event-label.gold { border-color: var(--fj-gold); background: rgba(80, 60, 4, 0.55); }
+  /* gold is reserved for premium/jackpot moments, same meaning as on the follow meter */
+  #event-label.gold { border-color: var(--fj-goldui); color: var(--fj-goldui); }
 
   /* like meter */
   #like-meter {
-    position: absolute; z-index: 55; padding: 5px 14px; border-radius: 999px;
-    background: rgba(30, 8, 56, 0.5); border: 2px solid #C084FC66;
-    font: 700 22px 'DM Sans'; color: #fff; white-space: nowrap;
-    opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out; text-shadow: 0 1px 3px #000;
+    position: absolute; z-index: 55; padding: 6px 18px 8px;
+    border-radius: 8px 22px 10px 20px;
+    background: var(--fj-ink); border: 5px solid var(--fj-plate);
+    box-shadow: 0 7px 0 rgba(13,13,18,.9);
+    font: 700 24px 'Fredoka', sans-serif; letter-spacing: .04em;
+    color: var(--fj-goldui); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out;
   }
 
   /* milestone goal bars — cumulative like/comment totals counting up toward a
      configurable target that fires an action (Heart Me, Jackpot, an item) */
   #milestone-bars { position: absolute; inset: 0; z-index: 58; pointer-events: none; }
+  /* The closest analogue to the follow meter's progress track, deliberately built
+     the same way — solid ink plate, heavy ink border, hard offset shadow — but with
+     a continuous purple fill instead of its blue segments. Goals here run to 1000+,
+     where segments would be unreadable, and the colour split keeps the two meters
+     legible side by side. */
   .milestone-bar {
-    position: absolute; background: rgba(30, 8, 56, 0.6); border: 2px solid #C084FC66; border-radius: 10px;
-    padding: 6px 14px; min-width: 240px; transition: left .3s ease-out, top .3s ease-out;
+    position: absolute; background: var(--fj-ink);
+    border: 6px solid var(--fj-ink); border-radius: 12px 30px 14px 26px;
+    box-shadow: 0 8px 0 rgba(13,13,18,.6);
+    padding: 8px 16px 10px; min-width: 260px;
+    transition: left .3s ease-out, top .3s ease-out;
   }
   .milestone-bar-label {
-    font: 400 20px 'Boogaloo', sans-serif; letter-spacing: .4px; color: #fff;
-    text-shadow: 0 1px 3px #000; line-height: 1;
+    font: 700 20px 'Fredoka', sans-serif; letter-spacing: .12em; text-transform: uppercase;
+    color: #fff; line-height: 1;
   }
   .milestone-bar-track {
-    margin-top: 4px; width: 100%; height: 10px; border-radius: 6px;
-    background: rgba(255, 255, 255, 0.15); overflow: hidden;
+    margin-top: 6px; width: 100%; height: 16px; border-radius: 6px;
+    background: rgba(255,255,255,0.15);      /* empty must stay visible over light gameplay */
+    border: 3px solid var(--fj-ink); overflow: hidden;
+    box-shadow: inset 0 3px 0 rgba(0,0,0,0.45);
   }
   .milestone-bar-fill {
-    height: 100%; border-radius: 6px; background: linear-gradient(90deg, #C084FC, #F472B6);
+    height: 100%; background: var(--fj-plate);
+    box-shadow: inset 0 4px 0 rgba(255,255,255,0.45);
     transition: width .4s ease-out;
   }
   .milestone-bar-nums {
-    margin-top: 2px; font: 700 13px 'DM Sans'; color: #F4D8FF; text-align: right;
-    font-variant-numeric: tabular-nums;
+    margin-top: 3px; font: 400 22px 'Boogaloo', cursive; color: var(--fj-goldui);
+    text-align: right; font-variant-numeric: tabular-nums; line-height: 1;
+    -webkit-text-stroke: 4px var(--fj-ink); paint-order: stroke fill;
+    text-shadow: 0 4px 0 var(--fj-ink);
   }
 
   /* wide wooden treat board — several gift → item mappings shown side by side
@@ -215,9 +256,9 @@
     background:
       repeating-linear-gradient(90deg, #0000000f 0 2px, transparent 2px 40px),
       linear-gradient(180deg, #A0703F 0%, #7C4F2B 55%, #6B4325 100%);
-    border-radius: 10px;
-    border: 3px solid #2A1608;
-    box-shadow: inset 0 0 0 2px #3B82F670, 0 4px 10px #0007;
+    border-radius: 12px 30px 14px 26px;      /* hand-cut, matching the chips */
+    border: 6px solid var(--fj-ink);
+    box-shadow: inset 0 0 0 2px #C084FC55, 0 9px 0 rgba(13,13,18,.85);
   }
   .gs-cell {
     position: relative; flex: 1 1 0; min-width: 0;
@@ -234,7 +275,7 @@
   .gs-cell::after  { right: 8%; }
   .gs-cell-img { width: 46%; aspect-ratio: 1; object-fit: contain; }
   .gs-cell-label {
-    font: 700 16px 'DM Sans'; color: #3A2A1A; line-height: 1.05;
+    font: 600 17px 'Fredoka', sans-serif; color: #3A2A1A; line-height: 1.05;
     text-align: center; overflow: hidden; overflow-wrap: break-word; max-width: 92%;
   }
 
@@ -245,13 +286,18 @@
     text-align: center; white-space: nowrap; line-height: 1;
     animation: fjGiftFloat var(--float-duration, 1500ms) ease-out forwards;
   }
+  /* real stroke rather than four stacked offset shadows — the faked version
+     thins out on diagonals and blurs at scale */
   .fj-gift-float-main {
-    font: 400 34px 'Boogaloo', sans-serif; letter-spacing: .5px; color: #fff;
-    text-shadow: -3px -3px 0 #3B0764, 3px -3px 0 #3B0764, -3px 3px 0 #3B0764, 3px 3px 0 #3B0764, 0 5px 8px #000a;
+    font: 400 40px 'Boogaloo', cursive; letter-spacing: .5px; color: #fff;
+    -webkit-text-stroke: 9px var(--fj-ink); paint-order: stroke fill;
+    text-shadow: 0 7px 0 var(--fj-ink);
   }
   .fj-gift-float-sub {
-    margin-top: -2px; font: 400 18px 'Boogaloo', sans-serif; letter-spacing: .3px; color: #F4D8FF;
-    text-shadow: 0 2px 4px #000, 0 0 5px #3B0764;
+    margin-top: 1px; font: 400 22px 'Boogaloo', cursive; letter-spacing: .3px;
+    color: var(--fj-goldui);
+    -webkit-text-stroke: 6px var(--fj-ink); paint-order: stroke fill;
+    text-shadow: 0 5px 0 var(--fj-ink);
   }
   @keyframes fjGiftFloat {
     0%   { opacity: 0; transform: translate(-50%, -40%) scale(.82); }
@@ -639,7 +685,10 @@ const FJ_DEFAULT_CONFIG = {
   },
   prompts: {
     enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1,
-    opacity: 1, bgOpacity: 0.45,
+    /* bgOpacity now drives the SOLID chip's fill alpha. Defaulted opaque because a
+       translucent plate inverts against dark gameplay — the slider still works if
+       a softer chip is wanted. */
+    opacity: 1, bgOpacity: 1,
     list: [
       'LIKES = TREATS 🦴',
       'COMMENT BALL, TREAT, OR TOY',
@@ -1216,7 +1265,7 @@ function renderMilestoneBars() {
        bars can sit anywhere on screen relative to each other */
     bar.style.left = (g.x ?? 540) + 'px';
     bar.style.top = (g.y ?? 1790) + 'px';
-    bar.style.transform = `translate(-50%, -50%) scale(${ms.scale || 1})`;
+    bar.style.transform = `translate(-50%, -50%) rotate(2deg) scale(${ms.scale || 1})`;
     const label = document.createElement('div');
     label.className = 'milestone-bar-label';
     label.textContent = g.label || (g.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
@@ -1933,17 +1982,19 @@ function applyLayout() {
   const pp = $('prompt-pill');
   pp.style.left = CFG.prompts.x + 'px';
   pp.style.top = CFG.prompts.y + 'px';
-  pp.style.transform = `translateX(-50%) scale(${CFG.prompts.scale})`;
-  pp.style.background = `rgba(30, 8, 56, ${CFG.prompts.bgOpacity})`;
+  /* Tilt is +2deg where the follow meter uses -2deg, so the two overlays read as
+     siblings on a shared screen instead of two copies of the same component. */
+  pp.style.transform = `translateX(-50%) rotate(2deg) scale(${CFG.prompts.scale})`;
+  pp.style.background = `rgba(168, 85, 247, ${CFG.prompts.bgOpacity})`;
   const lm = $('like-meter');
   lm.style.left = CFG.visuals.likeMeterX + 'px';
   lm.style.top = CFG.visuals.likeMeterY + 'px';
-  lm.style.transform = `scale(${CFG.visuals.likeMeterScale})`;
+  lm.style.transform = `rotate(2deg) scale(${CFG.visuals.likeMeterScale})`;
   lm.style.transformOrigin = '0 50%';
   const el = $('event-label');
   el.style.left = CFG.visuals.eventLabelX + 'px';
   el.style.top = CFG.visuals.eventLabelY + 'px';
-  el.style.transform = `translateX(-50%) scale(${CFG.visuals.eventLabelScale})`;
+  el.style.transform = `translateX(-50%) rotate(-1.5deg) scale(${CFG.visuals.eventLabelScale})`;
   renderMilestoneBars(); /* each bar is positioned independently — see its own x/y */
   applyGiftShowcaseLayout();
   if (typeof squadLayout === 'function' && jtEls) squadLayout();  /* squad tracks floor/Jamie moves */
