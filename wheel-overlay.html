@@ -325,7 +325,10 @@
   @keyframes om-arc-x { from { transform: translateX(0); } to { transform: translateX(var(--ax, 0px)); } }
   @keyframes om-arc-y { 0% { transform: translateY(0) rotate(0deg); } 40% { transform: translateY(calc(var(--ah, -130px))) rotate(18deg); } 100% { transform: translateY(var(--ay, 0px)) rotate(46deg); } }
   .water-x { animation: om-arc-x var(--wd, 265ms) linear both; }
-  .water-y { background: url('assets/wheel/bucket-pour.png') center / 100% 100% no-repeat; animation: om-arc-y var(--wd, 265ms) cubic-bezier(.3,0,.7,1) both; }
+  /* water-sheet.png — "separate right-moving thrown water mass". This was
+     bucket-pour.png, which the manifest describes as a tipped BUCKET with water
+     attached, so every throw launched a second whole bucket across the frame. */
+  .water-y { background: url('assets/wheel/water-sheet.png') center / 100% 100% no-repeat; animation: om-arc-y var(--wd, 265ms) cubic-bezier(.3,0,.7,1) both; }
   .droplet { border-radius: 50%; background: #7DD3FC; animation: om-arc-y var(--wd, 265ms) cubic-bezier(.3,0,.7,1) both; }
   @keyframes om-splash { 0% { transform: scale(.3); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
   .splash { background: url('assets/wheel/water-splash-crown.png') center / 100% 100% no-repeat; animation: om-splash 620ms cubic-bezier(.2,.9,.2,1) both; }
@@ -875,21 +878,23 @@ function runFlood(run) {
       void b.offsetWidth;
       b.style.left = restX + 'px';
 
-      // TIP toward the face, 116°, pivoting on the trailing corner.
+      // TIP toward the face. The art ships a correctly drawn TIPPED bucket, so this
+      // swaps sprite rather than rotating the upright one 116° — which turned it into
+      // a sideways tube on stream. A small rotation is kept purely for the motion.
       runTimer(run, () => {
         b.style.transition = 'transform 250ms cubic-bezier(.4,0,.6,1)';
-        b.style.transform = `rotate(${dir * 116}deg)`;
+        b.classList.add('pouring');
+        // The pour art is drawn right-facing; a bucket throwing left must mirror.
+        b.style.transform = `${fromLeft ? '' : 'scaleX(-1) '}rotate(${dir * 22}deg)`;
       }, 230);
 
-      // The mouth's position is SOLVED from the rim vector rotated about the pivot,
-      // so water always leaves the real rim rather than a guessed point.
+      // Where the water leaves. With the tipped SPRITE the spout is a known point in
+      // the art — the leading edge, about a third down — so the mouth is read off the
+      // bucket's own rect instead of being solved backwards from a 116° rotation that
+      // no longer happens.
       runTimer(run, () => {
-        const pivX = restX + bw * (fromLeft ? 0.78 : 0.22), pivY = restY + bh * 0.86;
-        const rimX = restX + bw * (fromLeft ? 0.86 : 0.14) - pivX;
-        const rimY = restY + bh * 0.12 - pivY;
-        const a = dir * 116 * Math.PI / 180;
-        const mx = pivX + rimX * Math.cos(a) - rimY * Math.sin(a);
-        const my = pivY + rimX * Math.sin(a) + rimY * Math.cos(a);
+        const mx = restX + (fromLeft ? bw * 0.94 : bw * 0.06);
+        const my = restY + bh * 0.34;
 
         const h2 = headNow, target = headPoint(h2, 0, -0.1);
         const apex = -(112 + 48 * (k - 1));
@@ -898,7 +903,7 @@ function runFlood(run) {
         const wrap = place(el('fx water-x'), mx, my, 96 * k, 150 * k);
         wrap.style.setProperty('--ax', dx.toFixed(0) + 'px');
         wrap.style.setProperty('--wd', '265ms');
-        const w = el('water-y');
+        const w = el('water-y' + (fromLeft ? '' : ' flip'));   // sheet is right-moving art
         w.style.cssText = `position:absolute;inset:0;--ay:${dy.toFixed(0)}px;--ah:${apex.toFixed(0)}px;--wd:265ms`;
         wrap.appendChild(w);
         runNode(run, laneFx, wrap);
