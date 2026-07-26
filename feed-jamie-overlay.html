@@ -2135,6 +2135,7 @@ function setJamieState(next, opts = {}) {
       scheduleBlink(); scheduleTwitch();
       break;
     case 'TRACKING':
+      trackBand = 'trackCenter'; trackFacingLeft = null; trackTurning = false;
       jamieEl.classList.add('breathe');
       scheduleBlink();
       break;
@@ -2397,20 +2398,61 @@ function updateRoam(dt, now) {
 }
 
 /* directional tracking */
+/* Tracking runs every frame of the main loop, so raw thresholds made an object
+   drifting near a boundary strobe between two poses — the biggest single source
+   of the jitter. Each band now has separate enter/exit thresholds (hysteresis):
+   once a band is entered it is held until the object moves clearly out of it. */
+let trackBand = 'trackCenter';
+let trackFacingLeft = null;      // null = not yet established
+let trackTurning = false;
+/* The Cleanup6 library tracks only VERTICALLY (low / mid / top) — every one of
+   those three is the same side-profile sit with the head tilting further up, and
+   the old left/right frames are gone. Flipping the mirror to face the other side
+   was therefore an instant snap with nothing in between, which reads as a glitch
+   rather than a turn.
+   jamie-look-01-turn is the one SEATED, front-facing pose in the library, so a
+   side change now plays through it and the mirror is flipped while he is face-on,
+   where a horizontal flip is very nearly invisible. */
+const TRACK_TURN_FRAME = 'jamie-look-01-turn.png';
+const TRACK_TURN_MS = 220;
+const TURN_DEADBAND = 150;       // px past centre before a turn is worth playing
+
 function updateTracking(obj) {
-  if (J.state !== 'TRACKING') return;
+  if (J.state !== 'TRACKING' || trackTurning) return;
   const rz = reachZoneRect();
   const dx = (obj.x + obj.w / 2) - rz.cx;
   const dy = (obj.y + obj.h / 2) - rz.cy;
-  /* The Cleanup6 library tracks VERTICALLY (low / mid / top). Horizontal facing is
-     already expressed by the global flip + per-pose mirror, so dedicated left/right
-     frames no longer exist and dx only decides how far the gaze tilts. */
-  let dir = 'trackCenter';
-  if (dy < -260) dir = 'trackHigh';
-  else if (dy > 140) dir = 'trackLow';
-  const frame = SEQ[dir][0].f;
+
+  /* ── horizontal: turn to face the object, through the forward pose ── */
+  const wantLeft = dx < -TURN_DEADBAND ? true : (dx > TURN_DEADBAND ? false : null);
+  if (wantLeft !== null) {
+    if (trackFacingLeft === null) {            // first sighting — just face it
+      trackFacingLeft = wantLeft;
+      poseMirror = wantLeft;
+      applyJamieTransform();
+    } else if (wantLeft !== trackFacingLeft) { // crossed over — play the turn
+      trackTurning = true;
+      showFrame(TRACK_TURN_FRAME);
+      setTimeout(() => {
+        trackFacingLeft = wantLeft;
+        poseMirror = wantLeft;
+        applyJamieTransform();
+        trackTurning = false;
+        trackBand = 'trackCenter';             // re-settle from the forward pose
+      }, TRACK_TURN_MS);
+      return;
+    }
+  }
+
+  /* ── vertical: hysteresis so a hovering object cannot strobe the pose ── */
+  if (trackBand === 'trackHigh') { if (dy > -190) trackBand = 'trackCenter'; }
+  else if (trackBand === 'trackLow') { if (dy < 80) trackBand = 'trackCenter'; }
+  else {
+    if (dy < -270) trackBand = 'trackHigh';
+    else if (dy > 160) trackBand = 'trackLow';
+  }
+  const frame = SEQ[trackBand][0].f;
   if (currentFrameFile !== frame) showFrame(frame);
-  jamieEl.classList.remove('pose-track-left', 'pose-track-right');
 }
 
 /* one-shot look/miss interrupts (only from calm states) */
