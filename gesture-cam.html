@@ -282,36 +282,70 @@ const bktCtx = bktCanvas.getContext('2d', { willReadFrequently: true });
 const BKT_W = 160;
 let lastTargets = null, lastTargetsAt = 0;
 
+/**
+ * Find the Ball Guys bucket and return its INTERIOR — the space the ball has to end
+ * up inside, not the bucket's outer bounds.
+ *
+ * The bucket is a heavy BLACK U drawn on light graph paper, so this looks for dark
+ * structure, not bright mass. (The first version scanned for the widest BRIGHT run,
+ * which on that art finds the paper background and never the bucket.)
+ *
+ * Shape of the search: the U is two tall vertical strokes joined by one horizontal
+ * one. So the floor is the lowest row carrying a long dark run, and the walls are the
+ * outermost columns carrying tall dark runs. The interior is what they enclose,
+ * pulled in by the stroke thickness so the ball rests ON the floor and BETWEEN the
+ * walls rather than overlapping the drawing.
+ *
+ * Returns normalised-to-region coords, or null when there is no convincing U.
+ */
 function detectBucket(source, sx, sy, sw, sh) {
   const dw = BKT_W, dh = Math.max(8, Math.round(dw * sh / sw));
   if (bktCanvas.width !== dw || bktCanvas.height !== dh) { bktCanvas.width = dw; bktCanvas.height = dh; }
   bktCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
   const img = bktCtx.getImageData(0, 0, dw, dh).data;
 
-  // Only the lower 55% — a bucket sits on the floor of the play area.
-  const y0 = Math.floor(dh * 0.45);
-  let best = null;
-  for (let y = y0; y < dh; y++) {
-    let runStart = -1;
-    for (let x = 0; x <= dw; x++) {
-      const q = (y * dw + x) * 4;
-      const bright = x < dw && (img[q] + img[q + 1] + img[q + 2]) / 3 > 96;
-      if (bright && runStart < 0) runStart = x;
-      else if (!bright && runStart >= 0) {
-        const w = x - runStart;
-        if (w >= 12 && (!best || w > best.w)) best = { x: runStart, y: y, w: w };
-        runStart = -1;
-      }
+  const DARK = 95;
+  const dark = new Uint8Array(dw * dh);
+  const colCount = new Int32Array(dw), rowCount = new Int32Array(dh);
+  for (let y = 0, q = 0; y < dh; y++) {
+    for (let x = 0; x < dw; x++, q++) {
+      const p = q * 4;
+      if ((img[p] + img[p + 1] + img[p + 2]) / 3 < DARK) { dark[q] = 1; colCount[x]++; rowCount[y]++; }
     }
   }
-  if (!best) return null;
-  // Walk down from the mouth row to find the floor — the bucket's own depth.
-  let bottom = best.y;
-  for (let y = best.y; y < dh; y++) {
-    const q = (y * dw + (best.x + (best.w >> 1))) * 4;
-    if ((img[q] + img[q + 1] + img[q + 2]) / 3 > 70) bottom = y; else break;
+
+  // FLOOR: the lowest row that is mostly dark across a meaningful width.
+  let floorY = -1;
+  for (let y = dh - 1; y >= Math.floor(dh * 0.25); y--) {
+    if (rowCount[y] >= dw * 0.28) { floorY = y; break; }
   }
-  return { x: best.x / dw, y: best.y / dh, w: best.w / dw, h: Math.max(1, bottom - best.y) / dh };
+  if (floorY < 0) return null;
+
+  // Its thickness — walk up while the row stays dark. The interior floor is the TOP
+  // of the stroke, which is what the ball actually rests on.
+  let floorTop = floorY;
+  while (floorTop > 0 && rowCount[floorTop - 1] >= dw * 0.20) floorTop--;
+
+  // WALLS: outermost columns with a tall dark run. Scan inward from each edge.
+  const wallMin = (floorY - floorTop + 1) * 0.9 + dh * 0.12;
+  let leftX = -1, rightX = -1;
+  for (let x = 0; x < dw; x++) if (colCount[x] >= wallMin) { leftX = x; break; }
+  for (let x = dw - 1; x >= 0; x--) if (colCount[x] >= wallMin) { rightX = x; break; }
+  if (leftX < 0 || rightX < 0 || rightX - leftX < dw * 0.15) return null;
+
+  // Pull in past each wall's stroke so the interior is clear space.
+  let li = leftX;  while (li < rightX && colCount[li] >= wallMin) li++;
+  let ri = rightX; while (ri > li && colCount[ri] >= wallMin) ri--;
+  if (ri - li < 6) return null;
+
+  // TOP of the interior is the top of the walls — the bucket's open mouth.
+  let topY = floorTop;
+  for (let y = 0; y < floorTop; y++) { if (dark[y * dw + leftX] || dark[y * dw + rightX]) { topY = y; break; } }
+
+  return {
+    x: li / dw, y: topY / dh,
+    w: (ri - li) / dw, h: Math.max(1, floorTop - topY) / dh,
+  };
 }
 
 function publishTargets(now) {

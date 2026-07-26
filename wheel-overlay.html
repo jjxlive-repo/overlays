@@ -1353,10 +1353,14 @@ function runBall(run) {
   // Target: the game's own bucket when tracked, else one we draw ourselves.
   const tracked = !!targetsNow;
   const bw = 300 * k, bh = 230 * k;
+  // targetsNow is the bucket's INTERIOR — the clear space between its walls and
+  // above its floor — so the ball can be contained by it rather than parked on top.
   const target = tracked
-    ? { x: targetsNow.x + targetsNow.w / 2, mouthY: targetsNow.y, floor: targetsNow.y + targetsNow.h,
+    ? { x: targetsNow.x + targetsNow.w / 2, mouthY: targetsNow.y,
+        floor: targetsNow.y + targetsNow.h, left: targetsNow.x, right: targetsNow.x + targetsNow.w,
         w: targetsNow.w, h: targetsNow.h }
-    : { x: 540, mouthY: ground - bh, floor: ground, w: bw, h: bh };
+    : { x: 540, mouthY: ground - bh, floor: ground, left: 540 - bw / 2, right: 540 + bw / 2,
+        w: bw, h: bh };
 
   // NO BUCKET. The ball falls into the actual Ball Guys game and bounces off the
   // balls in it — the same interaction Bomb Drop already has, off the same colliders
@@ -1458,6 +1462,12 @@ function runBall(run) {
           ball.style.transform = 'rotate(' + rot + 'deg) scale(1.09)';
           setTimeout(() => { if (!run.done) ball.style.transform = 'rotate(' + rot + 'deg) scale(1)'; }, 110);
         }
+      }
+      // WALLS. Once the ball is below the bucket's mouth it is inside the U, so the
+      // sides are solid: bounce off them instead of sliding out through the drawing.
+      if (tracked && y > target.mouthY) {
+        if (x - size / 2 < target.left)  { x = target.left + size / 2;  vx = Math.abs(vx) * REST; }
+        if (x + size / 2 > target.right) { x = target.right - size / 2; vx = -Math.abs(vx) * REST; }
       }
       const rest = target.floor - size / 2;
       if (!settled && y >= rest) {
