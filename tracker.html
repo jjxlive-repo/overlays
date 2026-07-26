@@ -832,7 +832,10 @@ textarea:focus-visible,[tabindex]:focus-visible{
     </div>
 
     <div class="field">
-      <label class="field-label" for="svCoins">Coins per gift</label>
+      <!-- Label and step are set per platform in openSetValue: TikTok prices gifts in coins,
+           YouTube jewels and Super Chats in dollars. A dollar typed into a box labelled "coins"
+           is wrong by a factor of a hundred and looks entirely reasonable on screen. -->
+      <label class="field-label" for="svCoins" id="svValueLabel">Coins per gift</label>
       <input id="svCoins" class="mono" type="number" min="0" step="1" inputmode="numeric" autocomplete="off">
       <div class="field-hint" id="svCut"></div>
     </div>
@@ -1171,7 +1174,9 @@ async function buildIndex(){
           notes: (r.notes || []).map((n) => ({ text: n.text || "", visibility: n.visibility })),
           // Kept so the Set value sheet can show an exact consequence before committing.
           gifts: (r.gifts || []).map((g) => ({
-            name: g.giftName, qty: g.quantity == null ? 1 : g.quantity, coin: g.coinValue,
+            // `usd` rides along because YouTube prices gifts in cash, not coins — without it the
+            // Set value preview judges a YouTube gift by a column YouTube never fills.
+            name: g.giftName, qty: g.quantity == null ? 1 : g.quantity, coin: g.coinValue, usd: g.amount,
           })),
           capped: (r.gifts || []).length >= 200,
         });
@@ -2778,6 +2783,9 @@ function openSetValue(platform, giftName){
       esc(String(Math.round(share * 10000) / 10000)) +
       " — the dock's own figure, not a rounded one";
 
+  const isYt = platform === "youtube";
+  $("svValueLabel").textContent = isYt ? "USD per gift" : "Coins per gift";
+  $("svCoins").step = isYt ? "0.01" : "1";
   $("svCoins").value = "";
   /* The dock requires a source on every write. Carrying the last one forward keeps a run of
      corrections quick without making it implicit — it is still shown, still editable, and still
@@ -2816,8 +2824,14 @@ function affectedRows(platform, giftName){
     if (ix.capped) cappedAny = true;
     let qty = 0, rows = 0;
     for (const g of ix.gifts){
-      // The server targets `coinValue IS NULL OR coinValue = 0`. Match it exactly.
-      if (g.name === giftName && (g.coin == null || g.coin === 0)){
+      /* The server targets the column that carries value ON THIS PLATFORM — coinValue for
+         TikTok, amount for YouTube — and this preview must match it exactly or it promises a
+         consequence the write does not deliver. It used to test coinValue for both, so every
+         YouTube gift looked unpriced and the preview counted rows the write would skip. */
+      const unset = platform === "youtube"
+        ? (g.usd == null || g.usd === 0)
+        : (g.coin == null || g.coin === 0);
+      if (g.name === giftName && unset){
         qty += (g.qty || 1); rows++;
       }
     }
@@ -2835,7 +2849,11 @@ function renderSetValuePreview(){
   const valid = Number.isFinite(coins) && coins >= 0 && $("svCoins").value.trim() !== "";
   const hasSource = $("svSource").value.trim() !== "";
   $("svSubmit").disabled = !(valid && hasSource);
-  $("svSubmit").textContent = valid ? "Set " + nInt(coins) + " coins" : "Set value";
+  /* Every figure in this preview is printed in the platform's own unit. Showing "coins" over a
+     YouTube gift would describe a write that does not happen — the value lands in dollars. */
+  const isYt = item.platform === "youtube";
+  const fmtV = (n) => isYt ? nUsd(n) : nInt(n) + " coins";
+  $("svSubmit").textContent = valid ? "Set " + fmtV(coins) : "Set value";
   $("svSubmit").title = !valid ? "Enter a coin value." : !hasSource ? "The dock requires a source." : "";
 
   const box = $("svPreview");
@@ -2856,11 +2874,14 @@ function renderSetValuePreview(){
   const totalRows = aff.list.reduce((a, r) => a + r.rows, 0);
 
   const lines = aff.list.slice(0, 8).map((r) => {
-    const before = r.viewer.coins;
+    // The viewer's running total in the same unit the write uses, or the two numbers on this
+    // row are in different currencies and the arrow between them means nothing.
+    const before = isYt ? r.viewer.usd : r.viewer.coins;
     const delta = r.qty * coins;
+    const fmtN = (n) => isYt ? nUsd(n) : nInt(n);
     return '<div class="pv-row"><span>' + esc(r.viewer.displayName) + "</span>" +
-      "<span>" + nInt(before) + " → " + nInt(before + delta) +
-      '<span style="color:var(--text-mute-2)"> (+' + nInt(delta) + ")</span></span></div>";
+      "<span>" + fmtN(before) + " → " + fmtN(before + delta) +
+      '<span style="color:var(--text-mute-2)"> (+' + fmtN(delta) + ")</span></span></div>";
   }).join("");
 
   // The dock's count is authoritative; say so plainly when this preview cannot see all of it.
@@ -2873,12 +2894,13 @@ function renderSetValuePreview(){
 
   box.innerHTML =
     '<div class="field-label">What this changes</div>' +
-    '<div class="pv-row" style="color:var(--text)"><span>Total coins added</span><span>+' + nInt(totalAdded) + "</span></div>" +
+    '<div class="pv-row" style="color:var(--text)"><span>Total ' + (isYt ? "USD" : "coins") +
+    ' added</span><span>+' + (isYt ? nUsd(totalAdded) : nInt(totalAdded)) + "</span></div>" +
     '<div class="pv-row"><span>Events repriced</span><span>' + totalRows + " across " + aff.list.length + " viewers</span></div>" +
     (aff.list.length ? '<div style="margin-top:8px">' + lines + "</div>" : "") +
     (aff.list.length > 8 ? '<div class="meta" style="margin-top:6px">+ ' + (aff.list.length - 8) + " more viewers</div>" : "") +
     mismatch +
-    '<div class="reason">Every delta is an exact multiple of ' + nInt(coins) +
+    '<div class="reason">Every delta is an exact multiple of ' + esc(fmtV(coins)) +
     " — quantity × rate, the same arithmetic the dock applies.</div>";
 }
 
@@ -2903,7 +2925,13 @@ async function submitSetValue(){
     const res = await fetch("/api/rates/" + encodeURIComponent(item.platform) + "/" + encodeURIComponent(item.giftName), {
       method: "PUT",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ coins: coins, source: source, applyTo: applyTo }),
+      // YouTube values are cash and go in as `usd`; the dock writes them to `amount` rather
+      // than `coinValue`, which is TikTok's column.
+      body: JSON.stringify(
+        item.platform === "youtube"
+          ? { usd: coins, source: source, applyTo: applyTo }
+          : { coins: coins, source: source, applyTo: applyTo },
+      ),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || (res.status + " " + res.statusText));
