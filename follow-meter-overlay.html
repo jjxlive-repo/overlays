@@ -260,8 +260,20 @@ const TYPE_TOKENS = {
   youtube_sub:    { fill: '#FDE047', ink: '#0d0d12', chip: '★ Subscribed on YouTube', verb: 'subscribed!', user: '#FDE047' },
 };
 
+// Every string on screen, editable from the control page. Placeholders:
+//   {username} the follower · {count} the number · {label} the meter label
+//   {next} the following milestone
+const DEFAULT_COPY = {
+  tiktok_follow:  { chip: '♪ Followed on TikTok',    verb: 'followed!' },
+  youtube_follow: { chip: '▶ Followed on YouTube',   verb: 'followed!' },
+  youtube_sub:    { chip: '★ Subscribed on YouTube', verb: 'subscribed!' },
+  milestone:      { kicker: 'Milestone unlocked', hero: '{count} {label}!', next: 'Next up — {next}' },
+  anthem:         { chip: '★ Anthem drop' },
+};
+
 const DEFAULT_CONFIG = {
   milestoneEvery: 10,
+  copy: JSON.parse(JSON.stringify(DEFAULT_COPY)),
   meter: { label: 'FOLLOWS/SUBS', x: 0, y: 0, scale: 1, visible: true },
   alertDurationSec: 6,            // handoff default; 4–11 supported
   anthemDurationSec: 10.4,        // covers the 10.9s firework cycle
@@ -308,6 +320,20 @@ let count = 0;
 try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
 let OVERLAY_ENABLED = false;
 document.body.style.display = 'none';
+
+/** Fills the shared placeholders. Missing copy falls back to the design default,
+ *  so clearing a field can never leave a blank chip on stream. */
+function fillCopy(slot, field, vars) {
+  const c = (CFG.copy && CFG.copy[slot]) || {};
+  const tmpl = (c[field] != null && String(c[field]).trim() !== '')
+    ? c[field] : (DEFAULT_COPY[slot] && DEFAULT_COPY[slot][field]) || '';
+  return String(tmpl)
+    .replace(/\{username\}/g, vars.username == null ? '' : vars.username)
+    .replace(/\{count\}/g, vars.count == null ? '' : Number(vars.count).toLocaleString())
+    .replace(/\{next\}/g, vars.next == null ? '' : Number(vars.next).toLocaleString())
+    .replace(/\{label\}/g, vars.label == null ? '' : vars.label)
+    .trim();
+}
 
 function assetSrc(a) {
   if (!a) return null;
@@ -508,7 +534,7 @@ async function runAlert(item) {
   const sfxUrl = assetSrc(up.audio) || DEFAULT_MEDIA.smack;
 
   const chip = document.getElementById('alert-chip');
-  chip.textContent = tok.chip;
+  chip.textContent = fillCopy(item.slot, 'chip', { username: item.username });
   chip.style.background = tok.fill;
   chip.style.color = tok.ink;
 
@@ -516,7 +542,7 @@ async function runAlert(item) {
   const verb = document.getElementById('alert-verb');
   user.textContent = item.username;
   user.style.color = tok.user;
-  verb.textContent = tok.verb;
+  verb.textContent = fillCopy(item.slot, 'verb', { username: item.username });
   // Auto-shrink rather than wrap mid-name or push the verb to a third line.
   const n = item.username.length;
   document.getElementById('alert-hero').style.fontSize = n > 16 ? '62px' : n > 12 ? '76px' : '94px';
@@ -559,8 +585,11 @@ async function runMilestone(value) {
   const meter = document.getElementById('meter');
   const up = ASSETS.milestone || {};
 
-  hero.textContent = `${value.toLocaleString()} ${(CFG.meter && CFG.meter.label) || 'FOLLOWS'}!`;
-  next.textContent = `Next up — ${(value + every).toLocaleString()}`;
+  const label = (CFG.meter && CFG.meter.label) || 'FOLLOWS';
+  const vars = { count: value, next: value + every, label: label };
+  document.getElementById('ms-kicker').textContent = fillCopy('milestone', 'kicker', vars);
+  hero.textContent = fillCopy('milestone', 'hero', vars);
+  next.textContent = fillCopy('milestone', 'next', vars);
   next.style.opacity = '0';
 
   const gifUrl = assetSrc(up.gif);
@@ -630,6 +659,7 @@ async function runAnthem() {
   const gifUrl = assetSrc(up.gif) || DEFAULT_MEDIA.fireworks;
   const sfxUrl = assetSrc(up.audio) || DEFAULT_MEDIA.anthem;
 
+  document.getElementById('anthem-chip').textContent = fillCopy('anthem', 'chip', {});
   const box = document.getElementById('anthem-gifbox');
   const band = document.getElementById('anthem-band');
   box.style.opacity = '1';

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPIN THE SCREEN — Control</title>
+<!--
+  Operator controls for the wheel. SETUP-ONLY, like the other control pages: open it
+  between streams (or on a second screen), not as a browser source.
+
+  THE DOCK OWNS THE TRUTH. Everything here reads and writes the dock's own settings
+  through /api/settings — this page holds no state of its own and invents nothing. The
+  wheel's tier floors, enabled results, penny-spin rule and signature lifetimes all
+  already live in AppSettingsSchema; they simply had no UI until now.
+
+  The one thing that is NOT a setting is Preview. It publishes `wheel.preview`, which
+  the overlay renders through the identical code path as a real spin but WITHOUT laying
+  a brick — the wall is a ledger of real money and must not collect test data. The dock
+  never sees it and never persists it, so `wheel.spin` stays something only the dock
+  publishes.
+
+  No dead controls: every input here does something. The only disabled state is a
+  validation gate (Save disables while the tier floors are not strictly increasing).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Fredoka, system-ui, sans-serif; background: #140A22; color: #FAF5FF;
+    padding: 28px 22px 60px; line-height: 1.45;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: .01em; }
+  .sub { color: #C084FC; font-size: 15px; margin-top: 2px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; float: right;
+    font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px;
+    padding: 6px 14px; border-radius: 999px;
+    background: rgba(42,4,71,.7); border: 1px solid rgba(232,121,249,.4); color: #C084FC;
+  }
+  .pill.ok { border-color: rgba(74,222,128,.5); color: #4ADE80; }
+  .pill.bad { border-color: rgba(248,113,113,.5); color: #F87171; }
+
+  section {
+    background: rgba(42,4,71,.45); border: 1px solid rgba(168,85,247,.28);
+    border-radius: 14px; padding: 20px 22px; margin-top: 20px;
+  }
+  h2 { font-size: 19px; font-weight: 600; margin-bottom: 4px; }
+  .hint { color: rgba(250,245,255,.62); font-size: 13.5px; margin-bottom: 16px; }
+  .hint code { font-family: 'DM Mono', monospace; color: #C084FC; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+  label.field { display: block; }
+  label.field span { display: block; font-size: 13px; color: rgba(250,245,255,.7); margin-bottom: 5px; }
+  input[type=number] {
+    width: 100%; padding: 9px 12px; border-radius: 9px;
+    background: rgba(20,10,34,.9); border: 1px solid rgba(168,85,247,.35);
+    color: #FAF5FF; font-family: 'DM Mono', monospace; font-size: 15px;
+  }
+  input[type=number]:focus { outline: none; border-color: #E879F9; }
+  .usd { font-family: 'DM Mono', monospace; font-size: 12px; color: rgba(250,245,255,.5); margin-top: 4px; }
+
+  .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 9px; }
+  .results label {
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
+    padding: 9px 12px; border-radius: 9px;
+    background: rgba(20,10,34,.7); border: 1px solid rgba(168,85,247,.22); font-size: 15px;
+  }
+  .results label:hover { border-color: rgba(232,121,249,.5); }
+  .results input { accent-color: #A855F7; width: 17px; height: 17px; }
+
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; }
+  .toggle input { accent-color: #A855F7; width: 18px; height: 18px; }
+
+  button {
+    font-family: Fredoka, sans-serif; font-weight: 600; font-size: 15px; cursor: pointer;
+    padding: 10px 20px; border-radius: 10px; border: 1px solid transparent;
+    background: rgba(168,85,247,.22); border-color: rgba(168,85,247,.5); color: #FAF5FF;
+  }
+  button:hover:not(:disabled) { background: rgba(168,85,247,.36); }
+  button.primary { background: #A855F7; border-color: #A855F7; }
+  button.primary:hover:not(:disabled) { background: #B96BF8; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  select {
+    padding: 9px 12px; border-radius: 9px; background: rgba(20,10,34,.9);
+    border: 1px solid rgba(168,85,247,.35); color: #FAF5FF; font-family: Fredoka, sans-serif; font-size: 15px;
+  }
+  .msg { margin-top: 14px; font-size: 14px; min-height: 20px; }
+  .msg.ok { color: #4ADE80; } .msg.bad { color: #F87171; }
+  .stat { font-family: 'DM Mono', monospace; font-size: 13px; color: rgba(250,245,255,.66); }
+  .stat b { color: #C084FC; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pill" id="conn">connecting…</div>
+  <h1>Spin The Screen</h1>
+  <div class="sub">Operator controls — setup only, not a browser source.</div>
+
+  <section>
+    <h2>Tier floors</h2>
+    <div class="hint">
+      In <b>coin equivalents</b> — 1 TikTok coin = 1 YouTube jewel = $0.01 of viewer spend, and a
+      Super Chat converts at the same rate. A gift below the <code>spin</code> floor produces
+      <b>no spin at all</b>: that floor doubles as the qualification threshold. Floors must be
+      strictly increasing.
+    </div>
+    <div class="grid" id="thresholds"></div>
+    <label class="toggle" style="margin-top:16px">
+      <input type="checkbox" id="penny">
+      <span>Allow penny spins — let gifts under the spin floor (but ≥1 coin) qualify at Spin tier.
+      Off by default so 1-coin gifts stay reserved for the rose/pet mechanic.</span>
+    </label>
+  </section>
+
+  <section>
+    <h2>Enabled results</h2>
+    <div class="hint">
+      Disabled results are never selected and never shown; probability redistributes equally among
+      the rest. At least one must stay on. With exactly one enabled the overlay skips the spin
+      animation — a reel that can only land on one slice is a lie.
+    </div>
+    <div class="results" id="results"></div>
+  </section>
+
+  <section>
+    <h2>Signature lifetimes</h2>
+    <div class="hint">
+      How long a name stays on the <b>signature</b> registry. Takeover and Legend are session-scoped
+      and have no clock — they clear when the dock's session rotates. Note the supporter wall
+      deliberately ignores all of this: bricks are permanent until the wall wraps, because a brick
+      cannot vanish out of the middle of a physical wall.
+    </div>
+    <div class="grid" id="expiry"></div>
+  </section>
+
+  <section>
+    <h2>Preview</h2>
+    <div class="hint">
+      Plays an effect on the live overlay through the identical code path as a real spin —
+      <b>but lays no brick</b> and is never persisted. Safe to use mid-stream if you want to see
+      one; it will appear on stream, so pick your moment.
+    </div>
+    <div class="row">
+      <select id="pv-result"></select>
+      <select id="pv-tier"></select>
+      <button class="primary" id="pv-go">▶ Preview on overlay</button>
+    </div>
+    <div class="msg" id="pv-msg"></div>
+  </section>
+
+  <section>
+    <h2>State</h2>
+    <div class="hint">Live from the dock. The wall rebuilds from this on every overlay reload.</div>
+    <div class="stat" id="state">reading…</div>
+    <div class="row" style="margin-top:14px">
+      <button id="refresh">↻ Refresh</button>
+    </div>
+  </section>
+
+  <div class="row" style="margin-top:22px">
+    <button class="primary" id="save">Save settings</button>
+    <button id="reload">Discard changes</button>
+    <span class="msg" id="msg"></span>
+  </div>
+</div>
+
+<script src="jjx-core.js?v=8"></script>
+<script>
+/* Presentation only — the dock owns the canonical result keys (shared/schemas/wheel.ts). */
+const RESULTS = [
+  ['curse','◍ Curse'], ['stamp','✦ Stamp'], ['flood','◒ Buckets'], ['weather','❉ Weather'],
+  ['crack','◆ Crack'], ['spotlight','▲ Spotlight'], ['frame','▣ Frame'], ['avatar','◉ Avatar'],
+  ['ball','● Ball Drop'],
+];
+const TIERS = ['spin','power','takeover','legend'];
+const THRESHOLD_HINT = { spin:'qualification floor', power:'', takeover:'', legend:'' };
+
+const $ = (id) => document.getElementById(id);
+const BASE = JJX.dockBase();          // same resolution every other page uses
+let current = null;                   // last-loaded settings.wheel
+
+function setConn(text, cls) { const p = $('conn'); p.textContent = text; p.className = 'pill ' + (cls || ''); }
+function say(el, text, cls) { const n = $(el); n.textContent = text; n.className = 'msg ' + (cls || ''); }
+
+/* ── build the form ── */
+for (const t of TIERS) {
+  const l = document.createElement('label'); l.className = 'field';
+  l.innerHTML = `<span>${t.toUpperCase()}${THRESHOLD_HINT[t] ? ' — ' + THRESHOLD_HINT[t] : ''}</span>` +
+                `<input type="number" min="1" step="1" id="th-${t}">` +
+                `<div class="usd" id="usd-${t}">—</div>`;
+  $('thresholds').appendChild(l);
+}
+for (const [k, label] of RESULTS) {
+  const l = document.createElement('label');
+  l.innerHTML = `<input type="checkbox" id="res-${k}"><span>${label}</span>`;
+  $('results').appendChild(l);
+}
+for (const [id, label] of [['spinMinutes','SPIN — minutes'], ['powerMinutes','POWER — minutes']]) {
+  const l = document.createElement('label'); l.className = 'field';
+  l.innerHTML = `<span>${label}</span><input type="number" min="1" max="1440" step="1" id="ex-${id}">`;
+  $('expiry').appendChild(l);
+}
+for (const [k, label] of RESULTS) $('pv-result').add(new Option(label, k));
+for (const t of TIERS) $('pv-tier').add(new Option(t.toUpperCase(), t));
+$('pv-tier').value = 'takeover';
+
+/* Coins → dollars, shown live so the floors are readable as money. */
+function refreshUsd() {
+  for (const t of TIERS) {
+    const v = Number($('th-' + t).value);
+    $('usd-' + t).textContent = Number.isFinite(v) && v > 0 ? '= $' + (v * 0.01).toFixed(2) : '—';
+  }
+  validate();
+}
+/* The dock rejects non-increasing floors; gate here too so the error is immediate
+   rather than a round-trip. This is the ONLY disabled state on the page. */
+function validate() {
+  const v = TIERS.map((t) => Number($('th-' + t).value));
+  const increasing = v.every((n, i) => Number.isFinite(n) && n >= 1 && (i === 0 || n > v[i - 1]));
+  const anyResult = RESULTS.some(([k]) => $('res-' + k).checked);
+  const ok = increasing && anyResult;
+  $('save').disabled = !ok;
+  if (!increasing) say('msg', 'Tier floors must be strictly increasing (spin < power < takeover < legend).', 'bad');
+  else if (!anyResult) say('msg', 'At least one result must stay enabled.', 'bad');
+  else say('msg', '', '');
+  return ok;
+}
+TIERS.forEach((t) => $('th-' + t).addEventListener('input', refreshUsd));
+RESULTS.forEach(([k]) => $('res-' + k).addEventListener('change', validate));
+
+/* ── load / save ── */
+async function load() {
+  try {
+    const res = await fetch(BASE + '/api/settings', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const w = (await res.json()).settings.wheel;
+    current = w;
+    for (const t of TIERS) $('th-' + t).value = w.thresholds[t];
+    $('penny').checked = !!w.allowPennySpins;
+    for (const [k] of RESULTS) $('res-' + k).checked = w.enabledResults.includes(k);
+    $('ex-spinMinutes').value = w.signatureExpiry.spinMinutes;
+    $('ex-powerMinutes').value = w.signatureExpiry.powerMinutes;
+    refreshUsd();
+    setConn('dock: connected', 'ok');
+    say('msg', '', '');
+  } catch (e) {
+    setConn('dock: unreachable', 'bad');
+    // Re-gate before reporting: a failed load leaves the fields empty, and an empty
+    // form must not be savable — it would POST zeroed floors over good settings.
+    validate();
+    say('msg', 'Could not read settings from the dock — is it running? (' + e.message + ')', 'bad');
+  }
+}
+
+$('save').addEventListener('click', async () => {
+  if (!validate()) return;
+  const body = { wheel: {
+    thresholds: Object.fromEntries(TIERS.map((t) => [t, Number($('th-' + t).value)])),
+    allowPennySpins: $('penny').checked,
+    enabledResults: RESULTS.map(([k]) => k).filter((k) => $('res-' + k).checked),
+    signatureExpiry: {
+      spinMinutes: Number($('ex-spinMinutes').value),
+      powerMinutes: Number($('ex-powerMinutes').value),
+    },
+  } };
+  try {
+    const res = await fetch(BASE + '/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const out = await res.json();
+    if (!res.ok || !out.ok) throw new Error((out.errors || ['HTTP ' + res.status]).join('; '));
+    current = out.settings.wheel;
+    say('msg', '✓ Saved — takes effect on the next qualifying gift, no restart needed.', 'ok');
+  } catch (e) {
+    say('msg', 'Save rejected: ' + e.message, 'bad');
+  }
+});
+$('reload').addEventListener('click', load);
+$('refresh').addEventListener('click', readState);
+
+/* ── live state ── */
+async function readState() {
+  try {
+    const res = await fetch(BASE + '/api/wheel/snapshot', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const s = await res.json();
+    $('state').innerHTML =
+      `session <b>${s.sessionId}</b><br>revision <b>${s.revision}</b> · ` +
+      `wall <b>${(s.wall || []).length}</b> supporter(s) · queued <b>${(s.queued || []).length}</b>`;
+  } catch (e) {
+    $('state').textContent = 'dock unreachable — ' + e.message;
+  }
+}
+
+/* ── preview ── */
+const client = JJX.dockRealtime({});
+const previewCh = client.channels.get(JJX.ABLY_MAIN_CHANNEL);
+client.connection.on('connected', () => setConn('dock: connected', 'ok'));
+client.connection.on('disconnected', () => setConn('dock: reconnecting…', ''));
+
+$('pv-go').addEventListener('click', () => {
+  const result = $('pv-result').value, tier = $('pv-tier').value;
+  /* Shaped exactly like a resolved spin so the overlay's real path runs unchanged.
+     A random revision keeps repeat previews from being swallowed by revision-dedupe. */
+  const spin = {
+    type: 'wheel.spin', schemaVersion: 2,
+    revision: 900000 + Math.floor(Math.random() * 99999),
+    eventId: 'preview-' + Date.now(),
+    sessionId: 'preview', issuedAt: Date.now(), simulation: true, platform: 'tiktok',
+    user: { username: 'PREVIEW' },
+    gift: { name: 'Preview', repeatCount: 1, totalValue: { spin: 50, power: 500, takeover: 2500, legend: 9000 }[tier] },
+    tier, result, variant: 'default', styleSeed: 'preview',
+    signature: { class: 'small', createdAt: Date.now(), expiresAt: null },
+    skippedSpinAnimation: true,     // straight to the effect; the reel is not what we're checking
+  };
+  previewCh.publish('wheel.preview', spin)
+    .then(() => say('pv-msg', '▶ sent — ' + result + ' at ' + tier.toUpperCase() + ' (no brick laid)', 'ok'))
+    .catch((e) => say('pv-msg', 'Could not reach the overlay: ' + e.message, 'bad'));
+});
+
+load();
+readState();
+setInterval(readState, 10000);
+</script>
+</body>
+</html>

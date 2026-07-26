@@ -1424,7 +1424,12 @@ function showHero(run, spin) {
 function startSettle(run) {
   // The wall is never attached to a run: a brick outlives every spin, so a
   // teardown must not be able to reach it.
-  addSupporter(run.spin);
+  //
+  // A PREVIEW plays the full effect but lays NO brick. The wall is a ledger of real
+  // money; an operator checking what Legend Crack looks like must not leave a
+  // supporter in it. Preview spins are also never persisted by the dock, so a
+  // reload clears any trace of them.
+  if (!run.spin.preview) addSupporter(run.spin);
   finishActive();
 }
 
@@ -1896,6 +1901,14 @@ function connect() {
     client.connection.on('connected', () => { conn.textContent = 'wheel: live ✓'; });
     client.connection.on('disconnected', () => { conn.textContent = 'wheel: reconnecting…'; });
     ch.subscribe('wheel.spin', (msg) => onWheelSpin(msg.data));
+    // Operator preview from wheel-control.html. Same renderer, same code path — the
+    // only difference is that it lays no brick (see startSettle). Deliberately a
+    // separate event name so a preview can never be mistaken for a resolved spin,
+    // and so the dock stays the only publisher of `wheel.spin`.
+    ch.subscribe('wheel.preview', (msg) => {
+      const p = msg && msg.data;
+      if (p) onWheelSpin({ ...p, preview: true });
+    });
     hydrate();
     // Head tracking rides the same socket on its own channel (contract 2). It is a
     // continuous stream, so it stays OFF the batched publish path and off Ably.
