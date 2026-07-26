@@ -530,9 +530,25 @@ textarea:focus-visible,[tabindex]:focus-visible{
   padding:1px 5px; margin-left:8px; vertical-align:1px;
 }
 .g-was{display:block; font-family:var(--mono); font-size:10px; color:var(--text-mute-2); margin-top:2px}
-#giftFoot{
+#giftFoot,#chatFoot{
   background:var(--bg-sidebar); border-top:1px solid var(--line-row); padding:8px 14px;
   display:flex; justify-content:space-between; gap:12px; font-family:var(--mono); font-size:11px; color:var(--text-mute-2);
+}
+/* ---------- recent chat ----------
+   The dock has held 148,415 chat messages and shown none of them on a record: the provider seam's
+   getRecentMessages has always returned an empty array. */
+#chatShell{border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:10px}
+.chat-row{padding:9px 14px; border-top:1px solid var(--line-row); font-size:12.5px; display:grid; grid-template-columns:118px minmax(0,1fr); gap:8px; align-items:baseline}
+.chat-row:first-child{border-top:0}
+.chat-row:hover{background:var(--panel-2)}
+.chat-when{font-family:var(--mono); font-size:11px; color:var(--text-mute-2)}
+.chat-msg{text-wrap:pretty; overflow-wrap:anywhere}
+/* Posted under a name they no longer use. Marked because that rename is exactly why these
+   messages were invisible until now. */
+.chat-as{
+  display:inline-block; font-family:var(--mono); font-size:9.5px; letter-spacing:.06em;
+  color:var(--text-mute-2); border:1px solid var(--line-input); border-radius:3px;
+  padding:1px 5px; margin-left:8px;
 }
 .gap-note{background:var(--panel-2); border:1px solid var(--line-input); border-radius:9px; padding:12px 14px; margin-top:14px; font-size:12.5px; color:var(--text-mute); text-wrap:pretty}
 
@@ -694,6 +710,15 @@ textarea:focus-visible,[tabindex]:focus-visible{
               <div id="giftFoot"><span id="giftFootL"></span><span>session ids on hover</span></div>
             </div>
             <div class="gap-note" id="baselineGap" hidden></div>
+
+            <div class="sec-head" style="margin-top:22px">
+              <h2 class="sec-title">Recent chat</h2>
+              <span class="meta" id="chatCountMeta"></span>
+            </div>
+            <div id="chatShell">
+              <div id="chatBody"></div>
+              <div id="chatFoot"><span id="chatFootL"></span><span id="chatFootR"></span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1050,6 +1075,7 @@ const u = (reason) =>
 const nInt = (n) => Number(n).toLocaleString("en-US");
 const nUsd = (n) => "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const PLAT = { tiktok: "TT", youtube: "YT" };
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function dateShort(ms){
   if (!ms) return null;
@@ -1175,8 +1201,8 @@ function renderIndexStatus(){
   } else if (state.indexState === "ready"){
     el.textContent = "searching name · @handle · alias · note text";
     el.title = "Aliases here are the alternate names on each identity. The curated aliases table " +
-               "(chat_log.sqlite) is not served over HTTP, so it is not searched. " +
-               "do_not_surface notes are stripped by the dock and are never searched.";
+               "(profiles.sqlite — 24 rows covering 5 people) is not served over HTTP, so it is " +
+               "not searched. do_not_surface notes are stripped by the dock and are never searched.";
   } else {
     el.textContent = "";
   }
@@ -2941,6 +2967,8 @@ function renderRecord(){
     $("recActions").innerHTML = ""; $("recNumbers").innerHTML = "";
     $("recProv").hidden = true;
     $("aiWrap").innerHTML = ""; $("notesWrap").innerHTML = ""; $("giftBody").innerHTML = "";
+    $("chatBody").innerHTML = ""; $("chatCountMeta").textContent = "";
+    $("chatFootL").textContent = ""; $("chatFootR").textContent = "";
     return;
   }
   if (state.recordError || !state.record){
@@ -2952,6 +2980,8 @@ function renderRecord(){
         " — " + (state.recordError || "no body")) + "</span>";
     $("recActions").innerHTML = ""; $("recNumbers").innerHTML = ""; $("recProv").hidden = true;
     $("aiWrap").innerHTML = ""; $("notesWrap").innerHTML = ""; $("giftBody").innerHTML = "";
+    $("chatBody").innerHTML = ""; $("chatCountMeta").textContent = "";
+    $("chatFootL").textContent = ""; $("chatFootR").textContent = "";
     $("giftFootL").textContent = ""; $("notesPrivacy").textContent = ""; $("baselineGap").hidden = true;
     return;
   }
@@ -3015,12 +3045,22 @@ function renderRecord(){
       "USD · live layer only",
       '<button class="link why" data-why="1">why?</button>',
       byPlat("youtube") ? "no YouTube support recorded for this viewer" : "no YouTube identity linked"),
-    numCard("First seen", null, "", "",
-      firstLogged
-        ? "the log starts when logging started · first logged " + dateShort(firstLogged)
-        : "the log starts when logging started, which is not when this viewer appeared"),
-    numCard("Birthday", null, "", "",
-      "the record API does not return a birthday · do not guess"),
+    /* FIRST LOGGED, not "first seen".
+       The card used to print ⊘ Unavailable and then state the date in its own reason line, which
+       is the worst of both — it withheld a fact it was simultaneously showing. The honest version
+       is to give the date under the name of the thing it actually is: the first gift the DOCK
+       logged, which is a real, checkable event. It is still not when this viewer first appeared,
+       and the unit line keeps saying so rather than letting the number imply tenure. */
+    numCard("First logged", firstLogged ? dateShort(firstLogged) : null,
+      "first gift in the dock's own log", "",
+      "no gift from this viewer is in the dock's own log yet"),
+    /* Curated by the streamer from his own calendar. Absent is still ⊘ with the reason — the
+       point was never to hide it, only never to guess one. */
+    numCard("Birthday",
+      r.birthday ? MONTHS[r.birthday.month - 1] + " " + r.birthday.day : null,
+      r.birthday && r.birthday.confidence ? r.birthday.confidence + " confidence · from your calendar" : "from your calendar",
+      "",
+      "no birthday recorded for this viewer · the dock never guesses one"),
   ].join("");
 
   /* provenance */
@@ -3050,6 +3090,8 @@ function renderRecord(){
   $("giftFootL").textContent = capped
     ? "showing " + gifts.length + " · capped by the API at 200"
     : "showing all " + gifts.length;
+
+  renderChat(r.chat, name);
 
   $("baselineGap").hidden = isLiveOnly;
   if (!isLiveOnly){
@@ -3133,8 +3175,26 @@ function renderAi(ai){
     (ai.guess ? '<p class="ai-sub"><b>AI guess — may be wrong</b>' + esc(ai.guess) + "</p>" : "") +
     (ai.followup ? '<p class="ai-sub"><b>Follow up on</b>' + esc(ai.followup) + "</p>" : "") +
     '<div id="aiMeta">' + tier + '<span class="meta">' + esc(micro) + "</span></div>" +
-    '<div class="reason">written: <span class="unavail"><span class="g">⊘</span>Unavailable</span>' +
-    " — the summary store keeps no generated-at timestamp.</div>" +
+    /* PROVENANCE. This line used to read "written: ⊘ Unavailable — the summary store keeps no
+       generated-at timestamp", which was simply wrong: every one of the 304 stored profiles has
+       carried a timestamp, a model and a message count since it was written, and the query just
+       never selected them. It matters because a summary is a machine's reading of a person and
+       ages badly — one written from 35 messages in June should not read in August with the same
+       authority as one written last night. */
+    '<div class="reason">' +
+    (ai.generatedAt
+      ? "written " + esc(stamp(ai.generatedAt)) +
+        (ai.model ? " by " + esc(ai.model) : "") +
+        (ai.messagesConsidered != null ? " · from " + esc(ai.messagesConsidered) + " messages" : "") +
+        (ai.messagesWithheld ? " · " + esc(ai.messagesWithheld) + " withheld by the sensitive filter" : "")
+      : 'written: <span class="unavail"><span class="g">⊘</span>Unavailable</span> — this row carries no timestamp') +
+    /* Which NAME it is filed under. A summary written before a rename is stored under the old
+       spelling, and saying so is the difference between "the dock found it" and "the dock is
+       showing me someone else's". */
+    (ai.key && state.record && state.record.knownNames && state.record.knownNames.length > 1
+      ? '<div style="margin-top:3px">filed under <span class="mono">' + esc(ai.key) + "</span></div>"
+      : "") +
+    "</div>" +
     '<div id="aiActions">' + (
       state.aiDeleteArmed
         ? '<button class="btn sm danger" id="aiDelGo">Confirm — delete this summary</button>' +
@@ -3145,6 +3205,51 @@ function renderAi(ai){
     ) + "</div>" +
     (state.aiDeleteError ? '<div class="reason" style="color:var(--red-text)">' + esc(state.aiDeleteError) + "</div>" : "") +
     "</div>";
+}
+
+/**
+ * The viewer's own words, from the dock's chat log.
+ *
+ * A message posted under a name they no longer use is marked as such. That is not decoration:
+ * a rename is exactly why these messages were unreachable before, and seeing "posted as <old
+ * name>" is what makes the gap legible rather than mysterious.
+ */
+function renderChat(chat, currentName){
+  if (!chat){
+    $("chatCountMeta").textContent = "";
+    $("chatBody").innerHTML = '<div style="padding:16px 14px">' +
+      u("The record payload carries no chat — the dock is older than this view.") + "</div>";
+    $("chatFootL").textContent = ""; $("chatFootR").textContent = "";
+    return;
+  }
+  if (chat.unavailableReason){
+    $("chatCountMeta").textContent = "";
+    $("chatBody").innerHTML = '<div style="padding:16px 14px">' + u(chat.unavailableReason) + "</div>";
+    $("chatFootL").textContent = ""; $("chatFootR").textContent = "";
+    return;
+  }
+
+  const msgs = Array.isArray(chat.messages) ? chat.messages : [];
+  $("chatCountMeta").textContent = nInt(chat.total || 0) + (chat.total === 1 ? " message" : " messages");
+  $("chatBody").innerHTML = msgs.length
+    ? msgs.map((m) =>
+        '<div class="chat-row"><span class="chat-when">' + esc(stamp(m.timestamp)) + "</span>" +
+        '<span class="chat-msg">' + esc(m.message) +
+        (m.postedAs ? '<span class="chat-as" title="Posted under a name this viewer no longer uses">as ' +
+          esc(m.postedAs) + "</span>" : "") + "</span></div>").join("")
+    : '<div style="padding:16px 14px">' +
+      u("No chat from this viewer in the dock's log. The log is keyed by display name, so a viewer " +
+        "who has only ever gifted — never typed — has nothing here.") + "</div>";
+
+  $("chatFootL").textContent = msgs.length
+    ? "showing " + msgs.length + " of " + nInt(chat.total)
+    : "";
+  /* Which spellings these came from. Silent when there is only the current one — saying "matched
+     1 name" on every ordinary viewer would turn a real signal into furniture. */
+  const others = (chat.matchedNames || []).filter((n) => n !== currentName);
+  $("chatFootR").textContent = others.length
+    ? "includes " + others.length + " earlier name" + (others.length === 1 ? "" : "s")
+    : "";
 }
 
 function renderNote(n){
