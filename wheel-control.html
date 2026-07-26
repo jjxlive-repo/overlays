@@ -137,6 +137,18 @@
   </section>
 
   <section>
+    <h2>Ball Drop lens</h2>
+    <div class="hint">
+      The ball carries a warped crop of your camera rather than a flat one, so the face fills
+      the sphere instead of sitting small in the middle of the room. <b>Power</b> is how hard the
+      centre bulges — 1.0 is no distortion, higher pushes the nose into the glass. <b>Crop</b> is
+      how much around your head to take: lower is tighter. Both need head tracking, since the
+      crop centres on the tracked face.
+    </div>
+    <div class="grid" id="lens"></div>
+  </section>
+
+  <section>
     <h2>Signature lifetimes</h2>
     <div class="hint">
       How long a name stays on the <b>signature</b> registry. Takeover and Legend are session-scoped
@@ -211,6 +223,16 @@ for (const [k, label] of RESULTS) {
   l.innerHTML = `<input type="checkbox" id="res-${k}"><span>${label}</span>`;
   $('results').appendChild(l);
 }
+for (const [id, label, min, max, step, note] of [
+  ['power', 'POWER — centre bulge', 1, 3, 0.05, '1.0 = flat, 1.55 = default'],
+  ['crop',  'CROP — head multiple',  0.6, 2.5, 0.05, 'lower = tighter on the face'],
+]) {
+  const l = document.createElement('label'); l.className = 'field';
+  l.innerHTML = "<span>" + label + "</span>" +
+                '<input type="number" min="' + min + '" max="' + max + '" step="' + step + '" id="lens-' + id + '">' +
+                '<div class="usd">' + note + '</div>';
+  document.getElementById('lens').appendChild(l);
+}
 for (const t of TIERS) {
   const l = document.createElement('label'); l.className = 'field';
   l.innerHTML = "<span>" + t.toUpperCase() + " — hold (ms)</span>" +
@@ -271,6 +293,8 @@ async function load() {
     for (const t of TIERS) $('th-' + t).value = w.thresholds[t];
     $('penny').checked = !!w.allowPennySpins;
     for (const [k] of RESULTS) $('res-' + k).checked = w.enabledResults.includes(k);
+    $('lens-power').value = (w.lens && w.lens.power) || '';
+    $('lens-crop').value = (w.lens && w.lens.crop) || '';
     for (const t of TIERS) $('hold-' + t).value = (w.holdMs && w.holdMs[t]) || '';
     refreshHold();
     $('ex-spinMinutes').value = w.signatureExpiry.spinMinutes;
@@ -292,6 +316,7 @@ $('save').addEventListener('click', async () => {
   const body = { wheel: {
     thresholds: Object.fromEntries(TIERS.map((t) => [t, Number($('th-' + t).value)])),
     holdMs: Object.fromEntries(TIERS.map((t) => [t, Number($('hold-' + t).value)])),
+    lens: { power: Number($('lens-power').value), crop: Number($('lens-crop').value) },
     allowPennySpins: $('penny').checked,
     enabledResults: RESULTS.map(([k]) => k).filter((k) => $('res-' + k).checked),
     signatureExpiry: {
@@ -353,6 +378,9 @@ $('pv-go').addEventListener('click', () => {
        previewing it is the whole point of having both on one page — requiring a Save
        first made the control look like it did nothing. */
     holdMs: Number(document.getElementById('hold-' + tier).value) || undefined,
+    /* From the form too, so the lens can be dialled in against a live preview. */
+    lens: { power: Number(document.getElementById('lens-power').value) || 1.55,
+            crop: Number(document.getElementById('lens-crop').value) || 1.15 },
     skippedSpinAnimation: true,     // straight to the effect; the reel is not what we're checking
   };
   previewCh.publish('wheel.preview', spin)
