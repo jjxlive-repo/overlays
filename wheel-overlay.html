@@ -150,7 +150,12 @@
      The pink centre line and the two triangles are real elements (below), drawn
      ABOVE the scrolling strip, not baked into a background that painted behind it. */
   .reel-frame {
-    position: relative; width: 900px; height: 1200px; border-radius: 44px;
+    /* width/height come from settings.wheel.reel (applyReelLayout), 900x1200 is only
+       the fallback for a page that has not received a layout yet. Everything inside —
+       the viewport window, the landing line, the gift chip — is positioned by
+       PERCENTAGE of this box, so it re-lays-out automatically at any width/height. */
+    position: relative; width: var(--wheel-reel-w, 900px); height: var(--wheel-reel-h, 1200px);
+    border-radius: 44px;
     background: radial-gradient(ellipse at 50% 32%, #5B1799 0%, #3B0764 58%, #240449 100%);
     border: 10px solid #7B2FBE;
     box-shadow: 0 0 0 4px rgba(123,47,190,.4), inset 0 0 70px rgba(0,0,0,.4), 0 26px 80px rgba(0,0,0,.55);
@@ -681,6 +686,7 @@ function applyReelLayout(reel) {
   if (!reel) return;
   const scale = Number(reel.scale), x = Number(reel.offsetX), y = Number(reel.offsetY);
   const content = Number(reel.contentScale);
+  const w = Number(reel.width), h = Number(reel.height);
   const stage = $('wheel-stage');
   if (Number.isFinite(scale) && scale > 0) stage.style.setProperty('--wheel-scale', scale);
   if (Number.isFinite(x)) stage.style.setProperty('--wheel-x', x + 'px');
@@ -689,6 +695,13 @@ function applyReelLayout(reel) {
     wheelContentScale = content;
     stage.style.setProperty('--wheel-content-scale', content);
   }
+  // Real box dimensions, not a non-uniform transform — a non-uniform scaleX/scaleY
+  // would stretch the border, the corner radii and every glyph inside into an
+  // ellipse/oval mess. Setting actual width/height keeps everything crisp; the
+  // viewport window, landing line and gift chip are all positioned by percentage of
+  // this box already, so they re-lay-out for free at any width/height.
+  if (Number.isFinite(w) && w > 0) stage.style.setProperty('--wheel-reel-w', w + 'px');
+  if (Number.isFinite(h) && h > 0) stage.style.setProperty('--wheel-reel-h', h + 'px');
 }
 window.applyReelLayout = applyReelLayout;   // exercised by wheel-control's live preview path too
 
