@@ -1349,6 +1349,10 @@ function publishScanRequest() {
 let targetsNow = null;      // legacy target rect; Ball Drop no longer draws a bucket
 let camStill = null;        // { dataURL, rect } from gesture-cam, or null
 window.setTargets = (t) => { targetsNow = (t && t.w > 0 && t.h > 0) ? t : null; };
+let camStillRequest = null;
+/** Ask gesture-cam for a clean frame now. No-op without a dock — Ball Drop then flies
+ *  the sphere art alone, which is the documented fallback. */
+function requestCamStill() { if (camStillRequest) camStillRequest(); }
 window.setCamStill = (s) => { camStill = (s && s.dataURL && s.rect) ? s : null; };
 
 const BALL_BOUNCES = { spin: 1, power: 1, takeover: 2, legend: 2 };
@@ -1378,41 +1382,24 @@ function runBall(run) {
   // sticker, not as the ball landing in anything.
   publishScanRequest();
 
-  // ── Cover the live cam with a still, then punch a REAL HOLE in it ──
+  // ── The cam still ──────────────────────────────────────────────────
+  // Ask for a FRESH one right now, before this effect draws anything. gesture-cam
+  // captures the composited projector, so a still taken mid-effect contains whatever
+  // we had on screen at the time — which is how the ball ended up carrying the black
+  // hole instead of a face. Asking at t=0 gets a clean frame, and it arrives over the
+  // local socket well inside the 460ms before detach.
+  requestCamStill();
   const camR = camStill ? camStill.rect : camRect();
-  if (camStill) {
-    const frozen = place(el('fx cam-frozen'), camR.x, camR.y, camR.w, camR.h);
-    frozen.style.backgroundImage = `url('${camStill.dataURL}')`;
-    runNode(run, laneFx, frozen);
-  }
-  // A transparent punch just revealed the live camera underneath — so the "hole" was
-  // the streamer's face, and nothing read as missing. It has to be an actual void:
-  // black, with a hard rim and an inner shadow so it reads as punched THROUGH.
-  {
-    const c = headPoint(h, 0, 0);
-    const d = Math.max(h.w, h.h) * 1.30;
-    const hole = place(el('fx cam-hole'), c.x - d / 2, c.y - d / 2, d, d);
-    runNode(run, laneFx, hole);
-    for (let i = 0; i < 7; i++) {
-      const s = el('fx spark');
-      const sz = rnd(10, 26);
-      s.style.cssText = `left:${c.x}px;top:${c.y}px;width:${sz}px;height:${sz}px;background:#2A0447;` +
-        `--dx:${rnd(-200,200).toFixed(0)}px;--dy:${rnd(-160,60).toFixed(0)}px;--sd:${rnd(600,1000)}ms`;
-      runNode(run, laneFx, s);
-    }
-  }
 
   // ── The cam rect shrinks and rounds into a circle on the tracked head ──
+  // NOTHING is frozen or punched yet. Through the shrink the REAL camera is still
+  // live underneath — the face has to be visible right up to the moment the ball
+  // leaves with it, or there is nothing to take.
   const size = Math.max(h.w, h.h) * 1.15;
   const c0 = headPoint(h, 0, 0);
   const ball = el('fx ball');
   place(ball, camR.x, camR.y, camR.w, camR.h);
   ball.style.borderRadius = '0px';
-  if (camStill) {
-    ball.style.backgroundImage = `url('${camStill.dataURL}')`;
-    ball.style.backgroundSize = 'cover';
-    ball.style.backgroundPosition = 'center';
-  }
   const shell = el('ball-shell'); shell.style.cssText = 'position:absolute;inset:0';
   const gloss = el('ball-gloss'); gloss.style.cssText = 'position:absolute;inset:0';
   const ring  = el('ball-ring' + (legend ? ' legend' : '')); ring.style.cssText = 'position:absolute;inset:0;opacity:0;transition:opacity .3s ease';
@@ -1435,6 +1422,33 @@ function runBall(run) {
 
   // ── DETACHED: real physics. Not a head any more. ──
   runTimer(run, () => {
+    // THIS is the moment the face leaves. Only now does the ball take the still, the
+    // cam freeze go up, and the hole get punched — in that order, so the ball carries
+    // a picture of the face and the hole is what is left behind.
+    if (camStill) {
+      ball.style.backgroundImage = `url('${camStill.dataURL}')`;
+      ball.style.backgroundSize = 'cover';
+      ball.style.backgroundPosition = 'center';
+
+      const frozen = place(el('fx cam-frozen'), camStill.rect.x, camStill.rect.y,
+                                                camStill.rect.w, camStill.rect.h);
+      frozen.style.backgroundImage = `url('${camStill.dataURL}')`;
+      runNode(run, laneFx, frozen);
+    }
+    {
+      const c = headPoint(h, 0, 0);
+      const d = Math.max(h.w, h.h) * 1.30;
+      const hole = place(el('fx cam-hole'), c.x - d / 2, c.y - d / 2, d, d);
+      runNode(run, laneFx, hole);
+      for (let i = 0; i < 7; i++) {
+        const s = el('fx spark');
+        const sz = rnd(10, 26);
+        s.style.cssText = `left:${c.x}px;top:${c.y}px;width:${sz}px;height:${sz}px;background:#2A0447;` +
+          `--dx:${rnd(-200,200).toFixed(0)}px;--dy:${rnd(-160,60).toFixed(0)}px;--sd:${rnd(600,1000)}ms`;
+        runNode(run, laneFx, s);
+      }
+    }
+
     sparkBurst(run, { x: c0.x, y: c0.y }, Math.round(12 * k), k, legend);
     if (legend) {
       const trail = place(el('fx ball-trail'), c0.x - 6, c0.y, 12, 0);
@@ -2122,9 +2136,13 @@ function connect() {
     // when a Ball Drop fires — requesting at detach would arrive too late to cover.
     // Camera-level beats, for the other overlays sharing this frame (see publishFx).
     fxCh = client.channels.get('wheel-fx');
-    const askForStill = () => targets.publish('cam-snapshot-request', {}).catch(() => {});
-    askForStill();
-    setInterval(askForStill, 30000);
+    // gesture-cam snapshots the COMPOSITED projector, so a still taken while an effect
+    // is on screen contains that effect. That is how the ball came to carry its own
+    // black hole: the periodic capture ran during a Ball Drop, baked the hole in, and
+    // every later drop reused it. So the loop only ever fires when the stage is idle.
+    camStillRequest = () => targets.publish('cam-snapshot-request', {}).catch(() => {});
+    camStillRequest();
+    setInterval(() => { if (!active) camStillRequest(); }, 20000);
   } catch (e) {
     conn.textContent = 'wheel: transport unavailable';
   }
