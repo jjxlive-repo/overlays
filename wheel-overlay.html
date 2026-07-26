@@ -223,18 +223,31 @@
   }
   .stamp-die.legend { background-image: url('assets/wheel/stamp-die-legend.png'); }
 
-  /* The pressed impression. Ink coverage comes from a real rubber-ink alpha texture
-     (ink-mask-*, whose ALPHA is the ink — the ink-alpha-* files are opaque and would
-     mask nothing), so coverage breaks up like a genuine pressed stamp instead of
-     printing a clean rectangle. */
-  .stamp-ink {
-    display: flex; align-items: center; justify-content: center;
-    font-family: Boogaloo, Fredoka, system-ui, sans-serif;
-    color: #3B0764; white-space: nowrap; overflow: hidden;
+  /* The pressed impression.
+     MASK THE PLATE, NOT THE TEXT. The rubber-ink texture is what makes the edges
+     break up like real pressed ink — but applied to the NAME it just eats the name,
+     which on stream meant the stamp was effectively invisible. So the masked texture
+     is a coloured PLATE underneath, and the name sits on top of it unmasked.
+     The name also carries the project's 8-direction ink outline, which every name
+     over gameplay is supposed to have (design tokens) and which this was missing —
+     without it, plum-on-skin and gold-on-skin both disappear. */
+  .stamp-ink { position: absolute; }
+  .stamp-ink .ink-plate {
+    position: absolute; inset: 0; background: #3B0764; opacity: .92;
     -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
     -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   }
-  .stamp-ink.legend { color: #6B4B0B; text-shadow: 0 1px 0 rgba(253,230,138,.55); }
+  .stamp-ink .ink-name {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: Boogaloo, Fredoka, system-ui, sans-serif;
+    color: #FAF5FF; white-space: nowrap; letter-spacing: .02em;
+    text-shadow:
+      3px 0 0 #2A0447, -3px 0 0 #2A0447, 0 3px 0 #2A0447, 0 -3px 0 #2A0447,
+      3px 3px 0 #2A0447, -3px 3px 0 #2A0447, 3px -3px 0 #2A0447, -3px -3px 0 #2A0447;
+  }
+  .stamp-ink.legend .ink-plate { background: #6B4B0B; }
+  .stamp-ink.legend .ink-name  { color: #FDE68A; }
 
   @keyframes om-ripple { from { transform: scale(.25); opacity: .55; } to { transform: scale(1); opacity: 0; } }
   .ripple { border-radius: 50%; border: 3px solid rgba(232,121,249,.75); animation: om-ripple 520ms cubic-bezier(.2,.9,.2,1) both; }
@@ -297,8 +310,17 @@
   .curse-sigil { border-radius: 50%; background-size: cover; background-position: center; box-shadow: 0 0 0 3px #FBBF24; }
 
   /* ── FLOOD ◒ — buckets thrown from the sides ──────────────────────── */
+  /* The art ships an upright bucket AND a correctly drawn TIPPED one with its water
+     attached. Use both: fly the upright in, then SWAP to the tipped sprite. Rotating
+     the upright bucket 116° instead turns it into a sideways tube, which is what it
+     looked like on stream. */
   .bucket { background: url('assets/wheel/bucket.png') center / 100% 100% no-repeat; }
   .bucket.legend { background-image: url('assets/wheel/bucket-legend.png'); }
+  .bucket.pouring { background-image: url('assets/wheel/bucket-pour.png'); }
+  /* bucket-pour and water-sheet are both drawn RIGHT-FACING, so a bucket throwing
+     leftwards has to be mirrored. */
+  .bucket.flip, .water-y.flip { transform: scaleX(-1); }
+  .bucket.legend.pouring { filter: drop-shadow(0 0 10px rgba(251,191,36,.85)); }
   /* Water travels a real ARC, so the path is x and y on different timings. */
   @keyframes om-arc-x { from { transform: translateX(0); } to { transform: translateX(var(--ax, 0px)); } }
   @keyframes om-arc-y { 0% { transform: translateY(0) rotate(0deg); } 40% { transform: translateY(calc(var(--ah, -130px))) rotate(18deg); } 100% { transform: translateY(var(--ay, 0px)) rotate(46deg); } }
@@ -357,6 +379,9 @@
   .marquee.legend { border-image-source: url('assets/wheel/frame-marquee-legend.png'); }
   @keyframes om-marquee { to { transform: rotate(-360deg); } }
   .marquee.counter { animation: om-marquee 26s linear infinite; }
+  @keyframes om-marquee-glow { 0%,100% { filter: drop-shadow(0 0 10px rgba(232,121,249,.5)); } 50% { filter: drop-shadow(0 0 26px rgba(232,121,249,.95)); } }
+  .marquee-glow { animation: om-marquee-glow 1400ms ease-in-out infinite; }
+  .marquee.legend.marquee-glow { animation: none; filter: drop-shadow(0 0 24px rgba(251,191,36,.85)); }
   @keyframes om-chase { from { left: 0; } to { left: 100%; } }
   .stud { border-radius: 50%; background: #FDE68A; box-shadow: 0 0 12px rgba(251,191,36,.9); animation: om-chase var(--cd, 2600ms) linear infinite both; }
 
@@ -384,6 +409,13 @@
   .ball-trail { background: linear-gradient(180deg, rgba(251,191,36,.85), rgba(251,191,36,0)); border-radius: 6px; }
   /* The frozen cam still, covering the live cam so we own the pixels. */
   .cam-frozen { background-size: cover; background-position: center; }
+  /* A real void, not a transparent punch. Transparent revealed the LIVE camera
+     underneath, so the hole was the streamer's face and nothing looked missing. */
+  .cam-hole {
+    border-radius: 50%;
+    background: radial-gradient(circle, #000 58%, #14041F 78%, rgba(20,4,31,0) 100%);
+    box-shadow: inset 0 0 60px 20px #000, 0 0 0 5px rgba(232,121,249,.55), 0 0 40px rgba(232,121,249,.4);
+  }
   /* Tracked mode draws a lock-on reticle instead of a bucket — the game already
      has one on screen, and drawing a second would read as a mistake. */
   .ball-reticle {
@@ -405,14 +437,24 @@
      legible against arbitrary gameplay colour underneath. ── */
   .hero {
     position: absolute; left: 0; top: 760px; width: 1080px; text-align: center;
-    opacity: 0; transform: translateY(18px) scale(.96);
+    opacity: 0; transform: translateY(18px) scale(.96); isolation: isolate;
     transition: opacity .52s cubic-bezier(.18,1.2,.3,1), transform .52s cubic-bezier(.18,1.2,.3,1);
   }
   .hero.show { opacity: 1; transform: translateY(0) scale(1); }
+  /* A blurred dark halo behind the name. The 8-direction outline alone is not enough
+     over bright or busy gameplay — the same technique the Follow Meter uses to keep
+     its hero legible, and for the same reason: this is the ONE place the giver's name
+     is printed during impact, so it cannot be allowed to disappear into the frame. */
+  .hero::before {
+    content: ''; position: absolute; left: 90px; right: 90px; top: -26px; bottom: -14px;
+    background: rgba(13,8,22,.78); filter: blur(46px); border-radius: 50%; z-index: -1;
+  }
   .hero .h-name {
-    font-family: Boogaloo, Fredoka, system-ui, sans-serif; font-size: 96px; color: #FAF5FF;
-    text-shadow: 2px 0 0 #2A0447, -2px 0 0 #2A0447, 0 2px 0 #2A0447, 0 -2px 0 #2A0447,
-                 2px 2px 0 #2A0447, -2px 2px 0 #2A0447, 2px -2px 0 #2A0447, -2px -2px 0 #2A0447;
+    font-family: Boogaloo, Fredoka, system-ui, sans-serif; font-size: 112px; color: #FAF5FF;
+    line-height: 1.02;
+    text-shadow: 4px 0 0 #2A0447, -4px 0 0 #2A0447, 0 4px 0 #2A0447, 0 -4px 0 #2A0447,
+                 4px 4px 0 #2A0447, -4px 4px 0 #2A0447, 4px -4px 0 #2A0447, -4px -4px 0 #2A0447,
+                 0 10px 0 rgba(42,4,71,.9);
   }
   .hero .h-what { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 38px; color: #C084FC; letter-spacing: .04em; }
   .hero.tier-legend .h-name { color: #FDE68A; }
@@ -1062,19 +1104,46 @@ function runCrack(run) {
 // holds one beat, then slides away and the giver rises into it. You sit in
 // the dark. `hero: false` — the in-scene payoff IS the name.
 // ═══════════════════════════════════════════════════════════════════
+/**
+ * How much of the screen the light is allowed to take, by tier. A Spin should be a
+ * flourish you could talk over — a short beam grazing the top of the game, barely any
+ * dimming. A Legend should own the frame: full-height beam, the room actually dark.
+ * Everything in between scales monotonically, so the tier is readable from across the
+ * room without reading a word.
+ *
+ *   dark   how far the rest of the frame is dimmed
+ *   reach  beam length as a fraction of the drop to the ground line
+ *   cone   beam opacity
+ *   giver  how large the giver stands (they rise at the bottom of the beam, so a
+ *          short beam necessarily means a smaller figure higher up the frame)
+ */
+const SPOTLIGHT = {
+  spin:     { dark: 0.16, reach: 0.42, cone: 0.42, giver: 0.66 },
+  power:    { dark: 0.34, reach: 0.62, cone: 0.58, giver: 0.78 },
+  takeover: { dark: 0.56, reach: 0.82, cone: 0.74, giver: 0.90 },
+  legend:   { dark: 0.80, reach: 1.00, cone: 0.92, giver: 1.00 },
+};
+
 function runSpotlight(run) {
   const spin = run.spin, t = tierOf(spin), k = t.k;
   const legend = spin.tier === 'legend';
+  const cfg = SPOTLIGHT[spin.tier] || SPOTLIGHT.spin;
   const ground = LAYOUTS[layout].ground;
-  const stage = layout === 'cam-top' ? { x: 540, y: 1400 } : { x: 540, y: 760 };
+  // The beam stops short at low tiers, so the "floor" the giver stands on is the
+  // bottom of the beam rather than the layout's ground line.
+  const beamFloor = Math.round(ground * cfg.reach);
+  const stageX = 540;
 
   const dark = place(el('fx sl-dark'), 0, 0, 1080, 1920);
+  dark.style.background = `rgba(10,4,20,${cfg.dark})`;
   dark.style.opacity = '0';
   runNode(run, laneFx, dark);
 
   const W = 520 * k;
-  const cone = place(el('fx sl-cone'), 200 - W / 2, 0, W, ground);
-  const pool = place(el('fx sl-pool'), 200 - W / 2, ground - 70, W, 140);
+  const cone = place(el('fx sl-cone'), 200 - W / 2, 0, W, beamFloor);
+  cone.style.opacity = String(cfg.cone);
+  const pool = place(el('fx sl-pool'), 200 - W / 2, beamFloor - 70, W, 140);
+  pool.style.opacity = String(cfg.cone);
   runNode(run, laneFx, cone); runNode(run, laneFx, pool);
 
   const moveTo = (x, w) => {
@@ -1088,33 +1157,34 @@ function runSpotlight(run) {
   // FINDS YOUR FACE and holds one beat (460ms).
   runTimer(run, () => moveTo(headPoint(headNow, 0, 0).x, W), 1140);
   // SLIDES AWAY (440ms) — and the giver rises into it.
-  runTimer(run, () => moveTo(stage.x, W * 0.82), 1600);   // tightens to 0.82×
+  runTimer(run, () => moveTo(stageX, W * 0.82), 1600);   // tightens to 0.82×
 
   runTimer(run, () => {
-    const s = 300 * k;
-    // Hard cast shadow so they read as standing IN the beam, not pasted over it.
-    runNode(run, laneFx, place(el('fx sl-shadow'), stage.x - s * 0.8, ground - 40, s * 1.6, 90));
-    const g = place(el('fx sl-giver'), stage.x - s / 2, stage.y - s / 2, s, s);
+    const s = 300 * k * cfg.giver;
+    // Hard cast shadow so they read as standing IN the beam, not pasted over it —
+    // on the BEAM floor, which at low tiers is well above the layout ground line.
+    runNode(run, laneFx, place(el('fx sl-shadow'), stageX - s * 0.8, beamFloor - 40, s * 1.6, 90));
+    const g = place(el('fx sl-giver'), stageX - s / 2, beamFloor - s - 30, s, s);
     g.style.backgroundImage = `url('${avatarUrl(spin)}')`;
     runNode(run, laneFx, g);
 
-    const plate = place(el('fx sl-plate'), stage.x - 400, stage.y + s / 2 + 22, 800, 120);
+    const plate = place(el('fx sl-plate'), stageX - 400, beamFloor + 16, 800, 120);
     plate.innerHTML = `<div style="font-size:${52 * k}px">${esc(displayName(spin))}</div>` +
       `<div style="font-size:${30 * k}px;color:#C084FC">${legend ? 'OWNS THE STAGE' : 'HAS THE LIGHT'}</div>`;
     runNode(run, laneFx, plate);
 
     if (legend) {
-      runNode(run, laneFx, place(el('fx curse-halo legend'), stage.x - s / 2 - 24, stage.y - s / 2 - 24, s + 48, s + 48));
+      runNode(run, laneFx, place(el('fx curse-halo legend'), stageX - s / 2 - 24, beamFloor - s - 54, s + 48, s + 48));
       // Two extra sweeping beams.
       for (let i = 0; i < 2; i++) {
-        const b = place(el('fx sl-beam'), stage.x - 40 + (i ? 260 : -260), 0, 80, ground);
+        const b = place(el('fx sl-beam'), stageX - 40 + (i ? 260 : -260), 0, 80, beamFloor);
         b.style.transform = `rotate(${i ? 12 : -12}deg)`;
         runNode(run, laneFx, b);
       }
       // 14 gold stars dropping through the beam.
       for (let i = 0; i < 14; i++) {
-        const st = place(el('fx storm-p gold'), stage.x + rnd(-W / 2, W / 2), rnd(0, 300), 6, 22);
-        st.style.setProperty('--fy', (ground - 200).toFixed(0) + 'px');
+        const st = place(el('fx storm-p gold'), stageX + rnd(-W / 2, W / 2), rnd(0, 300), 6, 22);
+        st.style.setProperty('--fy', Math.max(120, beamFloor - 260).toFixed(0) + 'px');
         st.style.setProperty('--fd', rnd(1200, 2400).toFixed(0) + 'ms');
         st.style.animationDelay = rnd(0, 900).toFixed(0) + 'ms';
         runNode(run, laneFx, st);
@@ -1129,11 +1199,25 @@ function runSpotlight(run) {
 // ═══════════════════════════════════════════════════════════════════
 // FRAME ▣ — claim the frame. Tier drives how much screen it claims.
 // ═══════════════════════════════════════════════════════════════════
-const FRAME_INSET = { spin: 120, power: 74, takeover: 40, legend: 18 };
-const FRAME_THICK = { spin: 14,  power: 22, takeover: 32, legend: 44 };
+/**
+ * The handoff's ramp (inset 120/74/40/18, thickness 14/22/32/44) did not read on
+ * stream: 46px of inset on a 1920-tall frame is about 2%, and 14→22px of border is
+ * nearly invisible at streaming distance. Every tier looked the same until Legend
+ * added its second frame and studs, which made Legend the ONLY legible step.
+ *
+ * So the ramp is amplified — thickness roughly doubles across the range and the inset
+ * span is widened — AND each tier now gains a feature of its own, so the step is
+ * visible even before you judge the size:
+ *   spin      bare marquee, well inside the frame
+ *   power     + a breathing glow
+ *   takeover  + a second static frame just inside the first
+ *   legend    + counter-rotating outer frame and 12 chasing studs
+ */
+const FRAME_INSET = { spin: 150, power: 96, takeover: 44, legend: 12 };
+const FRAME_THICK = { spin: 20,  power: 38, takeover: 58, legend: 82 };
 
 function runFrame(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
   const legend = spin.tier === 'legend';
   const ins = FRAME_INSET[spin.tier], th = FRAME_THICK[spin.tier];
 
@@ -1141,6 +1225,19 @@ function runFrame(run) {
   const m = place(el('fx marquee' + (legend ? ' legend' : '')), ins, ins, 1080 - ins * 2, 1920 - ins * 2);
   m.style.borderWidth = th + 'px';
   runNode(run, laneFx, m);
+
+  // POWER and up: a breathing glow, so the step off Spin is visible immediately.
+  if (ti >= 1) m.classList.add('marquee-glow');
+
+  // TAKEOVER and up: a second frame just inside the first — reads as the claim
+  // thickening rather than merely growing.
+  if (ti >= 2) {
+    const g = ins + th + 10;
+    const inner = place(el('fx marquee' + (legend ? ' legend' : '')), g, g, 1080 - g * 2, 1920 - g * 2);
+    inner.style.borderWidth = Math.round(th * 0.42) + 'px';
+    inner.style.opacity = '.75';
+    runNode(run, laneFx, inner);
+  }
 
   if (legend) {
     const o = Math.max(4, ins - 14);
@@ -1228,7 +1325,14 @@ function runAvatar(run) {
 // THE BALL NEVER SCALES NON-UNIFORMLY — it is the camera, and any squash warps the
 // face inside. Impacts are uniform pulses only.
 // ═══════════════════════════════════════════════════════════════════
-let targetsNow = null;      // game bucket rect from the vision layer, or null
+let gameBalls = [];         // Ball Guys balls from gesture-cam — what Ball Drop bounces off
+let ballSignalsCh = null;
+function publishScanRequest() {
+  // Ask gesture-cam to start scanning the game region. It only scans in bursts, so
+  // without this the colliders simply are not being published when a gift lands.
+  if (ballSignalsCh) { try { ballSignalsCh.publish('scan-request', {}).catch(() => {}); } catch (e) {} }
+}
+let targetsNow = null;      // legacy target rect; Ball Drop no longer draws a bucket
 let camStill = null;        // { dataURL, rect } from gesture-cam, or null
 window.setTargets = (t) => { targetsNow = (t && t.w > 0 && t.h > 0) ? t : null; };
 window.setCamStill = (s) => { camStill = (s && s.dataURL && s.rect) ? s : null; };
@@ -1249,30 +1353,35 @@ function runBall(run) {
         w: targetsNow.w, h: targetsNow.h }
     : { x: 540, mouthY: ground - bh, floor: ground, w: bw, h: bh };
 
-  let bucket = null;
-  if (tracked) {
-    // Tracked: NO bucket of ours — a lock-on reticle on the game's own.
-    const r = el('fx ball-reticle');
-    place(r, targetsNow.x - 8, targetsNow.y - 8, targetsNow.w + 16, targetsNow.h + 16);
-    runNode(run, laneFx, r);
-  } else {
-    bucket = place(el('fx bucket' + (legend ? ' legend' : '')), target.x - bw / 2, target.mouthY, bw, bh);
-    runNode(run, laneFx, bucket);
-  }
+  // NO BUCKET. The ball falls into the actual Ball Guys game and bounces off the
+  // balls in it — the same interaction Bomb Drop already has, off the same colliders
+  // gesture-cam detects visually. Drawing our own bucket was a stand-in for a game
+  // we can in fact reach; a fake receptacle sitting on top of a real game reads as a
+  // sticker, not as the ball landing in anything.
+  publishScanRequest();
 
-  // ── Cover the live cam with a still, so the hole is punched in OUR pixels ──
+  // ── Cover the live cam with a still, then punch a REAL HOLE in it ──
   const camR = camStill ? camStill.rect : camRect();
   if (camStill) {
     const frozen = place(el('fx cam-frozen'), camR.x, camR.y, camR.w, camR.h);
     frozen.style.backgroundImage = `url('${camStill.dataURL}')`;
-    // The hole follows the head, because that is where the ball left from.
-    const c = headPoint(h, 0, 0);
-    const rad = Math.max(h.w, h.h) * 0.62;
-    const mask = `radial-gradient(circle ${rad}px at ${c.x - camR.x}px ${c.y - camR.y}px,` +
-                 ` transparent 0 98%, #000 100%)`;
-    frozen.style.webkitMaskImage = mask;
-    frozen.style.maskImage = mask;
     runNode(run, laneFx, frozen);
+  }
+  // A transparent punch just revealed the live camera underneath — so the "hole" was
+  // the streamer's face, and nothing read as missing. It has to be an actual void:
+  // black, with a hard rim and an inner shadow so it reads as punched THROUGH.
+  {
+    const c = headPoint(h, 0, 0);
+    const d = Math.max(h.w, h.h) * 1.30;
+    const hole = place(el('fx cam-hole'), c.x - d / 2, c.y - d / 2, d, d);
+    runNode(run, laneFx, hole);
+    for (let i = 0; i < 7; i++) {
+      const s = el('fx spark');
+      const sz = rnd(10, 26);
+      s.style.cssText = `left:${c.x}px;top:${c.y}px;width:${sz}px;height:${sz}px;background:#2A0447;` +
+        `--dx:${rnd(-200,200).toFixed(0)}px;--dy:${rnd(-160,60).toFixed(0)}px;--sd:${rnd(600,1000)}ms`;
+      runNode(run, laneFx, s);
+    }
   }
 
   // ── The cam rect shrinks and rounds into a circle on the tracked head ──
@@ -1328,6 +1437,23 @@ function runBall(run) {
       vy += G * dt; x += vx * dt; y += vy * dt;
       rot += vx * dt * 0.4;                        // rotation from horizontal velocity
 
+      // Bounce off the Ball Guys balls, exactly as Bomb Drop does. They are static
+      // and immovable; we take the normal and reflect.
+      for (const b of gameBalls) {
+        const dx2 = x - b.x, dy2 = y - b.y;
+        const rr = (b.r || 0) + size / 2;
+        const dist = Math.hypot(dx2, dy2);
+        if (dist > 0.001 && dist < rr) {
+          const nx = dx2 / dist, ny = dy2 / dist;
+          x = b.x + nx * rr; y = b.y + ny * rr;
+          const vn = vx * nx + vy * ny;
+          vx = (vx - 2 * vn * nx) * REST; vy = (vy - 2 * vn * ny) * REST;
+          bounced++;
+          canvasBump(k * 0.7);
+          ball.style.transform = 'rotate(' + rot + 'deg) scale(1.09)';
+          setTimeout(() => { if (!run.done) ball.style.transform = 'rotate(' + rot + 'deg) scale(1)'; }, 110);
+        }
+      }
       const rest = target.floor - size / 2;
       if (!settled && y >= rest) {
         if (bounced < bounces) {
@@ -1600,6 +1726,9 @@ function runStamp(run) {
   // stick ~26px out past the skull on each side.
   const baseW = headNow.w * STAMP_PLATE[spin.tier];
   const markWidth = (m) => Math.min(baseW * m.scale, headNow.w * (1 - 2 * Math.abs(m.ox)) * 0.98);
+  // 2:1 — the ink-mask art is 2048x1024, so the impression box matches it and the
+  // texture maps 1:1 instead of being stretched.
+  const markHeight = (w) => w / 2;
   const swingMs = 320 + 70 * k;
   const pressMs = 86 + 22 * k;
   const liftMs  = 400 + 70 * k;
@@ -1611,7 +1740,11 @@ function runStamp(run) {
 
   let clock = 0;
   marks.forEach((m, i) => {
-    const w = markWidth(m), h = w * 0.62;
+    const w = markWidth(m), h = markHeight(w);
+    // The die ART IS SQUARE (1254x1254). Rendering it into the impression's 2:1 box
+    // squashed it into a small squat blob — on stream it read as a tiny icon rather
+    // than a stamp. It gets its own square box, sized off the plate.
+    const dieSize = w * 0.92;
     const first = i === 0;
     const inMs = first ? swingMs : MOVE_MS;
 
@@ -1619,13 +1752,13 @@ function runStamp(run) {
     runTimer(run, () => {
       const p = headPoint(headNow, m.ox, m.oy);
       const rot = (headNow.roll || 0) + m.rot;
-      die.style.width = w + 'px';
-      die.style.height = h + 'px';
+      die.style.width = dieSize + 'px';
+      die.style.height = dieSize + 'px';
       if (first) {
         // Pre-position off the arc so the swing has somewhere to come FROM.
         die.style.transition = 'none';
-        die.style.left = (p.x - w / 2 + 190 * k) + 'px';
-        die.style.top  = (p.y - h / 2 - 250 * k) + 'px';
+        die.style.left = (p.x - dieSize / 2 + 190 * k) + 'px';
+        die.style.top  = (p.y - dieSize / 2 - 250 * k) + 'px';
         die.style.transform = `rotate(${rot + 26}deg) scale(1)`;
         die.style.opacity = '0';
         void die.offsetWidth;
@@ -1636,11 +1769,11 @@ function runStamp(run) {
         die.style.transition = `left ${inMs}ms ease-in-out, top ${inMs}ms ease-in-out, transform ${inMs}ms ease-in-out`;
       }
       die.style.opacity = '1';
-      die.style.left = (p.x - w / 2) + 'px';
+      die.style.left = (p.x - dieSize / 2) + 'px';
       // Centred ON the face point, so the die lands exactly over the footprint the
       // impression will occupy and lifts to reveal it. Anchoring its BOTTOM edge here
       // instead pushes the brow mark off the top of the skull.
-      die.style.top  = (p.y - h / 2) + 'px';
+      die.style.top  = (p.y - dieSize / 2) + 'px';
       die.style.transform = `rotate(${rot}deg) scale(1)`;
     }, clock);
     clock += inMs;
@@ -1668,7 +1801,7 @@ function runStamp(run) {
       const rot = (headNow.roll || 0) + m.rot;
       const last = i === marks.length - 1;
       die.style.transition = `transform ${liftMs}ms ease, top ${liftMs}ms ease, opacity ${liftMs}ms ease`;
-      die.style.top = (p.y - h / 2 - 46 * k) + 'px';
+      die.style.top = (p.y - dieSize / 2 - 46 * k) + 'px';
       die.style.transform = `rotate(${rot}deg) scale(1)`;
       if (last) die.style.opacity = '0';
     }, clock + 30);
@@ -1684,10 +1817,21 @@ function runStamp(run) {
 function layInk(run, name, mark, w, h, legend, k) {
   const ink = el('fx stamp-ink' + (legend ? ' legend' : ''));
   const tex = `assets/wheel/ink-mask-${1 + Math.floor(Math.random() * 3)}.png`;
-  ink.style.cssText =
-    `width:${w}px;height:${h}px;font-size:${Math.max(14, h * 0.42)}px;` +
-    `-webkit-mask-image:url('${tex}');mask-image:url('${tex}');`;
-  ink.textContent = name;                     // textContent, not innerHTML — names are viewer input
+  ink.style.cssText = `width:${w}px;height:${h}px`;
+
+  const plate = el('ink-plate');
+  // The mask art is 2:1; the impression box is too (see markHeight), so it maps 1:1
+  // and the texture is not stretched into mush.
+  plate.style.cssText = `-webkit-mask-image:url('${tex}');mask-image:url('${tex}')`;
+  ink.appendChild(plate);
+
+  const label = el('ink-name');
+  // Size to FILL the plate — the name is the payoff, so it should be as large as the
+  // impression allows, then shrink only if the name is long enough to overflow.
+  const fit = Math.min(h * 0.62, (w * 1.55) / Math.max(4, name.length));
+  label.style.fontSize = Math.max(20, fit) + 'px';
+  label.textContent = name;                   // textContent, not innerHTML — viewer input
+  ink.appendChild(label);
   runNode(run, laneFx, ink);
 
   // FOLLOW the head live, including through the hold, translating AND rotating
@@ -1917,6 +2061,12 @@ function connect() {
     client.channels.get('head-track').subscribe('head', (msg) => window.setHead(msg.data));
     // Contracts 3 + 4. Both are optional by design: absent targets => Ball Drop draws
     // its own bucket, absent still => it flies the sphere art and leaves the cam alone.
+    // Ball Guys colliders — Ball Drop bounces off the same balls Bomb Drop does.
+    ballSignalsCh = client.channels.get('ball-signals');
+    ballSignalsCh.subscribe('bomb-colliders', (msg) => {
+      const d = msg && msg.data;
+      gameBalls = (d && Array.isArray(d.balls)) ? d.balls.filter((b) => b && b.r > 0) : [];
+    });
     const targets = client.channels.get('game-targets');
     targets.subscribe('targets', (msg) => window.setTargets(msg.data));
     targets.subscribe('cam-snapshot', (msg) => window.setCamStill(msg.data));
