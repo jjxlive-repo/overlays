@@ -139,10 +139,13 @@
   <section>
     <h2>Reel size &amp; position</h2>
     <div class="hint">
-      The spin reel defaults to a large centred frame. <b>Scale</b> shrinks or grows it; <b>X/Y</b>
-      nudge it off-centre in pixels (positive X is right, positive Y is down). Changes here apply to
-      the live overlay <b>immediately</b> as you type — this is the one section that previews itself,
-      no separate button needed. Save is still what makes it survive a reload.
+      The spin reel defaults to a large centred frame. <b>Scale</b> shrinks or grows the whole
+      housing; <b>X/Y</b> nudge it off-centre in pixels (positive X is right, positive Y is down).
+      <b>Content scale</b> is separate from Scale — it resizes just the icon and text inside, so you
+      can shrink the housing to tuck it out of the way and grow the content back up to stay readable,
+      instead of both shrinking together. Changes here apply to the live overlay
+      <b>immediately</b> as you type — this is the one section that previews itself, no separate
+      button needed. Save is still what makes it survive a reload.
     </div>
     <div class="grid" id="reel"></div>
     <div class="row" style="margin-top:14px">
@@ -248,9 +251,14 @@ for (const [id, label, min, max, step, note] of [
   document.getElementById('lens').appendChild(l);
 }
 const REEL_BOUNDS = {
-  scale:   { label: 'SCALE',  min: 0.3, max: 1.5, step: 0.05, def: 1, note: '1.0 = full size' },
-  offsetX: { label: 'X',      min: -400, max: 400, step: 10,  def: 0, note: 'px, right is positive' },
-  offsetY: { label: 'Y',      min: -500, max: 500, step: 10,  def: 0, note: 'px, down is positive' },
+  scale:        { label: 'SCALE',         min: 0.3, max: 1.5, step: 0.05, def: 1, note: 'housing size, 1.0 = full' },
+  offsetX:      { label: 'X',             min: -400, max: 400, step: 10,  def: 0, note: 'px, right is positive' },
+  offsetY:      { label: 'Y',             min: -500, max: 500, step: 10,  def: 0, note: 'px, down is positive' },
+  /* Independent of `scale` on purpose: `scale` resizes the whole housing as one rigid
+     unit, so shrinking it to tuck it out of the way shrinks the segment text right
+     along with it. This resizes only the icon/text inside — shrink the housing, then
+     grow this back up, and the reel reads at full size in a smaller footprint. */
+  contentScale: { label: 'CONTENT SCALE', min: 0.5, max: 2,   step: 0.05, def: 1, note: 'icon + text size, independent of housing' },
 };
 for (const [id, b] of Object.entries(REEL_BOUNDS)) {
   const l = document.createElement('label'); l.className = 'field';
@@ -322,9 +330,9 @@ async function load() {
     for (const [k] of RESULTS) $('res-' + k).checked = w.enabledResults.includes(k);
     $('lens-power').value = (w.lens && w.lens.power) || '';
     $('lens-crop').value = (w.lens && w.lens.crop) || '';
-    $('reel-scale').value = (w.reel && w.reel.scale) ?? REEL_BOUNDS.scale.def;
-    $('reel-offsetX').value = (w.reel && w.reel.offsetX) ?? REEL_BOUNDS.offsetX.def;
-    $('reel-offsetY').value = (w.reel && w.reel.offsetY) ?? REEL_BOUNDS.offsetY.def;
+    for (const id of Object.keys(REEL_BOUNDS)) {
+      $('reel-' + id).value = (w.reel && w.reel[id] != null) ? w.reel[id] : REEL_BOUNDS[id].def;
+    }
     for (const t of TIERS) $('hold-' + t).value = (w.holdMs && w.holdMs[t]) || '';
     refreshHold();
     $('ex-spinMinutes').value = w.signatureExpiry.spinMinutes;
@@ -347,7 +355,7 @@ $('save').addEventListener('click', async () => {
     thresholds: Object.fromEntries(TIERS.map((t) => [t, Number($('th-' + t).value)])),
     holdMs: Object.fromEntries(TIERS.map((t) => [t, Number($('hold-' + t).value)])),
     lens: { power: Number($('lens-power').value), crop: Number($('lens-crop').value) },
-    reel: { scale: Number($('reel-scale').value), offsetX: Number($('reel-offsetX').value), offsetY: Number($('reel-offsetY').value) },
+    reel: Object.fromEntries(Object.keys(REEL_BOUNDS).map((id) => [id, Number($('reel-' + id).value)])),
     allowPennySpins: $('penny').checked,
     enabledResults: RESULTS.map(([k]) => k).filter((k) => $('res-' + k).checked),
     signatureExpiry: {
@@ -402,15 +410,13 @@ let reelPushTimer = null;
 function pushReelLayoutLive() {
   clearTimeout(reelPushTimer);
   reelPushTimer = setTimeout(() => {
-    const scale = Number($('reel-scale').value), offsetX = Number($('reel-offsetX').value), offsetY = Number($('reel-offsetY').value);
-    if (!Number.isFinite(scale) || !Number.isFinite(offsetX) || !Number.isFinite(offsetY)) return;
-    reelFxCh.publish('reel-layout', { scale, offsetX, offsetY }).catch(() => {});
+    const payload = Object.fromEntries(Object.keys(REEL_BOUNDS).map((id) => [id, Number($('reel-' + id).value)]));
+    if (Object.values(payload).some((v) => !Number.isFinite(v))) return;
+    reelFxCh.publish('reel-layout', payload).catch(() => {});
   }, 80);
 }
 $('reel-reset').addEventListener('click', () => {
-  $('reel-scale').value = REEL_BOUNDS.scale.def;
-  $('reel-offsetX').value = REEL_BOUNDS.offsetX.def;
-  $('reel-offsetY').value = REEL_BOUNDS.offsetY.def;
+  for (const id of Object.keys(REEL_BOUNDS)) $('reel-' + id).value = REEL_BOUNDS[id].def;
   pushReelLayoutLive();
 });
 

@@ -155,6 +155,10 @@
     border: 10px solid #7B2FBE;
     box-shadow: 0 0 0 4px rgba(123,47,190,.4), inset 0 0 70px rgba(0,0,0,.4), 0 26px 80px rgba(0,0,0,.55);
     opacity: 0; transform: scale(0.9); transition: opacity .3s ease, transform .3s ease;
+    /* Overrides the :root default below for this subtree — --wheel-content-scale is
+       set on #wheel-stage (an ancestor) by applyReelLayout, so .reel-seg's `height:
+       var(--seg-h)` grows/shrinks independently of the housing's own --wheel-scale. */
+    --seg-h: calc(112px * var(--wheel-content-scale, 1));
   }
   .reel-frame.show { opacity: 1; transform: scale(1); }
   .reel-frame.tier-legend {
@@ -214,9 +218,12 @@
   .reel-strip.spinning { transition: transform var(--spin-ms, 2200ms) cubic-bezier(.11,.68,.15,1); }
   .reel-seg {
     height: var(--seg-h); display: flex; align-items: center; justify-content: center;
-    gap: 20px; padding: 0 30px;
+    gap: calc(20px * var(--wheel-content-scale, 1)); padding: 0 calc(30px * var(--wheel-content-scale, 1));
   }
-  .reel-seg .seg-label { font-size: 46px; font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 5px rgba(0,0,0,0.6); }
+  .reel-seg .seg-label {
+    font-size: calc(46px * var(--wheel-content-scale, 1));
+    font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 5px rgba(0,0,0,0.6);
+  }
   /* Result icons drawn from the icons.png sprite sheet, positioned by each icon's
      MEASURED centre (cells are a regular 444px grid but the art isn't centred in
      its cell — up to ~55px drift — so we place by content centre, not cell). */
@@ -665,13 +672,23 @@ const laneWheel = $('wheel-stage'), laneImpact = $('lane-impact'),
  * on wheel-fx for instant feedback while an operator is dragging the control page's
  * inputs — Save is what makes a live tweak survive the next reload.
  */
+// The live value JS math (icon size, landing position) reads — kept in JS as well as
+// CSS because the icon sprite is imperatively sized in px (see iconEl), not something
+// a CSS var alone can resize; a transform:scale() on the sprite would just blur it.
+let wheelContentScale = 1;
+
 function applyReelLayout(reel) {
   if (!reel) return;
   const scale = Number(reel.scale), x = Number(reel.offsetX), y = Number(reel.offsetY);
+  const content = Number(reel.contentScale);
   const stage = $('wheel-stage');
   if (Number.isFinite(scale) && scale > 0) stage.style.setProperty('--wheel-scale', scale);
   if (Number.isFinite(x)) stage.style.setProperty('--wheel-x', x + 'px');
   if (Number.isFinite(y)) stage.style.setProperty('--wheel-y', y + 'px');
+  if (Number.isFinite(content) && content > 0) {
+    wheelContentScale = content;
+    stage.style.setProperty('--wheel-content-scale', content);
+  }
 }
 window.applyReelLayout = applyReelLayout;   // exercised by wheel-control's live preview path too
 
@@ -744,10 +761,13 @@ function pump() {
 // ── Stage 1: SPINNING — edge-on reel. Segments scroll up and DECELERATE to
 // land the resolved result centred in the pink window. (Skipped when the dock
 // resolved a single-result pool — nothing to spin past.) ──
-const SEG_H = 112;     // keep in sync with CSS --seg-h
-const REEL_CYCLES = 6; // how many times the 8 results repeat down the strip
-// translateY that puts strip segment `i` centred in a viewport of height vpH.
-function reelCenter(vpH, i) { return (vpH / 2 - SEG_H / 2) - i * SEG_H; }
+const SEG_H_BASE = 112; // base segment height at contentScale 1 — keep in sync with the
+                        // 112px literal in .reel-frame's --seg-h calc()
+const REEL_CYCLES = 6;  // how many times the 8 results repeat down the strip
+// translateY that puts strip segment `i` centred in a viewport of height vpH. segH is
+// passed in rather than closed over, because it now varies with wheelContentScale —
+// landing math done against the WRONG segment height lands on the wrong result.
+function reelCenter(vpH, i, segH) { return (vpH / 2 - segH / 2) - i * segH; }
 
 function startSpinning(run) {
   const spin = run.spin;
@@ -757,13 +777,18 @@ function startSpinning(run) {
   const vp = el('reel-viewport');
   const strip = el('reel-strip');
   frame.appendChild(giftChip(spin));
+  // Snapshot the content scale ONCE per spin. It can change live (an operator
+  // dragging the control page) but must not change mid-spin — a scale that shifts
+  // between building the strip and landing on it would land on the wrong segment.
+  const segH = Math.round(SEG_H_BASE * wheelContentScale);
+  const iconBox = Math.round(78 * wheelContentScale);
   // Build a long strip: the 8 results repeated REEL_CYCLES times, so there's
   // plenty to scroll through before the landing row. Each segment: real icon
   // (sprite) + upright label.
   for (let c = 0; c < REEL_CYCLES; c++) {
     for (const r of RESULTS) {
       const seg = el('reel-seg');
-      seg.appendChild(iconEl(r.key, 78));
+      seg.appendChild(iconEl(r.key, iconBox));
       seg.appendChild(el('seg-label', esc(r.label)));
       strip.appendChild(seg);
     }
@@ -792,10 +817,10 @@ function startSpinning(run) {
 
   const spinMs = TIMING.spinning.spin;
   strip.style.setProperty('--spin-ms', spinMs + 'ms');
-  strip.style.transform = `translateY(${reelCenter(vpH, startIndex)}px)`;
+  strip.style.transform = `translateY(${reelCenter(vpH, startIndex, segH)}px)`;
   void strip.offsetWidth; // commit the start position before transitioning
   strip.classList.add('spinning');
-  strip.style.transform = `translateY(${reelCenter(vpH, landIndex)}px)`; // decelerate to the winner
+  strip.style.transform = `translateY(${reelCenter(vpH, landIndex, segH)}px)`; // decelerate to the winner
 
   runStage(run, () => {
     frame.classList.remove('show');
