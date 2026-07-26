@@ -1637,6 +1637,13 @@ function runBall(run) {
     const G = 2700, REST = 0.58;
     const bounces = BALL_BOUNCES[spin.tier];
     let bounced = 0, last = performance.now(), settled = false;
+    // Separate cap for the game-ball colliders, and a per-drop ceiling: a ball resting
+    // against or grazing a static collider must be able to STOP bouncing off it. Without
+    // this a resting contact re-satisfies `dist < rr` every single animation frame
+    // forever, and each one fired a network publish — a live 60/s request storm that
+    // never ended on its own, discovered live on stream.
+    let colliderBounces = 0;
+    const MAX_COLLIDER_BOUNCES = 6;
 
     const step = (now) => {
       if (run.done) return;
@@ -1647,19 +1654,24 @@ function runBall(run) {
       // Bounce off the Ball Guys balls, exactly as Bomb Drop does. They are static
       // and immovable; we take the normal and reflect.
       for (const b of gameBalls) {
+        if (colliderBounces >= MAX_COLLIDER_BOUNCES) break;
         const dx2 = x - b.x, dy2 = y - b.y;
         const rr = (b.r || 0) + size / 2;
         const dist = Math.hypot(dx2, dy2);
-        if (dist > 0.001 && dist < rr) {
-          const nx = dx2 / dist, ny = dy2 / dist;
-          x = b.x + nx * rr; y = b.y + ny * rr;
-          const vn = vx * nx + vy * ny;
-          vx = (vx - 2 * vn * nx) * REST; vy = (vy - 2 * vn * ny) * REST;
-          bounced++;
-          canvasBump(k * 0.7);
-          ball.style.transform = 'rotate(' + rot + 'deg) scale(1.09)';
-          setTimeout(() => { if (!run.done) ball.style.transform = 'rotate(' + rot + 'deg) scale(1)'; }, 110);
-        }
+        if (dist <= 0.001 || dist >= rr) continue;
+        const nx = dx2 / dist, ny = dy2 / dist;
+        const vn = vx * nx + vy * ny;
+        // Only reflect when actually APPROACHING (closing speed < 0). A ball already
+        // moving away is a separating contact, not a collision — reflecting it too
+        // flips it back INTO the collider, which is exactly the loop that caused the
+        // storm: correct position, wrong velocity, re-penetrate next frame, repeat.
+        if (vn >= 0) continue;
+        x = b.x + nx * rr; y = b.y + ny * rr;
+        vx = (vx - 2 * vn * nx) * REST; vy = (vy - 2 * vn * ny) * REST;
+        colliderBounces++;
+        canvasBump(k * 0.7);
+        ball.style.transform = 'rotate(' + rot + 'deg) scale(1.09)';
+        setTimeout(() => { if (!run.done) ball.style.transform = 'rotate(' + rot + 'deg) scale(1)'; }, 110);
       }
       // WALLS. Once the ball is below the bucket's mouth it is inside the U, so the
       // sides are solid: bounce off them instead of sliding out through the drawing.
@@ -1806,8 +1818,21 @@ function runStage(run, advance, plannedMs) {
  * local — a bucket of water is this overlay's business.
  */
 let fxCh = null;
+// Hard backstop on the OUTBOUND publish only — the local bump on #bump always plays
+// at full rate; this only throttles what goes out over the network. Found live: a
+// physics bug elsewhere let a resting collision re-fire every animation frame, and
+// each one hit /api/overlay-bus/publish — a 60/s request storm with no natural end.
+// The real fix is capping that loop (see runBall), but nothing that broadcasts to
+// every other overlay on the stream should be able to flood the dock even if some
+// future bug calls it too often — 50ms floor is comfortably under the tightest
+// legitimate beat spacing in this file (Stamp's Legend marks, 110ms apart).
+let lastFxPublishAt = 0;
+const FX_PUBLISH_MIN_GAP_MS = 50;
 function publishFx(kind, data) {
   if (!fxCh) return;   // no dock yet: everything still plays here, just alone
+  const now = performance.now();
+  if (now - lastFxPublishAt < FX_PUBLISH_MIN_GAP_MS) return;
+  lastFxPublishAt = now;
   try { fxCh.publish(kind, data).catch(() => {}); } catch (e) {}
 }
 
