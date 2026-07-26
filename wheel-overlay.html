@@ -404,6 +404,9 @@
      Layer order is fixed by the art: circular cam crop → shell (multiply)
      → gloss (screen) → rim ring. */
   .ball { background-size: cover; background-position: center; overflow: hidden; will-change: transform, left, top; }
+  /* The warped face is already circular with a feathered rim, so it needs no extra
+     masking — just a touch of contrast to survive the multiply shading on top. */
+  .ball.ball-lens { filter: saturate(1.12) contrast(1.06); }
   .ball-shell { background: url('assets/wheel/ball-shell.png') center / 100% 100% no-repeat; mix-blend-mode: multiply; }
   .ball-gloss { background: url('assets/wheel/ball-gloss.png') center / 100% 100% no-repeat; mix-blend-mode: screen; }
   .ball-ring  { background: url('assets/wheel/ball-ring.png') center / 100% 100% no-repeat; }
@@ -1353,7 +1356,82 @@ let camStillRequest = null;
 /** Ask gesture-cam for a clean frame now. No-op without a dock — Ball Drop then flies
  *  the sphere art alone, which is the documented fallback. */
 function requestCamStill() { if (camStillRequest) camStillRequest(); }
-window.setCamStill = (s) => { camStill = (s && s.dataURL && s.rect) ? s : null; };
+window.setCamStill = (s) => {
+  camStill = (s && s.dataURL && s.rect) ? s : null;
+  // Decode ahead of time so the fisheye warp at detach is synchronous. Decoding
+  // there instead would land a frame or two late — exactly on the beat the ball
+  // is supposed to already be carrying the face.
+  if (camStill) {
+    const img = new Image();
+    img.onload = () => { camStill.img = img; };
+    img.src = camStill.dataURL;
+  }
+};
+
+/**
+ * FISHEYE — blow the face up inside the sphere.
+ *
+ * `background-size: cover` on the whole cam strip gave a flat, zoomed-OUT picture
+ * pasted on a circle: the face was small, undistorted, and read as a sticker rather
+ * than as something trapped in a ball. Two things fix that, and neither is available
+ * in CSS — a real barrel distortion needs per-pixel resampling.
+ *
+ *   ZOOM   crop tight to the tracked head instead of the whole cam rect
+ *   BULGE  remap radius as r^p (p > 1), which pulls samples toward the centre and so
+ *          MAGNIFIES the middle while squeezing the rim — the lens look. The nose
+ *          ends up nearest the glass, which is the joke.
+ *
+ * Runs once per drop on a 512px canvas (~260k samples, a few ms), not per frame.
+ */
+const FISHEYE = { size: 512, power: 1.55, crop: 1.15 };
+
+function fisheyeFace(still, head) {
+  if (!still || !still.img || !still.img.width) return null;
+  const N = FISHEYE.size, R = N / 2;
+  const src = still.img, rect = still.rect;
+
+  // Stage px -> still-image px.
+  const sx = src.width / rect.w, sy = src.height / rect.h;
+  const hc = headPoint(head, 0, 0);
+  // A square crop around the head, padded slightly so the warp has edge to eat.
+  const cropStage = Math.max(head.w, head.h) * FISHEYE.crop;
+  const cx = (hc.x - rect.x) * sx, cy = (hc.y - rect.y) * sy;
+  const rx = (cropStage / 2) * sx, ry = (cropStage / 2) * sy;
+
+  const cut = document.createElement('canvas');
+  cut.width = N; cut.height = N;
+  const cctx = cut.getContext('2d');
+  // Draw the crop square-on first; sampling then happens in a clean N x N space.
+  cctx.drawImage(src, cx - rx, cy - ry, rx * 2, ry * 2, 0, 0, N, N);
+  const srcData = cctx.getImageData(0, 0, N, N).data;
+
+  const out = document.createElement('canvas');
+  out.width = N; out.height = N;
+  const octx = out.getContext('2d');
+  const dst = octx.createImageData(N, N);
+  const d = dst.data;
+
+  for (let y = 0; y < N; y++) {
+    const v = (y - R) / R;
+    for (let x = 0; x < N; x++) {
+      const u = (x - R) / R;
+      const r = Math.sqrt(u * u + v * v);
+      const o = (y * N + x) * 4;
+      if (r > 1) { d[o + 3] = 0; continue; }          // outside the sphere
+      // r^p < r for p>1, so we sample nearer the middle => the middle is magnified.
+      const rs = Math.pow(r, FISHEYE.power);
+      const k = r === 0 ? 0 : rs / r;
+      const sxp = Math.round(R + u * k * R);
+      const syp = Math.round(R + v * k * R);
+      const s = (Math.min(N - 1, Math.max(0, syp)) * N + Math.min(N - 1, Math.max(0, sxp))) * 4;
+      d[o] = srcData[s]; d[o + 1] = srcData[s + 1]; d[o + 2] = srcData[s + 2];
+      // Feather the last 2% so the rim meets the ring art without a jagged edge.
+      d[o + 3] = r > 0.98 ? Math.round(255 * (1 - r) / 0.02) : 255;
+    }
+  }
+  octx.putImageData(dst, 0, 0);
+  return out.toDataURL('image/png');
+}
 
 const BALL_BOUNCES = { spin: 1, power: 1, takeover: 2, legend: 2 };
 
@@ -1426,9 +1504,14 @@ function runBall(run) {
     // cam freeze go up, and the hole get punched — in that order, so the ball carries
     // a picture of the face and the hole is what is left behind.
     if (camStill) {
-      ball.style.backgroundImage = `url('${camStill.dataURL}')`;
+      // Zoomed and lens-warped, not the flat cam crop — see fisheyeFace. Falls back
+      // to the plain still if the image has not decoded yet, so the ball always
+      // carries a face rather than nothing.
+      const warped = fisheyeFace(camStill, h);
+      ball.style.backgroundImage = `url('${warped || camStill.dataURL}')`;
       ball.style.backgroundSize = 'cover';
       ball.style.backgroundPosition = 'center';
+      if (warped) ball.classList.add('ball-lens');
 
       const frozen = place(el('fx cam-frozen'), camStill.rect.x, camStill.rect.y,
                                                 camStill.rect.w, camStill.rect.h);
