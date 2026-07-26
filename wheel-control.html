@@ -137,6 +137,20 @@
   </section>
 
   <section>
+    <h2>Reel size &amp; position</h2>
+    <div class="hint">
+      The spin reel defaults to a large centred frame. <b>Scale</b> shrinks or grows it; <b>X/Y</b>
+      nudge it off-centre in pixels (positive X is right, positive Y is down). Changes here apply to
+      the live overlay <b>immediately</b> as you type — this is the one section that previews itself,
+      no separate button needed. Save is still what makes it survive a reload.
+    </div>
+    <div class="grid" id="reel"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="reel-reset">↺ Reset to default</button>
+    </div>
+  </section>
+
+  <section>
     <h2>Ball Drop lens</h2>
     <div class="hint">
       The ball carries a warped crop of your camera rather than a flat one, so the face fills
@@ -233,6 +247,19 @@ for (const [id, label, min, max, step, note] of [
                 '<div class="usd">' + note + '</div>';
   document.getElementById('lens').appendChild(l);
 }
+const REEL_BOUNDS = {
+  scale:   { label: 'SCALE',  min: 0.3, max: 1.5, step: 0.05, def: 1, note: '1.0 = full size' },
+  offsetX: { label: 'X',      min: -400, max: 400, step: 10,  def: 0, note: 'px, right is positive' },
+  offsetY: { label: 'Y',      min: -500, max: 500, step: 10,  def: 0, note: 'px, down is positive' },
+};
+for (const [id, b] of Object.entries(REEL_BOUNDS)) {
+  const l = document.createElement('label'); l.className = 'field';
+  l.innerHTML = "<span>" + b.label + "</span>" +
+                '<input type="number" min="' + b.min + '" max="' + b.max + '" step="' + b.step + '" id="reel-' + id + '">' +
+                '<div class="usd">' + b.note + '</div>';
+  document.getElementById('reel').appendChild(l);
+  document.getElementById('reel-' + id).addEventListener('input', pushReelLayoutLive);
+}
 for (const t of TIERS) {
   const l = document.createElement('label'); l.className = 'field';
   l.innerHTML = "<span>" + t.toUpperCase() + " — hold (ms)</span>" +
@@ -295,6 +322,9 @@ async function load() {
     for (const [k] of RESULTS) $('res-' + k).checked = w.enabledResults.includes(k);
     $('lens-power').value = (w.lens && w.lens.power) || '';
     $('lens-crop').value = (w.lens && w.lens.crop) || '';
+    $('reel-scale').value = (w.reel && w.reel.scale) ?? REEL_BOUNDS.scale.def;
+    $('reel-offsetX').value = (w.reel && w.reel.offsetX) ?? REEL_BOUNDS.offsetX.def;
+    $('reel-offsetY').value = (w.reel && w.reel.offsetY) ?? REEL_BOUNDS.offsetY.def;
     for (const t of TIERS) $('hold-' + t).value = (w.holdMs && w.holdMs[t]) || '';
     refreshHold();
     $('ex-spinMinutes').value = w.signatureExpiry.spinMinutes;
@@ -317,6 +347,7 @@ $('save').addEventListener('click', async () => {
     thresholds: Object.fromEntries(TIERS.map((t) => [t, Number($('th-' + t).value)])),
     holdMs: Object.fromEntries(TIERS.map((t) => [t, Number($('hold-' + t).value)])),
     lens: { power: Number($('lens-power').value), crop: Number($('lens-crop').value) },
+    reel: { scale: Number($('reel-scale').value), offsetX: Number($('reel-offsetX').value), offsetY: Number($('reel-offsetY').value) },
     allowPennySpins: $('penny').checked,
     enabledResults: RESULTS.map(([k]) => k).filter((k) => $('res-' + k).checked),
     signatureExpiry: {
@@ -358,6 +389,30 @@ const client = JJX.dockRealtime({});
 const previewCh = client.channels.get(JJX.ABLY_MAIN_CHANNEL);
 client.connection.on('connected', () => setConn('dock: connected', 'ok'));
 client.connection.on('disconnected', () => setConn('dock: reconnecting…', ''));
+
+/* ── reel layout: live, not just previewed ──────────────────────────
+   Every other control here needs the explicit Preview button because playing an
+   effect is a real, visible event on stream. Moving the reel is not an event, it is
+   scenery — so it pushes on every input, same channel and event name the wheel
+   overlay's applyReelLayout() already listens for (see wheel-overlay.html). Save is
+   still required for the change to survive a reload; this is the live-tweak path,
+   not a replacement for persistence. */
+const reelFxCh = client.channels.get('wheel-fx');
+let reelPushTimer = null;
+function pushReelLayoutLive() {
+  clearTimeout(reelPushTimer);
+  reelPushTimer = setTimeout(() => {
+    const scale = Number($('reel-scale').value), offsetX = Number($('reel-offsetX').value), offsetY = Number($('reel-offsetY').value);
+    if (!Number.isFinite(scale) || !Number.isFinite(offsetX) || !Number.isFinite(offsetY)) return;
+    reelFxCh.publish('reel-layout', { scale, offsetX, offsetY }).catch(() => {});
+  }, 80);
+}
+$('reel-reset').addEventListener('click', () => {
+  $('reel-scale').value = REEL_BOUNDS.scale.def;
+  $('reel-offsetX').value = REEL_BOUNDS.offsetX.def;
+  $('reel-offsetY').value = REEL_BOUNDS.offsetY.def;
+  pushReelLayoutLive();
+});
 
 $('pv-go').addEventListener('click', () => {
   const result = $('pv-result').value, tier = $('pv-tier').value;

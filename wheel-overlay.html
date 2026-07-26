@@ -64,6 +64,14 @@
   #lane-wall      { left: 0; bottom: 0; width: 1080px; height: 350px; z-index: 5; }  /* scenery, not an event — and outside the bump */
   #lane-flare     { inset: 0; z-index: 20; }   /* legendFlare: under every effect, Legend only */
   #lane-wheel     { inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
+  /* Position + scale, operator-tunable (wheel-control.html "Reel size & position").
+     A wrapper around the reel rather than resizing .reel-frame itself, so the reel's
+     own internal geometry (viewport %, segment height, landing math) never has to
+     know this exists. Defaults to identity so an overlay with no dock connected — or
+     one that has not received a layout yet — renders exactly where it always did. */
+  #wheel-stage {
+    transform: translate(var(--wheel-x, 0px), var(--wheel-y, 0px)) scale(var(--wheel-scale, 1));
+  }
   #lane-fx        { inset: 0; z-index: 45; }   /* the effect itself */
   #lane-impact    { inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
 
@@ -134,19 +142,49 @@
      equal too). Placeholder art: glyph + label per segment, rendered in code
      so text is crisp — designed segment art can swap in later. */
   :root { --seg-h: 112px; }   /* one segment's height — shared by CSS + JS landing math */
-  /* The housing ART (reel-housing.png, 1086x1448 with transparent margins) is the
-     background; its purple border, pink centre indicator line and left/right
-     triangles are baked in. The scrolling segments sit in a viewport positioned
-     over the transparent window HOLE in the art — geometry measured from the PNG's
-     alpha: window x 10.41%, y 30.73%, w 79.37%, h 38.47%, centred on the pink line
-     at ~50% height. Segments show through the hole; the opaque frame masks any
-     overflow; the winning row lands on the pink line. */
+  /* Housing is drawn in CSS, not the reel-housing.png art it replaced. A raster
+     housing fought the position/scale controls below: shrink it and the border
+     visibly softens, and any operator scale is a resample of a fixed-pixel image.
+     Vector paint (gradient fill, borders, box-shadow) stays crisp at any transform
+     scale for free, so the whole wrapper below can be resized with no quality cost.
+     The pink centre line and the two triangles are real elements (below), drawn
+     ABOVE the scrolling strip, not baked into a background that painted behind it. */
   .reel-frame {
-    position: relative; width: 900px; height: 1200px;
-    background: url('assets/wheel/reel-housing.png') center / 100% 100% no-repeat;
+    position: relative; width: 900px; height: 1200px; border-radius: 44px;
+    background: radial-gradient(ellipse at 50% 32%, #5B1799 0%, #3B0764 58%, #240449 100%);
+    border: 10px solid #7B2FBE;
+    box-shadow: 0 0 0 4px rgba(123,47,190,.4), inset 0 0 70px rgba(0,0,0,.4), 0 26px 80px rgba(0,0,0,.55);
     opacity: 0; transform: scale(0.9); transition: opacity .3s ease, transform .3s ease;
   }
   .reel-frame.show { opacity: 1; transform: scale(1); }
+  .reel-frame.tier-legend {
+    border-color: #FBBF24;
+    box-shadow: 0 0 0 4px rgba(251,191,36,.45), inset 0 0 70px rgba(0,0,0,.4), 0 0 90px rgba(251,191,36,.5), 0 26px 80px rgba(0,0,0,.55);
+  }
+  /* Landing indicator: a glowing line across the window's vertical centre, and two
+     triangles pointing in at it from the frame's edges — the same "here is the
+     result" cue the art used, now real elements so they render OVER the strip. */
+  .reel-line {
+    position: absolute; left: 7%; right: 7%; top: 50%; height: 4px; z-index: 5;
+    transform: translateY(-50%); pointer-events: none;
+    background: linear-gradient(90deg, transparent, #E879F9 12%, #E879F9 88%, transparent);
+    box-shadow: 0 0 16px rgba(232,121,249,.85), 0 0 36px rgba(232,121,249,.5);
+  }
+  .reel-frame.tier-legend .reel-line {
+    background: linear-gradient(90deg, transparent, #FBBF24 12%, #FBBF24 88%, transparent);
+    box-shadow: 0 0 16px rgba(251,191,36,.9), 0 0 40px rgba(251,191,36,.6);
+  }
+  .reel-arrow {
+    position: absolute; top: 50%; width: 0; height: 0; z-index: 5;
+    border-top: 20px solid transparent; border-bottom: 20px solid transparent;
+    transform: translateY(-50%); pointer-events: none;
+    filter: drop-shadow(0 0 6px rgba(232,121,249,.7));
+  }
+  .reel-arrow.left  { left: 20px;  border-left: 26px solid #E879F9; }
+  .reel-arrow.right { right: 20px; border-right: 26px solid #E879F9; }
+  .reel-frame.tier-legend .reel-arrow { filter: drop-shadow(0 0 7px rgba(251,191,36,.8)); }
+  .reel-frame.tier-legend .reel-arrow.left  { border-left-color: #FBBF24; }
+  .reel-frame.tier-legend .reel-arrow.right { border-right-color: #FBBF24; }
   /* Gift chip — credits WHAT was sent while the reel is still spinning, so the
      attribution and the tension are the same beat (handoff lifecycle). Sits on the
      housing's upper plate, above the window hole. */
@@ -478,7 +516,7 @@
   <div class="lane" id="lane-wall"></div>
   <div id="bump">
     <div class="lane" id="lane-flare"></div>
-    <div class="lane" id="lane-wheel"></div>
+    <div class="lane" id="lane-wheel"><div id="wheel-stage"></div></div>
     <div class="lane" id="lane-fx"></div>
     <div class="lane" id="lane-impact"></div>
   </div>
@@ -613,9 +651,29 @@ const MASTER_WATCHDOG_MS = 16000; // absolute ceiling for one spin's active run
 // can guarantee "no orphaned timers or DOM nodes" (spec).
 // ═══════════════════════════════════════════════════════════════════
 const $ = (id) => document.getElementById(id);
-const laneWheel = $('lane-wheel'), laneImpact = $('lane-impact'),
+const laneWheel = $('wheel-stage'), laneImpact = $('lane-impact'),
       laneWall = $('lane-wall'), laneFx = $('lane-fx'), laneFlare = $('lane-flare'),
       bumpEl = $('bump');
+
+/**
+ * REEL LAYOUT — position + scale, operator-tunable and dock-persisted.
+ * Applies to #wheel-stage's CSS vars (see the rule above); reel-frame itself is
+ * never touched, so its own show/hide transform keeps working untouched underneath.
+ *
+ * Two sources, same effect: settings.wheel.reel from /api/settings on connect (so a
+ * fresh load gets the persisted layout immediately), and a live 'reel-layout' event
+ * on wheel-fx for instant feedback while an operator is dragging the control page's
+ * inputs — Save is what makes a live tweak survive the next reload.
+ */
+function applyReelLayout(reel) {
+  if (!reel) return;
+  const scale = Number(reel.scale), x = Number(reel.offsetX), y = Number(reel.offsetY);
+  const stage = $('wheel-stage');
+  if (Number.isFinite(scale) && scale > 0) stage.style.setProperty('--wheel-scale', scale);
+  if (Number.isFinite(x)) stage.style.setProperty('--wheel-x', x + 'px');
+  if (Number.isFinite(y)) stage.style.setProperty('--wheel-y', y + 'px');
+}
+window.applyReelLayout = applyReelLayout;   // exercised by wheel-control's live preview path too
 
 function el(cls, html) { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; }
 function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])); }
@@ -711,8 +769,13 @@ function startSpinning(run) {
     }
   }
   vp.appendChild(strip);
-  frame.appendChild(vp); // segments sit BEHIND the housing art (frame background) —
-                         // the pink line + triangles show over the reel through the window
+  frame.appendChild(vp);
+  // Indicator line + arrows AFTER the viewport, with their own z-index (5) — real
+  // elements now, not a background image, so DOM order plus z-index is what puts
+  // them over the scrolling strip instead of under it.
+  frame.appendChild(el('reel-line'));
+  frame.appendChild(el('reel-arrow left'));
+  frame.appendChild(el('reel-arrow right'));
   runNode(run, laneWheel, frame);
   reveal(frame, 'show');
 
@@ -2223,6 +2286,9 @@ function connect() {
     // when a Ball Drop fires — requesting at detach would arrive too late to cover.
     // Camera-level beats, for the other overlays sharing this frame (see publishFx).
     fxCh = client.channels.get('wheel-fx');
+    // Live reel position/scale — see applyReelLayout. Instant feedback while an
+    // operator is dragging the control page's inputs, ahead of Save.
+    fxCh.subscribe('reel-layout', (msg) => applyReelLayout(msg && msg.data));
     // gesture-cam snapshots the COMPOSITED projector, so a still taken while an effect
     // is on screen contains that effect. That is how the ball came to carry its own
     // black hole: the periodic capture ran during a Ball Drop, baked the hole in, and
@@ -2312,6 +2378,13 @@ async function hydrate() {
     // socket keeps retrying, and the next connect calls this again.
     console.warn('[wheel] hydrate failed (will retry on next connect):', e.message);
   }
+
+  // The reel's persisted position/scale — separate try/catch, because a failure
+  // here (or on a dock predating the setting) must not block wall hydration above.
+  try {
+    const res = await fetch(base + '/api/settings', { cache: 'no-store' });
+    if (res.ok) applyReelLayout((await res.json()).settings?.wheel?.reel);
+  } catch (e) { /* falls back to the CSS default (identity) — see #wheel-stage */ }
 }
 
 // Test hook — feed a WheelSpin-shaped object straight into the machine.
