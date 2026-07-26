@@ -333,6 +333,16 @@ textarea:focus-visible,[tabindex]:focus-visible{
 .mg-name{font-size:13px; margin:4px 0 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .mg-empty{font-family:var(--mono); font-size:11.5px; color:var(--text-mute-2); padding:14px 0}
 .mg-swap{display:flex; align-items:center; gap:10px; margin-top:10px}
+
+/* ---------- gift edit sheet ----------
+   The four value fields are the primary act and sit in the open; reattribution is secondary and
+   folded away, which is the ordering the decision asks for. */
+.ge-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 14px}
+.ge-secondary{margin-top:18px; border-top:1px solid var(--line); padding-top:14px}
+.ge-secondary summary{font-size:12.5px; cursor:pointer; color:var(--text-3)}
+.ge-secondary summary:hover{color:var(--text)}
+.ge-was{color:var(--amber-text)}
+@media (max-width:1400px){ .ge-grid{grid-template-columns:1fr} }
 @media (max-width:1400px){ .mg-sides{grid-template-columns:1fr} }
 
 /* ---------- corrections log ---------- */
@@ -511,6 +521,15 @@ textarea:focus-visible,[tabindex]:focus-visible{
 .g-when,.g-qty,.g-val{font-family:var(--mono)}
 .g-val{text-align:right}
 .g-qty{text-align:right; padding-right:10px}
+/* A corrected event is marked on the row, and the platform's own figure sits under the corrected
+   one. Never colour alone — the word "edited" is always there to be read. */
+.gift-row.is-edited{box-shadow:inset 2px 0 0 var(--amber-line)}
+.g-edited{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--amber-text); border:1px solid var(--amber-line); border-radius:3px;
+  padding:1px 5px; margin-left:8px; vertical-align:1px;
+}
+.g-was{display:block; font-family:var(--mono); font-size:10px; color:var(--text-mute-2); margin-top:2px}
 #giftFoot{
   background:var(--bg-sidebar); border-top:1px solid var(--line-row); padding:8px 14px;
   display:flex; justify-content:space-between; gap:12px; font-family:var(--mono); font-size:11px; color:var(--text-mute-2);
@@ -842,22 +861,59 @@ textarea:focus-visible,[tabindex]:focus-visible{
     </div>
   </div>
 
-  <div class="sheet" id="sheetReattr" role="dialog" aria-modal="true" aria-labelledby="raTitle" hidden>
-    <h2 id="raTitle">Reattribute this gift</h2>
-    <div class="sheet-sub">The event is never rewritten — value, platform, gift name and timestamp
-      stay exactly as the platform reported them. Only the owner changes.</div>
-    <div class="ra-event" id="raEvent"></div>
-    <div class="field">
-      <label class="field-label" for="raSearch">Give it to</label>
-      <input id="raSearch" type="search" autocomplete="off" placeholder="Search name or @handle…">
-      <div class="ra-results" id="raResults"></div>
+  <div class="sheet" id="sheetReattr" role="dialog" aria-modal="true" aria-labelledby="raTitle" hidden style="width:640px">
+    <div style="display:flex; align-items:flex-start; gap:12px">
+      <div style="flex:1; min-width:0">
+        <h2 id="raTitle">Edit this gift</h2>
+        <div class="sheet-sub">The platform's own figures are kept and shown beside the corrected
+          ones. Nothing is destroyed, and the row is marked edited wherever it appears.</div>
+      </div>
+      <span class="sheet-pill" id="raPill" hidden>✎ ALREADY EDITED</span>
     </div>
+
+    <div class="ra-event" id="raEvent"></div>
+
+    <div class="ge-grid">
+      <div class="field">
+        <label class="field-label" for="geQty">Quantity</label>
+        <input id="geQty" class="mono" type="number" min="0" step="1" inputmode="numeric" autocomplete="off">
+        <div class="field-hint" id="geQtyWas"></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="geVal"><span id="geValLabel">Value</span></label>
+        <input id="geVal" class="mono" type="number" min="0" step="1" inputmode="numeric" autocomplete="off">
+        <div class="field-hint" id="geValWas"></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="geName">Gift name</label>
+        <input id="geName" type="text" autocomplete="off">
+        <div class="field-hint" id="geNameWas"></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="geWhen">When</label>
+        <input id="geWhen" type="datetime-local" step="1" autocomplete="off">
+        <div class="field-hint" id="geWhenWas"></div>
+      </div>
+    </div>
+
+    <details class="ge-secondary" id="raOwnerWrap">
+      <summary>Give it to someone else</summary>
+      <div class="field" style="margin-top:10px">
+        <label class="field-label" for="raSearch">Owner</label>
+        <input id="raSearch" type="search" autocomplete="off" placeholder="Search name or @handle…">
+        <div class="ra-results" id="raResults"></div>
+        <div class="field-hint">Reattributing moves the event to another viewer's record. The
+          numbers above travel with it unchanged.</div>
+      </div>
+    </details>
+
     <div id="raEffect"></div>
     <div id="raResult"></div>
     <div class="sheet-foot">
+      <span class="meta">Recorded in the corrections log · revertible in full</span>
       <span class="spacer"></span>
       <button class="btn ghost" id="raCancel" type="button">Cancel</button>
-      <button class="btn primary" id="raSubmit" type="button" disabled>Reattribute</button>
+      <button class="btn primary" id="raSubmit" type="button" disabled>Save</button>
     </div>
   </div>
 
@@ -1781,36 +1837,110 @@ async function submitRename(){
 }
 
 /* ==========================================================================
-   Sheet: reattribute a gift
+   Sheet: edit a gift
+
+   The four value fields are the primary act; reattribution is folded away as secondary. That
+   ordering is the decision, not a layout preference — correcting a quantity TikFinity got wrong
+   is the common case, and moving an event to someone else is the rare one.
+
+   THE PLATFORM'S OWN FIGURE IS ALWAYS ON SCREEN, under each field it applies to, so a correction
+   is made against what arrived rather than against a blank. Once a row is edited it stays marked
+   for good, and every original is kept.
    ========================================================================== */
+
+/** Local wall-clock value for <input type="datetime-local">, which has no timezone of its own. */
+function toLocalInput(ms){
+  if (!ms) return "";
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 19);
+}
+function fromLocalInput(v){
+  if (!v) return null;
+  const ms = new Date(v).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** The unit a value is edited in. TikTok events carry coins; YouTube ones carry dollars. */
+function giftValueField(platform){
+  return platform === "youtube" ? "amount" : "coinValue";
+}
+
 function openReattr(giftId){
   const r = state.record;
   if (!r) return;
   const g = (r.gifts || []).filter((x) => String(x.id) === String(giftId))[0];
   if (!g) return;
-  state.sheet = { kind: "reattr", gift: g, target: null };
+  const vf = giftValueField(r.platform);
+  state.sheet = { kind: "reattr", gift: g, target: null, valueField: vf };
 
   $("raEvent").innerHTML =
-    raLine("gift", g.giftName || "⊘ no gift name sent") +
-    raLine("quantity", g.quantity == null ? "—" : String(g.quantity)) +
-    raLine("value", g.coinValue != null ? nInt(g.coinValue) + " coins"
-                  : g.amount != null ? nUsd(g.amount) : "⊘ unpriced") +
     raLine("platform", PLAT[r.platform] || r.platform) +
-    raLine("when", stamp(g.timestamp)) +
+    raLine("owner", r.ident) +
     raLine("session", g.sessionId || "—") +
-    raLine("row id", String(g.id));
+    raLine("row id", String(g.id)) +
+    (g.editedAt ? raLine("edited", stamp(g.editedAt)) : "");
+
+  $("raPill").hidden = !g.editedAt;
+  $("geQty").value = g.quantity == null ? "" : String(g.quantity);
+  $("geVal").value = g[vf] == null ? "" : String(g[vf]);
+  $("geName").value = g.giftName || "";
+  $("geWhen").value = toLocalInput(g.timestamp);
+  $("geValLabel").textContent = vf === "amount" ? "Value · USD" : "Value · coins";
+  $("geVal").step = vf === "amount" ? "0.01" : "1";
+
+  /* Under each field: what the platform reported. When the row has been corrected before, that is
+     the ORIGINAL — not the current value — because the question a person is answering here is
+     "what did TikTok say", and a previous correction is not an answer to it. */
+  const wasHint = (el, field, fmt) => {
+    const o = origOf(g, field);
+    $(el).innerHTML = o != null
+      ? '<span class="ge-was">the platform reported ' + esc(fmt ? fmt(o) : o) + "</span>"
+      : "as reported by the platform";
+  };
+  wasHint("geQtyWas", "quantity");
+  wasHint("geValWas", vf, (n) => vf === "amount" ? nUsd(n) : nInt(n) + " coins");
+  wasHint("geNameWas", "giftName");
+  wasHint("geWhenWas", "timestamp", stamp);
 
   $("raSearch").value = "";
   $("raResult").innerHTML = "";
   $("raEffect").innerHTML = "";
+  $("raOwnerWrap").open = false;
   $("raSubmit").disabled = true;
   renderReattrResults();
 
   $("sheetSetValue").hidden = true;
   $("sheetFormula").hidden = true;
+  $("sheetMerge").hidden = true;
   $("sheetReattr").hidden = false;
   $("overlay").hidden = false;
-  $("raSearch").focus();
+  $("geQty").focus();
+}
+
+/** What the sheet would send: only fields that actually differ from what the row holds now. */
+function giftEditPatch(){
+  const s = state.sheet;
+  if (!s || s.kind !== "reattr") return {};
+  const g = s.gift;
+  const patch = {};
+
+  const num = (raw) => raw.trim() === "" ? null : Number(raw);
+  const qty = num($("geQty").value);
+  const val = num($("geVal").value);
+  const name = $("geName").value.trim();
+  const when = fromLocalInput($("geWhen").value);
+
+  if (qty !== (g.quantity == null ? null : Number(g.quantity)) && (qty === null || Number.isFinite(qty))) patch.quantity = qty;
+  if (val !== (g[s.valueField] == null ? null : Number(g[s.valueField])) && (val === null || Number.isFinite(val))) patch[s.valueField] = val;
+  if (name !== (g.giftName || "")) patch.giftName = name;
+  // Seconds precision: the input cannot express milliseconds, so an untouched field must not
+  // register as a change just because the original timestamp carried them.
+  if (when != null && Math.floor(when / 1000) !== Math.floor(g.timestamp / 1000)) patch.timestamp = when;
+  if (s.target){
+    patch.username = s.target.username;
+    patch.displayName = s.target.displayName;
+  }
+  return patch;
 }
 function raLine(k, v){
   return '<div class="ra-line"><span>' + esc(k) + "</span><span>" + esc(v) + "</span></div>";
@@ -1848,69 +1978,100 @@ function renderReattrResults(){
 function renderReattrEffect(){
   const s = state.sheet;
   if (!s || s.kind !== "reattr") return;
-  if (!s.target){
-    $("raEffect").innerHTML = '<div class="reason" style="margin-top:12px">Pick who this gift belongs to.</div>';
-    $("raSubmit").disabled = true;
+  const g = s.gift;
+  const patch = giftEditPatch();
+  const keys = Object.keys(patch);
+  const vf = s.valueField;
+  const fmtVal = (n) => n == null ? "⊘ unpriced" : vf === "amount" ? nUsd(n) : nInt(n) + " coins";
+
+  $("raSubmit").disabled = keys.length === 0;
+  $("raSubmit").title = keys.length === 0 ? "Change something first." : "";
+
+  if (keys.length === 0){
+    $("raEffect").innerHTML = '<div class="reason" style="margin-top:12px">Nothing has changed yet. ' +
+      "Correct a figure above, or open “Give it to someone else”.</div>";
     return;
   }
-  const g = s.gift;
-  const t = s.target;
-  const from = state.viewers.filter((v) => v.platform === state.selected.platform &&
-                                            v.username === state.selected.ident)[0];
-  const coins = Number(g.coinValue) || 0;
-  const usd = Number(g.amount) || 0;
 
-  const moveText = coins > 0 ? nInt(coins) + " coins" : usd > 0 ? nUsd(usd) : null;
-  const lines = [];
-  if (moveText && from && t.platform === from.platform){
-    const unit = coins > 0 ? "coins" : "USD";
-    const fromBefore = coins > 0 ? from.coins : from.usd;
-    const toBefore = coins > 0 ? t.coins : t.usd;
+  const rows = [];
+  if ("quantity" in patch) rows.push(["quantity", String(g.quantity == null ? "—" : g.quantity), String(patch.quantity == null ? "—" : patch.quantity)]);
+  if (vf in patch) rows.push(["value", fmtVal(g[vf]), fmtVal(patch[vf])]);
+  if ("giftName" in patch) rows.push(["gift name", g.giftName || "⊘ none", patch.giftName || "⊘ none"]);
+  if ("timestamp" in patch) rows.push(["when", stamp(g.timestamp), stamp(patch.timestamp)]);
+
+  /* Reattribution's effect on the two lifetime totals, which is the part nobody can work out in
+     their head. Only when both sides are on the same platform — a coin figure and a dollar figure
+     are not the same quantity and must never be shown moving between each other. */
+  const moveLines = [];
+  if (s.target){
+    const from = state.viewers.filter((v) => v.platform === state.selected.platform &&
+                                              v.username === state.selected.ident)[0];
+    const t = s.target;
+    const coins = Number(g.coinValue) || 0;
+    const usd = Number(g.amount) || 0;
     const amt = coins > 0 ? coins : usd;
-    const fmt = (n) => coins > 0 ? nInt(n) : nUsd(n);
-    lines.push(esc(from.displayName) + " " + fmt(fromBefore) + " → " + fmt(fromBefore - amt) + " " + unit);
-    lines.push(esc(t.displayName) + " " + fmt(toBefore) + " → " + fmt(toBefore + amt) + " " + unit);
-  } else if (moveText){
-    lines.push("The two sides are on different platforms, so no single total moves — " +
-               "a coin figure and a dollar figure are not the same quantity.");
-  } else {
-    lines.push("This event carries no value, so no total moves. Only the owner changes.");
+    if (amt > 0 && from && t.platform === from.platform){
+      const fmt = (n) => coins > 0 ? nInt(n) + " coins" : nUsd(n);
+      const fb = coins > 0 ? from.coins : from.usd;
+      const tb = coins > 0 ? t.coins : t.usd;
+      moveLines.push(esc(from.displayName) + " " + fmt(fb) + " → " + fmt(fb - amt));
+      moveLines.push(esc(t.displayName) + " " + fmt(tb) + " → " + fmt(tb + amt));
+    } else if (amt > 0){
+      moveLines.push("The two sides are on different platforms, so no single total moves — " +
+                     "a coin figure and a dollar figure are not the same quantity.");
+    } else {
+      moveLines.push("This event carries no value, so no total moves. Only the owner changes.");
+    }
   }
 
-  $("raEffect").innerHTML = '<div id="svPreview"><div class="field-label">Effect</div>' +
-    lines.map((l) => '<div class="pv-row"><span>' + l + "</span></div>").join("") +
-    '<div class="reason">The dock rewrites the owner only. The gift keeps its value, platform, ' +
-    "name and timestamp exactly as reported.</div></div>";
-  $("raSubmit").disabled = false;
+  const valueEdit = rows.length > 0;
+  $("raEffect").innerHTML = '<div id="svPreview"><div class="field-label">What this changes</div>' +
+    rows.map((r) => '<div class="pv-row"><span>' + esc(r[0]) + "</span><span>" +
+      esc(r[1]) + " → " + esc(r[2]) + "</span></div>").join("") +
+    (s.target ? '<div class="pv-row"><span>owner</span><span>' + esc(state.selected.ident) +
+      " → " + esc(s.target.displayName) + "</span></div>" : "") +
+    moveLines.map((l) => '<div class="pv-row"><span>' + l + "</span></div>").join("") +
+    '<div class="reason">' +
+    (valueEdit
+      ? "Every figure above is kept as the platform reported it, and this event is marked " +
+        (g.editedAt ? "edited already — the marker and the originals stay as they are."
+                    : "edited from now on. Totals use the corrected values; what TikTok sent stays answerable.")
+      : "The owner changes and the event itself is untouched, so it is not marked edited — " +
+        "the numbers it carries are still exactly what the platform reported.") +
+    "</div></div>";
 }
 
 async function submitReattr(){
   const s = state.sheet;
-  if (!s || s.kind !== "reattr" || !s.target) return;
+  if (!s || s.kind !== "reattr") return;
+  const patch = giftEditPatch();
+  if (Object.keys(patch).length === 0) return;
+
   $("raSubmit").disabled = true;
-  $("raSubmit").textContent = "Reattributing…";
+  $("raSubmit").textContent = "Saving…";
   try{
     const res = await fetch("/api/gifts/" + encodeURIComponent(s.gift.id), {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ username: s.target.username, displayName: s.target.displayName }),
+      body: JSON.stringify(patch),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || (res.status + " " + res.statusText));
     $("raResult").className = "is-ok";
     $("raResult").innerHTML = "<b>Done.</b> " +
-      esc((body.entry && body.entry.summary) || "The gift was reattributed.") +
-      '<div class="reason">Recorded in the corrections log · revertible</div>';
+      esc((body.entry && body.entry.summary) || "The gift was edited.") +
+      '<div class="reason">Recorded in the corrections log · reverts every field, not just one</div>';
     state.index.clear();
     await Promise.all([loadViewers(), loadProblems(), loadCorrections()]);
     buildIndex();
+    if (state.board) loadBoard();
     if (state.selected) loadRecord(state.selected.platform, state.selected.ident);
     setTimeout(closeSheet, 1800);
   }catch(err){
     $("raResult").className = "is-err";
-    $("raResult").textContent = "The reattribute failed: " + err.message + " — nothing was changed.";
+    $("raResult").textContent = "The edit failed: " + err.message + " — nothing was changed.";
     $("raSubmit").disabled = false;
-    $("raSubmit").textContent = "Reattribute";
+    $("raSubmit").textContent = "Save";
   }
 }
 
@@ -3005,6 +3166,15 @@ function renderNote(n){
     '<div class="note-micro">' + micro + "</div></div>";
 }
 
+/** What the platform reported for a field, when a hand correction has replaced it. */
+function origOf(g, field){
+  const map = { quantity: "originalQuantity", timestamp: "originalTimestamp",
+                coinValue: "originalCoinValue", amount: "originalAmount", giftName: "originalGiftName" };
+  if (!g.editedAt) return null;
+  const v = g[map[field]];
+  return v == null || v === g[field] ? null : v;
+}
+
 function renderGift(g){
   const priced = g.coinValue != null || g.amount != null;
   const val = g.coinValue != null ? nInt(g.coinValue) + " coins"
@@ -3013,14 +3183,31 @@ function renderGift(g){
   const name = g.giftName
     ? esc(g.giftName)
     : '<span class="unavail"><span class="g" aria-hidden="true">⊘</span>no gift name sent</span>';
-  return '<div class="gift-row" title="session ' + esc(g.sessionId || "") + '">' +
-    '<span class="g-when">' + esc(stamp(g.timestamp)) + "</span>" +
+
+  /* THE EDITED MARKER. A corrected number must never quietly pass as what the platform said, so
+     it is on the row itself — not behind a click — and it carries the original figure with it.
+     `was N` beside the value is the whole point: the number on screen is the corrected one, and
+     what TikTok actually reported is right there to check it against. */
+  const wasQty  = origOf(g, "quantity");
+  const wasVal  = origOf(g, "coinValue") != null ? nInt(origOf(g, "coinValue")) + " coins"
+                : origOf(g, "amount") != null ? nUsd(origOf(g, "amount")) : null;
+  const wasName = origOf(g, "giftName");
+  const wasWhen = origOf(g, "timestamp");
+  const was = (v) => v == null ? "" : '<span class="g-was">was ' + esc(v) + "</span>";
+  const editedPill = g.editedAt
+    ? '<span class="g-edited" title="Corrected by hand on ' + esc(stamp(g.editedAt)) +
+      '. The platform’s own figures are kept and shown beside the corrected ones.">edited</span>'
+    : "";
+
+  return '<div class="gift-row' + (g.editedAt ? " is-edited" : "") + '" title="session ' + esc(g.sessionId || "") + '">' +
+    '<span class="g-when">' + esc(stamp(g.timestamp)) + was(wasWhen ? stamp(wasWhen) : null) + "</span>" +
     '<span class="mono" style="color:var(--text-mute-2); font-size:11px">' + esc(PLAT[state.record.platform] || "") + "</span>" +
-    "<span>" + name + (priced ? "" : '<span class="meta" style="margin-left:8px">unpriced</span>') + "</span>" +
-    '<span class="g-qty">' + esc(g.quantity != null ? g.quantity : "—") + "</span>" +
-    '<span class="g-val">' + val + "</span>" +
+    "<span>" + name + editedPill +
+      (priced ? "" : '<span class="meta" style="margin-left:8px">unpriced</span>') + was(wasName) + "</span>" +
+    '<span class="g-qty">' + esc(g.quantity != null ? g.quantity : "—") + was(wasQty) + "</span>" +
+    '<span class="g-val">' + val + was(wasVal) + "</span>" +
     '<span class="g-edit"><button data-reattr="' + esc(String(g.id)) +
-    '" title="Reattribute this event to a different viewer">edit</button></span></div>';
+    '" title="Correct this event, or give it to a different viewer">edit</button></span></div>';
 }
 
 /* ---------- events ---------- */
@@ -3092,6 +3279,9 @@ $("composerBar").addEventListener("click", (e) => {
 });
 
 $("raSearch").addEventListener("input", renderReattrResults);
+for (const id of ["geQty", "geVal", "geName", "geWhen"]){
+  $(id).addEventListener("input", renderReattrEffect);
+}
 $("raResults").addEventListener("click", (e) => {
   const c = e.target.closest("[data-cand]");
   if (!c || !state.sheet) return;
