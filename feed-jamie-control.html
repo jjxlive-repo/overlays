@@ -512,7 +512,10 @@ let SQC = {
   enabled: true,
   crowd: { x: 890, y: 0 },
   wheel: { enabled: true, x: 540, y: 0, size: 300, minCoins: 1 },
-  tiers: { enabled: true, decayPerMin: 0.4, meterX: 260, meterY: 0 },
+  tiers: { enabled: true, decayPerMin: 0.4, meterX: 260, meterY: 0,
+           labelZero: 'FEED JAMIE!', labelPrefix: 'JAMIE IS',
+           labelMax: 'MAX DRIP — keep him there!',
+           tierNames: 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC' },
 };
 let sqcSeeded = false;
 try { const s = JSON.parse(localStorage.getItem(SQC_LS) || 'null'); if (s) { SQC = fjDeepMerge(SQC, s); sqcSeeded = true; } } catch (e) {}
@@ -821,6 +824,26 @@ function selectInput(parent, label, path, options) {
   inp.onchange = () => setPath(path, inp.value);
   parent.appendChild(row);
 }
+/* free-text field. Unlike the other helpers this takes explicit get/push callbacks,
+   because the squad config lives in its own SQC object rather than under CFG. */
+function textInput(parent, label, path, push, get) {
+  const row = document.createElement('label');
+  row.className = 'row';
+  row.innerHTML = '<span>' + label + '</span>';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = get() == null ? '' : String(get());
+  inp.style.cssText = 'flex:1;min-width:120px';
+  inp.onchange = () => {
+    const parts = path.split('.');
+    const patch = {}; let cur = patch;
+    parts.forEach((k, i) => { if (i === parts.length - 1) cur[k] = inp.value; else cur = cur[k] = {}; });
+    push(patch);
+  };
+  row.appendChild(inp);
+  parent.appendChild(row);
+  return inp;
+}
 function colorInput(parent, label, path) {
   const row = document.createElement('div'); row.className = 'row';
   row.innerHTML = `<label>${label}</label><input type="color">`;
@@ -892,13 +915,23 @@ function buildEls() {
     });
   }
   els.push({
-    id: 'jamie', name: 'Jamie', img: 'assets/feed-jamie/jamie-idle-01.png?v=' + FJ_CACHE_BUST, yLocked: true, xOnly: true,
-    hint: 'Jamie sits on the floor line — drag horizontally; scale changes his size (his reach zone follows).',
+    id: 'jamie', name: 'Jamie', img: 'assets/feed-jamie/jamie-idle-01-in.png?v=' + FJ_CACHE_BUST,
+    hint: 'Drag Jamie anywhere — across the floor, or up and down off it (that is jamie.yOffset). Scale changes his size and his reach zone follows.',
     box: () => {
       const h = 300 * CFG.jamie.scale, w = 260 * CFG.jamie.scale;
       return { w, h, cx: CFG.jamie.x + CFG.jamie.width / 2, cy: floorSafe() + (CFG.jamie.yOffset || 0) - h / 2 };
     },
-    setPos: (x) => { CFG.jamie.x = clamp(Math.round(x - CFG.jamie.width / 2), 0, 820); pushConfig(); },
+    /* Vertical used to be locked to the floor line, so Jamie could only slide
+       sideways. The overlay has always honoured jamie.yOffset, so dragging up and
+       down now writes it — inverting the same expression box() uses for cy. */
+    setPos: (x, y) => {
+      CFG.jamie.x = clamp(Math.round(x - CFG.jamie.width / 2), 0, 820);
+      if (y != null) {
+        const h = 300 * CFG.jamie.scale;
+        CFG.jamie.yOffset = clamp(Math.round(y + h / 2 - floorSafe()), -900, 900);
+      }
+      pushConfig();
+    },
     scale: () => CFG.jamie.scale, setScale: s => { CFG.jamie.scale = clamp(s, 0.5, 1.6); pushConfig(); },
     vis: null, setVis: null,
   });
@@ -1629,25 +1662,72 @@ function renderSquadToggles() {
   crow.innerHTML = `<label>Wheel min coins</label><input type="number" step="1" min="1" style="width:80px" value="${SQC.wheel.minCoins}">`;
   crow.querySelector('input').onchange = e => sqPush({ wheel: { minCoins: Math.max(1, +e.target.value || 1) } });
   p.appendChild(crow);
+  noteEl(p, 'Care meter wording — what viewers read on the drip meter.');
+  textInput(p, 'Empty-meter text', 'tiers.labelZero', sqPush, () => SQC.tiers.labelZero);
+  textInput(p, 'Tier prefix', 'tiers.labelPrefix', sqPush, () => SQC.tiers.labelPrefix);
+  textInput(p, 'Max-tier text', 'tiers.labelMax', sqPush, () => SQC.tiers.labelMax);
+  textInput(p, 'Tier names (6, comma separated)', 'tiers.tierNames', sqPush, () => SQC.tiers.tierNames);
   noteEl(p, 'Crowd, wheel and care-meter placement moved to the Canvas tab (gold elements).');
 }
 renderSquadToggles();
 
 /* ── ASSETS (Advanced) ── */
+/* Generated from assets/feed-jamie. The previous list was the retired pre-Cleanup6
+   library — all 59 entries had been renamed, so the asset check reported every
+   frame missing and the Canvas thumbnail was a broken image. */
 const JAMIE_FILES = [
-  'jamie-idle-01.png', 'jamie-idle-02-blink.png', 'jamie-idle-03-breathe.png', 'jamie-idle-04-ear-twitch.png', 'jamie-idle-05-tail-wag.png',
-  'jamie-track-left.png', 'jamie-track-center.png', 'jamie-track-right.png', 'jamie-track-high.png',
-  'jamie-anticipation-01.png', 'jamie-anticipation-02-wiggle.png', 'jamie-anticipation-03-launch.png',
-  'jamie-anticipation-04-wiggle-b.png', 'jamie-anticipation-05-stalk.png',
-  'jamie-treat-catch-01.png', 'jamie-treat-catch-02.png', 'jamie-treat-chew-01.png', 'jamie-treat-chew-02.png', 'jamie-treat-happy.png',
-  'jamie-fetch-ready.png', 'jamie-fetch-leap.png', 'jamie-fetch-catch.png', 'jamie-ball-hold.png', 'jamie-fetch-shake.png',
-  'jamie-premium-ready.png', 'jamie-premium-catch.png', 'jamie-premium-celebrate.png', 'jamie-premium-celebrate-02.png', 'jamie-premium-hold.png',
-  'jamie-toy-pounce.png', 'jamie-toy-paw.png', 'jamie-toy-surprised.png', 'jamie-toy-shake.png', 'jamie-toy-happy.png',
-  'jamie-duck-head-tilt.png', 'jamie-duck-tilt-02.png', 'jamie-duck-paw.png', 'jamie-duck-boop.png', 'jamie-duck-happy.png',
-  'jamie-sock-grab.png', 'jamie-sock-tug.png', 'jamie-sock-tug-02.png', 'jamie-sock-shake.png', 'jamie-sock-victory.png',
-  'jamie-bubble-watch.png', 'jamie-bubble-track.png', 'jamie-bubble-pop.png', 'jamie-bubble-surprised.png', 'jamie-bubble-sneeze.png',
-  'jamie-heart-celebrate-01.png', 'jamie-heart-celebrate-02.png', 'jamie-heart-celebrate-03.png', 'jamie-heart-spin.png', 'jamie-heart-land.png',
-  'jamie-comment-look.png', 'jamie-miss.png', 'jamie-confused.png', 'jamie-sleep.png', 'jamie-wake.png'
+  /* idle + ambient */
+  'jamie-blink-01-half.png', 'jamie-blink-02-shut.png', 'jamie-ear-01.png', 'jamie-ear-02.png',
+  'jamie-idle-01-in.png', 'jamie-idle-02-mid.png', 'jamie-idle-03-out.png', 'jamie-idle-04-mid.png',
+  'jamie-tail-01.png', 'jamie-tail-02.png', 'jamie-tail-03.png',
+  /* tracking */
+  'jamie-track-low.png', 'jamie-track-mid.png', 'jamie-track-top.png', 'jamie-track-turn-01-side.png',
+  'jamie-track-turn-02-threequarter.png', 'jamie-track-turn-03-forward.png',
+  /* anticipation */
+  'jamie-antic-01-bow.png', 'jamie-antic-02-left.png', 'jamie-antic-04-right.png', 'jamie-antic-05-coil.png',
+  /* locomotion */
+  'jamie-jump-01-load.png', 'jamie-jump-02-launch.png', 'jamie-jump-03-rise.png', 'jamie-jump-04-apex.png',
+  'jamie-jump-05-descend.png', 'jamie-jump-06-land.png', 'jamie-jump-07-absorb.png', 'jamie-jump-08-rebound.png',
+  'jamie-jump-09-sit.png', 'jamie-run-01.png', 'jamie-run-02.png', 'jamie-run-03.png',
+  'jamie-run-04.png', 'jamie-run-05.png', 'jamie-run-06.png', 'jamie-settle-01-shake.png',
+  'jamie-settle-02-shake.png', 'jamie-settle-03-land.png', 'jamie-skid-01.png', 'jamie-skid-02.png',
+  'jamie-skid-03.png', 'jamie-trot-01.png', 'jamie-trot-02.png', 'jamie-trot-03.png',
+  'jamie-trot-04.png', 'jamie-turn-01.png', 'jamie-turn-02.png', 'jamie-turn-03.png',
+  /* treat */
+  'jamie-treat-01-snap.png', 'jamie-treat-02-catch.png', 'jamie-treat-03-chew.png', 'jamie-treat-04-chew.png',
+  'jamie-treat-05-gulp.png', 'jamie-treat-06-lick.png',
+  /* fetch + premium */
+  'jamie-fetch-01-jaws.png', 'jamie-fetch-02-trot.png', 'jamie-fetch-03-present.png', 'jamie-premium-01-catch.png',
+  'jamie-premium-02-cradle.png', 'jamie-premium-03-sparkle.png', 'jamie-premium-04-peak.png',
+  /* toy + duck + sock + bubble */
+  'jamie-bubble-01-spot.png', 'jamie-bubble-02-float.png', 'jamie-bubble-03-touch.png', 'jamie-bubble-04-pop.png',
+  'jamie-bubble-05-startle.png', 'jamie-bubble-06-sneeze.png', 'jamie-duck-01-spot.png', 'jamie-duck-02-approach.png',
+  'jamie-duck-03-nose.png', 'jamie-duck-04-squeak.png', 'jamie-duck-05-hold.png', 'jamie-sock-01-snatch.png',
+  'jamie-sock-02-shakeL.png', 'jamie-sock-03-shakeR.png', 'jamie-sock-04-drape.png', 'jamie-toy-01-bat.png',
+  'jamie-toy-02-pounce.png', 'jamie-toy-03-grab.png', 'jamie-toy-04-shakeL.png', 'jamie-toy-05-shakeR.png',
+  'jamie-toy-06-proud.png',
+  /* heart me */
+  'jamie-hm-cls-01-crouch.png', 'jamie-hm-cls-02-leap.png', 'jamie-hm-cls-03-clutch.png', 'jamie-hm-cls-04-chest.png',
+  'jamie-hm-cls-05-lift.png', 'jamie-hm-cls-06-swayL.png', 'jamie-hm-cls-07-swayR.png', 'jamie-hm-prd-01-rise.png',
+  'jamie-hm-prd-02-stand.png', 'jamie-hm-prd-03-puffA.png', 'jamie-hm-prd-04-puffB.png', 'jamie-hm-prd-05-peak.png',
+  'jamie-hm-prd-06-bashful.png', 'jamie-hm-run-01-charge.png', 'jamie-hm-run-02-burstA.png', 'jamie-hm-run-03-burstB.png',
+  'jamie-hm-run-04-burstC.png', 'jamie-hm-run-05-out.png', 'jamie-hm-spin-01-front.png', 'jamie-hm-spin-02-q1.png',
+  'jamie-hm-spin-03-profile.png', 'jamie-hm-spin-04-back34.png', 'jamie-hm-spin-05-back.png', 'jamie-hm-spin-06-q3.png',
+  /* jackpot + mythic + growth */
+  'jamie-grow-01-stretch.png', 'jamie-grow-02-mid.png', 'jamie-grow-03-rise.png', 'jamie-grow-04-tall.png',
+  'jamie-grow-05-puff.png', 'jamie-jp-01-paws.png', 'jamie-jp-02-snap.png', 'jamie-jp-03-rainA.png',
+  'jamie-jp-04-rainB.png', 'jamie-jp-05-catch.png', 'jamie-jp-06-roll.png', 'jamie-jp-07-rise.png',
+  'jamie-jp-08-peak.png', 'jamie-ms-01-leap.png', 'jamie-ms-02-land.png', 'jamie-my-01-crouch.png',
+  'jamie-my-02-rear.png', 'jamie-my-03-peak.png', 'jamie-my-04-pulseA.png', 'jamie-my-05-pulseB.png',
+  'jamie-my-06-land.png',
+  /* reactions + misc */
+  'jamie-conf-01-cock.png', 'jamie-conf-02-question.png', 'jamie-conf-03-shrug.png', 'jamie-flinch.png',
+  'jamie-look-01-turn.png', 'jamie-look-02-hold.png', 'jamie-miss-01-lunge.png', 'jamie-miss-02-whiff.png',
+  'jamie-miss-03-lookback.png', 'jamie-nom-01.png', 'jamie-nom-02.png', 'jamie-shake-01.png',
+  'jamie-shake-02.png', 'jamie-shake-03.png', 'jamie-stand-idle-01.png', 'jamie-stand-idle-02.png',
+  /* sleep + wake */
+  'jamie-sleep-01-in.png', 'jamie-sleep-02-mid.png', 'jamie-sleep-03-out.png', 'jamie-sleep-twitch.png',
+  'jamie-wake-01-crack.png', 'jamie-wake-02-yawn.png', 'jamie-wake-03-yawnpeak.png', 'jamie-wake-04-stretch.png'
 ];
 const ITEM_FILES = [
   'items/treat-biscuit.png', 'items/treat-bone.png', 'items/treat-purple-splat.png', 'items/treat-heart.png',

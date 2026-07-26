@@ -3703,6 +3703,12 @@ const SQ_DEFAULT = {
     thresholds: [0.01, 12.5, 30, 60, 125, 225],   // T1..T6
     decayPerMin: 0.4,                              // USD drained per minute — "keep him glowing"
     meterX: 260, meterY: 0,                        // meterY 0 = auto (just under the floor)
+    /* Every string the care meter shows is editable from the control panel —
+       these are only the defaults. */
+    labelZero: 'FEED JAMIE!',
+    labelPrefix: 'JAMIE IS',
+    labelMax: 'MAX DRIP — keep him there!',
+    tierNames: 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC',
   },
 };
 let SQ = fjClone(SQ_DEFAULT);
@@ -3733,6 +3739,15 @@ const sqKey = (n) => String(n || '').trim().toLowerCase();
 
 /* ── tier model (decay-based) ── */
 const SQ_TIER_NAMES = ['', 'HAPPY', 'GLOWING', 'RICHES', 'RADIANT', 'UNTOUCHABLE', 'MYTHIC'];
+/* Operator-editable tier names, parsed from the comma-separated config string.
+   Falls back to the built-in list per-slot, so a blank or half-filled field can
+   never blank out the meter mid-stream. */
+function sqTierNames() {
+  const parsed = String((SQ.tiers && SQ.tiers.tierNames) || '')
+    .split(',').map(t => t.trim());
+  return SQ_TIER_NAMES.map((def, i) => (i === 0 ? '' : (parsed[i - 1] || def)));
+}
+const sqCopy = (k, def) => { const v = SQ.tiers && SQ.tiers[k]; return (v == null || v === '') ? def : v; };
 function sqTierOf(usd) {
   const t = SQ.tiers.thresholds;
   for (let i = t.length - 1; i >= 0; i--) if (usd >= t[i]) return i + 1;
@@ -3933,7 +3948,8 @@ function sqUpdateMeter(popped) {
   m.classList.add('show');
   const tier = sqState.tier;
   const th = SQ.tiers.thresholds;
-  const name = SQ_TIER_NAMES[tier] || 'FEED ME';
+  const NAMES = sqTierNames();
+  const name = NAMES[tier] || 'FEED ME';
   const next = tier < th.length ? th[tier] : null;
   if (!m.dataset.built) {
     m.innerHTML = `<div class="sqm-badge">🐶 <span class="sqm-tname"></span></div>
@@ -3941,7 +3957,8 @@ function sqUpdateMeter(popped) {
       <div class="sqm-next"></div>`;
     m.dataset.built = '1';
   }
-  m.querySelector('.sqm-tname').textContent = tier > 0 ? `JAMIE IS ${name}` : 'FEED JAMIE!';
+  m.querySelector('.sqm-tname').textContent =
+    tier > 0 ? `${sqCopy('labelPrefix', 'JAMIE IS')} ${name}`.trim() : sqCopy('labelZero', 'FEED JAMIE!');
   /* tier-name ink on the cream paper badge: purple → navy → red as tiers climb */
   m.style.setProperty('--sqm-edge', tier >= 6 ? '#c8342c' : tier >= 4 ? '#1d3f7a' : '#7B2FBE');
   const fill = m.querySelector('.sqm-fill');
@@ -3951,10 +3968,10 @@ function sqUpdateMeter(popped) {
     const pct = Math.min(100, Math.max(0, (sqState.careUsd - base) / (next - base) * 100));
     fill.style.width = pct.toFixed(1) + '%';
     const gapCoins = Math.max(1, Math.ceil((next - sqState.careUsd) / 0.005));
-    nextEl.textContent = `${gapCoins.toLocaleString()} coins to ${SQ_TIER_NAMES[tier + 1]}`;
+    nextEl.textContent = `${gapCoins.toLocaleString()} coins to ${NAMES[tier + 1] || ''}`.trim();
   } else {
     fill.style.width = '100%';
-    nextEl.textContent = 'MAX DRIP — keep him there!';
+    nextEl.textContent = sqCopy('labelMax', 'MAX DRIP — keep him there!');
   }
   const mx = SQ.tiers.meterX, my = SQ.tiers.meterY || (CFG.floor.y + 14);
   m.style.left = (mx - 110) + 'px';
@@ -4272,7 +4289,7 @@ function publishStatus(immediate) {
         squad: {
           enabled: SQ.enabled, wheel: SQ.wheel.enabled, tiers: SQ.tiers.enabled,
           careUsd: Math.round(sqState.careUsd * 100) / 100,
-          tier: sqState.tier, tierName: SQ_TIER_NAMES[sqState.tier] || '—',
+          tier: sqState.tier, tierName: sqTierNames()[sqState.tier] || '—',
           decayPerMin: SQ.tiers.decayPerMin,
           gifterCount: Object.keys(sqState.gifters).length,
           topTreater: sqState.topKey ? {
