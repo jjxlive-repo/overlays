@@ -349,6 +349,20 @@ function detectBucket(source, sx, sy, sw, sh) {
 }
 
 function publishTargets(now) {
+  // GATE: this used to run unconditionally every render frame — up to 5/sec (its own
+  // 200ms floor), CONTINUOUSLY, for as long as gesture-cam was simply open, regardless
+  // of whether a Ball Drop was happening or the wheel was even connected. Against an
+  // animated game background the detected rect jitters past the 6px change-gate below
+  // often enough that this was a standing, unbounded flood — found live, described as
+  // "the flood is happening again" for what was actually a SECOND, unrelated bug from
+  // the one already fixed in wheel-overlay.html's ball physics. Bucket detection is
+  // only useful during the same window the collider scan already correctly gates on
+  // (colliderWindowUntil, opened by runBall's scan-request at the start of every
+  // drop) — so it now shares that gate instead of running forever.
+  if (now >= colliderWindowUntil) {
+    if (lastTargets) { lastTargets = null; targetsCh.publish('targets', null).catch(() => {}); }
+    return;
+  }
   if (now - lastTargetsAt < 200) return;
   lastTargetsAt = now;
   const vw = video.videoWidth, vh = video.videoHeight;

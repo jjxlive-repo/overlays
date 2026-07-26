@@ -543,6 +543,38 @@
     var ws = null, retries = 0, closed = false, everOpen = false;
     var onStatus = opts.onStatus || function () {};
 
+    /* HARD BACKSTOP, shared across every channel this instance creates. Publishing
+       goes over HTTP (below), so a runaway loop anywhere in a page — a physics bug
+       that re-fires every animation frame, a detector with a broken change-gate —
+       becomes a real POST-per-frame flood against the dock, not just wasted CPU.
+       That has now happened twice in this project, in two unrelated subsystems, which
+       is the point at which "gate every call site carefully" stops being sufficient
+       on its own. 30/sec is comfortably above the tightest legitimate cadence
+       anywhere in this codebase (Stamp's Legend marks, ~9/sec) and comfortably below
+       what any 60fps-class runaway loop would otherwise sustain. Silently drops
+       (resolves) rather than queuing — a beat that missed its moment is worth less
+       than the moment after it, and queuing would just turn a flood into a delayed
+       flood. */
+    var PUBLISH_MAX_PER_SEC = 30;
+    var publishTimestamps = [];
+    var publishLimitWarned = false;
+    function allowPublish() {
+      var now = Date.now();
+      while (publishTimestamps.length && now - publishTimestamps[0] > 1000) publishTimestamps.shift();
+      if (publishTimestamps.length >= PUBLISH_MAX_PER_SEC) {
+        if (!publishLimitWarned) {
+          publishLimitWarned = true;
+          console.warn('[jjx] dockRealtime: publish rate limit hit (' + PUBLISH_MAX_PER_SEC + '/s) — ' +
+            'dropping further publishes until it clears. This page is publishing far faster than any ' +
+            'legitimate beat needs; look for a loop with a missing or broken throttle.');
+          setTimeout(function () { publishLimitWarned = false; }, 5000); // re-warn if it is still happening later
+        }
+        return false;
+      }
+      publishTimestamps.push(now);
+      return true;
+    }
+
     function fire(state, arg) {
       (connListeners[state] || []).forEach(function (f) { try { f(arg); } catch (e) {} });
     }
@@ -596,6 +628,7 @@
         publish: function (event, data) {
           // Ably's publish(msgObject) form isn't used by these pages, but be safe.
           if (typeof event === 'object' && event !== null) { data = event.data; event = event.name; }
+          if (!allowPublish()) return Promise.resolve();   // rate-limited — see below
           return fetch(httpBase + '/api/overlay-bus/publish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
