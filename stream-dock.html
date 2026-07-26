@@ -2942,17 +2942,23 @@ tr.el-checked td { background: rgba(56,189,248,.04); }
       <div class="splat-prog-wrap">
         <div class="splat-prog" id="splat-prog"></div>
       </div>
-      <div class="footer-ably" title="Session publishes · projected monthly · free-tier % · trailing hour · hard daily safety cap">
-        <span>Ably</span>
+      <!-- This read "Ably · N msgs · est. N/mo · N% of free tier · N/hr · cap N/400,000" long
+           after Ably stopped being the transport. Publishes go over the dock's loopback socket
+           now, which has no quota and no bill, so scoring them against Ably's 6M/month and
+           250K/hour free-tier limits was measuring a constraint that no longer exists — and
+           turning red at 80% of it invites throttling a feature for no reason. The volume is
+           still worth showing as a load signal; the quota framing is not. -->
+      <div class="footer-ably" title="Messages published over the Producer Dock's local socket. Not Ably — that transport is gone, along with its quota and its bill.">
+        <span>Dock</span>
         <span id="ably-session-count">0 msgs</span>
         <span>·</span>
-        <span id="ably-monthly-est">est. —/mo</span>
+        <span id="ably-hour-pct" title="Messages published in the last 60 minutes — shows raid and gift-bomb bursts that a session average smooths over">0/hr</span>
         <span>·</span>
-        <span id="ably-free-pct">0%</span>
-        <span>·</span>
-        <span id="ably-hour-pct" title="Actual messages sent in the last 60 minutes — catches raid/gift-bomb bursts the monthly average smooths over">0/hr</span>
-        <span>·</span>
-        <span>cap</span>
+        <!-- The daily cap STAYS. It is not an Ably quota — it is a runaway-loop guard that halts
+             all publishing once tripped, which is worth just as much over a loopback socket as it
+             was over a metered one. Its counter belongs on screen precisely because tripping it
+             stops the overlays dead. -->
+        <span title="Runaway-loop guard: publishing halts for the day if this is reached. Not a billing limit.">loop guard</span>
         <span id="ably-cap-count">0 / 400,000</span>
       </div>
       <div class="splat-btns">
@@ -4628,40 +4634,21 @@ guardAblyPublish(giftsChannel, 35);  // gift/money stream — lower natural volu
 });
 function _updateAblyCounter() {
   const now = Date.now();
-  const elapsedSec = Math.max(1, (now - _ablySessionStart) / 1000);
-  const rate       = _ablyMsgCount / elapsedSec;           // msgs/sec this session
-  const projMonth  = Math.round(rate * 3600 * 4 * 30);     // 4 hrs/day × 30 days
-  const freePct    = ((projMonth / 6_000_000) * 100).toFixed(1);
-  const projLabel  = projMonth >= 1_000_000
-    ? (projMonth / 1_000_000).toFixed(1) + 'M'
-    : projMonth >= 1000
-      ? Math.round(projMonth / 1000) + 'K'
-      : projMonth;
 
-  // Actual trailing-60-minute count — not a projection, so it reacts
-  // immediately to a real burst (raid, gift bomb) instead of getting
-  // smoothed out by the 4hrs/day monthly average above. Ably's free plan
-  // caps this at 250,000/hr, separate from the 6M/month and 500/sec limits.
+  /* Trailing 60 minutes, which is the only figure here that tells you anything actionable: it
+     shows a raid or gift-bomb burst as it happens. The monthly projection and the two
+     percentages that used to sit beside it were scored against Ably's free tier — 6M/month,
+     250K/hour — and that transport is gone. A meter that reddens at 80% of a limit which no
+     longer applies does not warn anyone, it just makes them cautious about the wrong thing. */
   const oneHourAgo = now - 3600000;
   while (_ablyRecentTimestamps.length && _ablyRecentTimestamps[0] < oneHourAgo) _ablyRecentTimestamps.shift();
   const hourCount = _ablyRecentTimestamps.length;
-  const hourPct   = ((hourCount / 250_000) * 100).toFixed(1);
   const hourLabel = hourCount >= 1000 ? (hourCount / 1000).toFixed(1) + 'K' : hourCount;
 
   const el1 = document.getElementById('ably-session-count');
-  const el2 = document.getElementById('ably-monthly-est');
-  const el3 = document.getElementById('ably-free-pct');
   const el4 = document.getElementById('ably-hour-pct');
   if (el1) el1.textContent = _ablyMsgCount.toLocaleString() + ' msgs';
-  if (el2) el2.textContent = 'est. ' + projLabel + '/mo';
-  if (el3) {
-    el3.textContent = freePct + '% of free tier';
-    el3.style.color = parseFloat(freePct) > 80 ? 'var(--danger)' : parseFloat(freePct) > 50 ? '#f59e0b' : 'var(--green)';
-  }
-  if (el4) {
-    el4.textContent = hourLabel + '/hr (' + hourPct + '%)';
-    el4.style.color = parseFloat(hourPct) > 80 ? 'var(--danger)' : parseFloat(hourPct) > 50 ? '#f59e0b' : 'var(--green)';
-  }
+  if (el4) el4.textContent = hourLabel + '/hr';
 }
 
 // Mic → Ably mic-freq waveform relay has been REMOVED (it was the dominant Ably
