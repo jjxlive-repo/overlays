@@ -126,6 +126,17 @@
   </section>
 
   <section>
+    <h2>Effect longevity</h2>
+    <div class="hint">
+      How long each tier's effect HOLDS on screen, in milliseconds — the dwell between the impact
+      landing and the effect clearing. This is the main dial for how much a spin interrupts you:
+      the same effect reads as a flourish or as a takeover purely on duration. Applied when a spin
+      is RESOLVED, so a spin always plays with the timing that was set when it fired.
+    </div>
+    <div class="grid" id="hold"></div>
+  </section>
+
+  <section>
     <h2>Signature lifetimes</h2>
     <div class="hint">
       How long a name stays on the <b>signature</b> registry. Takeover and Legend are session-scoped
@@ -200,6 +211,23 @@ for (const [k, label] of RESULTS) {
   l.innerHTML = `<input type="checkbox" id="res-${k}"><span>${label}</span>`;
   $('results').appendChild(l);
 }
+for (const t of TIERS) {
+  const l = document.createElement('label'); l.className = 'field';
+  l.innerHTML = "<span>" + t.toUpperCase() + " — hold (ms)</span>" +
+                '<input type="number" min="200" max="20000" step="100" id="hold-' + t + '">' +
+                '<div class="usd" id="holdsec-' + t + '">—</div>';
+  document.getElementById('hold').appendChild(l);
+  document.getElementById('hold-' + t).addEventListener('input', refreshHold);
+}
+/* Milliseconds are what the renderer needs, but seconds are what an operator thinks
+   in — so show both rather than making anyone divide by 1000 in their head. */
+function refreshHold() {
+  for (const t of TIERS) {
+    const v = Number(document.getElementById('hold-' + t).value);
+    document.getElementById('holdsec-' + t).textContent =
+      Number.isFinite(v) && v > 0 ? '= ' + (v / 1000).toFixed(1) + 's' : '—';
+  }
+}
 for (const [id, label] of [['spinMinutes','SPIN — minutes'], ['powerMinutes','POWER — minutes']]) {
   const l = document.createElement('label'); l.className = 'field';
   l.innerHTML = `<span>${label}</span><input type="number" min="1" max="1440" step="1" id="ex-${id}">`;
@@ -243,6 +271,8 @@ async function load() {
     for (const t of TIERS) $('th-' + t).value = w.thresholds[t];
     $('penny').checked = !!w.allowPennySpins;
     for (const [k] of RESULTS) $('res-' + k).checked = w.enabledResults.includes(k);
+    for (const t of TIERS) $('hold-' + t).value = (w.holdMs && w.holdMs[t]) || '';
+    refreshHold();
     $('ex-spinMinutes').value = w.signatureExpiry.spinMinutes;
     $('ex-powerMinutes').value = w.signatureExpiry.powerMinutes;
     refreshUsd();
@@ -261,6 +291,7 @@ $('save').addEventListener('click', async () => {
   if (!validate()) return;
   const body = { wheel: {
     thresholds: Object.fromEntries(TIERS.map((t) => [t, Number($('th-' + t).value)])),
+    holdMs: Object.fromEntries(TIERS.map((t) => [t, Number($('hold-' + t).value)])),
     allowPennySpins: $('penny').checked,
     enabledResults: RESULTS.map(([k]) => k).filter((k) => $('res-' + k).checked),
     signatureExpiry: {

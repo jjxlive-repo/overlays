@@ -539,6 +539,15 @@ const TIER = {
   legend:   { k: 2.15, hold: 2600, ornament: '♛',  ring: '#FBBF24' },
 };
 const tierOf = (spin) => TIER[spin?.tier] || TIER.spin;
+/**
+ * How long the effect holds. The dock publishes holdMs per spin from operator settings,
+ * so this is the authority; TIER.hold is only the fallback for a payload that predates
+ * the field (a stored v2 row, or a hand-built test spin).
+ */
+const holdOf = (spin) => {
+  const h = Number(spin?.holdMs);
+  return Number.isFinite(h) && h > 0 ? h : tierOf(spin).hold;
+};
 
 // ═══════════════════════════════════════════════════════════════════
 // HEAD TRACKING (integration contract 2)
@@ -743,7 +752,7 @@ function startImpact(run) {
     // the name, and printing it again would be the same voice twice.
     if (fx.hero !== false) showHero(run, spin);
     // Impact ends after the press sequence, the impression's dwell and its peel.
-    const hold = pressMs + tierOf(spin).hold + 640;
+    const hold = pressMs + holdOf(spin) + 640;
     runStage(run, () => startSettle(run), hold);
     return;
   }
@@ -1307,10 +1316,10 @@ function runAvatar(run) {
       }, 520);
 
       // Then drifts up and out.
-      runTimer(run, () => inv.classList.add('drifting'), 520 + tierOf(spin).hold);
+      runTimer(run, () => inv.classList.add('drifting'), 520 + holdOf(spin));
     }, i * 160);
   }
-  return 520 + tierOf(spin).hold + 700;
+  return 520 + holdOf(spin) + 700;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1658,7 +1667,7 @@ function ripple(run, at, k, gold) {
 /** LEGEND FLARE — renders under EVERY effect at Legend and nowhere else.
  *  Gold flash + slow rotating rays + held vignette + an 18-spark burst off the head. */
 function legendFlare(run) {
-  const hold = TIER.legend.hold;
+  const hold = holdOf(run.spin);   // the flare holds exactly as long as the effect does
   const flash = el('lf-flash');
   const rays = el('lf-rays');
   const vign = el('lf-vignette');
@@ -1714,7 +1723,22 @@ function place(node, x, y, w, h) {
 // Plate width is measured against HEAD WIDTH and capped under it, so even a
 // Legend stamp never overhangs the skull.
 // ═══════════════════════════════════════════════════════════════════
-const STAMP_PLATE = { spin: 0.54, power: 0.68, takeover: 0.80, legend: 0.90 };
+/**
+ * SIZE THE PLATE TO THE NAME, NOT JUST THE HEAD.
+ *
+ * The handoff sizes the plate as a fraction of head width and caps it under the skull.
+ * That kept it tidy and made it unreadable: a head is ~280px, so the plate was ~220px,
+ * and a nine-character name inside that lands around 38px — indecipherable on stream.
+ *
+ * The name IS the payoff of this effect, so legibility wins over skull-containment.
+ * The plate now starts from a per-tier target FONT size and grows wide enough to carry
+ * the name at that size, so a long name gets a wider plate instead of smaller text. It
+ * will overhang the face, which is what a stamp pressed across someone's face does.
+ */
+const STAMP_PLATE = { spin: 0.95, power: 1.20, takeover: 1.45, legend: 1.70 };
+const STAMP_FONT  = { spin: 62,   power: 78,   takeover: 94,   legend: 112 };
+/** Boogaloo is a narrow display face; this is its rough advance per character. */
+const GLYPH_W = 0.52;
 
 /** Legend presses FOUR marks — brow, both cheeks, chin — each on its own tracked
  *  face point, the die walking between them. Cheek/chin marks run smaller. */
@@ -1739,11 +1763,19 @@ function runStamp(run) {
   // an off-centre mark at ox spans ox·hw ± w/2, so keeping it inside the head box
   // needs w ≤ hw(1 − 2|ox|). Without that, Legend's cheek marks (ox ±0.27 at 72%)
   // stick ~26px out past the skull on each side.
-  const baseW = headNow.w * STAMP_PLATE[spin.tier];
-  const markWidth = (m) => Math.min(baseW * m.scale, headNow.w * (1 - 2 * Math.abs(m.ox)) * 0.98);
+  // Start from the target font and the name's own length, then take whichever is
+  // wider: the tier's plate, or the width the name needs to be READ at that size.
+  const targetFont = STAMP_FONT[spin.tier];
+  const nameChars = Math.max(3, name.length);
+  const needed = nameChars * targetFont * GLYPH_W * 1.22;      // + padding
+  const baseW = Math.min(1000, Math.max(headNow.w * STAMP_PLATE[spin.tier], needed));
+  // Marks stay on SCREEN rather than on the skull — the old skull clamp is what kept
+  // pulling the plate back down to an unreadable size.
+  const markWidth = (m) => Math.min(baseW * m.scale, 1040);
   // 2:1 — the ink-mask art is 2048x1024, so the impression box matches it and the
-  // texture maps 1:1 instead of being stretched.
-  const markHeight = (w) => w / 2;
+  // texture maps 1:1 instead of being stretched. Clamped so a long name cannot
+  // produce an absurdly tall slab.
+  const markHeight = (w) => Math.max(90, Math.min(w / 2, 300));
   const swingMs = 320 + 70 * k;
   const pressMs = 86 + 22 * k;
   const liftMs  = 400 + 70 * k;
@@ -1841,10 +1873,11 @@ function layInk(run, name, mark, w, h, legend, k) {
   ink.appendChild(plate);
 
   const label = el('ink-name');
-  // Size to FILL the plate — the name is the payoff, so it should be as large as the
-  // impression allows, then shrink only if the name is long enough to overflow.
-  const fit = Math.min(h * 0.62, (w * 1.55) / Math.max(4, name.length));
-  label.style.fontSize = Math.max(20, fit) + 'px';
+  // FILL the plate. The plate was already widened to carry the name at the tier's
+  // target size, so this normally lands on that size; it only shrinks for a name long
+  // enough to hit the 1000px plate cap.
+  const fit = Math.min(h * 0.72, (w * 0.88) / (Math.max(3, name.length) * GLYPH_W));
+  label.style.fontSize = Math.max(34, fit) + 'px';
   label.textContent = name;                   // textContent, not innerHTML — viewer input
   ink.appendChild(label);
   runNode(run, laneFx, ink);
@@ -1866,7 +1899,7 @@ function layInk(run, name, mark, w, h, legend, k) {
   follow();
 
   // PEEL off toward the wall once the dwell is done.
-  const dwell = tierOf(run.spin).hold;
+  const dwell = holdOf(run.spin);
   runTimer(run, () => {
     if (raf) { cancelAnimationFrame(raf); run.rafs.delete(raf); raf = null; }
     ink.style.transition = 'transform 640ms cubic-bezier(.4,0,.2,1), opacity 640ms cubic-bezier(.4,0,.2,1)';
