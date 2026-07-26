@@ -1367,6 +1367,12 @@ const SEQ = {
   /* tracking is VERTICAL now (low/mid/top); horizontal facing comes from the
      existing mirror/flip, so left/right no longer need their own frames. */
   trackLow:     [{ f: 'jamie-track-low.png', d: 0 }],
+  /* horizontal head sweep. Drawn facing right; the overlay mirrors them for the
+     left half, so 3 frames cover 5 positions:
+       side-L <- 3/4-L <- forward -> 3/4-R -> side-R  */
+  trackSide:    [{ f: 'jamie-track-turn-01-side.png', d: 0 }],
+  trackQuarter: [{ f: 'jamie-track-turn-02-threequarter.png', d: 0 }],
+  trackForward: [{ f: 'jamie-track-turn-03-forward.png', d: 0 }],
   trackCenter:  [{ f: 'jamie-track-mid.png', d: 0 }],
   trackHigh:    [{ f: 'jamie-track-top.png', d: 0 }],
   anticipation: [{ f: 'jamie-antic-01-bow.png', d: 300 },
@@ -1524,6 +1530,9 @@ const FRAME_FALLBACK = {
   'jamie-tail-02.png': 'jamie-tail-01.png',
   'jamie-tail-03.png': 'jamie-tail-01.png',
   'jamie-track-low.png': 'jamie-track-mid.png',
+  'jamie-track-turn-01-side.png': 'jamie-track-mid.png',
+  'jamie-track-turn-02-threequarter.png': 'jamie-track-turn-03-forward.png',
+  'jamie-track-turn-03-forward.png': 'jamie-look-01-turn.png',
   'jamie-track-top.png': 'jamie-track-mid.png',
   'jamie-track-mid.png': 'jamie-idle-01-in.png',
   'jamie-antic-02-left.png': 'jamie-antic-01-bow.png',
@@ -2135,7 +2144,7 @@ function setJamieState(next, opts = {}) {
       scheduleBlink(); scheduleTwitch();
       break;
     case 'TRACKING':
-      trackBand = 'trackCenter'; trackFacingLeft = null; trackTurning = false;
+      trackBand = null; sweepBand = 'trackForward'; trackFacingLeft = null; trackTurning = false;
       jamieEl.classList.add('breathe');
       scheduleBlink();
       break;
@@ -2402,7 +2411,8 @@ function updateRoam(dt, now) {
    drifting near a boundary strobe between two poses — the biggest single source
    of the jitter. Each band now has separate enter/exit thresholds (hysteresis):
    once a band is entered it is held until the object moves clearly out of it. */
-let trackBand = 'trackCenter';
+let trackBand = null;
+let sweepBand = 'trackForward';
 let trackFacingLeft = null;      // null = not yet established
 let trackTurning = false;
 /* The Cleanup6 library tracks only VERTICALLY (low / mid / top) — every one of
@@ -2413,45 +2423,50 @@ let trackTurning = false;
    jamie-look-01-turn is the one SEATED, front-facing pose in the library, so a
    side change now plays through it and the mirror is flipped while he is face-on,
    where a horizontal flip is very nearly invisible. */
-const TRACK_TURN_FRAME = 'jamie-look-01-turn.png';
-const TRACK_TURN_MS = 220;
-const TURN_DEADBAND = 150;       // px past centre before a turn is worth playing
+/* Horizontal sweep bands by |dx|, with separate enter/exit thresholds so an object
+   drifting on a boundary cannot strobe between two poses. */
+const SWEEP_IN  = { quarter: 110, side: 330 };   // must pass this to enter the band
+const SWEEP_OUT = { quarter: 70,  side: 260 };   // must fall under this to leave it
 
 function updateTracking(obj) {
-  if (J.state !== 'TRACKING' || trackTurning) return;
+  if (J.state !== 'TRACKING') return;
   const rz = reachZoneRect();
   const dx = (obj.x + obj.w / 2) - rz.cx;
   const dy = (obj.y + obj.h / 2) - rz.cy;
 
-  /* ── horizontal: turn to face the object, through the forward pose ── */
-  const wantLeft = dx < -TURN_DEADBAND ? true : (dx > TURN_DEADBAND ? false : null);
-  if (wantLeft !== null) {
-    if (trackFacingLeft === null) {            // first sighting — just face it
-      trackFacingLeft = wantLeft;
-      poseMirror = wantLeft;
-      applyJamieTransform();
-    } else if (wantLeft !== trackFacingLeft) { // crossed over — play the turn
-      trackTurning = true;
-      showFrame(TRACK_TURN_FRAME);
-      setTimeout(() => {
-        trackFacingLeft = wantLeft;
-        poseMirror = wantLeft;
-        applyJamieTransform();
-        trackTurning = false;
-        trackBand = 'trackCenter';             // re-settle from the forward pose
-      }, TRACK_TURN_MS);
-      return;
+  /* Something clearly overhead or underfoot beats sideways — those are the poses
+     drawn with the head tilted, and they read better than a level head for it. */
+  if (trackBand === 'trackHigh') { if (dy > -190) trackBand = null; }
+  else if (trackBand === 'trackLow') { if (dy < 80) trackBand = null; }
+  else if (dy < -270) trackBand = 'trackHigh';
+  else if (dy > 160) trackBand = 'trackLow';
+
+  let key;
+  if (trackBand === 'trackHigh' || trackBand === 'trackLow') {
+    key = trackBand;
+  } else {
+    /* Horizontal sweep. The mirror only shows on the quarter/side poses, and it is
+       flipped while the FORWARD pose is on screen — a head-on frame is close to
+       symmetric, so the swap is very nearly invisible. That is what turns a
+       left-to-right cross into a rotation instead of a snap. */
+    const ax = Math.abs(dx);
+    if (sweepBand === 'trackSide') { if (ax < SWEEP_OUT.side) sweepBand = 'trackQuarter'; }
+    else if (sweepBand === 'trackQuarter') {
+      if (ax > SWEEP_IN.side) sweepBand = 'trackSide';
+      else if (ax < SWEEP_OUT.quarter) sweepBand = 'trackForward';
+    } else {
+      if (ax > SWEEP_IN.side) sweepBand = 'trackSide';
+      else if (ax > SWEEP_IN.quarter) sweepBand = 'trackQuarter';
     }
+    key = sweepBand;
+    const wantMirror = dx < 0;
+    if (sweepBand === 'trackForward') trackFacingLeft = wantMirror;   // flip while face-on
+    else trackFacingLeft = trackFacingLeft === null ? wantMirror : trackFacingLeft;
+    if (Math.abs(dx) > SWEEP_IN.quarter) trackFacingLeft = wantMirror;
+    if (poseMirror !== trackFacingLeft) { poseMirror = trackFacingLeft; applyJamieTransform(); }
   }
 
-  /* ── vertical: hysteresis so a hovering object cannot strobe the pose ── */
-  if (trackBand === 'trackHigh') { if (dy > -190) trackBand = 'trackCenter'; }
-  else if (trackBand === 'trackLow') { if (dy < 80) trackBand = 'trackCenter'; }
-  else {
-    if (dy < -270) trackBand = 'trackHigh';
-    else if (dy > 160) trackBand = 'trackLow';
-  }
-  const frame = SEQ[trackBand][0].f;
+  const frame = SEQ[key][0].f;
   if (currentFrameFile !== frame) showFrame(frame);
 }
 
