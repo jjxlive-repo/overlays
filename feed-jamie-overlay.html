@@ -2474,10 +2474,35 @@ function setJamieState(next, opts = {}) {
   }
   publishStatus();
 }
+/* A hard reset of the character layer.
+   This used to only set the state, which meant it played the settle and then let
+   whatever was jammed re-assert itself a frame later. That is the worst possible
+   failure mode: the reset is reached for PRECISELY when Jamie is stuck — a heart-me
+   or jackpot whose completion callback never fired, a reaction queue that stopped
+   draining — and in exactly that case the button looked dead. A stuck heartMeActive
+   also permanently disables the once-a-second applyLayout() in tick(), so size and
+   position changes stop rendering until something clears it.
+   So tear the reaction layer down the same way a clean heartMeEnd/jackpot end does,
+   rather than trusting the happy path to have run. Spawned objects are deliberately
+   left alone — CLEAR_ALL is the command for those. */
 function forceReset(why) {
   if (CFG.debug.showWarnings) console.warn('[feed-jamie] force reset:', why);
-  jamieEl.classList.remove('ph-happy', 'ph-blink');
+  jamieReactionQueue = [];
+  activeJamieReaction = null;
+  heartMeActive = false;
+  jackpotActive = false;
+  poseMirror = null;
+  $('heartme-veil').style.opacity = 0;
+  $('jackpot-veil').style.opacity = 0;
+  objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
+  jamieEl.classList.remove('ph-happy', 'ph-blink', 'pose-celebrate');
+  /* '' not 'none': the variants write an INLINE transition that shadows the
+     stylesheet's, so a stall leaves growth and movement permanently un-animated
+     until the inline value is removed outright. */
+  jamieEl.style.transition = '';
+  applyLayout();   /* drops any scale a half-finished variant appended to the transform */
   setJamieState('RESET');
+  publishStatus(true);
 }
 /* frame sequence player with fallback chain. Frame hold times scale with
    visuals.frameDurationScale (>1 = slower/calmer, <1 = snappier). */
