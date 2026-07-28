@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>FEED JAMIE — Overlay</title>
-<script src="jjx-core.js?v=8"></script>
-<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Fredoka:wght@400;500;600;700&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet">
+<script src="jjx-core.js?v=9"></script>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Boogaloo&family=Fredoka:wght@400;500;600;700&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet">
 <style>
   /* ── FEED JAMIE overlay — 1080x1920 transparent browser source ── */
   :root {
@@ -27,7 +28,8 @@
     --fj-charcoal:      #3A3A40;
   }
   html, body {
-    width: 1080px; height: 1920px;
+    width: 1080px; min-width: 1080px;
+    height: 1920px; min-height: 1920px;
     margin: 0; padding: 0;
     overflow: hidden;
     background: transparent;
@@ -172,7 +174,9 @@
   /* A solid chip, not a translucent plate — a half-opaque plate reads as default
      UI and inverts against dark gameplay. Hand-cut radius + hard offset shadow. */
   #prompt-pill {
-    position: absolute; z-index: 60; transform: translateX(-50%);
+    /* Jamie owns the foreground. If a transition briefly crosses their boxes,
+       the character must never disappear behind his own instruction banner. */
+    position: absolute; z-index: 29; transform: translateX(-50%);
     padding: 11px 34px 13px; border-radius: 10px 34px 14px 30px;
     background: var(--fj-plate);
     border: 7px solid var(--fj-ink);
@@ -392,20 +396,40 @@
   #squad-wheel.hide { animation: sqWheelOut .3s ease-in forwards; }
   @keyframes sqWheelIn { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: scale(1); } }
   @keyframes sqWheelOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.6); } }
+  /* "Neon night" (6b): the wheel is a prize takeover, so it goes LOUDER against
+     gameplay than the pastel wedges did. Stays in the purple Painted Splat set
+     with #1A0A2A ink — deliberately NOT the cream/Baloo doodle tokens, which are
+     scoped to #feed-hud alone. */
   .sq-wheel-disc {
     position: absolute; inset: 34px 0 0 0; border-radius: 50%;
     border: 6px solid #1A0A2A;
-    box-shadow: 0 6px 0 rgba(26,10,42,.6), 0 0 24px rgba(168,85,247,.5);
+    box-shadow: 0 6px 0 rgba(26,10,42,.6), 0 0 24px rgba(255,46,196,.35);
     background: conic-gradient(
-      #FFE9A8 0deg 45deg,   #E9D5FF 45deg 90deg,
-      #FFD9DE 90deg 135deg, #CDEFFF 135deg 180deg,
-      #FFE9A8 180deg 225deg,#E9D5FF 225deg 270deg,
-      #FFD9DE 270deg 315deg,#CDEFFF 315deg 360deg);
+      #31205C 0deg 45deg,   #4A2D86 45deg 90deg,
+      #31205C 90deg 135deg, #4A2D86 135deg 180deg,
+      #31205C 180deg 225deg,#4A2D86 225deg 270deg,
+      #31205C 270deg 315deg,#4A2D86 315deg 360deg);
+  }
+  /* Wedge spokes. The two 6b purples sit at ~1.3:1 against each other, so the
+     conic boundaries alone are invisible at stream size and the disc reads as
+     one solid circle — the spin loses its "wheel" legibility. Four full-diameter
+     ink lines (0/45/90/135deg = the eight 45deg boundaries) restore it without
+     touching the approved palette. Drawn with linear-gradients rather than extra
+     conic stops so every spoke is a constant 2px wide instead of tapering toward
+     the hub. Paints under the icons and hub: ::before is the box's first child,
+     ::after its last. */
+  .sq-wheel-disc::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background:
+      linear-gradient(0deg,   transparent calc(50% - 1px), #1A0A2A calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+      linear-gradient(45deg,  transparent calc(50% - 1px), #1A0A2A calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+      linear-gradient(90deg,  transparent calc(50% - 1px), #1A0A2A calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+      linear-gradient(135deg, transparent calc(50% - 1px), #1A0A2A calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px));
   }
   .sq-wheel-disc::after {   /* hub */
     content: ''; position: absolute; left: 50%; top: 50%;
     width: 22%; height: 22%; transform: translate(-50%,-50%);
-    background: #7B2FBE; border: 5px solid #1A0A2A; border-radius: 50%;
+    background: #FF2EC4; border: 5px solid #1A0A2A; border-radius: 50%;
   }
   .sq-wheel-icon {
     position: absolute; left: 50%; top: 50%; object-fit: contain; pointer-events: none;
@@ -414,11 +438,21 @@
     position: absolute; left: 50%; top: 6px; transform: translateX(-50%);
     width: 0; height: 0; z-index: 2;
     border-left: 17px solid transparent; border-right: 17px solid transparent;
-    border-top: 30px solid #FFD25A;
+    border-top: 30px solid #FF2EC4;
     filter: drop-shadow(0 2.5px 0 #1A0A2A);
   }
-  /* real art variants (swap in when the PNGs exist) */
-  .sq-wheel-disc.has-art { background: none; border: none; box-shadow: 0 6px 0 rgba(26,10,42,.4); }
+  /* real art variants (swap in when the PNGs exist — they do, so this is the
+     path that actually runs on stream; the CSS-drawn wheel above is the fallback).
+     The 6b glow is carried over deliberately: it is the only part of the Neon
+     night restyle that is not baked into the art, and dropping box-shadow here
+     would silently discard it. Ink offset stays lighter than the CSS wheel's .6
+     because the PNG brings its own edge. */
+  .sq-wheel-disc.has-art {
+    background: none; border: none;
+    box-shadow: 0 6px 0 rgba(26,10,42,.4), 0 0 24px rgba(255,46,196,.35);
+  }
+  /* the painted face brings its own wedges and hub */
+  .sq-wheel-disc.has-art::before,
   .sq-wheel-disc.has-art::after { display: none; }
   .sq-wheel-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   .sq-wheel-ptr-img {
@@ -491,53 +525,136 @@
   /* ── tier meter (badge + progress + decay hint) ── */
   #squad-meter {
     position: absolute; z-index: 35; pointer-events: none;
-    display: none; flex-direction: column; align-items: center; gap: 3px;
+    display: none; width: 300px;
+    transform: scale(var(--sqm-scale, 1));
+    transform-origin: center;
+    transition: transform .18s ease-out;
   }
-  #squad-meter.show { display: flex; }
-  /* cream paper sticker — same look as the original Top Splatty champ plate */
-  .sqm-badge {
-    display: flex; align-items: center; gap: 7px;
+  #squad-meter.show { display: block; }
+  /* Compact two-line cream-paper sticker: status gets a clean headline,
+     while the progress bar and next-tier copy share the second line. */
+  .sqm-shell {
+    display: flex; flex-direction: column; align-items: stretch; gap: 3px;
+    width: 300px;
     background: #FFF6D8;
     border: 4px solid #1A0A2A;
     border-radius: 22px 12px 20px 14px;   /* wonky hand-cut corners */
     transform: rotate(-2deg);
     box-shadow: 0 5px 0 rgba(26,10,42,.85);
-    padding: 3px 14px 5px;
-    font: 400 20px 'Boogaloo', cursive; color: #3B0764; letter-spacing: 1.5px;
+    padding: 5px 10px 7px;
     transition: box-shadow .6s;
   }
-  .sqm-badge .sqm-tname { color: var(--sqm-edge, #7B2FBE); }
-  /* progress bar + next-tier line share the paper-sticker look */
-  .sqm-bar {
-    width: 190px; height: 14px;
-    background: #FFF6D8;
+  .sqm-badge {
+    display: flex; align-items: center; gap: 6px;
+    width: 100%; min-width: 0; justify-content: center; white-space: nowrap;
+    font: 400 20px 'Boogaloo', cursive; color: #3B0764; letter-spacing: 1.5px;
+  }
+  .sqm-badge .sqm-tname {
+    color: var(--sqm-edge, #7B2FBE);
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .sqm-progress {
+    position: relative; width: 100%; height: 28px;
+    background: #E9DDBD;
     border: 3px solid #1A0A2A;
     border-radius: 10px 6px 9px 7px;      /* wonky, like the badge */
-    transform: rotate(-1.2deg);
-    box-shadow: 0 3px 0 rgba(26,10,42,.85);
     overflow: hidden;
   }
   .sqm-fill {
+    position: absolute; inset: 0 auto 0 0;
     height: 100%; border-radius: 6px 3px 5px 3px;
     background: linear-gradient(90deg, #A855F7, #FFD25A);
     box-shadow: inset 0 -3px 0 rgba(26,10,42,.18);
     transition: width .6s cubic-bezier(.2,.9,.3,1);
+    z-index: 0;
   }
   .sqm-next {
-    background: #FFF6D8;
-    border: 2.5px solid #1A0A2A;
-    border-radius: 12px 7px 11px 8px;
-    transform: rotate(1deg);
-    box-shadow: 0 3px 0 rgba(26,10,42,.85);
-    padding: 1px 10px 3px;
-    font: 400 15px 'Boogaloo', cursive; color: #3B0764; letter-spacing: .5px;
+    position: absolute; z-index: 2;
+    top: 1px; bottom: 1px; left: 50%; width: 150px;
+    transform: translateX(-50%);
+    display: flex; align-items: center; justify-content: center;
+    background: #1A0A2A;
+    border: 2px solid #FFF6D8;
+    border-radius: 8px 5px 7px 6px;
+    box-shadow: 0 1px 0 rgba(26,10,42,.5);
+    font: 700 17px 'DM Sans', sans-serif; color: #FFFFFF; letter-spacing: .35px;
     white-space: nowrap;
   }
-  #squad-meter.tierup .sqm-badge {
+  #squad-meter.tierup .sqm-shell {
     animation: sqmPop .7s cubic-bezier(.34,1.56,.64,1);
     box-shadow: 0 0 18px rgba(255,210,90,.95), 0 5px 0 rgba(26,10,42,.85);
   }
   @keyframes sqmPop { 0%{transform:rotate(-2deg) scale(1)} 40%{transform:rotate(1deg) scale(1.22)} 100%{transform:rotate(-2deg) scale(1)} }
+
+  /* ── FEED JAMIE HUD — the consolidated goal card ──────────────────
+     "Doodle Stream HUD" design handoff, option 4a: one edge-mounted cluster
+     (Jamie sticker + LVL n/6 counter + rotating CTA ribbon) that replaces the
+     free-floating prompt pill and the squad care meter with a single fixed
+     footprint. This module is the ONE place in the overlay that uses the
+     cream/Baloo doodle tokens instead of the purple Painted Splat set — that
+     is deliberate and scoped here; do not spread these colours outward.
+     Fixed-footprint rule: state changes are colour and transform only. Nothing
+     in here may appear, disappear, or resize — this card sits inside the camera
+     safe area, where a reflowing box is far more distracting than on gameplay. */
+  #feed-hud {
+    position: absolute; z-index: 36; pointer-events: none; display: none;
+    transform-origin: 0 0;
+    font-family: 'Baloo 2', system-ui, sans-serif;
+  }
+  #feed-hud.show { display: block; }
+  .fh-card {
+    width: 250px; box-sizing: border-box;
+    background: #fdf8ee; border: 3px solid #1a1a1a; border-radius: 14px;
+    box-shadow: 0 4px 0 rgba(0,0,0,.35);
+    overflow: hidden;
+  }
+  /* edge-mounted: drop the border on the screen-edge side and keep the radius
+     on the free corners only (the style guide's edge rule) */
+  #feed-hud.edge-left  .fh-card { border-left: none;  border-radius: 0 14px 14px 0; }
+  #feed-hud.edge-right .fh-card { border-right: none; border-radius: 14px 0 0 14px; }
+  /* The gap is a floor, not a preference: `space-between` degrades to ZERO
+     separation the moment the two labels outgrow the row, which reads as one
+     run-on word ("FEED JAMIELVL 0/6") rather than as an overflow. */
+  .fh-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; padding: 8px 14px;
+  }
+  .fh-label {
+    font-weight: 800; font-size: 17px; letter-spacing: .5px;
+    color: #1a1a1a; white-space: nowrap;
+  }
+  .fh-lvl { font-weight: 800; white-space: nowrap; }
+  .fh-lvl-word, .fh-lvl-max { font-size: 17px; color: #1a1a1a; letter-spacing: .5px; }
+  .fh-lvl-num {
+    display: inline-block;   /* a transform on an inline box is a no-op */
+    font-size: 24px; color: #17a24b; font-variant-numeric: tabular-nums;
+    transition: color .25s;
+  }
+  .fh-ribbon {
+    background: #6c3fd8; color: #ffd93b;
+    font-weight: 800; font-size: 17px; letter-spacing: .5px;
+    white-space: nowrap; text-align: center;
+    padding: 5px 10px 6px; border-top: 3px solid #1a1a1a;
+    /* Copy that still will not fit at the 11px floor gets an ellipsis rather
+       than a centred double-clip — the card never widens to accommodate it. */
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  /* only when the operator empties the CTA list — an operator config change,
+     not a live state change, so the footprint rule does not apply */
+  #feed-hud.no-cta .fh-ribbon { display: none; }
+  /* level-up: number pulse + card shake, both transform-only and tiered by
+     level so a level 6 reads harder than a level 1 (style guide motion vocab) */
+  @keyframes fhPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+  @keyframes fhShake {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(calc(-1px * var(--fh-shake, 2))) rotate(calc(-1deg * var(--fh-tilt, 0))); }
+    75% { transform: translateY(calc(1px * var(--fh-shake, 2)))  rotate(calc(1deg * var(--fh-tilt, 0))); }
+  }
+  #feed-hud.levelup .fh-lvl-num { animation: fhPulse var(--fh-pulse, 1s) ease-in-out 2; }
+  /* The iteration count is tuned per band so the shake always finishes no later
+     than the pulse — the class is cleared on the pulse's end, and a shake still
+     running at that point would be cut off mid-jitter. */
+  #feed-hud.levelup .fh-card    { animation: fhShake var(--fh-shakedur, .5s) ease-in-out var(--fh-shakeiter, 4); }
 </style>
 </head>
 <body>
@@ -554,6 +671,7 @@
   <div id="jamie"><div id="jamie-inner"></div></div>
   <div id="squad-crowd"></div>
   <div id="squad-meter"></div>
+  <div id="feed-hud" aria-hidden="true"></div>
   <div id="squad-wheel"></div>
   <div id="effects"></div>
   <div id="prompt-pill"></div>
@@ -689,17 +807,51 @@ const FJ_DEFAULT_CONFIG = {
     }
   },
   prompts: {
-    enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1,
+    /* The CTA copy + rotation speed. These now feed the HUD card's ribbon
+       (see `hud` below); with the HUD off they fall back to the old floating
+       prompt pill, which is what x/y/scale/opacity still position and style. */
+    enabled: true, intervalSec: 4, x: 540, y: 110, scale: 1,
     /* bgOpacity now drives the SOLID chip's fill alpha. Defaulted opaque because a
        translucent plate inverts against dark gameplay — the slider still works if
        a softer chip is wanted. */
     opacity: 1, bgOpacity: 1,
+    /* No emoji: the HUD ribbon is a 250px-wide fixed slot at 17px, and emoji
+       both blow the width budget and clash with the flat sticker look. */
     list: [
-      'LIKES = TREATS 🦴',
-      'COMMENT BALL, TREAT, OR TOY',
-      'FOLLOW TO THROW THE BALL 🎾',
-      'HEART ME = BIG JAMIE REACTION 💜'
+      'SAY BALL · TREAT · TOY',
+      'HEART ME = BIG REACTION',
+      'FOLLOW TO FEED JAMIE'
     ]
+  },
+  /* ── FEED JAMIE HUD ───────────────────────────────────────────────
+     The edge-mounted goal card from the "Doodle Stream HUD" handoff
+     (option 4a): Jamie sticker + LVL n/6 counter + rotating CTA ribbon,
+     ~250x100 flush to the left screen edge inside the camera safe area.
+     It is one FACE for state that already exists — the level is the squad
+     care tier, the ribbon is prompts.list — so switching it on suppresses
+     the two elements it consolidates (prompt pill + squad care meter)
+     rather than duplicating them. */
+  hud: {
+    enabled: true,
+    /* x/y are the CARD's top-left. x <= 2 mounts it flush to the left edge
+       (no left border, radius on the free corners only); the mirror applies
+       at the right edge. y 390-520 is the handoff's recommended band. */
+    x: 0, y: 430, scale: 1
+  },
+  copy: {
+    follow: '@{username} threw Jamie a ball! 🎾',
+    heartMe: '@{username} gave Jamie a Heart Me! 💜',
+    heartMeGift: '@{username} sent {gift}! 🎁',
+    jackpot: '@{username} triggered a Jamie JACKPOT! 🌟',
+    jackpotGift: '@{username} triggered a JACKPOT with {gift}! 🌟',
+    subscribe: '@{username} unlocked Jamie’s golden ball! ⭐',
+    milestoneReached: '🎯 {goal} reached! ({total} {counter})',
+    likeMeter: '🦴 {current}/{target}',
+    pluck: 'YOURS! 🤏',
+    giftSignFallback: 'THROW {item}',
+    wheelSpinUser: '@{username} spins the treat wheel…',
+    wheelSpinAnon: 'treat wheel…',
+    wheelWin: '{winner} won a {item}!'
   },
   visuals: {
     usernameLabels: true, likeMeter: true, particleLevel: 'low',
@@ -846,6 +998,16 @@ function fjValidateConfig() {
   gft.maxVisible = Math.min(Math.max(Math.round(num(gft.maxVisible, 3)), 1), 6);
   gft.aggregateWindowMs = Math.min(Math.max(num(gft.aggregateWindowMs, 700), 0), 3000);
   gft.showSender = gft.showSender !== false;
+  /* HUD goal card */
+  if (!c.hud || typeof c.hud !== 'object') c.hud = fjClone(FJ_DEFAULT_CONFIG.hud);
+  c.hud.enabled = c.hud.enabled !== false;
+  c.hud.x = Math.min(Math.max(num(c.hud.x, 0), 0), 1080);
+  c.hud.y = Math.min(Math.max(num(c.hud.y, 430), 0), 1920);
+  c.hud.scale = Math.min(Math.max(num(c.hud.scale, 1), 0.5), 2.5);
+  delete c.hud.sticker;   /* the card carried a small Jamie sticker before; saved configs still have it */
+  /* The ribbon hard-swaps rather than fading, so it can run much faster than the
+     old pill's 8s fade cycle without reading as noise — the handoff calls for 4s. */
+  c.prompts.intervalSec = Math.min(Math.max(num(c.prompts.intervalSec, 4), 3), 30);
   c.visuals.usernameSeconds = Math.min(Math.max(num(c.visuals.usernameSeconds, 2.5), 0.5), 10);
   if (!c.visuals.usernameEvents || typeof c.visuals.usernameEvents !== 'object') {
     c.visuals.usernameEvents = { follow: true, keyword: false, gift: true, subscribe: true, heartMe: true };
@@ -1238,7 +1400,6 @@ function checkMilestones() {
 }
 function fireMilestoneAction(goal) {
   const label = goal.label || (goal.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
-  const targetLabel = `${(milestoneTotals[goal.counter] || 0).toLocaleString()} ${goal.counter}`;
   switch (goal.action) {
     case 'heartme': triggerHeartMe(null, label); break;
     case 'jackpot': triggerJackpot(null, label); break;
@@ -1251,7 +1412,11 @@ function fireMilestoneAction(goal) {
       jamieOneShot('milestoneCheer', 900);
       spawnFx('star', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.2, 6);
   }
-  showEventLabel(`🎯 ${sanitizeName(label)} reached! (${targetLabel})`, CFG.visuals.usernameSeconds, true);
+  showEventLabel(copyText('milestoneReached', '🎯 {goal} reached! ({total} {counter})', {
+    goal: sanitizeName(label),
+    total: (milestoneTotals[goal.counter] || 0).toLocaleString(),
+    counter: goal.counter
+  }), CFG.visuals.usernameSeconds, true);
 }
 function renderMilestoneBars() {
   const el = $('milestone-bars');
@@ -1369,8 +1534,8 @@ const SEQ = {
                  { f: 'jamie-blink-01-half.png', d: 70 }],
   earTwitch:    [{ f: 'jamie-ear-01.png', d: 160 }, { f: 'jamie-ear-02.png', d: 160 }],
   tailWag:      [{ f: 'jamie-tail-01.png', d: 180 }, { f: 'jamie-tail-02.png', d: 180 }, { f: 'jamie-tail-03.png', d: 180 }, { f: 'jamie-tail-02.png', d: 180 }],
-  /* tracking is VERTICAL now (low/mid/top); horizontal facing comes from the
-     existing mirror/flip, so left/right no longer need their own frames. */
+  /* Tracking uses one right-facing art set and mirrors it for the left side.
+     Dedicated diagonals bridge the level sweep into the high/low poses. */
   trackLow:     [{ f: 'jamie-track-low.png', d: 0 }],
   /* horizontal head sweep. Drawn facing right; the overlay mirrors them for the
      left half, so 3 frames cover 5 positions:
@@ -1380,6 +1545,8 @@ const SEQ = {
   trackForward: [{ f: 'jamie-track-turn-03-forward.png', d: 0 }],
   trackCenter:  [{ f: 'jamie-track-mid.png', d: 0 }],
   trackHigh:    [{ f: 'jamie-track-top.png', d: 0 }],
+  trackDiagonalUp:   [{ f: 'jamie-track-diagonal-up-right.png', d: 0 }],
+  trackDiagonalDown: [{ f: 'jamie-track-diagonal-down-right.png', d: 0 }],
   anticipation: [{ f: 'jamie-antic-01-bow.png', d: 300 },
                  { f: 'jamie-antic-02-left.png', d: 260 },
                  { f: 'jamie-antic-04-right.png', d: 260 },
@@ -1402,8 +1569,12 @@ const SEQ = {
   fetchHold:    [{ f: 'jamie-jump-05-descend.png', d: 90 },
                  { f: 'jamie-jump-06-land.png', d: 110 },
                  { f: 'jamie-jump-07-absorb.png', d: 110 },
+                 { f: 'jamie-jump-08-rebound.png', d: 110 },
+                 { f: 'jamie-jump-09-sit.png', d: 220 },
                  { f: 'jamie-fetch-01-jaws.png', d: 240 },
                  { f: 'jamie-fetch-03-present.png', d: 560 }],
+  /* Deliberately excluded: jamie-fetch-02-trot.png is a mismatched dog design
+     and reads as Jamie getting stuck with the ball after an unrelated event. */
   premium:      [{ f: 'jamie-jump-01-load.png', d: 150 },
                  { f: 'jamie-jump-02-launch.png', d: 90 },
                  { f: 'jamie-jump-04-apex.png', d: 160 },
@@ -1434,12 +1605,14 @@ const SEQ = {
   bubbleEnd:    [{ f: 'jamie-bubble-05-startle.png', d: 260 },
                  { f: 'jamie-bubble-06-sneeze.png', d: 420 }],
   /* Heart Me RUN: real gallop out, skid to a stop, hold the heart burst, gallop back. */
+  heartMeRunCharge: [{ f: 'jamie-hm-run-01-charge.png', d: 320 }],
   heartMeRun:   [{ f: 'jamie-run-01.png', d: 90 }, { f: 'jamie-run-02.png', d: 90 }, { f: 'jamie-run-03.png', d: 90 },
                  { f: 'jamie-run-04.png', d: 90 }, { f: 'jamie-run-05.png', d: 90 }, { f: 'jamie-run-06.png', d: 90 }],
   heartMeSkid:  [{ f: 'jamie-skid-01.png', d: 110 }, { f: 'jamie-skid-02.png', d: 110 }, { f: 'jamie-skid-03.png', d: 200 }],
   heartMeBurst: [{ f: 'jamie-hm-run-02-burstA.png', d: 200 },
                  { f: 'jamie-hm-run-03-burstB.png', d: 200 },
                  { f: 'jamie-hm-run-04-burstC.png', d: 200 }],
+  heartMeRunExit: [{ f: 'jamie-hm-run-05-out.png', d: 240 }],
   heartMeClassic:    [{ f: 'jamie-hm-cls-01-crouch.png', d: 180 },
                       { f: 'jamie-hm-cls-02-leap.png', d: 160 },
                       { f: 'jamie-hm-cls-03-clutch.png', d: 220 },
@@ -1490,8 +1663,9 @@ const SEQ = {
                  { f: 'jamie-shake-02.png', d: 160 },
                  { f: 'jamie-shake-03.png', d: 180 }],
   flinch:       [{ f: 'jamie-flinch.png', d: 700 }],
-  standIdle:    [{ f: 'jamie-stand-idle-01.png', d: 2600 },
-                 { f: 'jamie-stand-idle-02.png', d: 1200 }],
+  /* The delivered stand-idle pair is a short/wide older Jamie design. Use the
+     clean tall "stand proud" drawing as the canonical standing silhouette. */
+  standIdle:    [{ f: 'jamie-grow-04-tall.png', d: 0 }],
   /* Locomotion — delivered with this library and wired here so the frames are
      preloaded and fallback-mapped, but no state drives them yet. These are what
      the roam feature will use (trot to walk, gallop to chase, turn, jump, settle). */
@@ -1538,6 +1712,8 @@ const FRAME_FALLBACK = {
   'jamie-track-turn-01-side.png': 'jamie-track-mid.png',
   'jamie-track-turn-02-threequarter.png': 'jamie-track-turn-03-forward.png',
   'jamie-track-turn-03-forward.png': 'jamie-look-01-turn.png',
+  'jamie-track-diagonal-up-right.png': 'jamie-track-top.png',
+  'jamie-track-diagonal-down-right.png': 'jamie-track-low.png',
   'jamie-track-top.png': 'jamie-track-mid.png',
   'jamie-track-mid.png': 'jamie-idle-01-in.png',
   'jamie-antic-02-left.png': 'jamie-antic-01-bow.png',
@@ -1667,16 +1843,10 @@ const FRAME_FALLBACK = {
   'jamie-stand-idle-01.png': 'jamie-idle-01-in.png'
 };
 
-/* These six were drawn with the white sticker rim already baked in, while the
-   143-frame Cleanup6 library is black-outline-only and gets its rim painted at
-   runtime. Running the runtime filter over them too would double the rim, so
-   they opt out. Stripping the baked rim instead was tried and rejected: on the
-   shake frames the flung water droplets overlap the rim band, so removing it
-   also hollowed out the droplets. */
-const PREBAKED_RIM = new Set([
-  'jamie-shake-01.png', 'jamie-shake-02.png', 'jamie-shake-03.png',
-  'jamie-flinch.png', 'jamie-stand-idle-01.png', 'jamie-stand-idle-02.png'
-]);
+/* The canonical full-library redraw ships every Jamie frame without a baked
+   white sticker rim. The overlay now paints one consistent runtime rim across
+   every pose, including shake, flinch and the standing alternates. */
+const PREBAKED_RIM = new Set();
 
 /* ── 4. ASSET MANIFEST + AVAILABILITY ──────────────────────────── */
 /* Safe built-in default: normalized 1200x1400 art canvas. All Jamie
@@ -1687,6 +1857,7 @@ const DEFAULT_FRAME_META = {
   mouthTarget:    { x: 560, y: 680 },
   leftPawTarget:  { x: 435, y: 1130 },
   rightPawTarget: { x: 726, y: 1130 },
+  visualScale: 1,
   facing: 'center'
 };
 let MANIFEST = { version: 2, canvas: { width: 1161, height: 1355, floorAnchor: { x: 588, y: 1172 } }, states: {}, items: {}, effects: {}, audio: {} };
@@ -1905,6 +2076,9 @@ function currentMirror() { return poseMirror === null ? isFlipped() : poseMirror
 function applyJamieTransform() {
   const j = CFG.jamie;
   jamieEl.style.transform = `translate3d(${jamieRect.x}px, ${jamieRect.y}px, 0) rotate(${j.rotation || 0}deg)` + (currentMirror() ? ' scaleX(-1)' : '');
+  /* Tier crown/aura live on a separate full-canvas layer. Keep that layer
+     attached whenever Jamie moves, including hand-tweened Heart Me runs. */
+  if (typeof sqLayoutTierFx === 'function' && jtEls) sqLayoutTierFx();
 }
 /* smoothly interpolates jamieRect.x over `ms`, re-applying the transform each
    frame — drives Heart Me's run-to-center-and-back sprint. */
@@ -1927,6 +2101,50 @@ function tweenJamieX(fromX, toX, ms, onDone) {
   }
   step();
 }
+
+/**
+ * Keep the rotating prompt out of Jamie's box. Its configured position remains
+ * the first choice. If growth makes that unsafe, use the roomier side and reduce
+ * only the prompt enough to keep it inside the 1080px canvas.
+ */
+function positionPrompt() {
+  const pp = $('prompt-pill');
+  const margin = 24;
+  const gap = 28;
+  const configuredScale = CFG.prompts.scale;
+  const naturalW = Math.max(1, pp.offsetWidth);
+  const naturalH = Math.max(1, pp.offsetHeight);
+  let scale = configuredScale;
+  let x = CFG.prompts.x;
+  const y = Math.max(margin, Math.min(1920 - naturalH * scale - margin, CFG.prompts.y));
+
+  const promptLeft = x - naturalW * scale / 2;
+  const promptRight = x + naturalW * scale / 2;
+  const promptBottom = y + naturalH * scale + 10;
+  const overlapsJamie =
+    promptRight > jamieRect.x - gap &&
+    promptLeft < jamieRect.x + jamieRect.w + gap &&
+    promptBottom > jamieRect.y - gap &&
+    y < jamieRect.y + jamieRect.h + gap;
+
+  if (overlapsJamie) {
+    const leftSpace = Math.max(0, jamieRect.x - gap - margin);
+    const rightStart = jamieRect.x + jamieRect.w + gap;
+    const rightSpace = Math.max(0, 1080 - margin - rightStart);
+    const useRight = rightSpace >= leftSpace;
+    const available = useRight ? rightSpace : leftSpace;
+    scale = Math.max(0.7, Math.min(configuredScale, available / naturalW));
+    const renderedW = naturalW * scale;
+    x = useRight
+      ? Math.min(1080 - margin - renderedW / 2, rightStart + renderedW / 2)
+      : Math.max(margin + renderedW / 2, jamieRect.x - gap - renderedW / 2);
+  }
+
+  pp.style.left = x + 'px';
+  pp.style.top = y + 'px';
+  pp.style.transform = `translateX(-50%) rotate(2deg) scale(${scale})`;
+}
+
 function applyLayout() {
   const j = CFG.jamie;
   /* An art package can declare how much of its canvas the character actually fills.
@@ -1936,8 +2154,19 @@ function applyLayout() {
      the CHARACTER's on-screen width rather than the image box's, so swapping art
      never silently resizes him out from under a tuned layout. */
   const contentScale = (MANIFEST.canvas && MANIFEST.canvas.contentScale) || 1;
-  const w = j.width * j.scale * growthScale() / contentScale;
-  const h = jamieHeightFor(j.width) * j.scale * growthScale() / contentScale;
+  const mc = MANIFEST.canvas || { width: 1200, height: 1400, floorAnchor: { y: 1320 } };
+  const anchorFrac = (mc.floorAnchor?.y ?? 1320) / mc.height;
+  const baseW = j.width * j.scale / contentScale;
+  const baseH = jamieHeightFor(j.width) * j.scale / contentScale;
+  /* Growth may still reach MAX LEVEL as a gameplay state, but its visible size
+     must fit above the configured floor. At the default floor, uncapped 2x
+     growth previously produced y=-145 and cut Jamie's head off. */
+  const topSafe = 24;
+  const floorAnchorY = CFG.floor.y + j.yOffset;
+  const maxVisibleGrowth = Math.max(1, (floorAnchorY - topSafe) / (baseH * anchorFrac));
+  const renderedGrowth = Math.min(growthScale(), maxVisibleGrowth);
+  const w = baseW * renderedGrowth;
+  const h = baseH * renderedGrowth;
   /* roamX is Jamie's live walked position. applyLayout runs on config changes and
      once a second during growth decay, so if it recomputed x from config every
      time it would teleport a roaming Jamie back home mid-step — the same class of
@@ -1947,8 +2176,6 @@ function applyLayout() {
   jamieHomeX = homeX;
   const x = (roamX === null) ? homeX : Math.min(Math.max(roamX, 0), 1080 - w);
   /* anchor: bottom of sprite sits at floorY + yOffset (top-positioned; never CSS bottom) */
-  const mc = MANIFEST.canvas || { width: 1200, height: 1400, floorAnchor: { y: 1320 } };
-  const anchorFrac = (mc.floorAnchor?.y ?? 1320) / mc.height;
   const y = CFG.floor.y + j.yOffset - h * anchorFrac;
   jamieRect = { x, y, w, h };
   jamieEl.classList.toggle('rimmed', CFG.visuals.stickerBorder !== false);
@@ -1994,12 +2221,9 @@ function applyLayout() {
   /* prompt + meter + event-label positions — all independently configurable
      (not auto-computed from Jamie's position) so they can be placed anywhere. */
   const pp = $('prompt-pill');
-  pp.style.left = CFG.prompts.x + 'px';
-  pp.style.top = CFG.prompts.y + 'px';
-  /* Tilt is +2deg where the follow meter uses -2deg, so the two overlays read as
-     siblings on a shared screen instead of two copies of the same component. */
-  pp.style.transform = `translateX(-50%) rotate(2deg) scale(${CFG.prompts.scale})`;
+  positionPrompt();
   pp.style.background = `rgba(168, 85, 247, ${CFG.prompts.bgOpacity})`;
+  fhLayout();   /* HUD card — also hides the pill above when it is on */
   const lm = $('like-meter');
   lm.style.left = CFG.visuals.likeMeterX + 'px';
   lm.style.top = CFG.visuals.likeMeterY + 'px';
@@ -2121,6 +2345,7 @@ const J = {
   animTimer: null,
   blinkTimer: null,
   twitchTimer: null,
+  sleepTwitchTimer: null,
   currentSeq: null,
   seqIndex: 0,
   anticipating: false,
@@ -2134,6 +2359,7 @@ const STATE_MAX_MS = { IDLE: 0, TRACKING: 0, ANTICIPATION: 12000, PAYOFF: 4000, 
 function setJamieState(next, opts = {}) {
   clearTimeout(J.watchdog);
   clearTimeout(J.animTimer);
+  clearTimeout(J.sleepTwitchTimer);
   J.state = next;
   J.stateSince = performance.now();
   poseMirror = typeof opts.mirror === 'boolean' ? opts.mirror : null;
@@ -2145,12 +2371,31 @@ function setJamieState(next, opts = {}) {
   switch (next) {
     case 'IDLE':
       jamieEl.classList.add('breathe');
-      playSeq('idle', { loop: true });
+      /* IDLE is also the state used while the roam system walks Jamie around.
+         Do not flash the seated home pose when another path returns the state
+         machine to IDLE mid-walk. Locomotion/standing must keep sprite ownership. */
+      if (CFG.roam.enabled && (roamMoving() || RM.targetX !== null)) {
+        RM.seq = null;
+        roamPlay(Math.abs(RM.vx) > 240 ? 'gallop' : 'trot');
+      } else if (CFG.roam.enabled && roamX !== null && Math.abs(roamX - jamieHomeX) >= 14) {
+        RM.seq = null;
+        roamPlay('standIdle');
+      } else {
+        playSeq('idle', { loop: true });
+      }
       scheduleBlink(); scheduleTwitch();
       break;
     case 'TRACKING':
-      trackBand = null; sweepBand = 'trackForward'; trackFacingLeft = null; trackTurning = false;
+      trackBand = null; sweepBand = 'trackForward'; trackFacingLeft = null; trackTurning = false; trackDiagonal = false;
       jamieEl.classList.add('breathe');
+      /* Establish a valid frame immediately. Without this, the final frame from
+         a completed reaction can remain visible until the next tracking tick. */
+      if (CFG.roam.enabled && (roamMoving() || RM.targetX !== null)) {
+        RM.seq = null;
+        roamPlay(Math.abs(RM.vx) > 240 ? 'gallop' : 'trot');
+      } else {
+        playSeq('trackForward', { loop: false });
+      }
       scheduleBlink();
       break;
     case 'ANTICIPATION':
@@ -2200,6 +2445,7 @@ function setJamieState(next, opts = {}) {
     case 'SLEEPING':
       jamieEl.classList.add('pose-sleep');
       playSeq('sleep', { loop: true });
+      scheduleSleepTwitch();
       break;
     case 'PAUSED':
     case 'HIDDEN':
@@ -2240,19 +2486,29 @@ function playSeq(name, opts = {}) {
    opts.instant bypasses the fade for quick reflexive motions (blink/ear-twitch). */
 let jamieImgLayers = [];
 let lastShownUrl = null;
-function setJamieImage(url, dyPct, instant) {
+function jamieLayerTransform(dyPct, visualScale) {
+  const transforms = [];
+  if (dyPct) transforms.push(`translateY(${dyPct}%)`);
+  if (visualScale && Math.abs(visualScale - 1) > 0.001) transforms.push(`scale(${visualScale})`);
+  return transforms.join(' ');
+}
+function setJamieImage(url, dyPct, instant, visualScale = 1, anchorYPct = 100) {
   const fadeMs = instant ? 0 : Math.max(0, Math.round(CFG.visuals.frameCrossfadeMs ?? 0));
+  const transform = jamieLayerTransform(dyPct, visualScale);
+  const transformOrigin = `50% ${anchorYPct}%`;
   if (url === lastShownUrl && jamieImgLayers.length) {
     const top = jamieImgLayers[jamieImgLayers.length - 1];
     top.style.transition = fadeMs > 0 ? `transform ${fadeMs}ms ease-out` : 'none';
-    top.style.transform = dyPct ? `translateY(${dyPct}%)` : '';
+    top.style.transformOrigin = transformOrigin;
+    top.style.transform = transform;
     return;
   }
   lastShownUrl = url;
   const img = document.createElement('img');
   img.className = 'fj-jamie-layer';
   img.style.opacity = fadeMs > 0 ? '0' : '1';
-  img.style.transform = dyPct ? `translateY(${dyPct}%)` : '';
+  img.style.transformOrigin = transformOrigin;
+  img.style.transform = transform;
   img.style.transition = fadeMs > 0
     ? `opacity ${fadeMs}ms ease-in-out, transform ${fadeMs}ms ease-out`
     : 'none';
@@ -2284,7 +2540,14 @@ function showFrame(file, opts = {}) {
     const meta = fjFrameMeta(resolved);
     const aY = (meta.anchor && meta.anchor.y) || (mc.floorAnchor && mc.floorAnchor.y) || mc.height;
     const dy = (((mc.floorAnchor?.y ?? aY) - aY) / mc.height) * 100;
-    setJamieImage(fjAssetUrl(resolved), Math.abs(dy) > 0.05 ? dy : 0, opts.instant);
+    const anchorYPct = (aY / mc.height) * 100;
+    setJamieImage(
+      fjAssetUrl(resolved),
+      Math.abs(dy) > 0.05 ? dy : 0,
+      opts.instant,
+      Number(meta.visualScale) || 1,
+      anchorYPct
+    );
   } else {
     /* placeholder SVG — pose conveyed via container classes */
     jamieEl.classList.add('no-real-art');
@@ -2295,17 +2558,29 @@ function jamieRender(force) {
   if (force) { jamieInner.innerHTML = ''; jamieImgLayers = []; lastShownUrl = null; showFrame(currentFrameFile, { instant: true }); }
   applyLayout();
 }
-/* blink: real sprite swap when blink frame exists, CSS class for placeholder.
-   Always instant — a blink is a quick reflex, not a smoothed transition. */
+/* Ambient seated motions use complete sequences and restore the idle loop only
+   if they still own the sprite. A stale timer must never interrupt a walk,
+   one-shot, pet, or event animation. */
+function playSeatedIdleMicro(seqName) {
+  if (J.state !== 'IDLE' || J.currentSeq !== 'idle' || roamMoving() ||
+      _jamieOneShotActive || _petActive) return false;
+  clearTimeout(J.animTimer);
+  playSeq(seqName, {
+    loop: false,
+    onDone: () => {
+      if (J.state === 'IDLE' && J.currentSeq === seqName && !roamMoving() &&
+          !_jamieOneShotActive && !_petActive) playSeq('idle', { loop: true });
+    }
+  });
+  return true;
+}
 function scheduleBlink() {
   clearTimeout(J.blinkTimer);
   J.blinkTimer = setTimeout(() => {
     if (J.state === 'IDLE' || J.state === 'TRACKING') {
-      const before = currentFrameFile;
-      if (assetAvailable['jamie-blink-02-shut.png'] && J.state === 'IDLE') {
-        showFrame('jamie-blink-02-shut.png', { instant: true });
-        setTimeout(() => { if (J.state === 'IDLE') showFrame(before, { instant: true }); }, 160);
-      } else {
+      const hasBlink = ['jamie-blink-01-half.png', 'jamie-blink-02-shut.png']
+        .every(f => assetAvailable[f]);
+      if (!(hasBlink && playSeatedIdleMicro('blink'))) {
         jamieEl.classList.add('ph-blink');
         setTimeout(() => jamieEl.classList.remove('ph-blink'), 160);
       }
@@ -2316,17 +2591,37 @@ function scheduleBlink() {
 function scheduleTwitch() {
   clearTimeout(J.twitchTimer);
   J.twitchTimer = setTimeout(() => {
-    if (J.state === 'IDLE') {
-      const micro = ['jamie-ear-01.png', 'jamie-tail-01.png'].filter(f => assetAvailable[f]);
-      if (micro.length) {
-        const pick = micro[Math.floor(Math.random() * micro.length)];
-        const before = currentFrameFile;
-        showFrame(pick);
-        setTimeout(() => { if (J.state === 'IDLE') showFrame(before); }, 300);
-      }
+    /* The current tail-wag redraws shift Jamie's full body between poses, so
+       playing them reads as a body twitch. Keep the stable ear motion as the
+       seated idle micro-animation until the tail-only frames are redrawn
+       against one locked body pose. */
+    const availableSeqs = [
+      ['earTwitch', ['jamie-ear-01.png', 'jamie-ear-02.png']]
+    ].filter(([, files]) => files.every(f => assetAvailable[f]));
+    if (availableSeqs.length) {
+      const [seqName] = availableSeqs[Math.floor(Math.random() * availableSeqs.length)];
+      playSeatedIdleMicro(seqName);
     }
     scheduleTwitch();
   }, 10000 + Math.random() * 15000);
+}
+function scheduleSleepTwitch() {
+  clearTimeout(J.sleepTwitchTimer);
+  J.sleepTwitchTimer = setTimeout(() => {
+    if (J.state === 'SLEEPING' && J.currentSeq === 'sleep' &&
+        assetAvailable['jamie-sleep-twitch.png']) {
+      clearTimeout(J.animTimer);
+      playSeq('sleepTwitch', {
+        loop: false,
+        onDone: () => {
+          if (J.state === 'SLEEPING' && J.currentSeq === 'sleepTwitch') {
+            playSeq('sleep', { loop: true });
+          }
+        }
+      });
+    }
+    if (J.state === 'SLEEPING') scheduleSleepTwitch();
+  }, 7000 + Math.random() * 11000);
 }
 /* ── ROAMING ───────────────────────────────────────────────────────
    Jamie walks an allotted stretch of floor: toward loose objects when chasing
@@ -2339,17 +2634,33 @@ function scheduleTwitch() {
    because sitting down somewhere random reads as him being stuck). */
 let roamX = null;           // null = parked at the configured home position
 let jamieHomeX = 0;
-const RM = { targetX: null, vx: 0, seq: null, stoppedAt: 0, nextWanderAt: 0, skidUntil: 0 };
+const RM = {
+  targetX: null, vx: 0, seq: null, stoppedAt: 0, nextWanderAt: 0, skidUntil: 0,
+  turnUntil: 0, pendingMirror: null, travelMirror: null
+};
 function roamMoving() { return Math.abs(RM.vx) > 8; }
+function roamTurning() { return RM.turnUntil > performance.now() || RM.pendingMirror !== null; }
 function roamBusy() {
   /* never steal the frame from a scripted sequence */
-  return heartMeActive || jackpotActive || _petActive ||
+  return heartMeActive || jackpotActive || _petActive || _jamieOneShotActive ||
          !['IDLE', 'TRACKING'].includes(J.state);
 }
 function roamPlay(name) {
-  if (RM.seq === name) return;
+  /* RM.seq records roam's intent, while J.currentSeq records who actually owns
+     the sprite. If an external state change showed another frame, reclaim the
+     locomotion sequence even when roam's intended name did not change. */
+  if (RM.seq === name && J.currentSeq === name) return;
   RM.seq = name;
   playSeq(name, { loop: name === 'trot' || name === 'gallop' || name === 'standIdle' });
+}
+function finishRoamTurn() {
+  if (RM.pendingMirror === null) return;
+  poseMirror = RM.pendingMirror;
+  RM.travelMirror = RM.pendingMirror;
+  RM.pendingMirror = null;
+  RM.turnUntil = 0;
+  RM.seq = null;
+  applyJamieTransform();
 }
 function roamPickTarget(now) {
   const r = CFG.roam, w = jamieRect.w;
@@ -2375,7 +2686,10 @@ function roamPickTarget(now) {
 }
 function updateRoam(dt, now) {
   if (!CFG.roam.enabled) {
-    if (roamX !== null) { roamX = null; RM.vx = 0; RM.seq = null; applyLayout(); }
+    if (roamX !== null) {
+      roamX = null; RM.vx = 0; RM.seq = null; RM.turnUntil = 0;
+      RM.pendingMirror = null; RM.travelMirror = null; applyLayout();
+    }
     return;
   }
   if (roamBusy()) { RM.vx = 0; return; }
@@ -2393,6 +2707,10 @@ function updateRoam(dt, now) {
   }
 
   const dx = target - roamX;
+  if (RM.turnUntil) {
+    if (now < RM.turnUntil) { RM.vx = 0; return; }
+    finishRoamTurn(); /* timer-throttling fallback: never get stuck in a turn */
+  }
   if (Math.abs(dx) < 6) {                                 // arrived
     const wasFast = Math.abs(RM.vx) > 240;
     roamX = target; RM.targetX = null; RM.vx = 0; RM.stoppedAt = now;
@@ -2403,10 +2721,22 @@ function updateRoam(dt, now) {
   /* chasing gets a sprint; wandering and going home are a walk */
   const chasing = CFG.roam.chase && objects.some(o => !o.captured);
   const speed = CFG.roam.speed * (chasing ? 1.9 : 1);
+  const wantMirror = dx < 0;
+  if (RM.travelMirror === null) {
+    RM.travelMirror = wantMirror;
+    poseMirror = wantMirror;
+  } else if (RM.travelMirror !== wantMirror) {
+    RM.vx = 0;
+    RM.pendingMirror = wantMirror;
+    RM.turnUntil = now + Math.max(150, Math.round(440 * (CFG.visuals.frameDurationScale || 1))) + 40;
+    RM.seq = 'turn';
+    playSeq('turn', { loop: false, onDone: finishRoamTurn });
+    return;
+  }
   RM.vx = Math.sign(dx) * Math.min(speed, Math.abs(dx) / Math.max(dt, 0.001));
   roamX += RM.vx * dt;
   jamieRect.x = roamX;
-  poseMirror = RM.vx < 0;                                 // art faces right by default
+  poseMirror = wantMirror;                                // art faces right by default
   roamPlay(Math.abs(RM.vx) > 240 ? 'gallop' : 'trot');
   applyJamieTransform();
 }
@@ -2420,18 +2750,16 @@ let trackBand = null;
 let sweepBand = 'trackForward';
 let trackFacingLeft = null;      // null = not yet established
 let trackTurning = false;
-/* The Cleanup6 library tracks only VERTICALLY (low / mid / top) — every one of
-   those three is the same side-profile sit with the head tilting further up, and
-   the old left/right frames are gone. Flipping the mirror to face the other side
-   was therefore an instant snap with nothing in between, which reads as a glitch
-   rather than a turn.
-   jamie-look-01-turn is the one SEATED, front-facing pose in the library, so a
-   side change now plays through it and the mirror is flipped while he is face-on,
-   where a horizontal flip is very nearly invisible. */
+let trackDiagonal = false;
+/* The tracking library is drawn facing right and mirrored for left. The forward
+   pose hides the mirror swap during a horizontal turn; dedicated up/down
+   three-quarter poses bridge level tracking into the extreme top/low poses. */
 /* Horizontal sweep bands by |dx|, with separate enter/exit thresholds so an object
    drifting on a boundary cannot strobe between two poses. */
 const SWEEP_IN  = { quarter: 110, side: 330 };   // must pass this to enter the band
 const SWEEP_OUT = { quarter: 70,  side: 260 };   // must fall under this to leave it
+const DIAGONAL_IN_X = 140;
+const DIAGONAL_OUT_X = 90;
 
 function updateTracking(obj) {
   if (J.state !== 'TRACKING') return;
@@ -2448,26 +2776,50 @@ function updateTracking(obj) {
 
   let key;
   if (trackBand === 'trackHigh' || trackBand === 'trackLow') {
-    key = trackBand;
+    const ax = Math.abs(dx);
+    if (trackDiagonal) {
+      if (ax < DIAGONAL_OUT_X) trackDiagonal = false;
+    } else if (ax > DIAGONAL_IN_X) {
+      trackDiagonal = true;
+    }
+    key = trackDiagonal
+      ? (trackBand === 'trackHigh' ? 'trackDiagonalUp' : 'trackDiagonalDown')
+      : trackBand;
+    /* Every non-forward tracking drawing faces right. Mirror it toward the
+       object, but keep the previous side while the object is almost centered. */
+    if (ax > 45) trackFacingLeft = dx < 0;
+    if (trackFacingLeft === null) trackFacingLeft = false;
+    if (poseMirror !== trackFacingLeft) { poseMirror = trackFacingLeft; applyJamieTransform(); }
   } else {
+    trackDiagonal = false;
     /* Horizontal sweep. The mirror only shows on the quarter/side poses, and it is
        flipped while the FORWARD pose is on screen — a head-on frame is close to
        symmetric, so the swap is very nearly invisible. That is what turns a
        left-to-right cross into a rotation instead of a snap. */
     const ax = Math.abs(dx);
-    if (sweepBand === 'trackSide') { if (ax < SWEEP_OUT.side) sweepBand = 'trackQuarter'; }
-    else if (sweepBand === 'trackQuarter') {
-      if (ax > SWEEP_IN.side) sweepBand = 'trackSide';
-      else if (ax < SWEEP_OUT.quarter) sweepBand = 'trackForward';
+    if (ax < 45 && Math.abs(dy) < 100) {
+      key = 'trackForward';
+      if (trackFacingLeft === null) trackFacingLeft = false;
+    } else if (dy < -100 && ax > 45) {
+      /* The medium-height profile bridges a level side glance into the steeper
+         diagonal/top poses while preserving the object's actual left/right side. */
+      key = 'trackCenter';
+      trackFacingLeft = dx < 0;
     } else {
-      if (ax > SWEEP_IN.side) sweepBand = 'trackSide';
-      else if (ax > SWEEP_IN.quarter) sweepBand = 'trackQuarter';
+      if (sweepBand === 'trackSide') { if (ax < SWEEP_OUT.side) sweepBand = 'trackQuarter'; }
+      else if (sweepBand === 'trackQuarter') {
+        if (ax > SWEEP_IN.side) sweepBand = 'trackSide';
+        else if (ax < SWEEP_OUT.quarter) sweepBand = 'trackForward';
+      } else {
+        if (ax > SWEEP_IN.side) sweepBand = 'trackSide';
+        else if (ax > SWEEP_IN.quarter) sweepBand = 'trackQuarter';
+      }
+      key = sweepBand;
+      const wantMirror = dx < 0;
+      if (sweepBand === 'trackForward') trackFacingLeft = wantMirror;   // flip while face-on
+      else trackFacingLeft = trackFacingLeft === null ? wantMirror : trackFacingLeft;
+      if (Math.abs(dx) > SWEEP_IN.quarter) trackFacingLeft = wantMirror;
     }
-    key = sweepBand;
-    const wantMirror = dx < 0;
-    if (sweepBand === 'trackForward') trackFacingLeft = wantMirror;   // flip while face-on
-    else trackFacingLeft = trackFacingLeft === null ? wantMirror : trackFacingLeft;
-    if (Math.abs(dx) > SWEEP_IN.quarter) trackFacingLeft = wantMirror;
     if (poseMirror !== trackFacingLeft) { poseMirror = trackFacingLeft; applyJamieTransform(); }
   }
 
@@ -2516,13 +2868,22 @@ function petTick(now) {
   }
 }
 
+let _jamieOneShotActive = false;
+let _jamieOneShotToken = 0;
 function jamieOneShot(seqName, ms) {
-  if (!['IDLE', 'TRACKING'].includes(J.state)) return;
-  const back = J.state;
+  if (!['IDLE', 'TRACKING'].includes(J.state) || _jamieOneShotActive) return;
+  const token = ++_jamieOneShotToken;
+  _jamieOneShotActive = true;
   J.currentSeq = null;
   clearTimeout(J.animTimer);
-  playSeq(seqName, { loop: false, onDone: () => { if (!['PAYOFF', 'CELEBRATE'].includes(J.state)) setJamieState(objects.length ? 'TRACKING' : 'IDLE'); } });
-  setTimeout(() => { if (J.currentSeq === seqName) setJamieState(objects.length ? 'TRACKING' : 'IDLE'); }, ms || 1000);
+  const finish = () => {
+    if (!_jamieOneShotActive || token !== _jamieOneShotToken) return;
+    _jamieOneShotActive = false;
+    if (!['PAYOFF', 'CELEBRATE'].includes(J.state)) setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+    scheduleJamieReactionDrain();
+  };
+  playSeq(seqName, { loop: false, onDone: finish });
+  setTimeout(() => { if (_jamieOneShotActive && token === _jamieOneShotToken) finish(); }, ms || 1000);
 }
 
 /* ── 9. OBJECT SYSTEM (DVD bounce physics) ─────────────────────── */
@@ -2638,6 +2999,7 @@ let wakingUp = false;
 function wakeIfSleeping() {
   if (J.state !== 'SLEEPING' || wakingUp) return;
   wakingUp = true;
+  clearTimeout(J.sleepTwitchTimer);
   playSeq('wake', { loop: false });
   setTimeout(() => {
     wakingUp = false;
@@ -2867,7 +3229,7 @@ function pluckSteal(px, py) {
       spawnFx('sparkle', px, py, 7);
       const tag = document.createElement('div');
       tag.className = 'fj-obj-tag';
-      tag.textContent = 'YOURS! 🤏';
+      tag.textContent = copyText('pluck', 'YOURS! 🤏');
       tag.style.cssText = `position:absolute;left:${px - 60}px;top:${py - 70}px;transition:transform 1s ease, opacity 1s ease;`;
       objectsLayer.appendChild(tag);
       requestAnimationFrame(() => { tag.style.transform = 'translateY(-60px)'; tag.style.opacity = '0'; });
@@ -3005,6 +3367,13 @@ function sanitizeName(name) {
   const s = String(name || '').replace(/[<>&"'`]/g, '').trim();
   return s.length > 16 ? s.slice(0, 15) + '…' : s;
 }
+function copyText(key, fallback, values = {}) {
+  const source = CFG.copy && CFG.copy[key];
+  const template = source == null ? fallback : String(source);
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, token) =>
+    Object.prototype.hasOwnProperty.call(values, token) ? String(values[token]) : match
+  );
+}
 function pickTreat() {
   const w = CFG.events.treatWeights;
   const entries = Object.entries(w).filter(([k, v]) => ITEM_DEFS[k] && v > 0);
@@ -3033,7 +3402,10 @@ function handleEvent(evt) {
   const username = evt.username || null;
   const uk = String(username || 'anon').toLowerCase();
   if (type === 'gift' && isDupEvent(`gift|${uk}|${evt.giftName || ''}|${+evt.value || 0}`)) return;
-  if ((type === 'follow' || type === 'subscribe' || type === 'share' || type === 'heartme') && isDupEvent(type + '|' + uk)) return;
+  /* Heart Me is intentionally excluded here: rapid Heart Mes are now distinct
+     queued responses. The transport-level _mid guard still removes duplicate
+     deliveries of the exact same control message. */
+  if ((type === 'follow' || type === 'subscribe' || type === 'share') && isDupEvent(type + '|' + uk)) return;
   lastEventInfo = type + (username ? ' @' + sanitizeName(username) : '');
   lastEngagementAt = performance.now();
   wakeIfSleeping();
@@ -3062,7 +3434,9 @@ function handleEvent(evt) {
         showName: showFollowName, nameSeconds: CFG.visuals.usernameSeconds
       });
       if (username && showFollowName)
-        showEventLabel(`@${sanitizeName(username)} threw Jamie a ball! 🎾`, CFG.visuals.usernameSeconds, false);
+        showEventLabel(copyText('follow', '@{username} threw Jamie a ball! 🎾', {
+          username: sanitizeName(username)
+        }), CFG.visuals.usernameSeconds, false);
       break;
     }
     case 'heartme': triggerHeartMe(username, '', evt.variant ? { variant: evt.variant } : {}); break;
@@ -3114,6 +3488,67 @@ function handleComment(username, message) {
   }
 }
 let heartMeActive = false;
+let jackpotActive = false;
+let activeJamieReaction = null;
+let jamieReactionQueue = [];
+let jamieReactionSeq = 0;
+let jamieReactionDrainTimer = null;
+
+/* Heart Me and Jackpot share Jamie's sprite, transform, veils and sound stage,
+   so they run through one FIFO response lane. Item/treat spawning is deliberately
+   separate: a new gift can put its treat on screen immediately, but Jamie waits
+   until the current catch/one-shot/big reaction is completely finished before
+   starting the next response. */
+function scheduleJamieReactionDrain(delay = 0) {
+  if (jamieReactionDrainTimer || !jamieReactionQueue.length || activeJamieReaction) return;
+  jamieReactionDrainTimer = setTimeout(() => {
+    jamieReactionDrainTimer = null;
+    drainJamieReactionQueue();
+  }, delay);
+}
+function jamieResponseLaneIsFree() {
+  return !heartMeActive && !jackpotActive && !_petActive && !_jamieOneShotActive &&
+         !wakingUp && !roamMoving() && !J.paused && !J.hidden &&
+         ['IDLE', 'TRACKING'].includes(J.state);
+}
+function queueJamieReaction(kind, username, label, opts = {}) {
+  const request = {
+    id: ++jamieReactionSeq,
+    kind,
+    username,
+    label,
+    opts: { ...opts }
+  };
+  jamieReactionQueue.push(request);
+  drainJamieReactionQueue();
+  publishStatus();
+  return request.id;
+}
+function drainJamieReactionQueue() {
+  if (activeJamieReaction || !jamieReactionQueue.length) return;
+  if (J.state === 'SLEEPING') wakeIfSleeping();
+  if (!jamieResponseLaneIsFree()) {
+    scheduleJamieReactionDrain(100);
+    return;
+  }
+  const request = jamieReactionQueue.shift();
+  activeJamieReaction = request;
+  if (request.kind === 'heartme') startHeartMeReaction(request);
+  else startJackpotReaction(request);
+  publishStatus();
+}
+function isCurrentJamieReaction(id, kind) {
+  return !!activeJamieReaction && activeJamieReaction.id === id &&
+         (!kind || activeJamieReaction.kind === kind);
+}
+function completeJamieReaction(id) {
+  if (!isCurrentJamieReaction(id)) return false;
+  activeJamieReaction = null;
+  publishStatus();
+  scheduleJamieReactionDrain();
+  return true;
+}
+
 /* Heart Me randomly rotates through 4 variants each time it fires (toggle
    any off in CFG.events.heartMeVariants) so repeat Heart Mes don't feel
    identical. opts.durMul/opts.fxMul (from the spend spectacle in
@@ -3133,16 +3568,15 @@ function heartMeBegin() {
 function heartMeShowLabel(username, highGiftName) {
   if (username && CFG.visuals.usernameEvents.heartMe) {
     const giftLabel = sanitizeName(highGiftName);
-    showEventLabel(
-      giftLabel
-        ? `@${sanitizeName(username)} sent ${giftLabel}! 🎁`
-        : `@${sanitizeName(username)} gave Jamie a Heart Me! 💜`,
-      CFG.visuals.usernameSeconds,
-      !!giftLabel
-    );
+    showEventLabel(copyText(
+      giftLabel ? 'heartMeGift' : 'heartMe',
+      giftLabel ? '@{username} sent {gift}! 🎁' : '@{username} gave Jamie a Heart Me! 💜',
+      { username: sanitizeName(username), gift: giftLabel }
+    ), CFG.visuals.usernameSeconds, !!giftLabel);
   }
 }
-function heartMeEnd(username) {
+function heartMeEnd(username, reactionId) {
+  if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
   poseMirror = null;
   jamieEl.style.transition = 'none';
   jamieEl.classList.remove('pose-celebrate', 'ph-happy');
@@ -3153,17 +3587,22 @@ function heartMeEnd(username) {
   if (CFG.events.heartMeSpawnHeart) {
     queueSpawn('heart-large', { sourceEvent: 'heartMe', username, priority: 95, premium: true });
   }
-  setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+  setJamieState(objects.some(o => !o.captured) ? 'TRACKING' : 'IDLE');
+  completeJamieReaction(reactionId);
 }
 /* dead-man's switch shared by every variant — force a clean reset if a
    variant's own timer/animation chain ever stalls, instead of leaving
    Jamie stuck mid-celebration with every future Heart Me silently
    no-op'ing on the busy guard. */
-function heartMeSafety(ms, username) {
-  return setTimeout(() => { if (heartMeActive) heartMeEnd(username); }, ms);
+function heartMeSafety(ms, username, reactionId) {
+  return setTimeout(() => {
+    if (heartMeActive && isCurrentJamieReaction(reactionId, 'heartme')) {
+      heartMeEnd(username, reactionId);
+    }
+  }, ms);
 }
 
-/* ── variant: RUN — sprints to center screen, skids, big heart burst, sprints back ── */
+/* ── variant: RUN — charges, sprints to center, bursts, then sprints back ── */
 function heartMeRunVariant(username, highGiftName, opts) {
   heartMeActive = true;
   heartMeBegin();
@@ -3176,17 +3615,25 @@ function heartMeRunVariant(username, highGiftName, opts) {
   const outMirror = centerX < startX; /* default art faces right; mirror to face left */
   const fxMul = opts.fxMul || 1;
   const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
-  const safetyTimer = heartMeSafety(Math.max(8000, runMs * 2 + 260 + durMs + 3000), username);
+  const reactionId = opts._reactionId;
+  const safetyTimer = heartMeSafety(Math.max(8000, runMs * 2 + 320 + durMs + 3000), username, reactionId);
 
-  function runOut() {
+  function charge() {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
     poseMirror = outMirror;
-    playSeq('heartMeRun', { loop: true });
-    tweenJamieX(startX, centerX, runMs, skid);
+    applyJamieTransform();
+    playSeq('heartMeRunCharge', { loop: false, onDone: runOut });
   }
-  function skid() {
-    playSeq('heartMeSkid', { loop: false, onDone: burst });
+  function runOut() {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
+    poseMirror = outMirror;
+    /* Stay on the dedicated Heart Me artwork. The generic gallop/skid set is
+       a visibly different dog design and should never appear in this variant. */
+    playSeq('heartMeRunExit', { loop: true });
+    tweenJamieX(startX, centerX, runMs, burst);
   }
   function burst() {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
     poseMirror = null; /* the big heart pose is symmetric — no mirror needed */
     jamieEl.classList.add('pose-celebrate', 'ph-happy');
     jamieEl.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
@@ -3199,26 +3646,28 @@ function heartMeRunVariant(username, highGiftName, opts) {
     playSound('heartMe');
     heartMeShowLabel(username, highGiftName);
     /* heartMeDurationSec (times the spend-scaled durMul) is the approximate
-       total; the run/skid legs come out of it, but the hold always keeps a
+       total; the charge/run legs come out of it, but the hold always keeps a
        sensible minimum so the signature pose is never skipped even at the
        shortest configured duration. */
-    const holdMs = Math.max(400, durMs - runMs * 2 - 260);
+    const holdMs = Math.max(400, durMs - runMs * 2 - 320);
     setTimeout(runBack, holdMs);
   }
   function runBack() {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
     $('heartme-veil').style.opacity = 0;
     jamieEl.classList.remove('pose-celebrate', 'ph-happy');
     jamieEl.style.transition = 'none';
     poseMirror = !outMirror;
     applyJamieTransform();
-    playSeq('heartMeRun', { loop: true });
+    playSeq('heartMeRunExit', { loop: true });
     tweenJamieX(centerX, startX, runMs, finish);
   }
   function finish() {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
     clearTimeout(safetyTimer);
-    heartMeEnd(username);
+    heartMeEnd(username, reactionId);
   }
-  runOut();
+  charge();
 }
 
 /* ── variant: CLASSIC — the original in-place purple celebration ── */
@@ -3237,8 +3686,13 @@ function heartMeClassicVariant(username, highGiftName, opts) {
   playSound('heartMe');
   heartMeShowLabel(username, highGiftName);
   const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
-  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username);
-  setTimeout(() => { clearTimeout(safetyTimer); heartMeEnd(username); }, Math.max(800, durMs));
+  const reactionId = opts._reactionId;
+  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username, reactionId);
+  setTimeout(() => {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
+    clearTimeout(safetyTimer);
+    heartMeEnd(username, reactionId);
+  }, Math.max(800, durMs));
 }
 
 /* ── variant: SPIN — heart-spin pose with a big radiating sparkle burst ── */
@@ -3258,8 +3712,13 @@ function heartMeSpinVariant(username, highGiftName, opts) {
   playSound('heartMe');
   heartMeShowLabel(username, highGiftName);
   const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
-  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username);
-  setTimeout(() => { clearTimeout(safetyTimer); heartMeEnd(username); }, Math.max(800, durMs));
+  const reactionId = opts._reactionId;
+  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username, reactionId);
+  setTimeout(() => {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
+    clearTimeout(safetyTimer);
+    heartMeEnd(username, reactionId);
+  }, Math.max(800, durMs));
 }
 
 /* ── variant: PROUD — puffed-up growth-proud pose with a heart rain ── */
@@ -3278,22 +3737,27 @@ function heartMeProudVariant(username, highGiftName, opts) {
   playSound('heartMe');
   heartMeShowLabel(username, highGiftName);
   const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
-  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username);
-  setTimeout(() => { clearTimeout(safetyTimer); heartMeEnd(username); }, Math.max(800, durMs));
+  const reactionId = opts._reactionId;
+  const safetyTimer = heartMeSafety(Math.max(6000, durMs + 3000), username, reactionId);
+  setTimeout(() => {
+    if (!isCurrentJamieReaction(reactionId, 'heartme')) return;
+    clearTimeout(safetyTimer);
+    heartMeEnd(username, reactionId);
+  }, Math.max(800, durMs));
 }
 
 const HEARTME_VARIANT_FNS = { run: heartMeRunVariant, classic: heartMeClassicVariant, spin: heartMeSpinVariant, proud: heartMeProudVariant };
-function triggerHeartMe(username, highGiftName = '', opts = {}) {
-  // Guard on both flags — Heart Me and Jackpot share jamieEl's transform and the
-  // dim/veil state, so letting one interrupt the other mid-celebration used to
-  // compound the scale transform and could prematurely reset shared state.
-  if (heartMeActive || jackpotActive) return;
+function startHeartMeReaction(request) {
+  const { username, label: highGiftName } = request;
+  const opts = { ...request.opts, _reactionId: request.id };
   const enabledMap = CFG.events.heartMeVariants || {};
   let pool = Object.keys(HEARTME_VARIANT_FNS).filter(k => enabledMap[k] !== false);
   if (!pool.length) pool = ['run'];
   const variant = (opts.variant && HEARTME_VARIANT_FNS[opts.variant]) ? opts.variant : pool[Math.floor(Math.random() * pool.length)];
   HEARTME_VARIANT_FNS[variant](username, highGiftName, opts);
-  publishStatus();
+}
+function triggerHeartMe(username, highGiftName = '', opts = {}) {
+  return queueJamieReaction('heartme', username, highGiftName, opts);
 }
 /* ── Spin The Screen reactions ───────────────────────────────────
    The wheel plays effects over the whole frame and Jamie stands underneath
@@ -3318,11 +3782,31 @@ function reactToFx(kind, x) {
     jamieOneShot('shake', 620);
   } else if (kind === 'glass' || kind === 'strike') {
     jamieOneShot('flinch', 800);
+  } else if (kind === 'object') {
+    jamieOneShot('jump', 1300);
+  } else if (kind === 'press') {
+    jamieOneShot('flinch', 760);
   }
 }
-let jackpotActive = false;
-function triggerJackpot(username, rawGiftName = '', opts = {}) {
-  if (jackpotActive || heartMeActive) return;
+
+function reactToWheelCue(cue, x, tier) {
+  if (heartMeActive || jackpotActive) return;
+  if (!['IDLE', 'TRACKING'].includes(J.state)) return;
+  if (cue === 'anticipate') jamieOneShot('anticipation', 1250);
+  else if (cue === 'look') jamieOneShot('look', 1000);
+  else if (cue === 'confused') jamieOneShot('confused', 1250);
+  else if (cue === 'chase') jamieOneShot('jump', 1300);
+  else if (cue === 'celebrate') {
+    jamieOneShot('milestoneCheer', 1200);
+    if (tier === 'legend') {
+      spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * .34, 12);
+    }
+  }
+}
+function startJackpotReaction(request) {
+  const { username, label: rawGiftName } = request;
+  const opts = request.opts;
+  const reactionId = request.id;
   jackpotActive = true;
   objects.forEach(o => { o.paused = true; o.el.classList.add('dimmed'); });
   $('like-meter').style.opacity = 0;
@@ -3343,24 +3827,26 @@ function triggerJackpot(username, rawGiftName = '', opts = {}) {
   playSound('jackpot');
   if (username && CFG.visuals.usernameEvents.gift) {
     const giftLabel = sanitizeName(rawGiftName);
-    showEventLabel(
-      giftLabel
-        ? `@${sanitizeName(username)} triggered a JACKPOT with ${giftLabel}! 🌟`
-        : `@${sanitizeName(username)} triggered a Jamie JACKPOT! 🌟`,
-      CFG.visuals.usernameSeconds,
-      true
-    );
+    showEventLabel(copyText(
+      giftLabel ? 'jackpotGift' : 'jackpot',
+      giftLabel ? '@{username} triggered a JACKPOT with {gift}! 🌟' : '@{username} triggered a Jamie JACKPOT! 🌟',
+      { username: sanitizeName(username), gift: giftLabel }
+    ), CFG.visuals.usernameSeconds, true);
   }
   const durMs = CFG.events.heartMeDurationSec * 1000 * (opts.durMul || 1);
   setTimeout(() => {
+    if (!isCurrentJamieReaction(reactionId, 'jackpot')) return;
     $('jackpot-veil').style.opacity = 0;
     jamieEl.classList.remove('pose-celebrate', 'ph-happy');
     objects.forEach(o => { o.paused = false; o.el.classList.remove('dimmed'); });
     applyLayout();
     jackpotActive = false;
     setJamieState(objects.length ? 'TRACKING' : 'IDLE');
+    completeJamieReaction(reactionId);
   }, durMs);
-  publishStatus();
+}
+function triggerJackpot(username, rawGiftName = '', opts = {}) {
+  return queueJamieReaction('jackpot', username, rawGiftName, opts);
 }
 function triggerSubscribe(username) {
   const showSubName = !!CFG.visuals.usernameEvents.subscribe;
@@ -3370,7 +3856,11 @@ function triggerSubscribe(username) {
   });
   playSound('subscribe');
   spawnFx('sparkleGold', 540, CFG.floor.y * 0.4, 8);
-  if (username && showSubName) showEventLabel(`@${sanitizeName(username)} unlocked Jamie's golden ball! ⭐`, CFG.visuals.usernameSeconds, true);
+  if (username && showSubName) {
+    showEventLabel(copyText('subscribe', '@{username} unlocked Jamie’s golden ball! ⭐', {
+      username: sanitizeName(username)
+    }), CFG.visuals.usernameSeconds, true);
+  }
 }
 function handleGift(evt) {
   const value = +evt.value || 0;
@@ -3408,12 +3898,30 @@ let promptIndex = 0, promptTimer = null;
 function promptLoop() {
   clearTimeout(promptTimer);
   const pp = $('prompt-pill');
+  /* HUD mode: the CTA lives in the card's ribbon and HARD-swaps — a crossfade
+     at this size reads as the text sliding downward. The pill stays hidden;
+     with prompts disabled the ribbon holds on the first line rather than
+     emptying, so the card keeps its fixed footprint. */
+  if (fhOn()) {
+    pp.style.opacity = 0;
+    const list = CFG.prompts.list || [];
+    const m = fhBuild();
+    m.classList.toggle('no-cta', !list.length);
+    if (list.length) {
+      m.querySelector('.fh-ribbon').textContent = list[promptIndex % list.length];
+      fhFitRibbon();
+      if (CFG.prompts.enabled) promptIndex++;
+    }
+    promptTimer = setTimeout(promptLoop, Math.max(3, +CFG.prompts.intervalSec || 4) * 1000);
+    return;
+  }
   if (!CFG.prompts.enabled || !CFG.prompts.list.length || J.hidden) {
     pp.style.opacity = 0;
     promptTimer = setTimeout(promptLoop, 2000);
     return;
   }
   pp.textContent = CFG.prompts.list[promptIndex % CFG.prompts.list.length];
+  positionPrompt();
   pp.style.opacity = CFG.prompts.opacity;
   promptIndex++;
   promptTimer = setTimeout(() => {
@@ -3482,7 +3990,9 @@ function setCellContent(cell, m) {
     img.style.display = 'none';
   }
   const label = cell.querySelector('.gs-cell-label');
-  label.textContent = m.signAction || defaults.signAction || ('THROW ' + (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase());
+  label.textContent = m.signAction || defaults.signAction || copyText('giftSignFallback', 'THROW {item}', {
+    item: (GIFT_ITEM_LABELS[m.itemType] || 'A GIFT').toUpperCase()
+  });
   /* auto-fit: shrink from the cell's width/height/font-scaled base font
      until the label fits its cell (never below ~65% of that base). */
   const sc = CFG.visuals.giftShowcase;
@@ -3577,7 +4087,10 @@ let meterTimer = null;
 function updateLikeMeter() {
   if (!CFG.visuals.likeMeter) return;
   const lm = $('like-meter');
-  lm.textContent = `🦴 ${likeAccumulator}/${CFG.events.likesPerTreat}`;
+  lm.textContent = copyText('likeMeter', '🦴 {current}/{target}', {
+    current: likeAccumulator,
+    target: CFG.events.likesPerTreat
+  });
   lm.style.opacity = 1;
   clearTimeout(meterTimer);
   meterTimer = setTimeout(() => { lm.style.opacity = 0; }, 2500);
@@ -3671,7 +4184,7 @@ function tick(now) {
   for (const o of objects) stepObject(o, dt, now);
   /* while he is walking, roam owns the frame — head-tracking poses would fight
      the trot cycle for the same sprite */
-  if (J.state === 'TRACKING' && active.length && !roamMoving()) {
+  if (J.state === 'TRACKING' && active.length && !roamMoving() && !roamTurning()) {
     const focus = active.reduce((a, b) => (b.priority > a.priority ? b : a), active[0]);
     updateTracking(focus);
   }
@@ -3690,8 +4203,11 @@ document.addEventListener('visibilitychange', () => {
 
 /* ════════════════════════════════════════════════════════════════
    14b. SPLATTY SQUAD — the gifter crowd, the prize wheel, and Jamie's
-   decaying drip tiers. All state and settings live OUTSIDE CFG so the
-   control panel's full-config pushes can never clobber them.
+   decaying drip tiers. Their three enabled flags are intentionally
+   independent: SQ.enabled is the crowd only; wheel.enabled controls the
+   wheel; tiers.enabled controls the meter, tier FX, care, and decay.
+   All state and settings live OUTSIDE CFG so the control panel's
+   full-config pushes can never clobber them.
    ════════════════════════════════════════════════════════════════ */
 
 const SQ_LS_CFG   = 'feedJamie.squad.cfg.v1';
@@ -3707,17 +4223,30 @@ const SQ_DEFAULT = {
     /* care score is USD-normalized so coins/jewels/superchats all feed it */
     thresholds: [0.01, 12.5, 30, 60, 125, 225],   // T1..T6
     decayPerMin: 0.4,                              // USD drained per minute — "keep him glowing"
-    meterX: 260, meterY: 0,                        // meterY 0 = auto (just under the floor)
+    meterX: 260, meterY: 0, meterScale: 1,         // meterY 0 = auto (just under the floor)
     /* Every string the care meter shows is editable from the control panel —
        these are only the defaults. */
     labelZero: 'FEED JAMIE!',
-    labelPrefix: 'JAMIE IS',
-    labelMax: 'MAX DRIP — keep him there!',
-    tierNames: 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC',
+    labelPrefix: 'JAMIE LVL',
+    labelMax: 'MAX LEVEL',
+    labelNext: '{current} / {target}',
+    tierNames: '1, 2, 3, 4, 5, 6',
   },
 };
 let SQ = fjClone(SQ_DEFAULT);
 try { SQ = fjDeepMerge(SQ, JSON.parse(localStorage.getItem(SQ_LS_CFG) || 'null') || {}); } catch (e) {}
+/* One-time copy migration from the old novelty tier names to simple levels.
+   Only exact legacy defaults are changed, so custom operator copy is preserved. */
+if (SQ.tiers.tierNames === 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC') {
+  SQ.tiers.tierNames = 'T1, T2, T3, T4, T5, T6';
+}
+if (SQ.tiers.labelPrefix === 'JAMIE IS') SQ.tiers.labelPrefix = 'JAMIE DRIP';
+if (SQ.tiers.labelNext === '{coins} coins to {tier}') SQ.tiers.labelNext = '{coins} coins to level up';
+if (SQ.tiers.tierNames === 'T1, T2, T3, T4, T5, T6') SQ.tiers.tierNames = '1, 2, 3, 4, 5, 6';
+if (SQ.tiers.labelPrefix === 'JAMIE DRIP') SQ.tiers.labelPrefix = 'JAMIE LVL';
+if (SQ.tiers.labelNext === '{coins} coins to level up') SQ.tiers.labelNext = '{current} / {target}';
+if (SQ.tiers.labelMax === 'MAX DRIP — keep him there!') SQ.tiers.labelMax = 'MAX LEVEL';
+try { localStorage.setItem(SQ_LS_CFG, JSON.stringify(SQ)); } catch (e) {}
 
 const sqState = {
   gifters: {},           // key → { name, platform, usd }
@@ -3743,7 +4272,7 @@ function sqPersist() {
 const sqKey = (n) => String(n || '').trim().toLowerCase();
 
 /* ── tier model (decay-based) ── */
-const SQ_TIER_NAMES = ['', 'HAPPY', 'GLOWING', 'RICHES', 'RADIANT', 'UNTOUCHABLE', 'MYTHIC'];
+const SQ_TIER_NAMES = ['', '1', '2', '3', '4', '5', '6'];
 /* Operator-editable tier names, parsed from the comma-separated config string.
    Falls back to the built-in list per-slot, so a blank or half-filled field can
    never blank out the meter mid-stream. */
@@ -3752,7 +4281,10 @@ function sqTierNames() {
     .split(',').map(t => t.trim());
   return SQ_TIER_NAMES.map((def, i) => (i === 0 ? '' : (parsed[i - 1] || def)));
 }
-const sqCopy = (k, def) => { const v = SQ.tiers && SQ.tiers[k]; return (v == null || v === '') ? def : v; };
+const sqCopy = (k, def) => {
+  const v = SQ.tiers && SQ.tiers[k];
+  return v == null ? def : String(v);
+};
 function sqTierOf(usd) {
   const t = SQ.tiers.thresholds;
   for (let i = t.length - 1; i >= 0; i--) if (usd >= t[i]) return i + 1;
@@ -3921,7 +4453,7 @@ function sqBuildOrbit(count) {
 const SQ_ORBIT_COUNT = { 0: 0, 1: 0, 2: 0, 3: 2, 4: 3, 5: 4, 6: 6 };
 function sqApplyTier() {
   if (!jtEls) return;
-  const tier = (SQ.enabled && SQ.tiers.enabled) ? sqTierOf(sqState.careUsd) : 0;
+  const tier = SQ.tiers.enabled ? sqTierOf(sqState.careUsd) : 0;
   const prev = sqState.tier;
   jtEls.glow.classList.toggle('on', tier >= 2);
   jtEls.rays.classList.toggle('on', tier >= 4);
@@ -3946,10 +4478,102 @@ function sqApplyTier() {
   }
 }
 
+/* ── FEED JAMIE HUD — design handoff "Doodle Stream HUD", option 4a ──
+   One edge-mounted card carrying the Jamie sticker, a LVL n/6 counter and the
+   rotating CTA ribbon. The level is the squad care tier and the CTA copy is
+   CFG.prompts.list, so this is a new face for existing state, not a second
+   scoring system. Because it consolidates the prompt pill and the care meter,
+   both of those hide while it is on (CFG.hud.enabled = false restores them). */
+const FH_RAMP = ['#17a24b', '#e8871a', '#e5312b'];   /* green → orange → red */
+const FH_PULSE  = ['1s', '.6s', '.35s'];             /* faster = higher tier */
+const FH_SHAKE  = ['.5s', '.32s', '.2s'];
+const FH_SHAKE_PX = ['2', '3.5', '3.5'];             /* never bigger — it hurts legibility */
+const FH_TILT   = ['0', '0', '0.4'];
+const FH_SHAKE_N = ['4', '3', '3'];                  /* keeps shake ≤ pulse: 2.0/0.96/0.6s vs 2.0/1.2/0.7s */
+
+function fhOn() { return !!(CFG.hud && CFG.hud.enabled); }
+
+function fhBuild() {
+  const m = $('feed-hud');
+  if (!m.dataset.built) {
+    m.innerHTML =
+      '<div class="fh-card">' +
+        '<div class="fh-row">' +
+          '<span class="fh-label">FEED JAMIE</span>' +
+          '<span class="fh-lvl">' +
+            '<span class="fh-lvl-word">LVL </span>' +
+            '<span class="fh-lvl-num">0</span>' +
+            '<span class="fh-lvl-max">/6</span>' +
+          '</span>' +
+        '</div>' +
+        '<div class="fh-ribbon"></div>' +
+      '</div>';
+    m.dataset.built = '1';
+    /* Drop the class once the pulse finishes. Left on, it would replay every
+       time the card is hidden and shown again (an operator toggling the HUD
+       would see a phantom level-up). */
+    m.addEventListener('animationend', e => {
+      if (e.animationName === 'fhPulse') m.classList.remove('levelup');
+    });
+  }
+  return m;
+}
+
+/* The ribbon is a fixed-width slot, so operator copy that runs long shrinks to
+   fit instead of clipping mid-word or widening the card. */
+function fhFitRibbon() {
+  const r = fhBuild().querySelector('.fh-ribbon');
+  let size = 17;
+  r.style.fontSize = size + 'px';
+  while (size > 11 && r.scrollWidth > r.clientWidth) { size -= 0.5; r.style.fontSize = size + 'px'; }
+}
+
+function fhLayout() {
+  const m = fhBuild();
+  m.classList.toggle('show', fhOn());
+  if (!fhOn()) return;
+  const h = CFG.hud;
+  const scale = Math.max(0.5, Math.min(2.5, +h.scale || 1));
+  const x = Math.max(0, Math.min(1080, +h.x || 0));
+  /* Edge mounting is derived from where the card actually sits rather than a
+     separate side flag, so dragging it to either edge on the control panel's
+     canvas produces the right border/radius without a second setting to keep
+     in sync. Anything in between keeps the full four-sided border. */
+  m.classList.toggle('edge-left', x <= 2);
+  m.classList.toggle('edge-right', x + 250 * scale >= 1078);
+  m.style.left = x + 'px';
+  m.style.top = Math.max(0, Math.min(1920, +h.y || 430)) + 'px';
+  m.style.transform = 'scale(' + scale + ')';
+  fhFitRibbon();
+}
+
+function fhUpdate(popped) {
+  if (!fhOn()) return;
+  const m = fhBuild();
+  const max = (SQ.tiers.thresholds || []).length || 6;
+  const lvl = Math.max(0, Math.min(max, sqState.tier || 0));
+  m.querySelector('.fh-lvl-num').textContent = String(lvl);
+  m.querySelector('.fh-lvl-max').textContent = '/' + max;
+  /* The escalation ramp is spread across the level RANGE rather than pinned to
+     tier numbers, so a re-tuned thresholds list still lands red at the top. */
+  const band = lvl <= 0 ? 0 : Math.min(2, Math.floor((lvl - 1) / Math.max(1, max / 3)));
+  m.querySelector('.fh-lvl-num').style.color = FH_RAMP[band];
+  if (!popped) return;
+  m.style.setProperty('--fh-pulse', FH_PULSE[band]);
+  m.style.setProperty('--fh-shakedur', FH_SHAKE[band]);
+  m.style.setProperty('--fh-shake', FH_SHAKE_PX[band]);
+  m.style.setProperty('--fh-tilt', FH_TILT[band]);
+  m.style.setProperty('--fh-shakeiter', FH_SHAKE_N[band]);
+  m.classList.remove('levelup'); void m.offsetWidth; m.classList.add('levelup');
+}
+
 /* ── tier meter ── */
 function sqUpdateMeter(popped) {
   const m = $('squad-meter');
-  if (!SQ.enabled || !SQ.tiers.enabled) { m.classList.remove('show'); return; }
+  /* The HUD card renders the same tier as its LVL counter, so it takes over
+     from this meter entirely rather than sitting alongside it. */
+  fhUpdate(popped);
+  if (!SQ.tiers.enabled || fhOn()) { m.classList.remove('show'); return; }
   m.classList.add('show');
   const tier = sqState.tier;
   const th = SQ.tiers.thresholds;
@@ -3957,29 +4581,43 @@ function sqUpdateMeter(popped) {
   const name = NAMES[tier] || 'FEED ME';
   const next = tier < th.length ? th[tier] : null;
   if (!m.dataset.built) {
-    m.innerHTML = `<div class="sqm-badge">🐶 <span class="sqm-tname"></span></div>
-      <div class="sqm-bar"><div class="sqm-fill"></div></div>
-      <div class="sqm-next"></div>`;
+    m.innerHTML = `<div class="sqm-shell">
+      <div class="sqm-badge">🐶 <span class="sqm-tname"></span></div>
+      <div class="sqm-progress"><div class="sqm-fill"></div><div class="sqm-next"></div></div>
+    </div>`;
     m.dataset.built = '1';
   }
   m.querySelector('.sqm-tname').textContent =
-    tier > 0 ? `${sqCopy('labelPrefix', 'JAMIE IS')} ${name}`.trim() : sqCopy('labelZero', 'FEED JAMIE!');
+    tier > 0 ? `${sqCopy('labelPrefix', 'JAMIE LVL')} ${name}`.trim() : sqCopy('labelZero', 'FEED JAMIE!');
   /* tier-name ink on the cream paper badge: purple → navy → red as tiers climb */
   m.style.setProperty('--sqm-edge', tier >= 6 ? '#c8342c' : tier >= 4 ? '#1d3f7a' : '#7B2FBE');
   const fill = m.querySelector('.sqm-fill');
   const nextEl = m.querySelector('.sqm-next');
   if (next != null) {
-    const base = tier > 0 ? th[tier - 1] : 0;
-    const pct = Math.min(100, Math.max(0, (sqState.careUsd - base) / (next - base) * 100));
+    const currentCoins = Math.max(0, Math.round(sqState.careUsd / 0.005));
+    const targetCoins = Math.max(1, Math.ceil(next / 0.005));
+    const pct = Math.min(100, Math.max(0, currentCoins / targetCoins * 100));
     fill.style.width = pct.toFixed(1) + '%';
     const gapCoins = Math.max(1, Math.ceil((next - sqState.careUsd) / 0.005));
-    nextEl.textContent = `${gapCoins.toLocaleString()} coins to ${NAMES[tier + 1] || ''}`.trim();
+    const compactCoins = n => {
+      if (n < 1000) return n.toLocaleString();
+      const k = n / 1000;
+      return (k < 10 && Math.abs(k - Math.round(k)) > 0.01 ? k.toFixed(1) : Math.round(k).toString()) + 'K';
+    };
+    nextEl.textContent = sqCopy('labelNext', '{current} / {target}')
+      .replace(/\{coins\}/g, gapCoins.toLocaleString())
+      .replace(/\{tier\}/g, NAMES[tier + 1] || '')
+      .replace(/\{current\}/g, compactCoins(currentCoins))
+      .replace(/\{target\}/g, compactCoins(targetCoins))
+      .trim();
   } else {
     fill.style.width = '100%';
-    nextEl.textContent = sqCopy('labelMax', 'MAX DRIP — keep him there!');
+    nextEl.textContent = sqCopy('labelMax', 'MAX LEVEL');
   }
   const mx = SQ.tiers.meterX, my = SQ.tiers.meterY || (CFG.floor.y + 14);
-  m.style.left = (mx - 110) + 'px';
+  const meterScale = Math.max(0.5, Math.min(2, Number(SQ.tiers.meterScale) || 1));
+  m.style.setProperty('--sqm-scale', String(meterScale));
+  m.style.left = (mx - 150) + 'px';
   m.style.top = my + 'px';
   if (popped) { m.classList.remove('tierup'); void m.offsetWidth; m.classList.add('tierup'); }
 }
@@ -3991,7 +4629,7 @@ setInterval(() => {
   const now = Date.now();
   const mins = (now - sqState.lastTickAt) / 60000;
   sqState.lastTickAt = now;
-  if (!SQ.enabled || !SQ.tiers.enabled || sqState.careUsd <= 0) return;
+  if (!SQ.tiers.enabled || sqState.careUsd <= 0) return;
   sqState.careUsd = Math.max(0, sqState.careUsd - SQ.tiers.decayPerMin * mins);
   sqPersist();
   sqApplyTier();
@@ -4076,7 +4714,9 @@ function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
   const w = $('squad-wheel');
   const disc = w.querySelector('.sq-wheel-disc');
   const cap = w.querySelector('.sq-wheel-caption');
-  cap.textContent = username ? `@${sanitizeName(username)} spins the treat wheel…` : 'treat wheel…';
+  cap.textContent = username
+    ? copyText('wheelSpinUser', '@{username} spins the treat wheel…', { username: sanitizeName(username) })
+    : copyText('wheelSpinAnon', 'treat wheel…');
   const wedge = sqPickWedge(level);
   const item = SQ_WHEEL_ITEMS[wedge];
   /* pointer at top: land wedge center under it */
@@ -4093,22 +4733,29 @@ function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
   /* timers, not transitionend — must complete even in a throttled tab */
   setTimeout(() => {
     w.classList.add('landed');
-    cap.textContent = `${username ? '@' + sanitizeName(username) : 'chat'} won a ${GIFT_ITEM_LABELS[item] || item}!`;
+    cap.textContent = copyText('wheelWin', '{winner} won a {item}!', {
+      winner: username ? '@' + sanitizeName(username) : 'chat',
+      item: GIFT_ITEM_LABELS[item] || item
+    });
     playSound('jackpot');
     setTimeout(() => {
       w.classList.remove('show', 'landed');
       w.classList.add('hide');
       sqWheelBusy = false;
       /* the crowd tosses the prize toward Jamie */
-      sqFansReact('toss');
+      if (SQ.enabled) sqFansReact('toss');
       const jamieOnLeft = CFG.jamie.side !== 'right';
+      const prizeStartX = SQ.enabled ? SQ.crowd.x : SQ.wheel.x;
+      const prizeStartY = SQ.enabled
+        ? (SQ.crowd.y || CFG.floor.y) - 30
+        : (SQ.wheel.y || Math.max(30, CFG.floor.y * 0.32));
       queueSpawn(item, {
         sourceEvent: sourceEvent || 'gift', username,
         priority: 80, premium: true, showName: !!CFG.visuals.usernameEvents.gift,
         nameSeconds: CFG.visuals.usernameSeconds * 1.5,
         sizeScale: (sizeScale || 1) * 1.1,
         intensityLevel: Math.max(2, level),
-        startX: SQ.crowd.x, startY: (SQ.crowd.y || CFG.floor.y) - 30,
+        startX: prizeStartX, startY: prizeStartY,
         dirX: jamieOnLeft ? -1 : 1,
       });
       playSound('gift');
@@ -4118,13 +4765,16 @@ function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
 
 /* ── gift intake (all platforms funnel through here) ── */
 function squadOnGift(username, platform, usd) {
-  if (!SQ.enabled || !(usd > 0) || !username) { if (usd > 0) sqBumpCare(usd); return; }
+  if (!(usd > 0)) return;
+  /* Care and crowd intake are separate. Turning off the crowd must not turn
+     off the drip system, and turning off drip must not stop the crowd. */
+  if (SQ.tiers.enabled) sqBumpCare(usd);
+  if (!SQ.enabled || !username) return;
   const k = sqKey(username);
   const g = sqState.gifters[k] || (sqState.gifters[k] = { name: username, platform, usd: 0 });
   g.usd += usd;
   g.name = username;
   g.platform = platform;
-  sqBumpCare(usd);
   const wasTop = sqState.topKey;
   sqUpdateCrowd();
   if (sqState.topKey && sqState.topKey !== wasTop && wasTop) playSound('jackpot');  // crown hopped
@@ -4132,13 +4782,14 @@ function squadOnGift(username, platform, usd) {
   sqPersist();
 }
 function sqBumpCare(usd) {
+  if (!SQ.tiers.enabled || !(usd > 0)) return;
   sqState.careUsd += usd;
   sqApplyTier();
   sqPersist();
 }
 /* wheel takeover: returns true if the wheel owns this gift's item spawn */
 function squadTakeGift(level, value, username, rawGiftName, sizeScale, sourceEvent) {
-  if (!SQ.enabled || !SQ.wheel.enabled) return false;
+  if (!SQ.wheel.enabled) return false;
   if (sqWheelBusy) return false;
   if (level >= 4) return false;               // mega gifts keep the heart-me/jackpot spectacle
   if ((+value || 0) < SQ.wheel.minCoins) return false;
@@ -4280,6 +4931,8 @@ function publishStatus(immediate) {
         objectCount: objects.filter(o => !o.captured).length,
         objectTypes: objects.filter(o => !o.captured).map(o => o.itemType),
         queued: spawnQueue.length,
+        reactionQueued: jamieReactionQueue.length,
+        reactionActive: activeJamieReaction ? activeJamieReaction.kind : null,
         likeProgress: likeAccumulator, likesPerTreat: CFG.events.likesPerTreat,
         growth: Math.round(growth * 100) / 100,
         milestoneTotals: { ...milestoneTotals },
@@ -4296,6 +4949,13 @@ function publishStatus(immediate) {
           careUsd: Math.round(sqState.careUsd * 100) / 100,
           tier: sqState.tier, tierName: sqTierNames()[sqState.tier] || '—',
           decayPerMin: SQ.tiers.decayPerMin,
+          copy: {
+            labelZero: SQ.tiers.labelZero,
+            labelPrefix: SQ.tiers.labelPrefix,
+            labelNext: SQ.tiers.labelNext,
+            labelMax: SQ.tiers.labelMax,
+            tierNames: SQ.tiers.tierNames
+          },
           gifterCount: Object.keys(sqState.gifters).length,
           topTreater: sqState.topKey ? {
             name: sqState.gifters[sqState.topKey].name,
@@ -4387,6 +5047,12 @@ function initComms() {
           if (!['water', 'glass', 'strike', 'object', 'press'].includes(d.kind)) return;
           reactToFx(d.kind, Number.isFinite(x) ? x : undefined);
         });
+        ably.channels.get('wheel-fx').subscribe('jamie-cue', m => {
+          const d = (m && m.data) || {};
+          if (!['anticipate', 'look', 'confused', 'chase', 'celebrate'].includes(d.cue)) return;
+          const x = Number(d.x);
+          reactToWheelCue(d.cue, Number.isFinite(x) ? x : undefined, String(d.tier || ''));
+        });
       } catch (e) {}
       ably.connection.on('connected',    () => $('conn-dot').classList.add('connected'));
       ably.connection.on('disconnected', () => $('conn-dot').classList.remove('connected'));
@@ -4451,7 +5117,10 @@ window.feedJamie = {
   getState: () => ({
     state: J.state, paused: J.paused, hidden: J.hidden, growth,
     objects: objects.map(o => ({ id: o.id, itemType: o.itemType, x: o.x, y: o.y, captured: o.captured })),
-    queued: spawnQueue.length, likeAccumulator, warnings: assetWarnings.slice(),
+    queued: spawnQueue.length,
+    reactionQueued: jamieReactionQueue.length,
+    reactionActive: activeJamieReaction ? activeJamieReaction.kind : null,
+    likeAccumulator, warnings: assetWarnings.slice(),
     milestoneTotals: { ...milestoneTotals },
     config: fjClone(CFG)
   }),
@@ -4470,6 +5139,9 @@ giftShowcaseLoop();
 initComms();
 fjLoadAssets();
 squadBoot();
+/* The ribbon's shrink-to-fit measures text, so it has to run again once Baloo 2
+   actually lands — the fallback metrics differ enough to mis-size the CTA. */
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { try { fhFitRibbon(); } catch (e) {} });
 rafId = requestAnimationFrame(tick);
 </script>
 </body>

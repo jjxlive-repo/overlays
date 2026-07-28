@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FEED JAMIE CONTROL</title>
-<script src="jjx-core.js?v=8"></script>
+<script src="jjx-core.js?v=10"></script>
 <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -91,6 +91,16 @@
   .cardlist > .row .val { flex: none; }
   .cardlist > .row input[type=checkbox] { justify-self: end; }
   .cardlist > .note { margin: 10px 2px 4px; }
+  .copy-card { margin-bottom: 10px; }
+  .copy-field { margin: 10px 0; }
+  .copy-field label { display: block; color: var(--txt); font-weight: 700; font-size: 12.5px; margin-bottom: 4px; }
+  .copy-field input { width: 100%; }
+  .copy-field .tokens { color: var(--txt-dim); font-size: 10.5px; line-height: 1.35; margin-top: 3px; }
+  #copy-savebar {
+    position: sticky; top: 64px; z-index: 12; display: flex; align-items: center;
+    gap: 10px; margin-bottom: 10px; box-shadow: 0 6px 18px #17062bcc;
+  }
+  #copy-save-status { color: var(--txt-dim); font-size: 11.5px; }
 
   /* ── LIVE view ── */
   .view { padding: 12px 16px 24px; }
@@ -288,6 +298,7 @@
 <div class="view hidden" id="view-setup">
   <div id="tabstrip">
     <button data-tab="canvas" class="active">Canvas</button>
+    <button data-tab="copy">Copy</button>
     <button data-tab="rules">Rules</button>
     <button data-tab="gifts">Gifts &amp; Goals</button>
     <button data-tab="look">Look &amp; Sound</button>
@@ -308,6 +319,17 @@
         <div id="el-chips"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Copy tab -->
+  <div id="tab-copy" class="hidden">
+    <div class="note" style="margin-bottom:10px;"><b>All viewer-facing Jamie wording in one place.</b> Change the text, keep any useful {tokens}, then save once. Per-gift sign and floating text still live beside each gift in Gifts &amp; Goals.</div>
+    <div class="card" id="copy-savebar">
+      <button class="primary" onclick="applyCopyEditor()">Save all copy</button>
+      <button onclick="resetCopyEditor()">Reset copy</button>
+      <span id="copy-save-status">No unsaved changes</span>
+    </div>
+    <div id="copy-editor"></div>
   </div>
 
   <!-- Rules tab -->
@@ -336,11 +358,6 @@
   <!-- Look & Sound tab -->
   <div id="tab-look" class="hidden">
     <div class="cardlist" id="look-list"></div>
-    <div class="card" style="margin-top:6px;">
-      <div style="font-size:13px;color:var(--txt-dim);margin-bottom:5px;">FYP bait prompts — one per line, rotates with the interval above</div>
-      <textarea id="prompt-editor" spellcheck="false"></textarea>
-      <div class="btnrow"><button onclick="applyPrompts()">Apply prompts</button></div>
-    </div>
     <div class="card" style="margin-top:12px;">
       <div class="card-h">Per-sound mix</div>
       <div id="sound-rows"></div>
@@ -451,8 +468,28 @@ const FJ_DEFAULT_CONFIG = {
     }
   },
   prompts: {
-    enabled: true, intervalSec: 8, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
-    list: ['LIKES = TREATS 🦴', 'COMMENT BALL, TREAT, OR TOY', 'FOLLOW TO THROW THE BALL 🎾', 'HEART ME = BIG JAMIE REACTION 💜']
+    enabled: true, intervalSec: 4, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
+    /* No emoji — this copy now feeds the HUD card's 250px ribbon. */
+    list: ['SAY BALL · TREAT · TOY', 'HEART ME = BIG REACTION', 'FOLLOW TO FEED JAMIE']
+  },
+  /* HUD goal card — Jamie sticker + LVL n/6 + rotating CTA ribbon. While it is
+     on it replaces the prompt pill and the squad care meter on the overlay, so
+     the canvas hides those two chips (see buildEls). */
+  hud: { enabled: true, x: 0, y: 430, scale: 1 },
+  copy: {
+    follow: '@{username} threw Jamie a ball! 🎾',
+    heartMe: '@{username} gave Jamie a Heart Me! 💜',
+    heartMeGift: '@{username} sent {gift}! 🎁',
+    jackpot: '@{username} triggered a Jamie JACKPOT! 🌟',
+    jackpotGift: '@{username} triggered a JACKPOT with {gift}! 🌟',
+    subscribe: '@{username} unlocked Jamie’s golden ball! ⭐',
+    milestoneReached: '🎯 {goal} reached! ({total} {counter})',
+    likeMeter: '🦴 {current}/{target}',
+    pluck: 'YOURS! 🤏',
+    giftSignFallback: 'THROW {item}',
+    wheelSpinUser: '@{username} spins the treat wheel…',
+    wheelSpinAnon: 'treat wheel…',
+    wheelWin: '{winner} won a {item}!'
   },
   visuals: {
     usernameLabels: true, likeMeter: true, particleLevel: 'low', blueAccent: true, stickerBorder: true, highContrast: false,
@@ -503,6 +540,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 let CFG = fjClone(FJ_DEFAULT_CONFIG);
 try { const s = JSON.parse(localStorage.getItem(FJ_LS_CONFIG) || 'null'); if (s) CFG = fjDeepMerge(CFG, s); } catch (e) {}
+if (!CFG.copy || typeof CFG.copy !== 'object') CFG.copy = fjClone(FJ_DEFAULT_CONFIG.copy);
 
 /* control-side mirror of the overlay's Splatty Squad config. The overlay owns
    the real copy (feedJamie.squad.cfg.v1) and deep-merges SQUAD_CONFIG partials
@@ -512,13 +550,24 @@ let SQC = {
   enabled: true,
   crowd: { x: 890, y: 0 },
   wheel: { enabled: true, x: 540, y: 0, size: 300, minCoins: 1 },
-  tiers: { enabled: true, decayPerMin: 0.4, meterX: 260, meterY: 0,
-           labelZero: 'FEED JAMIE!', labelPrefix: 'JAMIE IS',
-           labelMax: 'MAX DRIP — keep him there!',
-           tierNames: 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC' },
+  tiers: { enabled: true, decayPerMin: 0.4, meterX: 260, meterY: 0, meterScale: 1,
+           labelZero: 'FEED JAMIE!', labelPrefix: 'JAMIE LVL',
+           labelMax: 'MAX LEVEL',
+           labelNext: '{current} / {target}',
+           tierNames: '1, 2, 3, 4, 5, 6' },
 };
 let sqcSeeded = false;
 try { const s = JSON.parse(localStorage.getItem(SQC_LS) || 'null'); if (s) { SQC = fjDeepMerge(SQC, s); sqcSeeded = true; } } catch (e) {}
+if (SQC.tiers.tierNames === 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC') {
+  SQC.tiers.tierNames = 'T1, T2, T3, T4, T5, T6';
+}
+if (SQC.tiers.labelPrefix === 'JAMIE IS') SQC.tiers.labelPrefix = 'JAMIE DRIP';
+if (SQC.tiers.labelNext === '{coins} coins to {tier}') SQC.tiers.labelNext = '{coins} coins to level up';
+if (SQC.tiers.tierNames === 'T1, T2, T3, T4, T5, T6') SQC.tiers.tierNames = '1, 2, 3, 4, 5, 6';
+if (SQC.tiers.labelPrefix === 'JAMIE DRIP') SQC.tiers.labelPrefix = 'JAMIE LVL';
+if (SQC.tiers.labelNext === '{coins} coins to level up') SQC.tiers.labelNext = '{current} / {target}';
+if (SQC.tiers.labelMax === 'MAX DRIP — keep him there!') SQC.tiers.labelMax = 'MAX LEVEL';
+try { localStorage.setItem(SQC_LS, JSON.stringify(SQC)); } catch (e) {}
 let sqTimer = null, sqPending = {};
 function sqPush(partial) {
   SQC = fjDeepMerge(SQC, partial);
@@ -637,8 +686,9 @@ document.querySelectorAll('#tabstrip button').forEach(b => {
   b.onclick = () => {
     tab = b.dataset.tab;
     document.querySelectorAll('#tabstrip button').forEach(x => x.classList.toggle('active', x === b));
-    for (const t of ['canvas', 'rules', 'gifts', 'look', 'adv']) $id('tab-' + t).classList.toggle('hidden', t !== tab);
+    for (const t of ['canvas', 'copy', 'rules', 'gifts', 'look', 'adv']) $id('tab-' + t).classList.toggle('hidden', t !== tab);
     if (tab === 'canvas') renderCanvas();
+    if (tab === 'copy') renderCopyEditor();
   };
 });
 
@@ -680,14 +730,17 @@ function renderStatus(s) {
   setDot('overlay', true, 'live');
   ovPaused = !!s.paused; ovHidden = !!s.hidden; ovSleeping = s.state === 'SLEEPING';
   $id('st-state').textContent = s.hidden ? 'hidden 🚫' : s.paused ? 'paused ⏸' : (s.state || '—').toLowerCase();
-  $id('st-objects').textContent = (s.objectCount ?? '—') + ((s.objectTypes || []).length ? ' (' + s.objectTypes[0] + (s.objectTypes.length > 1 ? '…' : '') + ')' : '') + (s.queued ? ` +${s.queued}q` : '');
+  $id('st-objects').textContent = (s.objectCount ?? '—') +
+    ((s.objectTypes || []).length ? ' (' + s.objectTypes[0] + (s.objectTypes.length > 1 ? '…' : '') + ')' : '') +
+    (s.queued ? ` +${s.queued} item${s.queued === 1 ? '' : 's'} waiting` : '') +
+    (s.reactionQueued ? ` +${s.reactionQueued} response${s.reactionQueued === 1 ? '' : 's'} waiting` : '');
   $id('st-likes').textContent = `${s.likeProgress ?? 0} / ${s.likesPerTreat ?? '?'}`;
   $id('st-growth').textContent = s.growth ? s.growth.toFixed(2) + '×' : '—';
   syncKillButtons();
   if (s.squad) {
     const sq = s.squad;
     $id('sq-status').textContent =
-      `Jamie: T${sq.tier} ${sq.tierName} · care $${sq.careUsd} (decay ${sq.decayPerMin}/min) · ` +
+      `Jamie: Lvl ${sq.tier} · care $${sq.careUsd} (decay ${sq.decayPerMin}/min) · ` +
       `${sq.gifterCount} gifters · top: ${sq.topTreater ? sq.topTreater.name + ' ($' + sq.topTreater.usd + ')' : '—'}`;
     /* first contact with no saved control-side copy: adopt the overlay's rule
        values so the Advanced toggles don't show stale defaults */
@@ -696,8 +749,10 @@ function renderStatus(s) {
       SQC.wheel.enabled = !!sq.wheel;
       SQC.tiers.enabled = !!sq.tiers;
       SQC.tiers.decayPerMin = +sq.decayPerMin || SQC.tiers.decayPerMin;
+      if (sq.copy) SQC.tiers = fjDeepMerge(SQC.tiers, sq.copy);
       sqcSeeded = true;
       renderSquadToggles();
+      renderCopyEditor();
     }
   }
   const wn = $id('warnings-note');
@@ -795,6 +850,25 @@ function slider(parent, label, path, min, max, step, fmt) {
   parent.appendChild(row);
   return inp;
 }
+/* Position controls are percentages in the operator UI, while the saved config
+   stays in 1080×1920 design pixels for overlay and old-save compatibility. */
+function positionSlider(parent, label, path, axis, minPx, maxPx, stepPercent) {
+  const row = document.createElement('div'); row.className = 'row';
+  const id = 'c-' + path.replace(/\./g, '-');
+  const min = JJX.position.pxToPercent(minPx, axis, 2);
+  const max = JJX.position.pxToPercent(maxPx, axis, 2);
+  row.innerHTML = `<label for="${id}">${label}</label><span class="val"></span><input type="range" id="${id}" min="${min}" max="${max}" step="${stepPercent || 0.01}">`;
+  const inp = row.querySelector('input'), val = row.querySelector('.val');
+  const show = v => { val.textContent = JJX.position.formatPercent(v, 1); };
+  inp.value = JJX.position.pxToPercent(getPath(path), axis, 2);
+  show(inp.value);
+  inp.oninput = () => {
+    setPath(path, JJX.position.percentToPx(inp.value, axis));
+    show(inp.value);
+  };
+  parent.appendChild(row);
+  return inp;
+}
 function numberInput(parent, label, path, min, max, step) {
   const row = document.createElement('div'); row.className = 'row';
   const id = 'c-' + path.replace(/\./g, '-') + '-n';
@@ -824,26 +898,6 @@ function selectInput(parent, label, path, options) {
   inp.onchange = () => setPath(path, inp.value);
   parent.appendChild(row);
 }
-/* free-text field. Unlike the other helpers this takes explicit get/push callbacks,
-   because the squad config lives in its own SQC object rather than under CFG. */
-function textInput(parent, label, path, push, get) {
-  const row = document.createElement('label');
-  row.className = 'row';
-  row.innerHTML = '<span>' + label + '</span>';
-  const inp = document.createElement('input');
-  inp.type = 'text';
-  inp.value = get() == null ? '' : String(get());
-  inp.style.cssText = 'flex:1;min-width:120px';
-  inp.onchange = () => {
-    const parts = path.split('.');
-    const patch = {}; let cur = patch;
-    parts.forEach((k, i) => { if (i === parts.length - 1) cur[k] = inp.value; else cur = cur[k] = {}; });
-    push(patch);
-  };
-  row.appendChild(inp);
-  parent.appendChild(row);
-  return inp;
-}
 function colorInput(parent, label, path) {
   const row = document.createElement('div'); row.className = 'row';
   row.innerHTML = `<label>${label}</label><input type="color">`;
@@ -856,6 +910,137 @@ function noteEl(parent, html) {
   const n = document.createElement('div'); n.className = 'note'; n.innerHTML = html; parent.appendChild(n);
 }
 
+/* ════════════════════════ COPY EDITOR ════════════════════════ */
+const COPY_GROUPS = [
+  {
+    title: 'Event messages',
+    note: 'These appear above Jamie when viewer events land.',
+    fields: [
+      ['Follow', 'follow', '{username}'],
+      ['Heart Me', 'heartMe', '{username}'],
+      ['Heart Me from a gift', 'heartMeGift', '{username}, {gift}'],
+      ['Jackpot', 'jackpot', '{username}'],
+      ['Jackpot from a gift', 'jackpotGift', '{username}, {gift}'],
+      ['Subscription', 'subscribe', '{username}'],
+      ['Goal reached', 'milestoneReached', '{goal}, {total}, {counter}']
+    ]
+  },
+  {
+    title: 'Small labels',
+    note: 'Short copy used by the like pill, hand-feed grab, and gift sign fallback.',
+    fields: [
+      ['Like progress', 'likeMeter', '{current}, {target}'],
+      ['Streamer grabbed it', 'pluck', 'no tokens'],
+      ['Gift sign fallback', 'giftSignFallback', '{item}']
+    ]
+  },
+  {
+    title: 'Treat wheel',
+    note: 'The winner token already includes @ for named viewers and “chat” for anonymous spins.',
+    fields: [
+      ['Spinning — named viewer', 'wheelSpinUser', '{username}'],
+      ['Spinning — anonymous', 'wheelSpinAnon', 'no tokens'],
+      ['Winner', 'wheelWin', '{winner}, {item}']
+    ]
+  }
+];
+function copyField(parent, label, value, attr, tokens) {
+  const wrap = document.createElement('div');
+  wrap.className = 'copy-field';
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = value == null ? '' : String(value);
+  inp.maxLength = 220;
+  inp.setAttribute(attr.name, attr.value);
+  inp.oninput = markCopyDirty;
+  const hint = document.createElement('div');
+  hint.className = 'tokens';
+  hint.textContent = 'Available: ' + tokens;
+  wrap.append(lab, inp, hint);
+  parent.appendChild(wrap);
+}
+function copyCard(title, note) {
+  const card = document.createElement('div');
+  card.className = 'card copy-card';
+  const h = document.createElement('div'); h.className = 'card-h'; h.textContent = title;
+  const n = document.createElement('div'); n.className = 'note'; n.textContent = note;
+  card.append(h, n);
+  return card;
+}
+function markCopyDirty() {
+  const s = $id('copy-save-status');
+  if (s) { s.textContent = 'Unsaved changes'; s.style.color = 'var(--warn)'; }
+}
+function renderCopyEditor() {
+  const host = $id('copy-editor');
+  if (!host) return;
+  host.innerHTML = '';
+
+  const drip = copyCard('Jamie level meter', 'The headline uses the current level number. Keep {current} and {target} in the meter text to show live coin progress.');
+  copyField(drip, 'Empty meter', SQC.tiers.labelZero, { name: 'data-sq-copy', value: 'labelZero' }, 'no tokens');
+  copyField(drip, 'Tier headline prefix', SQC.tiers.labelPrefix, { name: 'data-sq-copy', value: 'labelPrefix' }, 'no tokens');
+  copyField(drip, 'Meter numbers', SQC.tiers.labelNext, { name: 'data-sq-copy', value: 'labelNext' }, '{current}, {target}');
+  copyField(drip, 'Max tier line', SQC.tiers.labelMax, { name: 'data-sq-copy', value: 'labelMax' }, 'no tokens');
+  copyField(drip, 'Level numbers — six, comma separated', SQC.tiers.tierNames, { name: 'data-sq-copy', value: 'tierNames' }, 'no tokens');
+  host.appendChild(drip);
+
+  const prompts = copyCard('Rotating prompts', 'One prompt per line. These rotate through the HUD card’s CTA ribbon (or the prompt pill, if the card is off). Keep them short — the ribbon is a fixed 250px slot and long lines shrink to fit.');
+  const ta = document.createElement('textarea');
+  ta.id = 'prompt-editor';
+  ta.spellcheck = true;
+  ta.value = CFG.prompts.list.join('\n');
+  ta.oninput = markCopyDirty;
+  prompts.appendChild(ta);
+  host.appendChild(prompts);
+
+  for (const group of COPY_GROUPS) {
+    const card = copyCard(group.title, group.note);
+    for (const [label, key, tokens] of group.fields) {
+      copyField(card, label, CFG.copy[key], { name: 'data-copy-key', value: key }, tokens);
+    }
+    host.appendChild(card);
+  }
+  const s = $id('copy-save-status');
+  if (s) { s.textContent = 'No unsaved changes'; s.style.color = 'var(--txt-dim)'; }
+}
+function applyCopyEditor() {
+  document.querySelectorAll('[data-copy-key]').forEach(inp => {
+    CFG.copy[inp.dataset.copyKey] = inp.value;
+  });
+  const tierCopy = {};
+  document.querySelectorAll('[data-sq-copy]').forEach(inp => {
+    tierCopy[inp.dataset.sqCopy] = inp.value;
+  });
+  const promptEditor = $id('prompt-editor');
+  if (promptEditor) CFG.prompts.list = promptEditor.value.split('\n').map(s => s.trim()).filter(Boolean);
+  pushConfig();
+  sqPush({ tiers: tierCopy });
+  renderCanvas();
+  const s = $id('copy-save-status');
+  if (s) { s.textContent = 'Saved to Jamie overlay'; s.style.color = 'var(--light)'; }
+}
+function resetCopyEditor() {
+  CFG.copy = fjClone(FJ_DEFAULT_CONFIG.copy);
+  CFG.prompts.list = FJ_DEFAULT_CONFIG.prompts.list.slice();
+  const t = {
+    labelZero: 'FEED JAMIE!',
+    labelPrefix: 'JAMIE LVL',
+    labelNext: '{current} / {target}',
+    labelMax: 'MAX LEVEL',
+    tierNames: '1, 2, 3, 4, 5, 6'
+  };
+  SQC.tiers = fjDeepMerge(SQC.tiers, t);
+  pushConfig();
+  sqPush({ tiers: t });
+  renderCopyEditor();
+  renderCanvas();
+  const s = $id('copy-save-status');
+  if (s) { s.textContent = 'Copy reset and saved'; s.style.color = 'var(--light)'; }
+}
+renderCopyEditor();
+
 /* ════════════════════════ CANVAS EDITOR ═══════════════════════ */
 /* Overlay coordinate model (all px, 1080×1920, origin top-left):
    floor.y is an absolute TOP coordinate — the floor line renders at
@@ -867,16 +1052,45 @@ function signBox() {
   const left = sc.anchorToJamie ? (CFG.jamie.x + CFG.jamie.width + sc.gap) : sc.x;
   return { w, h, cx: left + w / 2, cy: floorSafe() + (sc.floorOffset || 0) - h / 2 };
 }
+function hudOn() { return !!(CFG.hud && CFG.hud.enabled); }
 function buildEls() {
   const els = [];
-  els.push({
-    id: 'prompt', name: 'Prompt pill', pill: true, label: (CFG.prompts.list[0] || 'LIKES = TREATS 🦴'),
-    hint: 'The rotating FYP bait pill. The text list is in Look & Sound.',
-    box: () => ({ w: 620 * CFG.prompts.scale, h: 96 * CFG.prompts.scale, cx: CFG.prompts.x, cy: CFG.prompts.y }),
-    setPos: (x, y) => { CFG.prompts.x = x; CFG.prompts.y = y; pushConfig(); },
-    scale: () => CFG.prompts.scale, setScale: s => { CFG.prompts.scale = s; pushConfig(); },
-    vis: () => !!CFG.prompts.enabled, setVis: v => { CFG.prompts.enabled = v; pushConfig(); },
-  });
+  /* The HUD card and the pill+care-meter pair are two ways to show the same
+     thing, and the overlay only ever draws one set — so only one set gets a
+     chip here. Chips for elements that are not on screen would just be
+     controls that do nothing. */
+  if (hudOn()) {
+    els.push({
+      id: 'hud', name: 'Feed Jamie card', label: 'FEED JAMIE · LVL',
+      hint: 'The goal card: level counter and the rotating CTA ribbon. Drag it flush to a screen edge and it drops that side’s border. Level comes from the care tier; CTA copy is in Look & Sound.',
+      box: () => {
+        const s = clamp(Number(CFG.hud.scale) || 1, 0.5, 2.5);
+        return { w: 250 * s, h: 100 * s, cx: (CFG.hud.x || 0) + 125 * s, cy: (CFG.hud.y || 430) + 50 * s };
+      },
+      setPos: (x, y) => {
+        const s = clamp(Number(CFG.hud.scale) || 1, 0.5, 2.5);
+        CFG.hud.x = clamp(Math.round(x - 125 * s), 0, OW - Math.round(250 * s));
+        CFG.hud.y = clamp(Math.round(y - 50 * s), 0, OH - Math.round(100 * s));
+        pushConfig();
+      },
+      scale: () => clamp(Number(CFG.hud.scale) || 1, 0.5, 2.5),
+      setScale: s => { CFG.hud.scale = clamp(s, 0.5, 2.5); pushConfig(); },
+      vis: () => hudOn(), setVis: v => {
+        CFG.hud.enabled = v; pushConfig();
+        if (window.__fjSyncHudRows) window.__fjSyncHudRows();
+        renderCanvas(); renderInspector();
+      },
+    });
+  } else {
+    els.push({
+      id: 'prompt', name: 'Prompt pill', pill: true, label: (CFG.prompts.list[0] || 'SAY BALL · TREAT · TOY'),
+      hint: 'The rotating FYP bait pill. The text list is in Look & Sound.',
+      box: () => ({ w: 620 * CFG.prompts.scale, h: 96 * CFG.prompts.scale, cx: CFG.prompts.x, cy: CFG.prompts.y }),
+      setPos: (x, y) => { CFG.prompts.x = x; CFG.prompts.y = y; pushConfig(); },
+      scale: () => CFG.prompts.scale, setScale: s => { CFG.prompts.scale = s; pushConfig(); },
+      vis: () => !!CFG.prompts.enabled, setVis: v => { CFG.prompts.enabled = v; pushConfig(); },
+    });
+  }
   els.push({
     id: 'meter', name: 'Like meter', pill: true, label: '🦴 30/50',
     hint: 'Small like-progress pill. The fill rule (likes per treat) is in Rules.',
@@ -959,17 +1173,21 @@ function buildEls() {
     setScale: s => sqPush({ wheel: { size: clamp(Math.round(300 * s), 150, 600) } }),
     vis: () => !!SQC.wheel.enabled, setVis: v => sqPush({ wheel: { enabled: v } }),
   });
-  els.push({
-    id: 'care', name: 'Care meter', squad: true, label: "💧 JAMIE'S DRIP",
-    hint: 'Cumulative care $ meter — Jamie’s drip tier climbs as it fills and decays $/min (rate in Advanced → Splatty Squad).',
-    box: () => {
-      const cy = SQC.tiers.meterY ? SQC.tiers.meterY + 210 : floorSafe() + 14 + 210;
-      return { w: 240, h: 420, cx: SQC.tiers.meterX, cy };
-    },
-    setPos: (x, y) => sqPush({ tiers: { meterX: Math.round(x), meterY: Math.round(y - 210) } }),
-    scale: null, setScale: null,
-    vis: () => !!SQC.tiers.enabled, setVis: v => sqPush({ tiers: { enabled: v } }),
-  });
+  if (!hudOn()) {
+    els.push({
+      id: 'care', name: 'Care meter', squad: true, label: "💧 JAMIE'S DRIP",
+      hint: 'Compact Jamie level card with one full-width progress bar labeled current coins / next-level target. Drag to position it, then use Scale in the inspector.',
+      box: () => {
+        const top = SQC.tiers.meterY || floorSafe() + 14;
+        const scale = clamp(Number(SQC.tiers.meterScale) || 1, 0.5, 2);
+        return { w: 300 * scale, h: 78 * scale, cx: SQC.tiers.meterX, cy: top + 39 };
+      },
+      setPos: (x, y) => sqPush({ tiers: { meterX: Math.round(x), meterY: Math.round(y - 39) } }),
+      scale: () => clamp(Number(SQC.tiers.meterScale) || 1, 0.5, 2),
+      setScale: s => sqPush({ tiers: { meterScale: clamp(s, 0.5, 2) } }),
+      vis: () => !!SQC.tiers.enabled, setVis: v => sqPush({ tiers: { enabled: v } }),
+    });
+  }
   return els;
 }
 let sel = 'jamie', dragSess = null;
@@ -1132,8 +1350,8 @@ function renderInspector() {
   toggle(p, 'Chase loose objects', 'roam.chase');
   toggle(p, 'Wander when idle', 'roam.wander');
   toggle(p, 'Return home when quiet', 'roam.returnHome');
-  slider(p, 'Roam band left', 'roam.xMin', 0, 1000, 10);
-  slider(p, 'Roam band right', 'roam.xMax', 80, 1080, 10);
+  positionSlider(p, 'Roam band left', 'roam.xMin', 'x', 0, 1000);
+  positionSlider(p, 'Roam band right', 'roam.xMax', 'x', 80, 1080);
   slider(p, 'Walk speed', 'roam.speed', 40, 600, 5, v => v + 'px/s');
   slider(p, 'Wander every', 'roam.wanderEverySec', 4, 120, 1, v => v + 's');
   slider(p, 'Return home after', 'roam.returnAfterSec', 2, 120, 1, v => v + 's');
@@ -1482,8 +1700,26 @@ const SOUND_NAMES = ['bounce', 'ballBounce', 'catch', 'crunch', 'squeak', 'quack
   slider(p, 'Master volume', 'audio.master', 0, 1, 0.05, v => Math.round(v * 100) + '%');
   toggle(p, 'Prompts enabled', 'prompts.enabled');
   slider(p, 'Prompt rotation', 'prompts.intervalSec', 3, 30, 1, v => v + 's');
-  slider(p, 'Prompt opacity', 'prompts.opacity', 0.2, 1, 0.05);
-  slider(p, 'Prompt bg opacity', 'prompts.bgOpacity', 0, 1, 0.05);
+  /* The HUD card owns the CTA copy now, and the overlay stops drawing the
+     floating pill entirely while it is on — so the pill's look controls are
+     removed rather than greyed out, and come back if the card is switched off.
+     This toggle is also the ONLY way back: turning the card off from the setup
+     canvas removes its chip along with it. */
+  const hudChk = toggle(p, 'Feed Jamie HUD card', 'hud.enabled');
+  const pillOnly = document.createElement('div');
+  p.appendChild(pillOnly);
+  slider(pillOnly, 'Prompt opacity', 'prompts.opacity', 0.2, 1, 0.05);
+  slider(pillOnly, 'Prompt bg opacity', 'prompts.bgOpacity', 0, 1, 0.05);
+  window.__fjSyncHudRows = () => {
+    hudChk.checked = hudOn();
+    pillOnly.style.display = hudOn() ? 'none' : '';
+  };
+  hudChk.onchange = () => {
+    setPath('hud.enabled', hudChk.checked);
+    window.__fjSyncHudRows();
+    renderCanvas(); renderInspector();
+  };
+  window.__fjSyncHudRows();
   slider(p, 'Username duration', 'visuals.usernameSeconds', 0.5, 10, 0.25, v => v + 's');
   noteEl(p, '<b>Show usernames for:</b>');
   toggle(p, '· Follows', 'visuals.usernameEvents.follow');
@@ -1494,7 +1730,6 @@ const SOUND_NAMES = ['bounce', 'ballBounce', 'catch', 'crunch', 'squeak', 'quack
   selectInput(p, 'Particle level', 'visuals.particleLevel', ['off', 'low', 'medium']);
   slider(p, 'Fallback wobble intensity', 'visuals.intensity', 0, 1.5, 0.05, v => (+v).toFixed(2));
   slider(p, 'Corner glow intensity', 'visuals.cornerGlow', 0, 2, 0.1, v => (+v).toFixed(1));
-  $id('prompt-editor').value = CFG.prompts.list.join('\n');
   /* per-sound mix rows */
   const rows = $id('sound-rows');
   for (const s of SOUND_NAMES) {
@@ -1513,10 +1748,6 @@ const SOUND_NAMES = ['bounce', 'ballBounce', 'catch', 'crunch', 'squeak', 'quack
     rows.appendChild(row);
   }
 })();
-function applyPrompts() {
-  CFG.prompts.list = $id('prompt-editor').value.split('\n').map(s => s.trim()).filter(Boolean);
-  pushConfig();
-}
 /* local audition using same synth recipes as the overlay */
 let actx = null;
 function testSoundLocal(name) {
@@ -1554,8 +1785,8 @@ function testSoundLocal(name) {
 /* ═══════════════════ ADVANCED TAB ═════════════════════════════ */
 (function () {
   let p = $id('adv-reach');
-  slider(p, 'X offset', 'reachZone.xOffset', -300, 300, 2);
-  slider(p, 'Y offset', 'reachZone.yOffset', -300, 300, 2);
+  positionSlider(p, 'X offset', 'reachZone.xOffset', 'x', -300, 300);
+  positionSlider(p, 'Y offset', 'reachZone.yOffset', 'y', -300, 300);
   slider(p, 'Width', 'reachZone.width', 60, 400, 2);
   slider(p, 'Height', 'reachZone.height', 60, 400, 2);
   selectInput(p, 'Shape', 'reachZone.shape', ['ellipse', 'rect']);
@@ -1564,7 +1795,7 @@ function testSoundLocal(name) {
   slider(p, 'Near-miss distance', 'reachZone.nearMissDistance', 20, 200, 5);
   noteEl(p, '<b>Extra Jamie geometry</b> — the rest of Jamie’s placement (side, flip, width) lives here; position and scale are on the Canvas tab.');
   slider(p, 'Jamie width', 'jamie.width', 120, 500, 2);
-  slider(p, 'Jamie Y offset', 'jamie.yOffset', -120, 120, 1);
+  positionSlider(p, 'Jamie Y offset', 'jamie.yOffset', 'y', -120, 120);
   selectInput(p, 'Placement side', 'jamie.side', ['left', 'right']);
   toggle(p, 'Horizontal flip', 'jamie.flip');
   slider(p, 'Rotation correction', 'jamie.rotation', -12, 12, 0.5, v => v + '°');
@@ -1589,15 +1820,15 @@ function testSoundLocal(name) {
   p.appendChild(signBtns);
   noteEl(p, '<b>Trigger text</b> — floating text above Jamie when a mapped gift lands.');
   toggle(p, 'Trigger text enabled', 'visuals.giftFloatText.enabled');
-  slider(p, 'Trigger X offset', 'visuals.giftFloatText.xOffset', -400, 400, 5);
-  slider(p, 'Trigger Y offset', 'visuals.giftFloatText.yOffset', -500, 300, 5);
+  positionSlider(p, 'Trigger X offset', 'visuals.giftFloatText.xOffset', 'x', -400, 400);
+  positionSlider(p, 'Trigger Y offset', 'visuals.giftFloatText.yOffset', 'y', -500, 300);
   slider(p, 'Trigger duration', 'visuals.giftFloatText.durationMs', 500, 5000, 50, v => v + 'ms');
   slider(p, 'Trigger rise distance', 'visuals.giftFloatText.risePx', 0, 150, 2, v => v + 'px');
   slider(p, 'Max visible triggers', 'visuals.giftFloatText.maxVisible', 1, 6, 1);
   toggle(p, 'Show sender name', 'visuals.giftFloatText.showSender');
   noteEl(p, '<b>Event label placement</b> (the "@user threw Jamie a ball!" text)');
-  slider(p, 'Event label X', 'visuals.eventLabelX', 0, 1080, 5);
-  slider(p, 'Event label Y', 'visuals.eventLabelY', 0, 1920, 5);
+  positionSlider(p, 'Event label X', 'visuals.eventLabelX', 'x', 0, 1080);
+  positionSlider(p, 'Event label Y', 'visuals.eventLabelY', 'y', 0, 1920);
   slider(p, 'Event label scale', 'visuals.eventLabelScale', 0.5, 2, 0.05, v => (+v).toFixed(2));
   toggle(p, 'Setup guides', 'debug.setupGuides');
   toggle(p, 'Safe-area guide', 'debug.showSafeArea');
@@ -1651,7 +1882,7 @@ function renderSquadToggles() {
     inp.onchange = () => { set(inp.checked); renderCanvas(); };
     p.appendChild(row);
   };
-  mkChk('Squad on', () => !!SQC.enabled, v => sqPush({ enabled: v }));
+  mkChk('Squad crowd', () => !!SQC.enabled, v => sqPush({ enabled: v }));
   mkChk('Prize wheel', () => !!SQC.wheel.enabled, v => sqPush({ wheel: { enabled: v } }));
   mkChk('Jamie drip tiers', () => !!SQC.tiers.enabled, v => sqPush({ tiers: { enabled: v } }));
   const nrow = document.createElement('div'); nrow.className = 'row';
@@ -1662,11 +1893,7 @@ function renderSquadToggles() {
   crow.innerHTML = `<label>Wheel min coins</label><input type="number" step="1" min="1" style="width:80px" value="${SQC.wheel.minCoins}">`;
   crow.querySelector('input').onchange = e => sqPush({ wheel: { minCoins: Math.max(1, +e.target.value || 1) } });
   p.appendChild(crow);
-  noteEl(p, 'Care meter wording — what viewers read on the drip meter.');
-  textInput(p, 'Empty-meter text', 'tiers.labelZero', sqPush, () => SQC.tiers.labelZero);
-  textInput(p, 'Tier prefix', 'tiers.labelPrefix', sqPush, () => SQC.tiers.labelPrefix);
-  textInput(p, 'Max-tier text', 'tiers.labelMax', sqPush, () => SQC.tiers.labelMax);
-  textInput(p, 'Tier names (6, comma separated)', 'tiers.tierNames', sqPush, () => SQC.tiers.tierNames);
+  noteEl(p, 'All viewer-facing drip wording is now in the dedicated <b>Copy</b> tab.');
   noteEl(p, 'Crowd, wheel and care-meter placement moved to the Canvas tab (gold elements).');
 }
 renderSquadToggles();
@@ -1683,6 +1910,7 @@ const JAMIE_FILES = [
   /* tracking */
   'jamie-track-low.png', 'jamie-track-mid.png', 'jamie-track-top.png', 'jamie-track-turn-01-side.png',
   'jamie-track-turn-02-threequarter.png', 'jamie-track-turn-03-forward.png',
+  'jamie-track-diagonal-up-right.png', 'jamie-track-diagonal-down-right.png',
   /* anticipation */
   'jamie-antic-01-bow.png', 'jamie-antic-02-left.png', 'jamie-antic-04-right.png', 'jamie-antic-05-coil.png',
   /* locomotion */
