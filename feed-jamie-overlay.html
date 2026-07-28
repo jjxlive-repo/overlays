@@ -2607,17 +2607,23 @@ function jamieRender(force) {
 /* Ambient seated motions use complete sequences and restore the idle loop only
    if they still own the sprite. A stale timer must never interrupt a walk,
    one-shot, pet, or event animation. */
+let _seatedMicroActive = false;
 function playSeatedIdleMicro(seqName) {
   if (J.state !== 'IDLE' || J.currentSeq !== 'idle' || roamMoving() ||
       _jamieOneShotActive || _petActive) return false;
   clearTimeout(J.animTimer);
+  _seatedMicroActive = true;
   playSeq(seqName, {
     loop: false,
     onDone: () => {
+      _seatedMicroActive = false;
       if (J.state === 'IDLE' && J.currentSeq === seqName && !roamMoving() &&
           !_jamieOneShotActive && !_petActive) playSeq('idle', { loop: true });
     }
   });
+  /* Belt and braces: playSeq drops onDone if something else takes the sprite
+     mid-sequence, and a flag stuck true would freeze roam's idle pose for good. */
+  setTimeout(() => { _seatedMicroActive = false; }, 2500);
   return true;
 }
 function scheduleBlink() {
@@ -2697,7 +2703,10 @@ function roamPlay(name) {
      locomotion sequence even when roam's intended name did not change. */
   if (RM.seq === name && J.currentSeq === name) return;
   RM.seq = name;
-  playSeq(name, { loop: name === 'trot' || name === 'gallop' || name === 'standIdle' });
+  /* 'idle' belongs in the loop list with the other ambient poses. It was the only
+     one played one-shot, so roam's seated pose ran once and stopped dead while
+     standIdle — its direct alternative, two lines below — looped correctly. */
+  playSeq(name, { loop: name === 'trot' || name === 'gallop' || name === 'standIdle' || name === 'idle' });
 }
 function finishRoamTurn() {
   if (RM.pendingMirror === null) return;
@@ -2747,8 +2756,20 @@ function updateRoam(dt, now) {
   if (target === null) {
     RM.vx = 0;
     if (now < RM.skidUntil) return;
-    /* stopped: stand where he is, or sit if he is home */
-    roamPlay(Math.abs(roamX - jamieHomeX) < 14 ? 'idle' : 'standIdle');
+    /* A seated micro (blink, ear flick, tail wag) owns the sprite for a few
+       hundred ms and restores the idle loop itself when it finishes. This branch
+       runs at 60fps, so reclaiming here cut every micro off one frame after it
+       started — the sprite visibly snapped back to the seated pose over and over. */
+    if (_seatedMicroActive) return;
+    /* stopped: stand where he is, or sit if he is home.
+       Hysteresis, for the same reason the tracking bands have it: a single 14px
+       threshold makes a Jamie parked near that distance alternate between the
+       seated and standing poses every frame. Sit only once clearly home, stand
+       again only once clearly away. */
+    const distHome = Math.abs(roamX - jamieHomeX);
+    const seated = RM.seq === 'idle';
+    if (distHome < (seated ? 22 : 10)) roamPlay('idle');
+    else roamPlay('standIdle');
     return;
   }
 
