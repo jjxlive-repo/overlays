@@ -69,6 +69,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 input::placeholder, textarea::placeholder { color: var(--muted); }
 select option { background: var(--surf2); }
 textarea { resize: vertical; min-height: 52px; }
+input[type=range] {
+  width: 100%;
+  min-width: 120px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.range-label { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.range-value { color:#c084fc; font-variant-numeric:tabular-nums; }
 
 /* ── buttons ── */
 button {
@@ -125,7 +133,7 @@ button:active { transform: scale(.97); }
 }
 .preset-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ── status / ably ── */
+/* ── local dock status ── */
 .page-header {
   display: flex; align-items: center; gap: 10px;
   padding-bottom: 10px; border-bottom: 1px solid var(--border);
@@ -138,7 +146,7 @@ button:active { transform: scale(.97); }
 .conn-dot.connected { background: #3b82f6; box-shadow: 0 0 6px #3b82f6; } /* blue, never green — JJ is red-green colorblind */
 .conn-dot.connecting { background: var(--gold); animation: blink .8s infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-#ably-label { font-size: 11px; color: var(--muted); }
+#dock-label { font-size: 11px; color: var(--muted); }
 
 /* ── gist status ── */
 #gist-status-oc { font-size: 10px; color: var(--muted); }
@@ -146,20 +154,120 @@ button:active { transform: scale(.97); }
 hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 .dim { color: var(--muted); font-size: 11px; }
 .status-line { font-size: 11px; color: var(--muted); min-height: 14px; margin-top: 4px; }
+.panel.producer-retired { display: none !important; }
 </style>
 </head>
 <body>
 
 <div class="page-header">
-  <h1>🎛 Overlay Controller</h1>
-  <div class="conn-dot connecting" id="ably-dot"></div>
-  <span id="ably-label">connecting…</span>
+  <h1>🎛 Overlay Studio</h1>
+  <div class="conn-dot connecting" id="dock-dot"></div>
+  <span id="dock-label">Dock connecting…</span>
   <span style="flex:1"></span>
   <span id="gist-status-oc"></span>
 </div>
 
+<!-- ══ BROADCAST MESSAGE SETUP ══ -->
+<div class="panel" id="p-bm">
+  <div class="ph" onclick="togglePanel('bm')">
+    <h2>✦ Broadcast Message presets</h2>
+    <span class="ph-chevron open" id="ch-bm">▼</span>
+  </div>
+  <div class="pb" id="pb-bm">
+    <div class="row">
+      <div class="col">
+        <label>Saved preset</label>
+        <select id="os-bm-preset" onchange="osBmSelect()"><option value="">New preset</option></select>
+      </div>
+      <div class="col">
+        <label>Preset name</label>
+        <input id="os-bm-name" type="text" placeholder="Quick break">
+      </div>
+    </div>
+    <div class="row">
+      <div class="col"><label>Headline</label><input id="os-bm-headline" type="text" maxlength="120"></div>
+      <div class="col"><label>Supporting line</label><input id="os-bm-support" type="text" maxlength="160"></div>
+    </div>
+    <div class="row">
+      <div class="col"><label>Optional body</label><input id="os-bm-body" type="text" maxlength="300"></div>
+      <div class="col fixed"><label>Badge</label><input id="os-bm-badge" type="text" maxlength="40" style="width:120px;"></div>
+    </div>
+    <div class="row">
+      <div class="col"><label>Layout</label><select id="os-bm-layout"><option value="strip">Strip</option><option value="card">Card</option><option value="spotlight">Spotlight</option></select></div>
+      <div class="col"><label>Placement</label><select id="os-bm-placement">
+        <option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option>
+        <option value="middle-left">Middle left</option><option value="middle">Middle</option><option value="middle-right">Middle right</option>
+        <option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option>
+      </select></div>
+      <div class="col"><label>Size</label><select id="os-bm-size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
+      <div class="col"><label>Theme</label><select id="os-bm-theme"><option value="purple">Purple</option><option value="gold">Gold</option><option value="ink">Ink</option><option value="cyan">Cyan</option><option value="red">Red</option></select></div>
+      <div class="col"><label>Duration</label><select id="os-bm-duration"><option value="0">Until hidden</option><option value="10000">10 sec</option><option value="30000">30 sec</option><option value="60000">60 sec</option></select></div>
+    </div>
+    <div class="row">
+      <button class="btn-p" onclick="osBmSave()">Save preset</button>
+      <button class="btn-s" onclick="osBmPreview()">Preview</button>
+      <button class="btn-r" onclick="osBmHide()">Hide</button>
+      <button class="btn-r" onclick="osBmDelete()">Delete preset</button>
+    </div>
+    <div class="status-line" id="os-bm-status"></div>
+  </div>
+</div>
+
+<!-- ══ SUPPORTER SPOTLIGHT SETUP ══ -->
+<div class="panel" id="p-ss">
+  <div class="ph" onclick="togglePanel('ss')">
+    <h2>★ Supporter Spotlight setup</h2>
+    <span class="ph-chevron" id="ch-ss">▼</span>
+  </div>
+  <div class="pb hidden" id="pb-ss">
+    <div class="row">
+      <label><input id="os-ss-enabled" type="checkbox"> Master enabled</label>
+      <label><input id="os-ss-auto" type="checkbox"> Automatic rotation</label>
+      <div class="col"><label>Default mode</label><select id="os-ss-mode"><option value="rail">Supporter Rail</option><option value="spotlight">Supporter Spotlight</option></select></div>
+      <div class="col"><label>Rotate every</label><select id="os-ss-interval"><option value="3000">3 sec</option><option value="5000">5 sec</option><option value="8000">8 sec</option><option value="12000">12 sec</option></select></div>
+    </div>
+    <div class="row">
+      <div class="col"><label>Quick placement preset</label><select id="os-ss-placement" onchange="osSsUsePreset()">
+        <option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option>
+        <option value="middle-left">Middle left</option><option value="middle">Middle</option><option value="middle-right" selected>Middle right</option>
+        <option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option>
+      </select></div>
+      <div class="col"><label>Size</label><select id="os-ss-size"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select></div>
+      <div class="col"><label>Featured platform</label><select id="os-ss-featured-platform"><option value="">None</option><option value="tiktok">TikTok</option><option value="youtube">YouTube</option></select></div>
+      <div class="col"><label>Featured username</label><input id="os-ss-featured-name" type="text" placeholder="Exact leaderboard username"></div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <label class="range-label" for="os-ss-x"><span>X position</span><span class="range-value" id="os-ss-x-value">75.0%</span></label>
+        <input id="os-ss-x" type="range" min="0" max="100" step="0.1" value="75" oninput="osSsLayoutInput('x')">
+      </div>
+      <div class="col">
+        <label class="range-label" for="os-ss-y"><span>Y position</span><span class="range-value" id="os-ss-y-value">36.5%</span></label>
+        <input id="os-ss-y" type="range" min="0" max="100" step="0.1" value="36.5" oninput="osSsLayoutInput('y')">
+      </div>
+      <div class="col">
+        <label class="range-label" for="os-ss-scale"><span>Scale</span><span class="range-value" id="os-ss-scale-value">100%</span></label>
+        <input id="os-ss-scale" type="range" min="50" max="200" step="1" value="100" oninput="osSsLayoutInput('scale')">
+      </div>
+    </div>
+    <div class="row" style="align-items:flex-start;">
+      <div class="col">
+        <label>Enabled categories</label>
+        <div id="os-ss-enabled-categories" class="mode-group"></div>
+      </div>
+      <div class="col">
+        <label>Rotation order</label>
+        <select id="os-ss-order" size="6"></select>
+        <div class="row"><button class="btn-s btn-sm" onclick="osSsMove(-1)">↑ Move up</button><button class="btn-s btn-sm" onclick="osSsMove(1)">↓ Move down</button></div>
+      </div>
+    </div>
+    <button class="btn-p" onclick="osSsSave()">Save Supporter setup</button>
+    <div class="status-line" id="os-ss-status">Featured is shown only when that person has real leaderboard data.</div>
+  </div>
+</div>
+
 <!-- ══ LIVE TEXT ══ -->
-<div class="panel" id="p-lt">
+<div class="panel producer-retired" id="p-lt" aria-hidden="true">
   <div class="ph" onclick="togglePanel('lt')">
     <h2>📢 Live Text Overlay</h2>
     <span class="ph-chevron open" id="ch-lt">▼</span>
@@ -218,7 +326,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 </div>
 
 <!-- ══ COMMENT PROMPT ══ -->
-<div class="panel" id="p-cp">
+<div class="panel producer-retired" id="p-cp" aria-hidden="true">
   <div class="ph" onclick="togglePanel('cp')">
     <h2>💬 Comment Prompt</h2>
     <span class="ph-chevron open" id="ch-cp">▼</span>
@@ -442,7 +550,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 </div>
 
 <!-- ══ GIFT BAR / GIFTR CONTROLS ══ -->
-<div class="panel" id="p-gb">
+<div class="panel producer-retired" id="p-gb" aria-hidden="true">
   <div class="ph" onclick="togglePanel('gb')">
     <h2>🎁 Gift Bar Controls</h2>
     <span class="ph-chevron" id="ch-gb">▼</span>
@@ -555,7 +663,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 </div>
 
 <!-- ══ GIST SYNC ══ -->
-<div class="panel" id="p-gist">
+<div class="panel producer-retired" id="p-gist" aria-hidden="true">
   <div class="ph" onclick="togglePanel('gist')">
     <h2>☁ Gist Sync (Settings Backup)</h2>
     <span class="ph-chevron" id="ch-gist">▼</span>
@@ -584,29 +692,29 @@ hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 <script>
 'use strict';
 /* ═══════════════════════════════════════════
-   ABLY
+   LOCAL PRODUCER DOCK TRANSPORT
 ═══════════════════════════════════════════ */
-const ABLY_KEY = null;
-const ABLY_CH  = 'splat-overlay';
+const OVERLAY_CHANNEL = 'splat-overlay';
 const GIST_FILENAME = 'jjx-overlay-settings.json';
 const TRACKER_KEY   = 'gift-tracker-data';
 
-let ablyClient  = null;
-let ablyChannel = null;
+let dockClient  = null;
+let dockChannel = null;
 
-(function initAbly() {
-  ablyClient  = JJX.dockRealtime({ fallbackKey: ABLY_KEY });
-  ablyChannel = ablyClient.channels.get(ABLY_CH);
-  const dot   = document.getElementById('ably-dot');
-  const label = document.getElementById('ably-label');
-  ablyClient.connection.on('connected',    () => { dot.className='conn-dot connected';  label.textContent='connected';
+(function initDockTransport() {
+  dockClient  = JJX.dockRealtime();
+  dockChannel = dockClient.channels.get(OVERLAY_CHANNEL);
+  const dot   = document.getElementById('dock-dot');
+  const label = document.getElementById('dock-label');
+  dockClient.connection.on('connected',    () => { dot.className='conn-dot connected';  label.textContent='Dock connected';
     // Push current EP config so any already-open overlays pick up saved edits.
     setTimeout(() => epPushConfig(epReadConfig()), 300);
+    setTimeout(() => osSsPublishLayout(true), 450);
   });
-  ablyClient.connection.on('disconnected', () => { dot.className='conn-dot';            label.textContent='disconnected'; });
-  ablyClient.connection.on('failed',       () => { dot.className='conn-dot';            label.textContent='failed';       dot.style.background='#ef4444'; });
+  dockClient.connection.on('disconnected', () => { dot.className='conn-dot';            label.textContent='Dock disconnected'; });
+  dockClient.connection.on('failed',       () => { dot.className='conn-dot';            label.textContent='Dock failed';       dot.style.background='#ef4444'; });
   // When an overlay (gift-bar) connects/reloads, it requests the current EP config — push it back.
-  ablyChannel.subscribe('cmd', msg => {
+  dockChannel.subscribe('cmd', msg => {
     if (msg.data === 'requestEventPromoConfig') {
       epPushConfig(epReadConfig());
     }
@@ -614,11 +722,237 @@ let ablyChannel = null;
 })();
 
 function pub(ch, data) {
-  if (!ablyChannel) { console.error('[pub] no channel'); return; }
-  const state = ablyClient?.connection?.state;
+  if (!dockChannel) { console.error('[pub] no channel'); return; }
+  const state = dockClient?.connection?.state;
   if (state !== 'connected') console.warn('[pub] publishing while state=', state, '— message will queue');
-  ablyChannel.publish(ch, data).catch(err => console.error('[pub] FAILED', ch, err));
+  dockChannel.publish(ch, data).catch(err => console.error('[pub] FAILED', ch, err));
 }
+
+/* ══ PRODUCER DOCK PERSISTENT SETUP ══ */
+let osSettings=null;
+const OS_SS_CATEGORIES=['daily','weekly','monthly','tiktok','youtube','featured'];
+const OS_SS_LAYOUT_KEY='jjx-supporter-spotlight-layout-v1';
+let osSsLayout={custom:false,xPct:75,yPct:36.5,scale:1};
+let osSsLayoutLoaded=false;
+let osSsLayoutPublishTimer=null;
+const osEl=id=>document.getElementById(id);
+const osValue=id=>osEl(id)?.value??'';
+function osStatus(id,text,ok=true){const el=osEl(id);if(el){el.textContent=text;el.style.color=ok?'#60a5fa':'#fb923c';}}
+async function osSavePatch(patch){
+  const response=await fetch('/api/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(patch)});
+  const result=await response.json();
+  if(!response.ok||!result.ok)throw new Error((result.errors||['Save failed']).join(' · '));
+  osSettings=result.settings;
+  return result.settings;
+}
+function osBmPayload(visible=true){
+  return{
+    visible,
+    headline:osValue('os-bm-headline'),
+    supportingLine:osValue('os-bm-support'),
+    body:osValue('os-bm-body'),
+    badge:osValue('os-bm-badge'),
+    presetId:osValue('os-bm-preset')||null,
+    layout:osValue('os-bm-layout')||'card',
+    placement:osValue('os-bm-placement')||'middle',
+    size:osValue('os-bm-size')||'medium',
+    theme:osValue('os-bm-theme')||'purple',
+    durationMs:Number(osValue('os-bm-duration'))||0,
+  };
+}
+function osBmFill(preset){
+  const source=preset||osSettings?.broadcastMessage;
+  if(!source)return;
+  osEl('os-bm-name').value=preset?.name||'';
+  osEl('os-bm-headline').value=preset?.headline??source.activeMessage?.headline??'';
+  osEl('os-bm-support').value=preset?.supportingLine??source.activeMessage?.supportingLine??'';
+  osEl('os-bm-body').value=preset?.body??source.activeMessage?.body??'';
+  osEl('os-bm-badge').value=preset?.badge??source.activeMessage?.badge??'';
+  osEl('os-bm-layout').value=preset?.layout??source.defaultLayout??'card';
+  osEl('os-bm-placement').value=preset?.placement??source.placement??'middle';
+  osEl('os-bm-size').value=preset?.size??source.size??'medium';
+  osEl('os-bm-theme').value=preset?.theme??source.theme??'purple';
+  osEl('os-bm-duration').value=String(preset?.durationMs??source.durationMs??0);
+}
+function osBmRenderPresets(){
+  const select=osEl('os-bm-preset');if(!select||!osSettings)return;
+  const active=osSettings.broadcastMessage.activePresetId||'';
+  select.innerHTML='<option value="">New preset</option>'+osSettings.broadcastMessage.presets
+    .map(p=>`<option value="${epEscape(p.id)}">${epEscape(p.name)}</option>`).join('');
+  select.value=active;
+}
+function osBmSelect(){
+  const id=osValue('os-bm-preset');
+  const preset=osSettings?.broadcastMessage.presets.find(p=>p.id===id);
+  osBmFill(preset||null);
+}
+async function osBmSave(){
+  try{
+    const name=osValue('os-bm-name').trim();if(!name)throw new Error('Enter a preset name.');
+    const selected=osValue('os-bm-preset');
+    const id=selected||`${name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'message'}-${Date.now().toString(36)}`;
+    const value=osBmPayload(false);
+    const preset={id,name,headline:value.headline,supportingLine:value.supportingLine,body:value.body,badge:value.badge,layout:value.layout,placement:value.placement,size:value.size,theme:value.theme,durationMs:value.durationMs};
+    const presets=[...osSettings.broadcastMessage.presets.filter(p=>p.id!==id),preset];
+    await osSavePatch({broadcastMessage:{presets,activePresetId:id,defaultLayout:value.layout,placement:value.placement,size:value.size,theme:value.theme,durationMs:value.durationMs}});
+    osBmRenderPresets();osEl('os-bm-preset').value=id;osStatus('os-bm-status','✓ Preset saved');
+  }catch(error){osStatus('os-bm-status','▲ '+error.message,false);}
+}
+async function osBmPreview(){
+  const value=osBmPayload(true);
+  try{
+    await osSavePatch({broadcastMessage:{
+      activePresetId:value.presetId,defaultLayout:value.layout,placement:value.placement,
+      size:value.size,theme:value.theme,durationMs:value.durationMs,
+      activeMessage:{visible:true,headline:value.headline,supportingLine:value.supportingLine,body:value.body,badge:value.badge,layout:value.layout},
+    }});
+    pub('broadcast-message',value);osStatus('os-bm-status','▶ Preview sent');
+  }catch(error){osStatus('os-bm-status','▲ '+error.message,false);}
+}
+async function osBmHide(){
+  const value={...osBmPayload(false),visible:false};
+  try{
+    await osSavePatch({broadcastMessage:{activeMessage:{
+      visible:false,headline:value.headline,supportingLine:value.supportingLine,body:value.body,badge:value.badge,layout:value.layout,
+    }}});
+    pub('broadcast-message',value);osStatus('os-bm-status','■ Hidden');
+  }catch(error){osStatus('os-bm-status','▲ '+error.message,false);}
+}
+async function osBmDelete(){
+  const id=osValue('os-bm-preset');if(!id)return;
+  try{
+    const presets=osSettings.broadcastMessage.presets.filter(p=>p.id!==id);
+    await osSavePatch({broadcastMessage:{presets,activePresetId:null}});
+    osBmRenderPresets();osEl('os-bm-preset').value='';osBmFill(null);osStatus('os-bm-status','✓ Preset deleted');
+  }catch(error){osStatus('os-bm-status','▲ '+error.message,false);}
+}
+function osSsClamp(value,min,max,fallback){
+  const number=Number(value);
+  return Number.isFinite(number)?Math.max(min,Math.min(max,number)):fallback;
+}
+function osSsPresetPoint(){
+  const placement=osValue('os-ss-placement')||'middle-right';
+  const [row,col]=placement.split('-').length===2?placement.split('-'):placement==='middle'?['middle','center']:['middle','right'];
+  const mode=osValue('os-ss-mode')||'rail';
+  const size=osValue('os-ss-size')||'medium';
+  const width=mode==='spotlight'?720:({small:340,medium:430,large:620}[size]||430);
+  const half=width*osSsClamp(osSsLayout.scale,.5,2,1)/2,gutter=20;
+  const x=col==='left'?gutter+half:col==='right'?1080-gutter-half:540;
+  const y=row==='top'?230:row==='bottom'?1160:700;
+  return{xPct:x/10.8,yPct:y/19.2};
+}
+function osSsEnsureLayout(){
+  if(osSsLayoutLoaded)return;
+  osSsLayoutLoaded=true;
+  try{
+    const saved=JSON.parse(localStorage.getItem(OS_SS_LAYOUT_KEY)||'null');
+    if(saved&&typeof saved==='object'){
+      osSsLayout={
+        custom:saved.custom===true,
+        xPct:osSsClamp(saved.xPct,0,100,75),
+        yPct:osSsClamp(saved.yPct,0,100,36.5),
+        scale:osSsClamp(saved.scale,.5,2,1),
+      };
+    }
+  }catch(_error){}
+}
+function osSsSyncLayoutFields(){
+  osSsEnsureLayout();
+  if(!osSsLayout.custom){
+    const preset=osSsPresetPoint();
+    osSsLayout.xPct=preset.xPct;osSsLayout.yPct=preset.yPct;
+  }
+  osEl('os-ss-x').value=osSsLayout.xPct.toFixed(1);
+  osEl('os-ss-y').value=osSsLayout.yPct.toFixed(1);
+  osEl('os-ss-scale').value=String(Math.round(osSsLayout.scale*100));
+  osEl('os-ss-x-value').textContent=osSsLayout.xPct.toFixed(1)+'%';
+  osEl('os-ss-y-value').textContent=osSsLayout.yPct.toFixed(1)+'%';
+  osEl('os-ss-scale-value').textContent=Math.round(osSsLayout.scale*100)+'%';
+}
+function osSsLayoutPayload(){
+  return{
+    custom:osSsLayout.custom,
+    xPct:osSsClamp(osSsLayout.xPct,0,100,75),
+    yPct:osSsClamp(osSsLayout.yPct,0,100,36.5),
+    scale:osSsClamp(osSsLayout.scale,.5,2,1),
+    placement:osValue('os-ss-placement')||'middle-right',
+  };
+}
+function osSsPublishLayout(immediate=false){
+  osSsEnsureLayout();
+  const send=()=>{
+    const payload=osSsLayoutPayload();
+    try{localStorage.setItem(OS_SS_LAYOUT_KEY,JSON.stringify(payload));}catch(_error){}
+    pub('supporter-layout',payload);
+  };
+  clearTimeout(osSsLayoutPublishTimer);
+  if(immediate)send();
+  else osSsLayoutPublishTimer=setTimeout(send,60);
+}
+function osSsLayoutInput(axis){
+  osSsEnsureLayout();
+  if(axis==='x'||axis==='y')osSsLayout.custom=true;
+  osSsLayout.xPct=osSsClamp(osValue('os-ss-x'),0,100,osSsLayout.xPct);
+  osSsLayout.yPct=osSsClamp(osValue('os-ss-y'),0,100,osSsLayout.yPct);
+  osSsLayout.scale=osSsClamp(Number(osValue('os-ss-scale'))/100,.5,2,osSsLayout.scale);
+  osSsSyncLayoutFields();
+  osSsPublishLayout();
+  osStatus('os-ss-status',osSsLayout.custom?'Position previewing live':'Preset position previewing live');
+}
+function osSsUsePreset(){
+  osSsEnsureLayout();
+  osSsLayout.custom=false;
+  osSsSyncLayoutFields();
+  osSsPublishLayout(true);
+  osStatus('os-ss-status','Quick placement previewing live');
+}
+function osSsRender(){
+  const s=osSettings?.supporterSpotlight;if(!s)return;
+  osEl('os-ss-enabled').checked=s.enabled;osEl('os-ss-auto').checked=s.autoEnabled;
+  osEl('os-ss-mode').value=s.mode;osEl('os-ss-interval').value=String(s.rotationIntervalMs);
+  osEl('os-ss-placement').value=s.placement;osEl('os-ss-size').value=s.size;
+  osEl('os-ss-featured-platform').value=s.featuredSupporter?.platform||'';
+  osEl('os-ss-featured-name').value=s.featuredSupporter?.username||'';
+  osEl('os-ss-enabled-categories').innerHTML=OS_SS_CATEGORIES.map(category=>
+    `<label class="mode-btn"><input type="checkbox" value="${category}" ${s.enabledCategories.includes(category)?'checked':''}> ${category}</label>`).join('');
+  osEl('os-ss-order').innerHTML=s.categoryOrder.map(category=>`<option value="${category}">${category}</option>`).join('');
+  osSsSyncLayoutFields();
+}
+function osSsMove(direction){
+  const select=osEl('os-ss-order');const index=select.selectedIndex;if(index<0)return;
+  const target=index+direction;if(target<0||target>=select.options.length)return;
+  const option=select.options[index];select.remove(index);select.add(option,target);select.selectedIndex=target;
+}
+async function osSsSave(){
+  try{
+    const enabledCategories=[...osEl('os-ss-enabled-categories').querySelectorAll('input:checked')].map(input=>input.value);
+    if(!enabledCategories.length)throw new Error('Enable at least one category.');
+    const categoryOrder=[...osEl('os-ss-order').options].map(option=>option.value);
+    const platform=osValue('os-ss-featured-platform'),username=osValue('os-ss-featured-name').trim();
+    const featuredSupporter=platform&&username?{platform,username}:null;
+    osSsPublishLayout(true);
+    await osSavePatch({supporterSpotlight:{
+      enabled:osEl('os-ss-enabled').checked,autoEnabled:osEl('os-ss-auto').checked,
+      mode:osValue('os-ss-mode'),rotationIntervalMs:Number(osValue('os-ss-interval')),
+      placement:osValue('os-ss-placement'),size:osValue('os-ss-size'),
+      enabledCategories,categoryOrder,featuredSupporter,
+    }});
+    osSsRender();osStatus('os-ss-status','✓ Supporter setup saved and published');
+  }catch(error){osStatus('os-ss-status','▲ '+error.message,false);}
+}
+async function osLoadSettings(){
+  try{
+    const response=await fetch('/api/settings',{cache:'no-store'});const result=await response.json();
+    if(!response.ok||!result.settings)throw new Error('Producer Dock settings unavailable.');
+    osSettings=result.settings;osBmRenderPresets();osBmFill(
+      osSettings.broadcastMessage.presets.find(p=>p.id===osSettings.broadcastMessage.activePresetId)||null
+    );osSsRender();
+  }catch(error){osStatus('os-bm-status','▲ '+error.message,false);osStatus('os-ss-status','▲ '+error.message,false);}
+}
+window.addEventListener('DOMContentLoaded',()=>{
+  osSsSyncLayoutFields();
+  osLoadSettings();
+});
 
 /* ═══════════════════════════════════════════
    PANEL COLLAPSE
@@ -808,7 +1142,7 @@ function epPubImage(index, image) {
 
 // Send full config: text/metadata in one message, images separately via chunking
 function epPushConfig(cfg) {
-  // Strip base64 images so the config message stays under Ably's 64KB limit
+  // Strip base64 images so the config message stays small and responsive.
   const safeConfig = {
     ...cfg,
     players: cfg.players.map(p => ({ ...p, image: '' })),
@@ -1083,18 +1417,6 @@ async function ocGistLoad() {
 ═══════════════════════════════════════════ */
 (function init() {
   epBuildPlayerFields();
-  cpRenderList();
-  gbInit();
-
-  // Restore gist credentials
-  if (_ocGistToken) document.getElementById('oc-gist-token').value = _ocGistToken;
-  if (_ocGistId)    document.getElementById('oc-gist-id').value    = _ocGistId;
-
-  // Load from gist
-  ocGistLoad().then(() => {
-    // Re-init giftr after gist may have changed tracker settings
-    gbInit();
-  });
 
   // Restore EP config from localStorage
   try {

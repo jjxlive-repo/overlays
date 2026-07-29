@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
 <title>Gift Bar + Splat Overlay v3</title>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Boogaloo&family=DM+Sans:wght@700&family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
-<script src="jjx-core.js?v=8"></script>
+<script src="jjx-core.js?v=9"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; position: relative; }
@@ -1462,6 +1462,197 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
   transition: opacity .153s ease-out, transform .34s cubic-bezier(.34,1.56,.64,1);
 }
 
+/* ══ BROADCAST MESSAGE — canonical renderer for every general-purpose text treatment ══
+   Old announce/live-text/promo/pill/comment-prompt messages are adapted into this one visual
+   system below. Mechanic-owned copy (gift, game, wheel, Jamie, etc.) remains in its mechanic. */
+#broadcast-message {
+  --bm-bg: #A855F7;
+  --bm-ink: #FFFFFF;
+  --bm-accent: #FDE047;
+  --bm-width: 680px;
+  --bm-head: 68px;
+  --bm-support: 28px;
+  --bm-body: 27px;
+  position: absolute;
+  z-index: 18;
+  pointer-events: none;
+  width: var(--bm-width);
+  opacity: 0;
+  transform: translate(-50%, -50%) translateY(42px) scale(.92);
+  transition: opacity .22s ease-in, transform .22s ease-in;
+}
+#broadcast-message.bm-visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) translateY(0) scale(1);
+  transition: opacity .15s ease-out, transform .34s cubic-bezier(.34,1.56,.64,1);
+}
+.bm-paint {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  filter: drop-shadow(0 11px 0 rgba(13,13,18,.92));
+}
+.bm-badge {
+  position: relative;
+  z-index: 2;
+  margin: 0 0 -4px 22px;
+  padding: 5px 13px 4px;
+  color: #fff;
+  background: #EF4444;
+  border: 4px solid #0d0d12;
+  border-radius: 7px 20px 9px 17px;
+  font: 700 15px/1 'Fredoka', sans-serif;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  transform: rotate(-2deg);
+}
+.bm-panel {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 13px 25px 16px;
+  color: var(--bm-ink);
+  background: var(--bm-bg);
+  border: 6px solid #0d0d12;
+  border-radius: 10px 34px 13px 29px;
+  transform: rotate(-1.5deg);
+}
+.bm-headline {
+  font: 400 var(--bm-head)/.98 'Boogaloo', cursive;
+  letter-spacing: .025em;
+  overflow-wrap: anywhere;
+}
+.bm-supporting {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 10px 5px;
+  color: #0d0d12;
+  background: var(--bm-accent);
+  border: 4px solid #0d0d12;
+  border-radius: 5px 16px 7px 13px;
+  font: 700 var(--bm-support)/1.08 'Fredoka', sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transform: rotate(1deg);
+}
+.bm-body {
+  margin-top: 10px;
+  color: var(--bm-ink);
+  font: 600 var(--bm-body)/1.28 'Fredoka', sans-serif;
+  overflow-wrap: anywhere;
+}
+#broadcast-message[data-layout="strip"] {
+  --bm-width: 820px;
+  --bm-head: 48px;
+  --bm-support: 23px;
+  --bm-body: 23px;
+}
+#broadcast-message[data-layout="strip"] .bm-paint { filter: drop-shadow(0 8px 0 rgba(13,13,18,.92)); }
+#broadcast-message[data-layout="strip"] .bm-panel {
+  padding: 8px 20px 10px;
+  border-width: 5px;
+  border-radius: 8px 28px 10px 24px;
+}
+#broadcast-message[data-layout="strip"] .bm-body { display: none; }
+#broadcast-message[data-layout="strip"] .bm-supporting { margin: 4px 0 0; }
+#broadcast-message[data-layout="spotlight"] {
+  --bm-width: 860px;
+  --bm-head: 82px;
+  --bm-support: 32px;
+  --bm-body: 30px;
+  text-align: center;
+}
+#broadcast-message[data-layout="spotlight"] .bm-paint { align-items: center; }
+#broadcast-message[data-layout="spotlight"] .bm-panel { padding: 23px 34px 27px; }
+#broadcast-message[data-layout="spotlight"] .bm-badge { margin-left: 0; }
+#broadcast-message[data-layout="spotlight"] .bm-body { max-width: 720px; align-self: center; }
+#broadcast-message[data-size="small"] {
+  --bm-width: 500px; --bm-head: 48px; --bm-support: 22px; --bm-body: 22px;
+}
+#broadcast-message[data-size="large"] {
+  --bm-width: 880px; --bm-head: 88px; --bm-support: 34px; --bm-body: 30px;
+}
+#broadcast-message[data-layout="strip"][data-size="small"] {
+  --bm-width: 560px; --bm-head: 38px; --bm-support: 19px; --bm-body: 19px;
+}
+#broadcast-message[data-layout="strip"][data-size="large"] {
+  --bm-width: 880px; --bm-head: 58px; --bm-support: 27px; --bm-body: 25px;
+}
+#broadcast-message[data-theme="gold"] { --bm-bg:#FDE047; --bm-ink:#0d0d12; --bm-accent:#A855F7; }
+#broadcast-message[data-theme="ink"] { --bm-bg:#0d0d12; --bm-ink:#FFFFFF; --bm-accent:#A855F7; }
+#broadcast-message[data-theme="cyan"] { --bm-bg:#38BDF8; --bm-ink:#0d0d12; --bm-accent:#FDE047; }
+#broadcast-message[data-theme="red"] { --bm-bg:#EF4444; --bm-ink:#FFFFFF; --bm-accent:#FDE047; }
+.presentation-suppressed { visibility: hidden !important; opacity: 0 !important; }
+.ep-root.presentation-suppressed,
+.ep-root.presentation-suppressed * { animation-play-state: paused !important; }
+
+/* ══ SUPPORTER SPOTLIGHT — dedicated real-data renderer ══ */
+#supporter-spotlight {
+  --ss-width: 430px;
+  --ss-name: 38px;
+  --ss-amount: 25px;
+  position: absolute;
+  z-index: 17;
+  width: var(--ss-width);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%,-50%) translateY(28px) scale(.94);
+  transition: opacity .24s ease, transform .34s cubic-bezier(.34,1.56,.64,1);
+}
+#supporter-spotlight.ss-visible {
+  opacity: 1;
+  transform: translate(-50%,-50%) translateY(0) scale(1);
+}
+#supporter-spotlight[data-size="small"] { --ss-width:340px; --ss-name:31px; --ss-amount:21px; }
+#supporter-spotlight[data-size="large"] { --ss-width:620px; --ss-name:54px; --ss-amount:31px; }
+.ss-paint {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  filter:drop-shadow(0 10px 0 rgba(13,13,18,.92));
+  transform:scale(var(--ss-layout-scale,1));
+  transform-origin:center;
+  transition:transform .18s ease-out;
+}
+.ss-category {
+  position:relative; z-index:2; margin:0 0 -4px 18px; padding:6px 14px 5px;
+  color:#fff; background:#A855F7; border:5px solid #0d0d12;
+  border-radius:7px 22px 8px 18px; transform:rotate(-2deg);
+  font:700 16px/1 'Fredoka',sans-serif; letter-spacing:.12em; text-transform:uppercase;
+}
+.ss-card {
+  box-sizing:border-box; width:100%; display:grid; grid-template-columns:auto minmax(0,1fr);
+  gap:14px; align-items:center; padding:16px 19px 17px;
+  background:#FFF6DC; color:#0d0d12; border:6px solid #0d0d12;
+  border-radius:10px 30px 13px 25px; transform:rotate(-1deg);
+}
+.ss-avatar {
+  width:70px; height:70px; display:grid; place-items:center; overflow:hidden;
+  border:5px solid #0d0d12; border-radius:46% 54% 48% 52%; background:#E9D5FF;
+  font:700 27px/1 'Fredoka',sans-serif;
+}
+.ss-avatar img { width:100%; height:100%; object-fit:cover; }
+.ss-copy { min-width:0; }
+.ss-name {
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font:700 var(--ss-name)/1 'Fredoka',sans-serif;
+}
+.ss-meta { display:flex; align-items:center; gap:9px; margin-top:8px; flex-wrap:wrap; }
+.ss-amount {
+  padding:4px 10px 5px; background:#FDE047; border:4px solid #0d0d12;
+  border-radius:5px 14px 7px 12px; font:700 var(--ss-amount)/1 'Fredoka',sans-serif;
+}
+.ss-platform { font:700 17px/1 'Fredoka',sans-serif; }
+#supporter-spotlight[data-mode="spotlight"] { --ss-width:720px; --ss-name:66px; --ss-amount:34px; }
+#supporter-spotlight[data-mode="spotlight"] .ss-card { padding:23px 28px 26px; gap:22px; }
+#supporter-spotlight[data-mode="spotlight"] .ss-avatar { width:112px; height:112px; font-size:42px; }
+/* Legacy nodes stay mounted so older scripts cannot fail, but only the canonical renderer paints. */
+#announce-box,
+#comment-prompt,
+#promo-card,
+#live-text-strip,
+.ep-root.ep-lt-mode { display: none !important; }
+
 /* The rotated group. `isolation: isolate` is required, or the halo's z-index:-1 escapes and
    sits behind the whole overlay instead of behind this card's text. */
 .pc-group {
@@ -1689,7 +1880,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
 
 </style>
 </head>
-<body class="milk-disabled">
+<body class="milk-disabled stream-bar-disabled">
 <div id="conn-dot"></div>
 
 <canvas id="particle-canvas" width="1080" height="1920"></canvas>
@@ -1798,6 +1989,10 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: transp
      collapse has to be done by NOT EMITTING elements (an empty block still carries padding,
      border and gap). Placement is set inline from promo.place. -->
 <div id="promo-card"></div>
+
+<!-- ══ BROADCAST MESSAGE — the one renderer for non-mechanic on-screen text ══ -->
+<div id="broadcast-message" data-layout="card" data-size="medium" data-theme="purple" aria-hidden="true"></div>
+<div id="supporter-spotlight" data-mode="rail" data-size="medium" aria-hidden="true"></div>
 
 <!-- ══ EVENT PROMO SYSTEM ══ -->
 <div id="event-promo-root" class="ep-root" aria-hidden="true">
@@ -1994,6 +2189,75 @@ let leaderboard={}, activeSlots=SLOT_DEFS.slice(0,5);
 let currentIdx=0, rotateTimer=null, progressAnim=null;
 let pinned=false, alertQueue=[], alertActive=false;
 let alertTimeout=null, infoFadeTimer=null, monthlyTimer=null, activePlat='default';
+let gifterAutoEnabled=true;
+let supporterMode='rail',supporterPlacement='middle-right',supporterSize='medium';
+let supporterManual=false;
+const SUPPORTER_PLACES=new Set(['top-left','top-center','top-right','middle-left','middle','middle-right','bottom-left','bottom-center','bottom-right']);
+const SUPPORTER_SIZES=new Set(['small','medium','large']);
+const SUPPORTER_LAYOUT_KEY='jjx-supporter-spotlight-layout-v1';
+function supporterClamp(value,min,max,fallback){
+  const number=Number(value);
+  return Number.isFinite(number)?Math.max(min,Math.min(max,number)):fallback;
+}
+function supporterReadLayout(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(SUPPORTER_LAYOUT_KEY)||'null');
+    if(saved&&typeof saved==='object'){
+      if(SUPPORTER_PLACES.has(saved.placement))supporterPlacement=saved.placement;
+      return{
+        custom:saved.custom===true,
+        xPct:supporterClamp(saved.xPct,0,100,75),
+        yPct:supporterClamp(saved.yPct,0,100,36.5),
+        scale:supporterClamp(saved.scale,.5,2,1),
+      };
+    }
+  }catch(_error){}
+  return{custom:false,xPct:75,yPct:36.5,scale:1};
+}
+let supporterLayout=supporterReadLayout();
+function applySupporterLayout(data,persist=true){
+  if(data&&typeof data==='object'){
+    if(SUPPORTER_PLACES.has(data.placement))supporterPlacement=data.placement;
+    supporterLayout={
+      custom:data.custom===true,
+      xPct:supporterClamp(data.xPct,0,100,supporterLayout.xPct),
+      yPct:supporterClamp(data.yPct,0,100,supporterLayout.yPct),
+      scale:supporterClamp(data.scale,.5,2,supporterLayout.scale),
+    };
+  }
+  if(persist){
+    try{localStorage.setItem(SUPPORTER_LAYOUT_KEY,JSON.stringify({...supporterLayout,placement:supporterPlacement}));}catch(_error){}
+  }
+  supporterPlace(supporterPlacement);
+}
+requestAnimationFrame(()=>applySupporterLayout(null,false));
+const presentationState={gift:false,supporterManual:false,event:false,broadcast:false,supporterAuto:false};
+function refreshPresentationPriority(){
+  const supporter=document.getElementById('supporter-spotlight');
+  const event=document.getElementById('event-promo-root');
+  const broadcast=document.getElementById('broadcast-message');
+  const gift=presentationState.gift;
+  const manual=!gift&&presentationState.supporterManual;
+  const promo=!gift&&!manual&&presentationState.event;
+  const message=!gift&&!manual&&!promo&&presentationState.broadcast;
+  const supporterSuppressed=
+    gift||(!manual&&(promo||message))||(!presentationState.supporterManual&&!presentationState.supporterAuto);
+  const eventSuppressed=gift||manual;
+  const broadcastSuppressed=gift||manual||promo;
+  supporter?.classList.toggle('presentation-suppressed',supporterSuppressed);
+  event?.classList.toggle('presentation-suppressed',eventSuppressed);
+  broadcast?.classList.toggle('presentation-suppressed',broadcastSuppressed);
+  pauseEventPromo?.(eventSuppressed);
+  pauseBroadcastMessage?.(broadcastSuppressed);
+  if(presentationState.supporterAuto&&!presentationState.supporterManual){
+    if(supporterSuppressed)stopRotation();
+    else if(gifterAutoEnabled&&!pinned&&!rotateTimer)startRotation();
+  }
+}
+function presentationSet(kind,active){
+  if(kind in presentationState)presentationState[kind]=!!active;
+  refreshPresentationPriority();
+}
 // Master switch for the gifter leaderboard slides (daily/weekly/monthly/youtube/tiktok/custom).
 // Persists across any live 'giftr' data that streams in afterward — a one-time clear isn't
 // enough because a real gift event can immediately repopulate the leaderboard. When this is
@@ -2091,43 +2355,118 @@ function resetBarPanelTextStyles(){
 }
 
 /* ══ GIFT BAR SLOT DISPLAY ══ */
-function showSlot(idx){if(!activeSlots.length||lsPanelTakeoverActive)return;currentIdx=((idx%activeSlots.length)+activeSlots.length)%activeSlots.length;const slotDef=activeSlots[currentIdx];resetBarPanelTextStyles();const entry=leaderboard[slotDef.key]??null,plat=entry?platKey(entry.platform):'default',pc=PLAT_COLORS[plat];activePlat=plat;setBarInfo(slotDef.label.toUpperCase(),entry?.name?entry.name.toUpperCase():'—',entry?fmtAmount(entry.amount,entry.type):'',pc.edge,pc.edgeRgb,platLabel(entry?.platform),'bar-plat plat-'+plat,false);}
+function supporterPlace(place){
+  const root=document.getElementById('supporter-spotlight');if(!root)return;
+  const scale=supporterClamp(supporterLayout?.scale,.5,2,1);
+  root.style.setProperty('--ss-layout-scale',String(scale));
+  if(supporterLayout?.custom){
+    root.style.left=supporterClamp(supporterLayout.xPct,0,100,75)+'%';
+    root.style.top=supporterClamp(supporterLayout.yPct,0,100,36.5)+'%';
+    return;
+  }
+  /* Spotlight mode is much wider than the rail. Fixed center points made a 720px card at
+     "middle-right" end at x=1160 and get clipped by the 1080px canvas. Anchor from the
+     element's real rendered width so every size/mode keeps a 20px canvas gutter. */
+  const width=root.offsetWidth||430, half=width*scale/2, gutter=20;
+  const [row,col]=String(place||'middle-right').split('-').length===2
+    ? String(place).split('-')
+    : place==='middle'?['middle','center']:['middle','right'];
+  const x=col==='left'?gutter+half:col==='right'?1080-gutter-half:540;
+  const y=row==='top'?230:row==='bottom'?1160:700;
+  root.style.left=x+'px';root.style.top=y+'px';
+}
+function supporterInitials(name){
+  return String(name||'').split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase()||'?';
+}
+function renderSupporterSpotlight(slotDef,entry,mode){
+  const root=document.getElementById('supporter-spotlight');if(!root)return;
+  if(!entry){
+    root.classList.remove('ss-visible');root.setAttribute('aria-hidden','true');
+    presentationSet('supporterManual',false);presentationSet('supporterAuto',false);return;
+  }
+  const platform=entry.platform==='youtube'?'▶ YouTube':'♪ TikTok';
+  const avatar=entry.profilePic
+    ? `<img src="${pcEscape(entry.profilePic)}" alt="">`
+    : pcEscape(supporterInitials(entry.name));
+  root.dataset.mode=mode==='spotlight'?'spotlight':'rail';
+  root.dataset.size=supporterSize;
+  supporterPlace(supporterPlacement);
+  root.innerHTML=
+    `<div class="ss-paint"><div class="ss-category">${pcEscape(slotDef.label)}</div>`+
+    `<div class="ss-card"><div class="ss-avatar">${avatar}</div><div class="ss-copy">`+
+    `<div class="ss-name">${pcEscape(entry.name)}</div><div class="ss-meta">`+
+    `<span class="ss-amount">${pcEscape(entry.displayValue||fmtAmount(entry.amount,entry.type))}</span>`+
+    `<span class="ss-platform">${platform}</span></div></div></div></div>`;
+  root.classList.add('ss-visible');root.setAttribute('aria-hidden','false');
+  presentationSet('supporterManual',mode==='spotlight'&&supporterManual);
+  presentationSet('supporterAuto',mode!=='spotlight'||!supporterManual);
+}
+function showSlot(idx,modeOverride){if(!activeSlots.length||lsPanelTakeoverActive)return;currentIdx=((idx%activeSlots.length)+activeSlots.length)%activeSlots.length;const slotDef=activeSlots[currentIdx];const entry=leaderboard[slotDef.key]??null,plat=entry?platKey(entry.platform):'default';activePlat=plat;renderSupporterSpotlight(slotDef,entry,modeOverride||supporterMode);}
 
 /* ══ GIFT BAR ROTATION ══ */
-function startRotation(){stopRotation();if(!activeSlots.length)return;rotateTimer=setInterval(()=>{if(!pinned&&!alertActive&&!lsPanelTakeoverActive)showSlot(currentIdx+1);},CONFIG.ROTATE_MS);}
+function startRotation(){stopRotation();if(!activeSlots.length||!gifterAutoEnabled)return;rotateTimer=setInterval(()=>{if(!pinned&&!alertActive&&!lsPanelTakeoverActive)showSlot(currentIdx+1);},CONFIG.ROTATE_MS);}
 function stopRotation(){if(rotateTimer){clearInterval(rotateTimer);rotateTimer=null;}if(progressAnim){cancelAnimationFrame(progressAnim);progressAnim=null;}}
 // Watchdog: restart rotation if it silently died (no alert, no pin, timer null)
 setInterval(()=>{if(!alertActive&&!pinned&&!lsPanelTakeoverActive&&activeSlots.length&&!rotateTimer)startRotation();},8000);
 
 /* ══ GIFT BAR GIFTR DATA ══ */
-function rebuildRightPanelSlots(enabledSlots){
-  const giftSlots=SLOT_DEFS.filter(d=>d.key==='custom'?!!leaderboard.custom:enabledSlots.includes(d.key));
+function rebuildRightPanelSlots(enabledSlots,categoryOrder){
+  const keyForCategory=k=>k==='featured'?'custom':k;
+  const order=Array.isArray(categoryOrder)?categoryOrder.map(keyForCategory):SLOT_DEFS.map(d=>d.key);
+  const enabled=new Set((enabledSlots||[]).map(keyForCategory));
+  const giftSlots=order.map(k=>SLOT_DEFS.find(d=>d.key===k)).filter(Boolean).filter(d=>d.key==='custom'?enabled.has('custom')&&!!leaderboard.custom:enabled.has(d.key));
   activeSlots=[...giftSlots];
 }
 function syncRightPanelVisibility(hasGiftData){
   const bar=document.getElementById('gift-bar');
   const visible=!!activeSlots.length;
-  bar?.classList.toggle('gift-info-visible',!!hasGiftData&&activeSlots.length>0);
-  bar?.classList.toggle('ls-right-panel-visible',visible);
+  bar?.classList.remove('gift-info-visible','ls-right-panel-visible');
+  document.getElementById('bar-info')?.style.setProperty('opacity','0');
   if(!visible&&!lsPanelTakeoverActive){
     stopRotation();
-    document.getElementById('bar-info')?.style.setProperty('opacity','0');
+    document.getElementById('supporter-spotlight')?.classList.remove('ss-visible');
+    presentationSet('supporterManual',false);
+    presentationSet('supporterAuto',false);
   }
-  if(visible)bar?.classList.add('visible');
 }
 function onGiftrData(data){
+  if(data&&typeof data.enabled==='boolean')gifterSlidesEnabled=data.enabled;
+  if(data&&typeof data.autoEnabled==='boolean')gifterAutoEnabled=data.autoEnabled;
+  if(data?.mode==='rail'||data?.mode==='spotlight')supporterMode=data.mode;
+  if(SUPPORTER_PLACES.has(data?.placement))supporterPlacement=data.placement;
+  if(SUPPORTER_SIZES.has(data?.size))supporterSize=data.size;
+  if(Number.isFinite(Number(data?.rotationIntervalMs)))CONFIG.ROTATE_MS=Math.max(2000,Math.min(120000,Number(data.rotationIntervalMs)));
   // Gifter slides can be switched off from the dock entirely; that choice persists even
   // if a real gift event streams in afterward and would otherwise repopulate the leaderboard.
   if(!gifterSlidesEnabled){
     leaderboard={};
-    rebuildRightPanelSlots([]);
+    rebuildRightPanelSlots([],data?.categoryOrder);
     syncRightPanelVisibility(false);
     if(!activeSlots.length)return;
     if(currentIdx>=activeSlots.length)currentIdx=0;
     if(!alertActive&&!lsPanelTakeoverActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}
     return;
   }
-  leaderboard={};let hasAny=false;SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];rebuildRightPanelSlots(enabled);syncRightPanelVisibility(hasAny);if(!activeSlots.length)return;if(currentIdx>=activeSlots.length)currentIdx=0;if(!alertActive&&!lsPanelTakeoverActive){showSlot(currentIdx);if(!rotateTimer)startRotation();}}
+  leaderboard={};
+  let hasAny=false;
+  SLOT_DEFS.forEach(d=>{if(data[d.key]){leaderboard[d.key]=data[d.key];hasAny=true;}});
+  const enabled=Array.isArray(data.enabledSlots)?data.enabledSlots:['daily','weekly','monthly','youtube','tiktok'];
+  rebuildRightPanelSlots(enabled,data.categoryOrder);
+  syncRightPanelVisibility(hasAny);
+  if(!activeSlots.length)return;
+  if(!gifterAutoEnabled&&!supporterManual){
+    const supporter=document.getElementById('supporter-spotlight');
+    supporter?.classList.remove('ss-visible');
+    supporter?.setAttribute('aria-hidden','true');
+    presentationSet('supporterAuto',false);
+    return;
+  }
+  if(currentIdx>=activeSlots.length)currentIdx=0;
+  if(!alertActive&&!lsPanelTakeoverActive){
+    if(pinned&&supporterManual)showSlot(currentIdx,'spotlight');
+    else{showSlot(currentIdx);if(!rotateTimer)startRotation();}
+  }
+}
 function applyGifterSlidesConfig(data){
   gifterSlidesEnabled = data?.enabled !== false;
   const info = document.getElementById('bar-info');
@@ -2164,7 +2503,7 @@ function onGiftAlert(data){
   alertQueue.push({...data,tier});
   if(!alertActive)runNextAlert();
 }
-function runNextAlert(){if(!alertQueue.length){alertActive=false;if(!_pendingGoalExplosion)runMonthlyMoment();return;}alertActive=true;showAlert(alertQueue.shift());}
+function runNextAlert(){if(!alertQueue.length){alertActive=false;if(!_pendingGoalExplosion)runMonthlyMoment();return;}alertActive=true;presentationSet('gift',true);showAlert(alertQueue.shift());}
 function showAlert(alert){_orchOnAlertStart();eventPromoSetGiftAlertActive(true);const{name,amount,type,platform,tier}=alert,plat=platKey(platform),pc=PLAT_COLORS[plat],cfg=TIER_CONFIG[tier];stopRotation();clearTimeout(alertTimeout);activePlat=plat;if(name)window._milkTriggerNameTag?.(name,'🎁 gift');setBarInfo('JUST GIFTED',name.toUpperCase(),fmtAmount(amount,type),pc.edge,pc.edgeRgb,platLabel(platform),'bar-plat plat-'+plat,false);document.getElementById('bar-wash').style.background=`linear-gradient(180deg,${pc.wash} 0%,rgba(5,0,14,0) 100%)`;document.getElementById('bar-progress').style.background=pc.edge;document.getElementById('bar-border').style.setProperty('--bc',pc.edgeRgb);if(tier===1){activateLines(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);return;}const heroName=document.getElementById('bar-hero-name'),heroAmt=document.getElementById('bar-hero-amount');heroName.textContent=name.toUpperCase();heroAmt.textContent=fmtAmount(amount,type);heroAmt.style.color=pc.edge;heroAmt.style.textShadow=['0 3px 10px rgba(0,0,0,0.98)','0 6px 22px rgba(0,0,0,0.85)',`0 0 12px rgba(${pc.edgeRgb},1.0)`,`0 0 30px rgba(${pc.edgeRgb},0.85)`,`0 0 65px rgba(${pc.edgeRgb},0.55)`,`0 0 120px rgba(${pc.edgeRgb},0.25)`].join(', ');const heroImg=document.getElementById('bar-hero-gift-img');if(alert.contentImg){heroImg.src=alert.contentImg;heroImg.style.display='block';}else{heroImg.style.display='none';}document.getElementById('gift-bar').style.setProperty('--plat-rgb',pc.edgeRgb);document.getElementById('bar-hero-action').textContent=name.toUpperCase()+' JUST SENT '+fmtAmount(amount,type)+'!';document.getElementById('gift-bar').classList.add('alert-active');activateLines(plat,tier);if(cfg.pulseLines)startLinePulse(plat);emitParticles(tier,plat);triggerScreenPulse(plat,tier);alertTimeout=setTimeout(dismissAlert,cfg.duration);}
 function dismissAlert(){clearTimeout(alertTimeout);stopLinePulse();deactivateLines();clearParticles();document.getElementById('gift-bar').classList.remove('alert-active');eventPromoSetGiftAlertActive(false);document.getElementById('bar-hero-action').textContent='';const _img=document.getElementById('bar-hero-gift-img');_img.style.display='none';_img.src='';_orchOnAlertEnd();runNextAlert();}
 
@@ -2173,7 +2512,28 @@ function runMonthlyMoment(){const monthly=leaderboard.monthly;if(!monthly){resum
 function resumeFromAlert(){pinned=false;document.getElementById('bar-info-amount').classList.remove('monthly-shimmer');document.getElementById('bar-progress').style.width='0%';deactivateLines();if(activeSlots.length)showSlot(currentIdx);startRotation();}
 
 /* ══ GIFT BAR GIFTR CMD ══ */
-function onGiftrCmd(data){const cmd=String(data??'');if(cmd==='auto'){pinned=false;if(!alertActive)startRotation();}else if(cmd.startsWith('slot:')){const key=cmd.slice(5),idx=activeSlots.findIndex(s=>s.key===key);if(idx>=0){pinned=true;stopRotation();showSlot(idx);}}}
+function onGiftrCmd(data){
+  const cmd=String((data&&typeof data==='object'?data.cmd:data)??'');
+  if(cmd==='auto'){
+    pinned=false;supporterManual=false;
+    if(activeSlots.length)showSlot(currentIdx,'rail');
+    if(!alertActive)startRotation();
+  }else if(cmd==='next'){
+    supporterManual=false;pinned=false;showSlot(currentIdx+1,'rail');
+  }else if(cmd==='hide'){
+    pinned=true;supporterManual=false;stopRotation();
+    const supporter=document.getElementById('supporter-spotlight');
+    supporter?.classList.remove('ss-visible');
+    supporter?.setAttribute('aria-hidden','true');
+    presentationSet('supporterManual',false);presentationSet('supporterAuto',false);
+  }else if(cmd.startsWith('slot:')){
+    const key=cmd.slice(5)==='featured'?'custom':cmd.slice(5);
+    const idx=activeSlots.findIndex(s=>s.key===key);
+    if(idx>=0){
+      supporterManual=true;pinned=true;stopRotation();showSlot(idx,'spotlight');
+    }
+  }
+}
 
 /* ══════════════════════════════════════════════════
    SPLAT OVERLAY JS
@@ -2229,6 +2589,24 @@ function setSplatPosition(pos){if(!SPLAT_POSITIONS[pos])return;currentSplatPos=p
 /* ══ EVENT PROMO SYSTEM ══ */
 let eventPromoConfig=mergeEventPromoConfig();
 let eventPromoHideTimer=null,eventPromoRevealTimer=null,eventPromoAutoTimer=null,eventPromoAutoIndex=0;
+let eventPromoHideDeadline=0,eventPromoRemainingMs=0,eventPromoPaused=false;
+function scheduleEventPromoHide(ms){
+  clearTimeout(eventPromoHideTimer);
+  eventPromoPaused=false;
+  eventPromoRemainingMs=Math.max(1,Number(ms)||1);
+  eventPromoHideDeadline=Date.now()+eventPromoRemainingMs;
+  eventPromoHideTimer=setTimeout(hideEventPromo,eventPromoRemainingMs);
+}
+function pauseEventPromo(paused){
+  if(paused===eventPromoPaused)return;
+  eventPromoPaused=paused;
+  if(paused&&eventPromoHideTimer){
+    eventPromoRemainingMs=Math.max(1,eventPromoHideDeadline-Date.now());
+    clearTimeout(eventPromoHideTimer);eventPromoHideTimer=null;
+  }else if(!paused&&presentationState.event&&eventPromoRemainingMs>0){
+    scheduleEventPromoHide(eventPromoRemainingMs);
+  }
+}
 const eventPromoImageChunks={};
 const eventPromoAutoModes=['fight-card'];
 
@@ -2320,6 +2698,7 @@ function hideEventPromo(){
   const root=document.getElementById('event-promo-root');
   if(!root)return;
   clearTimeout(eventPromoHideTimer);
+  eventPromoHideTimer=null;eventPromoRemainingMs=0;eventPromoHideDeadline=0;eventPromoPaused=false;
   clearTimeout(eventPromoRevealTimer);
   if((root.classList.contains('ep-card-mode')||root.classList.contains('ep-fun-mode'))&&!root.classList.contains('ep-card-hiding')){
     root.classList.add('ep-card-hiding');
@@ -2327,12 +2706,14 @@ function hideEventPromo(){
       root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding','ep-lt-mode');
       document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
       root.setAttribute('aria-hidden','true');
+      presentationSet('event',false);
     },430);
     return;
   }
   root.classList.remove('ep-active','ep-passive-mode','ep-card-mode','ep-fun-mode','ep-paintball-mode','ep-reveal-card','ep-card-hiding','ep-lt-mode');
   document.getElementById('gift-bar')?.classList.remove('ep-passive-active');
   root.setAttribute('aria-hidden','true');
+  presentationSet('event',false);
 }
 
 function eventPromoShowOverlay(mode,durationMs){
@@ -2358,7 +2739,8 @@ function eventPromoShowOverlay(mode,durationMs){
   if(safeMode==='passive')document.getElementById('gift-bar')?.classList.add('ep-passive-active');
   root.setAttribute('aria-hidden','false');
   if(safeMode==='paintball')eventPromoRevealTimer=setTimeout(()=>root.classList.add('ep-reveal-card'),splatMs);
-  eventPromoHideTimer=setTimeout(hideEventPromo,ms);
+  scheduleEventPromoHide(ms);
+  presentationSet('event',true);
 }
 
 function setEventPromoConfig(config){
@@ -2442,6 +2824,7 @@ function _orchOnAlertStart() {
 }
 
 function _orchOnAlertEnd() {
+  presentationSet('gift',false);
   // Restore ep-passive if it was active before
   if (_epWasPassive) {
     const gb = document.getElementById('gift-bar');
@@ -2841,8 +3224,11 @@ eventBus.on('splat-gifts','gift-alert',_ev=>{const msg={data:_ev};
 eventBus.on('splat-gifts','giftr',_ev=>{const msg={data:_ev};
   const d=msg.data;
   if(!d)return;
-  if(d.cmd)onGiftrCmd(d.cmd);
+  if(d.cmd)onGiftrCmd(d);
   else onGiftrData(d);
+});
+eventBus.on('splat-overlay','supporter-layout',data=>{
+  if(data&&typeof data==='object')applySupporterLayout(data,true);
 });
 
 
@@ -3070,8 +3456,173 @@ eventBus.on('splat-gifts','giftr',_ev=>{const msg={data:_ev};
 
 // Announce box (live text)
 ablyChannel.subscribe('announce',msg=>{
-  if(msg.data)handleAnnounce(msg.data);
+  if(msg.data)adaptLegacyAnnounce(msg.data);
 });
+
+/* ══ BROADCAST MESSAGE — canonical text renderer + legacy event adapters ══════════════════ */
+const _bmEl = document.getElementById('broadcast-message');
+const BM_LAYOUTS = new Set(['strip','card','spotlight']);
+const BM_SIZES = new Set(['small','medium','large']);
+const BM_THEMES = new Set(['purple','gold','ink','cyan','red']);
+const BM_PLACES = new Set([
+  'top-left','top-center','top-right',
+  'middle-left','middle','middle-right',
+  'bottom-left','bottom-center','bottom-right',
+]);
+let _bmState = {
+  visible:false, headline:'', supportingLine:'', body:'', badge:'',
+  presetId:null, layout:'card', placement:'middle', size:'medium',
+  theme:'purple', durationMs:0,
+};
+let _bmHideTimer = null;
+let _bmRotateTimer = null;
+let _bmHideDeadline = 0;
+let _bmRemainingMs = 0;
+let _bmPaused = false;
+
+function scheduleBroadcastHide(ms) {
+  if (_bmHideTimer) clearTimeout(_bmHideTimer);
+  _bmPaused = false;
+  _bmRemainingMs = Math.max(1, Number(ms) || 1);
+  _bmHideDeadline = Date.now() + _bmRemainingMs;
+  _bmHideTimer = setTimeout(() => renderBroadcastMessage({visible:false}), _bmRemainingMs);
+}
+function pauseBroadcastMessage(paused) {
+  if (paused === _bmPaused) return;
+  _bmPaused = paused;
+  if (paused && _bmHideTimer) {
+    _bmRemainingMs = Math.max(1, _bmHideDeadline - Date.now());
+    clearTimeout(_bmHideTimer);
+    _bmHideTimer = null;
+  } else if (!paused && presentationState.broadcast && _bmRemainingMs > 0) {
+    scheduleBroadcastHide(_bmRemainingMs);
+  }
+}
+
+function bmText(value, max) {
+  return String(value == null ? '' : value).trim().slice(0, max);
+}
+function bmNormalize(input) {
+  const d = input && typeof input === 'object' ? input : {};
+  const next = Object.assign({}, _bmState);
+  if (typeof d.visible === 'boolean') next.visible = d.visible;
+  if (d.action === 'hide') next.visible = false;
+  if (d.action === 'show') next.visible = true;
+  if (d.headline !== undefined) next.headline = bmText(d.headline, 120);
+  if (d.supportingLine !== undefined) next.supportingLine = bmText(d.supportingLine, 160);
+  if (d.body !== undefined) next.body = bmText(d.body, 300);
+  if (d.badge !== undefined) next.badge = bmText(d.badge, 40);
+  if (d.presetId !== undefined) next.presetId = d.presetId ? bmText(d.presetId, 80) : null;
+  if (BM_LAYOUTS.has(d.layout)) next.layout = d.layout;
+  if (BM_PLACES.has(d.placement)) next.placement = d.placement;
+  if (BM_SIZES.has(d.size)) next.size = d.size;
+  if (BM_THEMES.has(d.theme)) next.theme = d.theme;
+  if (d.durationMs !== undefined) next.durationMs = Math.max(0, Math.min(120000, Number(d.durationMs) || 0));
+  if (d.visible === undefined && d.action === undefined &&
+      (d.headline !== undefined || d.supportingLine !== undefined || d.body !== undefined)) {
+    next.visible = true;
+  }
+  return next;
+}
+function bmPlace(placement) {
+  if (!_bmEl) return;
+  const pos = {
+    'top-left':[260,220], 'top-center':[450,220], 'top-right':[700,220],
+    'middle-left':[260,690], 'middle':[450,690], 'middle-right':[700,690],
+    'bottom-left':[260,1120], 'bottom-center':[450,1120], 'bottom-right':[700,1120],
+  }[placement] || [450,690];
+  _bmEl.style.left = `${pos[0]}px`;
+  _bmEl.style.top = `${pos[1]}px`;
+}
+function renderBroadcastMessage(input) {
+  if (!_bmEl) return;
+  _bmState = bmNormalize(input);
+  if (_bmHideTimer) { clearTimeout(_bmHideTimer); _bmHideTimer = null; }
+  _bmRemainingMs = 0;
+  _bmHideDeadline = 0;
+  _bmPaused = false;
+
+  _bmEl.dataset.layout = _bmState.layout;
+  _bmEl.dataset.size = _bmState.size;
+  _bmEl.dataset.theme = _bmState.theme;
+  _bmEl.dataset.presetId = _bmState.presetId || '';
+  bmPlace(_bmState.placement);
+
+  const badge = _bmState.badge
+    ? `<div class="bm-badge">${pcEscape(_bmState.badge)}</div>` : '';
+  const support = _bmState.supportingLine
+    ? `<div class="bm-supporting">${pcEscape(_bmState.supportingLine)}</div>` : '';
+  const body = _bmState.body
+    ? `<div class="bm-body">${pcEscape(_bmState.body)}</div>` : '';
+  _bmEl.innerHTML =
+    `<div class="bm-paint">${badge}<div class="bm-panel">` +
+    `<div class="bm-headline">${pcEscape(_bmState.headline)}</div>${support}${body}` +
+    `</div></div>`;
+
+  const hasCopy = !!(_bmState.headline || _bmState.supportingLine || _bmState.body);
+  const show = _bmState.visible && hasCopy;
+  _bmEl.classList.toggle('bm-visible', show);
+  _bmEl.setAttribute('aria-hidden', show ? 'false' : 'true');
+  if (show && _bmState.durationMs > 0) {
+    scheduleBroadcastHide(_bmState.durationMs);
+  }
+  presentationSet('broadcast',show);
+}
+function adaptLegacyAnnounce(d) {
+  renderBroadcastMessage({
+    visible:d.visible,
+    headline:d.text,
+    supportingLine:d.sub,
+    badge:d.badge === undefined ? 'LIVE' : d.badge,
+    layout:'spotlight',
+    placement:legacyXYPlace(d.x,d.y,'top-center'),
+    size:legacySize(d.size),
+    theme:'purple',
+    durationMs:d.durationMs,
+  });
+}
+function legacySize(size) {
+  if (['micro','mini','xs','sm','μ','XXS','XS','S'].includes(size)) return 'small';
+  if (['lg','xl','xxl','L','XL','XXL'].includes(size)) return 'large';
+  return 'medium';
+}
+function legacyXYPlace(x,y,fallback) {
+  const col = x === 'left' ? 'left' : x === 'right' ? 'right' : 'center';
+  const row = ['top','upper'].includes(y) ? 'top' : ['lower','bottom'].includes(y) ? 'bottom' : 'middle';
+  const place = row === 'middle' && col === 'center' ? 'middle' : `${row}-${col}`;
+  return BM_PLACES.has(place) ? place : fallback;
+}
+function adaptLegacyCommentPrompt(d) {
+  if (_bmRotateTimer) { clearInterval(_bmRotateTimer); _bmRotateTimer = null; }
+  const presets = Array.isArray(d.presets) ? d.presets.filter(Boolean) : [];
+  const showPreset = (p) => renderBroadcastMessage({
+    visible:d.visible === false ? false : true,
+    headline:p?.text ?? d.text,
+    supportingLine:p?.sub ?? d.sub,
+    badge:d.eyebrow || 'COMMENT TO INTERACT',
+    layout:'spotlight',
+    placement:legacyXYPlace(d.x,d.y,'bottom-center'),
+    size:legacySize(d.size),
+    theme:'purple',
+    durationMs:0,
+  });
+  showPreset(presets[0]);
+  if (presets.length > 1 && d.visible !== false) {
+    let i = 0;
+    _bmRotateTimer = setInterval(() => { i = (i + 1) % presets.length; showPreset(presets[i]); },
+      Math.max(3000, Number(d.rotateMs) || 30000));
+  }
+}
+
+ablyChannel.subscribe('broadcast-message',msg=>{
+  if(msg.data)renderBroadcastMessage(msg.data);
+});
+/* Restore the persisted active message after a browser-source reload. Failure is intentionally
+   quiet: legacy/static hosts may not expose this optional Producer Dock read endpoint. */
+fetch('/overlay-public/broadcast-message/state',{cache:'no-store'})
+  .then(response=>response.ok?response.json():null)
+  .then(state=>{if(state)renderBroadcastMessage(state);})
+  .catch(()=>{});
 
 /* ══ PROMO CARD ═══════════════════════════════════════════════════════════════════════════
    Replaces the old live-text pill. Painted-Splat ribbon: opaque sticker fills, near-black
@@ -3266,6 +3817,48 @@ const _ltsSub=document.getElementById('lts-subtitle-el');
 ablyChannel.subscribe('live-text',msg=>{
   const d=msg.data;
   if(!d)return;
+  /* Legacy adapter: promo/card wins when present; otherwise the strip remains a strip. */
+  if(d.promo!==undefined){
+    const p=d.promo||{};
+    renderBroadcastMessage({
+      visible:!!p.show,
+      headline:p.head,
+      supportingLine:p.subhead,
+      body:p.body,
+      badge:'',
+      layout:'card',
+      placement:legacyXYPlace(p.place?.col,p.place?.row,'middle'),
+      size:legacySize(p.size),
+      theme:p.ribbonColor,
+      durationMs:p.durationMs,
+    });
+  }else if(d.card!==undefined){
+    renderBroadcastMessage({
+      visible:!!d.card,
+      headline:d.title,
+      supportingLine:d.subtitle,
+      badge:'LIVE',
+      layout:'spotlight',
+      placement:'middle',
+      size:'large',
+      theme:'purple',
+      durationMs:d.durationMs,
+    });
+  }else if(d.pill!==undefined){
+    renderBroadcastMessage({visible:!!d.pill,headline:d.title,supportingLine:d.subtitle,layout:'card'});
+  }else if(d.strip!==undefined||d.title!==undefined||d.subtitle!==undefined){
+    renderBroadcastMessage({
+      visible:d.strip === undefined ? true : !!d.strip,
+      headline:d.title,
+      supportingLine:d.subtitle,
+      badge:'LIVE',
+      layout:'strip',
+      placement:'top-center',
+      size:'medium',
+      theme:'purple',
+      durationMs:d.durationMs,
+    });
+  }
   // Update shared title/subtitle in the strip. BACK-COMPAT: a live-text message carrying only
   // title/subtitle must keep driving the strip exactly as it always did — the dock still sends
   // those on every message, and older senders send nothing else.
@@ -3323,7 +3916,7 @@ ablyChannel.subscribe('live-text',msg=>{
 
 // Comment prompt
 ablyChannel.subscribe('comment-prompt',msg=>{
-  if(msg.data)handleCommentPrompt(msg.data);
+  if(msg.data)adaptLegacyCommentPrompt(msg.data);
 });
 
 // Splat position

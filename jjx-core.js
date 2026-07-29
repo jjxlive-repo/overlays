@@ -39,6 +39,79 @@
   // dock still publishes wheel.spin and everything else to it.
   var ABLY_MAIN_CHANNEL = 'splat-overlay';
 
+  /*
+    TikTok LIVE Studio sometimes renders a 1080x1920 Link source into a
+    1080x1392 browser surface (264px removed from both ends), then offers only
+    Fit/Fill/Stretch at the scene level. `?ttlsFix=1` opt-in pre-compresses the
+    page to that surface. Choosing Stretch in Studio then expands it back to
+    1080x1920, so the two inverse scales cancel and the artwork is not distorted.
+
+    This uses the individual `scale` property instead of `transform`, allowing
+    camera-beat transforms on body/stage to keep working.
+  */
+  function enableTTLSCanvasFix() {
+    var qs;
+    try { qs = new URLSearchParams(location.search); } catch (e) { return; }
+    if (qs.get('ttlsFix') !== '1') return;
+
+    var visibleHeight = Number(qs.get('ttlsHeight')) || 1392;
+    visibleHeight = Math.max(960, Math.min(1920, visibleHeight));
+    var yScale = visibleHeight / 1920;
+
+    document.documentElement.classList.add('jjx-ttls-canvas-fix');
+    document.documentElement.style.setProperty('--jjx-ttls-y-scale', String(yScale));
+
+    var style = document.createElement('style');
+    style.textContent =
+      'html.jjx-ttls-canvas-fix body{' +
+        'transform-origin:0 0!important;' +
+        'scale:1 var(--jjx-ttls-y-scale)!important;' +
+      '}';
+    (document.head || document.documentElement).appendChild(style);
+    console.info('[jjx] TikTok canvas compensation enabled: 1920 -> ' + visibleHeight);
+  }
+  enableTTLSCanvasFix();
+
+  /*
+    NORMALIZED POSITION CONTROLS
+
+    Renderers keep one stable 1080x1920 design canvas. Operator controls expose
+    positions as percentages of that canvas, then convert at the payload boundary.
+    This keeps sliders independent of TikTok Studio's 1392px browser surface and
+    preserves every existing stored pixel-based layout.
+  */
+  var DESIGN_WIDTH = 1080;
+  var DESIGN_HEIGHT = 1920;
+  function axisPixels(axis) {
+    return String(axis).toLowerCase().charAt(0) === 'x' ? DESIGN_WIDTH : DESIGN_HEIGHT;
+  }
+  function pxToPercent(value, axis, digits) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) n = 0;
+    var places = Number.isFinite(Number(digits)) ? Math.max(0, Number(digits)) : 2;
+    var pow = Math.pow(10, places);
+    return Math.round((n / axisPixels(axis) * 100) * pow) / pow;
+  }
+  function percentToPx(value, axis, round) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) n = 0;
+    var px = n / 100 * axisPixels(axis);
+    return round === false ? px : Math.round(px);
+  }
+  function formatPercent(value, digits) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) n = 0;
+    var places = Number.isFinite(Number(digits)) ? Math.max(0, Number(digits)) : 1;
+    return n.toFixed(places).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1') + '%';
+  }
+  var position = Object.freeze({
+    width: DESIGN_WIDTH,
+    height: DESIGN_HEIGHT,
+    pxToPercent: pxToPercent,
+    percentToPx: percentToPx,
+    formatPercent: formatPercent,
+  });
+
   /* ── config helpers ─────────────────────────────────────────────── */
 
   function deepMerge(base, extra) {
@@ -801,5 +874,6 @@
     createOverlayBus: createOverlayBus,
     dockRealtime: dockRealtime,
     cameraBeats: cameraBeats,
+    position: position,
   };
 })();

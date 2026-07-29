@@ -1,6 +1,8 @@
 # FEED JAMIE — Art Prompts v2: Full 5-Frame Animation Set (45 images)
 
-One giant copy-paste prompt. Attach `jamie-idle-01.png` (in your Downloads) as the reference image.
+One giant copy-paste prompt. Attach
+`assets/feed-jamie/jamie-grow-04-tall.png` as the **canonical character
+reference**. Every Jamie in every frame must use this exact tall, athletic model.
 If your generator loses consistency doing all 45 at once, paste the header plus ONE batch at a time instead —
 every batch works standalone with the same header.
 
@@ -14,12 +16,18 @@ for the new frames, manifest updates, and verification all happen automatically 
 Create FORTY-FIVE separate character sticker illustrations of "Jamie", a cute cartoon dog mascot for a livestream overlay — one image per pose listed below, grouped by animation. Use the attached reference image as the exact character in every single image.
 
 CHARACTER (match the attached reference exactly, identical in all 45 images)
-- Chibi sticker-style fluffy BLACK dog.
+- Sleek, tall, athletic BLACK dog with long straight legs, high shoulders, a
+  deep narrow chest, tucked waist, long neck and elegant upright silhouette.
 - LEFT ear large, triangular and upright; RIGHT ear folded/floppy forward.
-- White muzzle, white chest fluff, white paws, white tail tip.
+- White long muzzle, long white chest blaze, white paws, white tail tip.
+- Small brown rear-hip patch.
 - Large glossy black circular eyes with white shine dots, small black shiny nose, tiny curved eyebrows.
 - Peach-orange blush circles on the cheeks.
-- Thick black outline, THICK WHITE STICKER BORDER around the silhouette, flat marker-style fills, cobalt-blue (#3B82F6) edge highlight strokes.
+- Thick clean black exterior outline, flat marker-style fills, restrained shading,
+  cobalt-blue (#3B82F6) accent strokes on the ears, shoulder, rear leg and tail.
+- NO baked white sticker border; the overlay adds it at runtime.
+- Every sit, crouch, run, jump, turn and diagonal pose must preserve the same
+  skeletal proportions as the standing reference.
 
 FORMAT (every image)
 - Portrait canvas, REAL transparent PNG background — true alpha channel, NO checkerboard pattern, no background color, no scene, no ground shadow, no vignette.
@@ -29,6 +37,8 @@ FORMAT (every image)
 DO NOT (any image)
 - No realism, no anatomical detail, no painterly rendering, no heavy shading.
 - No other breed or color, not wolf-like, no collar, no text, no logos, no watermark, no 3D render, no baked drop shadow.
+- Never make Jamie short-legged, squat, low-slung, barrel-bodied, extra fluffy,
+  puppy-chibi, corgi-like or dachshund/"wiener dog"-shaped.
 - Do not change the head shape, ear arrangement, eye size, proportions, colors, or outline thickness between images — ONLY the pose, expression, and listed props change.
 - Where a pose says "draw NO treat/ball/toy/duck/sock/bubble", the mouth or paw must be EMPTY — the game engine adds the object.
 

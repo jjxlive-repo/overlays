@@ -1,4 +1,9 @@
-# FEED JAMIE — Image Generation Prompts
+# FEED JAMIE — ARCHIVED OLD-STYLE IMAGE GENERATION PROMPTS
+
+> **Do not use this file for new Jamie art.** It describes the retired gray,
+> compact chibi character and conflicts with the accepted tall athletic Jamie.
+> Use `feed-jamie-art-prompts-v2.md` with
+> `assets/feed-jamie/jamie-grow-04-tall.png` as the canonical reference.
 
 Same workflow as `character-art-gpt-prompts.md`: paste the **Master Spec** once at the start of the
 image-gen session (or repeat it in every prompt if the tool forgets context), then send one

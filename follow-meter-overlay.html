@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>FOLLOW METER — Overlay</title>
 <!--
   Implements the "Painted Splat" design handoff (design_handoff_splatties_overlay).
@@ -19,7 +20,8 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    width: 1080px; height: 1920px;
+    width: 1080px; min-width: 1080px;
+    height: 1920px; min-height: 1920px;
     background: transparent;              /* OBS composites real alpha */
     overflow: hidden;
     font-family: 'Fredoka', sans-serif;
@@ -239,7 +241,7 @@
 
 <audio id="sfx"></audio>
 
-<script src="jjx-core.js?v=8"></script>
+<script src="jjx-core.js?v=9"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -275,7 +277,7 @@ const DEFAULT_CONFIG = {
   milestoneEvery: 10,
   copy: JSON.parse(JSON.stringify(DEFAULT_COPY)),
   meter: { label: 'FOLLOWS/SUBS', x: 0, y: 0, scale: 1, visible: true },
-  alertDurationSec: 6,            // handoff default; 4–11 supported
+  alertDurationSec: 4.5,          // legacy fallback for saves made before per-alert timing
   anthemDurationSec: 10.4,        // covers the 10.9s firework cycle
   impactOffsetMs: 0,              // ±300ms sync fine-tune against the real stream
   // Every on-screen element is independently placeable. x/y/scale are offsets ON
@@ -319,7 +321,9 @@ const DEFAULT_MEDIA = {
 let count = 0;
 try { count = parseInt(localStorage.getItem(FM_LS_COUNT)) || 0; } catch (e) {}
 let OVERLAY_ENABLED = false;
-document.body.style.display = 'none';
+// Preserve the full canvas while disabled. LIVE Studio can cache a bad Link-source
+// size when a page starts at display:none because the body temporarily reports 0x0.
+document.body.style.visibility = 'hidden';
 
 /** Fills the shared placeholders. Missing copy falls back to the design default,
  *  so clearing a field can never leave a blank chip on stream. */
@@ -552,20 +556,22 @@ async function runAlert(item) {
   const bandAnim = document.getElementById('alert-anim');
   band.style.opacity = '0';
 
-  const gifMs = await mountGif(gifUrl, document.getElementById('alert-gifbox'));
+  await mountGif(gifUrl, document.getElementById('alert-gifbox'));
   playSfx(sfxUrl);
 
   // Impact at 0.22s — the whole alert is timed to the smack peak.
-  await wait(Math.max(0, 220 + (CFG.impactOffsetMs || 0)));
+  const impactMs = Math.max(0, 220 + (CFG.impactOffsetMs || 0));
+  await wait(impactMs);
   band.style.opacity = '1';
   bandAnim.animate(
     [{ transform: 'translateY(46px) scale(.86)', opacity: 0 },
      { transform: 'translateY(0) scale(1)', opacity: 1 }],
     { duration: 260, easing: OVERSHOOT, fill: 'both' });
 
-  const holdMs = Math.max(4000, Math.min(11000, (CFG.alertDurationSec || 6) * 1000));
-  // Never cut the animation off part-way — hold at least as long as the gif runs.
-  await wait(Math.max(holdMs, gifMs + 400) - 220);
+  const slotDurationSec = CFG.alerts?.[item.slot]?.durationSec ?? CFG.alertDurationSec ?? 4.5;
+  const holdMs = Math.max(1000, Math.min(15000, slotDurationSec * 1000));
+  // Duration is authoritative: a short setting intentionally cuts a long GIF.
+  await wait(Math.max(0, holdMs - impactMs - 280));
 
   await bandAnim.animate(
     [{ transform: 'translateY(0) scale(1)', opacity: 1 },
@@ -579,6 +585,10 @@ async function runAlert(item) {
 // ── Screen 3 ──────────────────────────────────────────────────────
 async function runMilestone(value) {
   const every = Math.max(1, CFG.milestoneEvery || 10);
+  const durationSec = CFG.alerts?.milestone?.durationSec ?? CFG.alertDurationSec ?? 5;
+  const targetDurationMs = Math.max(1000, Math.min(15000, durationSec * 1000));
+  const pace = targetDurationMs / 5000;
+  const timed = (ms) => Math.max(1, Math.round(ms * pace));
   const scene = document.getElementById('ms-scene');
   const hero = document.getElementById('ms-hero');
   const next = document.getElementById('ms-next');
@@ -598,12 +608,12 @@ async function runMilestone(value) {
 
   // 0 → 0.35s: the meter pops in place, alone.
   meter.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.28)' }, { transform: 'scale(1)' }],
-    { duration: 350, easing: 'ease-in-out' });
+    { duration: timed(350), easing: 'ease-in-out' });
   meter.animate([{ filter: 'drop-shadow(0 0 0 rgba(253,224,71,0))' },
                  { filter: 'drop-shadow(0 0 60px rgba(253,224,71,.9))' },
                  { filter: 'drop-shadow(0 0 0 rgba(253,224,71,0))' }],
-    { duration: 350, easing: 'ease-in-out' });
-  await wait(350);
+    { duration: timed(350), easing: 'ease-in-out' });
+  await wait(timed(350));
 
   // 0.35 → 0.75s: the bar completes, left → right.
   const track = document.getElementById('meter-track');
@@ -611,39 +621,39 @@ async function runMilestone(value) {
     setTimeout(() => {
       if (track.children[i]) track.children[i].className = 'seg cap';
       popSegment(i);
-    }, i * 40);
+    }, timed(i * 40));
   }
-  setTimeout(() => setCountText(value, value), 400);   // 20 / 20, not 20 / 30
+  setTimeout(() => setCountText(value, value), timed(400));   // 20 / 20, not 20 / 30
 
   // 0.6 → 1.0s: centre group in.
-  await wait(250);
+  await wait(timed(250));
   scene.style.opacity = '1';
   document.getElementById('ms-anim').animate(
     [{ transform: 'translateY(40px) scale(.8)', opacity: 0 },
      { transform: 'translateY(0) scale(1)', opacity: 1 }],
-    { duration: 400, easing: OVERSHOOT, fill: 'both' });
+    { duration: timed(400), easing: OVERSHOOT, fill: 'both' });
 
-  await wait(200);
+  await wait(timed(200));
   spawnConfetti();                                     // 0.8s
 
-  await wait(2400);                                    // → 3.2s
-  next.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'both' });
+  await wait(timed(2400));
+  next.animate([{ opacity: 0 }, { opacity: 1 }], { duration: timed(300), fill: 'both' });
   next.style.opacity = '1';
 
-  await wait(1000);                                    // → 4.2s: drain right → left
+  await wait(timed(1000));                             // drain right → left
   for (let i = every - 1; i >= 0; i--) {
     setTimeout(() => {
       if (!track.children[i]) return;
       track.children[i].className = 'seg' + (i === every - 1 ? ' cap' : '');
       popSegment(i);
-    }, (every - 1 - i) * 40);
+    }, timed((every - 1 - i) * 40));
   }
-  setTimeout(() => setCountText(value, value + every), 400);   // 20 / 30
+  setTimeout(() => setCountText(value, value + every), timed(400));   // 20 / 30
 
   document.getElementById('ms-anim').animate(
     [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.9)', opacity: 0 }],
-    { duration: 800, easing: 'ease-in', fill: 'both' });
-  await wait(800);                                     // → 5.0s
+    { duration: timed(800), easing: 'ease-in', fill: 'both' });
+  await wait(timed(800));
   scene.style.opacity = '0';
   document.getElementById('confetti').innerHTML = '';
   stopGif(document.getElementById('alert-gifbox'));
@@ -665,19 +675,20 @@ async function runAnthem() {
   box.style.opacity = '1';
   band.style.opacity = '0';
 
-  const gifMs = await mountGif(gifUrl, box);
+  await mountGif(gifUrl, box);
   playSfx(sfxUrl);                       // playSfx resets the shared element first
 
   // First burst at 0.21s — the chip lands on it, same curve as the alert but slower.
-  await wait(Math.max(0, 210 + (CFG.impactOffsetMs || 0)));
+  const impactMs = Math.max(0, 210 + (CFG.impactOffsetMs || 0));
+  await wait(impactMs);
   band.style.opacity = '1';
   document.getElementById('anthem-anim').animate(
     [{ transform: 'translateY(46px) scale(.86)', opacity: 0 },
      { transform: 'translateY(0) scale(1)', opacity: 1 }],
     { duration: 340, easing: OVERSHOOT, fill: 'both' });
 
-  const holdMs = Math.max(4000, Math.min(11000, (CFG.anthemDurationSec || 10.4) * 1000));
-  await wait(Math.max(holdMs, gifMs + 400) - 210);
+  const holdMs = Math.max(1000, Math.min(15000, (CFG.anthemDurationSec || 10.4) * 1000));
+  await wait(Math.max(0, holdMs - impactMs - 400));
 
   await Promise.all([
     document.getElementById('anthem-anim').animate(
@@ -779,13 +790,13 @@ function connectTransport() {
 
   function attach() {
     OVERLAY_ENABLED = true;
-    document.body.style.display = 'block';
+    document.body.style.visibility = 'visible';
     applyLayout(); renderMeter();
     loadFromDock();
   }
   function detach() {
     OVERLAY_ENABLED = false;
-    document.body.style.display = 'none';
+    document.body.style.visibility = 'hidden';
   }
   handleToggle = on => (on ? attach() : detach());
 
@@ -814,7 +825,7 @@ function connectTransport() {
 
 if (MIRROR) {
   OVERLAY_ENABLED = true;
-  document.body.style.display = 'block';
+  document.body.style.visibility = 'visible';
   handleToggle = () => {};
   applyLayout();
 } else {

@@ -2,24 +2,45 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JJxLive Chat Box</title>
-<script src="jjx-core.js?v=8"></script>
+<script>
+if (new URLSearchParams(location.search).get("preview") === "1") {
+  document.documentElement.classList.add("controller-preview");
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@twemoji/api@17.0.3/dist/twemoji.min.js" integrity="sha384-Y5xukbGJwykbHHkTbLJykYLcBPFxrwipTbEh0puxhkz9CZ90raTPGe2Ks4vCxsYU" crossorigin="anonymous"></script>
+<script src="jjx-core.js?v=9"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Barlow+Condensed:wght@600;700;800&family=Baloo+2:wght@600;700;800&family=DM+Sans:wght@500;700;900&family=Fredoka:wght@500;600;700&family=Rubik:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Barlow+Condensed:wght@600;700;800&family=Baloo+2:wght@600;700;800&family=DM+Sans:wght@500;700;900&family=Fredoka:wght@500;600;700&family=Rubik:wght@500;700&family=Sora:wght@700;800&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; }
 :root {
   --overlay-top:134px; --overlay-right:34px;
   --chat-width:235px; --chat-height:210px;
   --event-width:235px; --event-height:42px; --event-gap:8px;
-  --chat-radius:14px; --chat-font-scale:1; --bg-opacity:1; --text-opacity:1;
-  --chat-font-family:"DM Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --chat-radius:14px; --chat-font-scale:1; --bg-opacity:1;
+  --audience-left:840px; --audience-top:88px; --audience-scale:.9;
+  --chat-font-family:"DM Sans", system-ui, -apple-system, "Segoe UI", Arial, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
 }
-html, body { width:1080px; height:1920px; margin:0; overflow:hidden; background:transparent; font-family:var(--chat-font-family); }
+html, body { width:1080px; min-width:1080px; height:1920px; min-height:1920px; margin:0; overflow:hidden; background:transparent; font-family:var(--chat-font-family); }
 body { color:#fff; pointer-events:none; -webkit-font-smoothing:antialiased; }
 .jjx-chat-overlay { position:fixed; top:var(--overlay-top); right:var(--overlay-right); width:var(--chat-width); height:calc(var(--chat-height) + var(--event-height) + var(--event-gap)); pointer-events:none; z-index:20; }
+html.controller-preview,
+html.controller-preview body {
+  width:235px;
+  min-width:235px;
+  height:260px;
+  min-height:260px;
+}
+html.controller-preview .jjx-chat-overlay {
+  top:0;
+  right:0;
+}
+html.controller-preview .audience-widget {
+  display:none;
+}
 .event-zone { position:absolute; top:0; right:0; width:var(--event-width); height:var(--event-height); z-index:4; opacity:0; transform:translateY(6px); pointer-events:none; }
 .event-zone.is-visible { opacity:1; transform:none; animation:eventIn .24s cubic-bezier(.34,1.56,.64,1) both; }
 .event-zone.is-out { animation:eventOut .3s ease both; }
@@ -30,8 +51,120 @@ body { color:#fff; pointer-events:none; -webkit-font-smoothing:antialiased; }
 .chat-meta { display:flex; align-items:center; gap:6px; min-width:0; }
 .chat-image-row { display:flex; gap:4px; margin-top:5px; overflow:hidden; }
 .message-text { display:-webkit-box; -webkit-line-clamp:var(--clamp-lines,2); -webkit-box-orient:vertical; max-width:100%; overflow:hidden; overflow-wrap:anywhere; }
-.username, .message-text, .event-main, .event-value { opacity:var(--text-opacity); }
 .message-text img, .chat-sticker { display:inline-block; max-width:calc(22px * var(--chat-font-scale)); max-height:calc(22px * var(--chat-font-scale)); width:auto; height:auto; margin:0 2px; vertical-align:-5px; border-radius:5px; }
+.emoji { display:inline-block; width:1.08em; height:1.08em; margin:0 .04em; vertical-align:-.16em; }
+/* ── Audience rails (design 15a: two doodle mini-rails, flush right edge) ──
+   Deliberately theme-independent: the cream/ink doodle look and the surge
+   colour ramp are fixed by the handoff, so the chat themes don't restyle it.
+   Green = people joining; yellow is reserved for coins elsewhere on stream. */
+.audience-widget {
+  position:fixed;
+  left:var(--audience-left);
+  top:var(--audience-top);
+  width:135px; /* chevron 28 + gap 7 + rail 100 */
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:14px;
+  font-family:"Baloo 2", system-ui, sans-serif;
+  transform:scale(var(--audience-scale));
+  transform-origin:top right; /* shrink toward the screen edge so rails stay flush */
+  pointer-events:none;
+  z-index:24;
+  opacity:1;
+  transition:opacity .18s ease;
+}
+.audience-widget.is-hidden { opacity:0; }
+.audience-platform {
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.audience-chevron {
+  flex:0 0 28px;
+  width:28px;
+  height:17px;
+  display:flex;
+  align-items:center;
+  opacity:0; /* calm: fully invisible, but the space stays reserved */
+}
+.audience-chevron svg { display:block; }
+.audience-rail {
+  width:100px;
+  padding:10px 0 12px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  background:#fdf8ee;
+  border:3px solid #1a1a1a;
+  border-right:none;
+  border-radius:16px 0 0 16px;
+  box-shadow:0 4px 0 rgba(0,0,0,.35);
+}
+.audience-brand { display:flex; }
+.audience-brand svg { display:block; }
+.audience-value {
+  font-size:24px;
+  font-weight:800;
+  line-height:1;
+  color:#1a1a1a;
+  font-variant-numeric:tabular-nums;
+  transition:color .4s;
+}
+/* Surge tiers — shake speeds up and the number heats up as joins/min climb.
+   Amplitude is capped at ±3.5px; anything stronger made the count unreadable. */
+.audience-platform[data-tier="1"] .audience-rail { animation:shakeSoft .5s linear infinite; }
+.audience-platform[data-tier="2"] .audience-rail { animation:shakeMed .32s linear infinite; }
+.audience-platform[data-tier="3"] .audience-rail { animation:shakeHard .2s linear infinite; }
+.audience-platform[data-tier="1"] .audience-value { color:#17a24b; animation:numPulse 1s ease-in-out infinite; }
+.audience-platform[data-tier="2"] .audience-value { color:#e8871a; animation:numPulse .6s ease-in-out infinite; }
+.audience-platform[data-tier="3"] .audience-value { color:#e5312b; animation:numPulse .35s ease-in-out infinite, numHot .7s linear infinite; }
+/* Chevron tempo is steady across tiers on purpose — only the shake scales. */
+.audience-platform:not([data-tier="0"]) .audience-chevron { animation:chevStep .9s linear infinite; }
+@keyframes shakeSoft {
+  0%,100% { transform:translate(0,0); }
+  25% { transform:translate(.5px,-2px); }
+  50% { transform:translate(-.5px,2px); }
+  75% { transform:translate(.5px,-1.5px); }
+}
+@keyframes shakeMed {
+  0%,100% { transform:translate(0,0); }
+  20% { transform:translate(1px,-3.5px); }
+  40% { transform:translate(-1px,3.5px); }
+  60% { transform:translate(1px,-3px); }
+  80% { transform:translate(-1px,3px); }
+}
+@keyframes shakeHard {
+  0%,100% { transform:translate(0,0) rotate(0deg); }
+  15% { transform:translate(1px,-3.5px) rotate(-.4deg); }
+  35% { transform:translate(-1px,3.5px) rotate(.4deg); }
+  55% { transform:translate(1px,-3px) rotate(-.4deg); }
+  75% { transform:translate(-1px,3px) rotate(.4deg); }
+}
+@keyframes chevStep {
+  0%,22% { opacity:0; }
+  23%,52% { opacity:1; }
+  53%,100% { opacity:0; }
+}
+@keyframes numPulse {
+  0%,100% { transform:scale(1); }
+  50% { transform:scale(1.14); }
+}
+@keyframes numHot {
+  0%,100% { color:#e5312b; }
+  50% { color:#ff8c1a; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .audience-widget,
+  .audience-rail,
+  .audience-value {
+    animation:none !important;
+    transition:none !important;
+  }
+  /* Keep the surge readable without motion: chevron holds on instead of blinking. */
+  .audience-platform:not([data-tier="0"]) .audience-chevron { animation:none !important; opacity:1; }
+}
 @keyframes chatIn { from { opacity:0; transform:translateX(16px); } to { opacity:1; transform:translateX(0); } }
 @keyframes chatOut { to { opacity:0; transform:translateY(-12px) scale(.96); } }
 @keyframes eventIn { from { opacity:0; transform:translateY(9px) scale(.96); } to { opacity:1; transform:translateY(0) scale(1); } }
@@ -266,19 +399,375 @@ body { color:#fff; pointer-events:none; -webkit-font-smoothing:antialiased; }
 [data-theme="comic-grape"][data-style="neon"] .chat-message, [data-theme="comic-grape"][data-style="caption"] .chat-message, [data-theme="comic-grape"][data-style="sidebar"] .chat-message { box-shadow:2px 2px 0 var(--shadowc); }
 [data-theme="comic-grape"][data-style="glass"] .chat-message { background:color-mix(in srgb, var(--card) 55%, transparent); border-style:dashed; box-shadow:none; -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); }
 
+/* Keep the three controller previews and the live overlay on one layout contract. */
+[data-theme="night"] {
+  --layout-stage:#080c14;
+  --layout-tt:#5f98ff;
+  --layout-yt:#ff9857;
+  --layout-member:#69cf82;
+  --layout-gold:#ffd66b;
+  --layout-accent:#5f98ff;
+  --layout-accent-light:#c9d2e6;
+  --layout-name:#c9d2e6;
+  --layout-text:#fff;
+  --layout-card:rgba(255,255,255,.065);
+  --layout-special:rgba(105,207,130,.12);
+  --layout-halo:0 1px 2px rgba(0,0,0,.88),0 0 7px rgba(0,0,0,.62);
+}
+[data-theme="broadcast"] {
+  --layout-stage:#0e1118;
+  --layout-tt:#25f4ee;
+  --layout-yt:#ff4157;
+  --layout-member:#7cdb8e;
+  --layout-gold:#ffbf1f;
+  --layout-accent:#ffbf1f;
+  --layout-accent-light:#f5f7fb;
+  --layout-name:#f5f7fb;
+  --layout-text:#fff;
+  --layout-card:rgba(25,31,43,.82);
+  --layout-special:rgba(124,219,142,.13);
+  --layout-halo:0 1px 2px rgba(0,0,0,.74);
+}
+[data-theme="comic-grape"] {
+  --layout-stage:#1a0b2c;
+  --layout-tt:#7de0ff;
+  --layout-yt:#ff9a5b;
+  --layout-member:#7fe099;
+  --layout-gold:#ffd85a;
+  --layout-accent:#a855f7;
+  --layout-accent-light:#c084fc;
+  --layout-name:#d9c9f0;
+  --layout-text:#f7f0ff;
+  --layout-card:rgba(42,17,71,.72);
+  --layout-special:rgba(127,224,153,.13);
+  --layout-halo:2px 2px 0 #0c0320;
+}
+
+[data-style="minimal"] .chat-list,
+[data-style="glass"] .chat-list,
+[data-style="caption"] .chat-list {
+  gap:6px;
+  -webkit-mask-image:none;
+  mask-image:none;
+}
+
+[data-style="minimal"] .chat-message,
+[data-style="glass"] .chat-message,
+[data-style="caption"] .chat-message {
+  width:auto;
+  max-width:100%;
+  margin:0;
+  border:0;
+  box-shadow:none;
+  animation-name:chatIn;
+}
+[data-style="minimal"] .chat-message::before,
+[data-style="glass"] .chat-message::before,
+[data-style="caption"] .chat-message::before { content:none; }
+[data-style="minimal"] .chat-meta,
+[data-style="glass"] .chat-meta,
+[data-style="caption"] .chat-meta { gap:4px; }
+[data-style="minimal"] .platform-chip,
+[data-style="glass"] .platform-chip,
+[data-style="caption"] .platform-chip {
+  display:inline;
+  width:auto;
+  height:auto;
+  padding:0;
+  border:0;
+  border-radius:0;
+  color:var(--layout-name);
+  background:none;
+  box-shadow:none;
+  font-family:"Sora",sans-serif;
+  font-size:calc(10px * var(--chat-font-scale));
+  font-weight:800;
+  line-height:1.1;
+}
+[data-style="minimal"] .platform-chip[data-platform="tiktok"],
+[data-style="glass"] .platform-chip[data-platform="tiktok"],
+[data-style="caption"] .platform-chip[data-platform="tiktok"] {
+  width:auto;
+  color:var(--layout-tt);
+  background:none;
+}
+[data-style="minimal"] .platform-chip[data-platform="youtube"],
+[data-style="glass"] .platform-chip[data-platform="youtube"],
+[data-style="caption"] .platform-chip[data-platform="youtube"] {
+  width:auto;
+  color:var(--layout-yt);
+  background:none;
+}
+[data-style="minimal"] .username,
+[data-style="glass"] .username,
+[data-style="caption"] .username {
+  color:var(--layout-name);
+  font-family:"Sora",sans-serif;
+  font-size:calc(12px * var(--chat-font-scale));
+  font-weight:800;
+  line-height:1.1;
+  text-transform:none;
+  letter-spacing:0;
+}
+[data-style="minimal"] .message-text,
+[data-style="glass"] .message-text,
+[data-style="caption"] .message-text {
+  color:var(--layout-text);
+  font-family:"DM Sans",sans-serif;
+  font-size:calc(15px * var(--chat-font-scale));
+  font-weight:600;
+  line-height:1.24;
+  text-shadow:var(--layout-halo);
+}
+[data-style="minimal"] .status-pill,
+[data-style="glass"] .status-pill,
+[data-style="caption"] .status-pill {
+  display:inline;
+  width:auto;
+  height:auto;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  color:var(--layout-member);
+  background:none;
+  box-shadow:none;
+  font-family:"Sora",sans-serif;
+  font-size:calc(9px * var(--chat-font-scale));
+  font-weight:800;
+  line-height:1.1;
+  letter-spacing:.05em;
+  text-shadow:var(--layout-halo);
+}
+
+[data-style="minimal"] .chat-zone { padding:12px 10px; }
+[data-style="minimal"] .chat-message {
+  padding:6px 8px 6px 10px;
+  border-left:2px solid var(--layout-name);
+  border-radius:0;
+  background:transparent;
+}
+[data-style="minimal"] .chat-message[data-platform="tiktok"] { border-left-color:var(--layout-tt); }
+[data-style="minimal"] .chat-message[data-platform="youtube"] { border-left-color:var(--layout-yt); }
+[data-style="minimal"] .username {
+  font-family:"Rubik",sans-serif;
+  font-size:calc(11px * var(--chat-font-scale));
+  font-weight:500;
+  text-shadow:none;
+}
+[data-style="minimal"] .chat-message[data-platform="tiktok"] .username { color:var(--layout-tt); }
+[data-style="minimal"] .chat-message[data-platform="youtube"] .username { color:var(--layout-yt); }
+[data-style="minimal"] .message-text {
+  font-size:calc(14px * var(--chat-font-scale));
+  font-weight:500;
+  line-height:1.25;
+  text-shadow:none;
+}
+[data-style="minimal"] .chat-message.is-superfan,
+[data-style="minimal"] .chat-message.is-member {
+  border-left-color:var(--layout-member);
+  background:var(--layout-special);
+}
+[data-style="minimal"] .status-pill {
+  padding:0;
+  border-radius:0;
+  color:var(--layout-member);
+  background:none;
+  box-shadow:none;
+  font-size:calc(9px * var(--chat-font-scale));
+}
+
+[data-style="glass"] .chat-zone {
+  padding:10px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+[data-style="glass"] .chat-message {
+  padding:5px 8px;
+  border-left:2px solid var(--layout-name);
+  border-radius:6px;
+  background:var(--layout-card);
+}
+[data-style="glass"] .chat-message[data-platform="tiktok"] { border-left-color:var(--layout-tt); }
+[data-style="glass"] .chat-message[data-platform="youtube"] { border-left-color:var(--layout-yt); }
+[data-style="glass"] .chat-message[data-platform="tiktok"] .username { color:var(--layout-tt); }
+[data-style="glass"] .chat-message[data-platform="youtube"] .username { color:var(--layout-yt); }
+[data-style="glass"] .chat-message.is-superfan,
+[data-style="glass"] .chat-message.is-member {
+  border-left-color:var(--layout-member);
+  background:var(--layout-special);
+}
+[data-style="glass"] .chat-message:is(.is-superfan,.is-member) .username {
+  color:var(--layout-member);
+}
+
+[data-style="caption"] .chat-zone {
+  padding:12px 4px;
+  background:transparent;
+}
+[data-style="caption"] .chat-message {
+  padding:3px 0;
+  border-left:0;
+  border-radius:0;
+  background:transparent;
+}
+[data-style="caption"] .chat-message[data-platform="tiktok"] .username { color:var(--layout-tt); }
+[data-style="caption"] .chat-message[data-platform="youtube"] .username { color:var(--layout-yt); }
+[data-style="caption"] .message-text {
+  font-size:calc(15px * var(--chat-font-scale));
+  text-shadow:var(--layout-halo);
+}
+[data-style="caption"] .chat-message.is-superfan,
+[data-style="caption"] .chat-message.is-member {
+  background:transparent;
+}
+[data-style="caption"] .chat-message:is(.is-superfan,.is-member) .username {
+  color:var(--layout-member);
+}
+
+/* Match or outrank the older theme+style selectors above. */
+[data-theme][data-style="minimal"] .platform-chip,
+[data-theme][data-style="minimal"] .platform-chip[data-platform="tiktok"],
+[data-theme][data-style="minimal"] .platform-chip[data-platform="youtube"],
+[data-theme][data-style="glass"] .platform-chip,
+[data-theme][data-style="glass"] .platform-chip[data-platform="tiktok"],
+[data-theme][data-style="glass"] .platform-chip[data-platform="youtube"],
+[data-theme][data-style="caption"] .platform-chip,
+[data-theme][data-style="caption"] .platform-chip[data-platform="tiktok"],
+[data-theme][data-style="caption"] .platform-chip[data-platform="youtube"] {
+  width:auto;
+  height:auto;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:none;
+  box-shadow:none;
+}
+[data-theme][data-style="minimal"] .chat-message {
+  padding:6px 8px 6px 10px;
+  border:0;
+  border-left:2px solid var(--layout-name);
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+[data-theme][data-style="minimal"] .chat-message[data-platform="tiktok"] { border-left-color:var(--layout-tt); }
+[data-theme][data-style="minimal"] .chat-message[data-platform="youtube"] { border-left-color:var(--layout-yt); }
+[data-theme][data-style="minimal"] .chat-message.is-superfan,
+[data-theme][data-style="minimal"] .chat-message.is-member {
+  border-left-color:var(--layout-member);
+  background:var(--layout-special);
+}
+[data-theme][data-style="glass"] .chat-zone {
+  padding:10px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+[data-theme][data-style="glass"] .chat-message {
+  padding:5px 8px;
+  border:0;
+  border-left:2px solid var(--layout-name);
+  border-radius:6px;
+  background:var(--layout-card);
+  box-shadow:none;
+}
+[data-theme][data-style="glass"] .chat-message[data-platform="tiktok"] { border-left-color:var(--layout-tt); }
+[data-theme][data-style="glass"] .chat-message[data-platform="youtube"] { border-left-color:var(--layout-yt); }
+[data-theme][data-style="glass"] .chat-message.is-superfan,
+[data-theme][data-style="glass"] .chat-message.is-member {
+  border-left-color:var(--layout-member);
+  background:var(--layout-special);
+}
+[data-theme][data-style="caption"] .chat-message {
+  padding:3px 0;
+  border:0;
+  border-left:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+[data-theme][data-style="caption"] .chat-message::before { content:none; }
+[data-theme][data-style="caption"] .chat-message.is-superfan,
+[data-theme][data-style="caption"] .chat-message.is-member {
+  background:transparent;
+}
+[data-theme][data-style="minimal"] .chat-message[data-platform="tiktok"] .username,
+[data-theme][data-style="glass"] .chat-message[data-platform="tiktok"] .username,
+[data-theme][data-style="caption"] .chat-message[data-platform="tiktok"] .username {
+  color:var(--layout-tt);
+}
+[data-theme][data-style="minimal"] .chat-message[data-platform="youtube"] .username,
+[data-theme][data-style="glass"] .chat-message[data-platform="youtube"] .username,
+[data-theme][data-style="caption"] .chat-message[data-platform="youtube"] .username {
+  color:var(--layout-yt);
+}
+[data-theme][data-style="minimal"] .chat-message:is(.is-superfan,.is-member,.is-fanclub) .username,
+[data-theme][data-style="glass"] .chat-message:is(.is-superfan,.is-member,.is-fanclub) .username,
+[data-theme][data-style="caption"] .chat-message:is(.is-superfan,.is-member,.is-fanclub) .username {
+  color:var(--layout-member);
+}
+[data-theme][data-style="minimal"] .status-pill,
+[data-theme][data-style="minimal"] .status-pill.fanclub,
+[data-theme][data-style="glass"] .status-pill,
+[data-theme][data-style="glass"] .status-pill.fanclub,
+[data-theme][data-style="caption"] .status-pill,
+[data-theme][data-style="caption"] .status-pill.fanclub {
+  display:inline;
+  width:auto;
+  height:auto;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  color:var(--layout-member);
+  background:none;
+  box-shadow:none;
+  font-size:calc(9px * var(--chat-font-scale));
+  line-height:1.1;
+  text-shadow:var(--layout-halo);
+}
+
 </style>
 </head>
 <body>
-<div id="jjx-chat-overlay" class="jjx-chat-overlay" data-theme="night" data-style="neon">
+<div id="jjx-chat-overlay" class="jjx-chat-overlay" data-theme="night" data-style="minimal">
   <div id="event-zone" class="event-zone"></div>
   <div id="chat-zone" class="chat-zone">
     <div id="chat-list" class="chat-list"></div>
   </div>
 </div>
+<div id="jjx-audience-widget" class="audience-widget" aria-label="Live audience metrics">
+  <div id="jjx-yt-audience-row" class="audience-platform youtube" data-tier="0">
+    <span class="audience-chevron" aria-hidden="true">
+      <svg width="28" height="17" viewBox="0 0 22 13"><polyline points="3,11 11,3 19,11" fill="none" stroke="#3ecf6e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+    </span>
+    <div class="audience-rail">
+      <span class="audience-brand" aria-label="YouTube">
+        <svg width="30" height="21" viewBox="0 0 28 20" aria-hidden="true"><path d="M27.4 3.1A3.5 3.5 0 0 0 25 .7C22.8.1 14 .1 14 .1S5.2.1 3 .7A3.5 3.5 0 0 0 .6 3.1 36.6 36.6 0 0 0 0 10a36.6 36.6 0 0 0 .6 6.9A3.5 3.5 0 0 0 3 19.3c2.2.6 11 .6 11 .6s8.8 0 11-.6a3.5 3.5 0 0 0 2.4-2.4A36.6 36.6 0 0 0 28 10a36.6 36.6 0 0 0-.6-6.9z" fill="#FF0000"></path><path d="M11.2 14.3 18.5 10l-7.3-4.3z" fill="#fff"></path></svg>
+      </span>
+      <span id="jjx-yt-metric-value" class="audience-value">—</span>
+    </div>
+  </div>
+  <div id="jjx-tt-audience-row" class="audience-platform tiktok" data-tier="0">
+    <span class="audience-chevron" aria-hidden="true">
+      <svg width="28" height="17" viewBox="0 0 22 13"><polyline points="3,11 11,3 19,11" fill="none" stroke="#3ecf6e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+    </span>
+    <div class="audience-rail">
+      <span class="audience-brand" aria-label="TikTok">
+        <svg width="22" height="25" viewBox="0 0 22 25" aria-hidden="true"><path d="M15.7 0h-4.1v16.4a3.5 3.5 0 1 1-3.5-3.5c.4 0 .7 0 1 .2V8.9a7.6 7.6 0 1 0 6.6 7.5V8.2a9.6 9.6 0 0 0 5.6 1.8V5.9A5.7 5.7 0 0 1 15.7 0z" fill="#25F4EE"></path><path d="M16.7 1h-4.1v16.4a3.5 3.5 0 1 1-3.5-3.5c.4 0 .7 0 1 .2V9.9a7.6 7.6 0 1 0 6.6 7.5V9.2a9.6 9.6 0 0 0 5.6 1.8V6.9A5.7 5.7 0 0 1 16.7 1z" fill="#FE2C55"></path><path d="M16.2.5h-4.1v16.4a3.5 3.5 0 1 1-3.5-3.5c.4 0 .7 0 1 .2V9.4a7.6 7.6 0 1 0 6.6 7.5V8.7a9.6 9.6 0 0 0 5.6 1.8V6.4A5.7 5.7 0 0 1 16.2.5z" fill="#1a1a1a"></path></svg>
+      </span>
+      <span id="jjx-tt-metric-value" class="audience-value">—</span>
+    </div>
+  </div>
+</div>
 
 <script>
 const CONFIG = {
-  defaultStyle: "neon",
+  defaultStyle: "minimal",
   position: {
     top: 134,
     right: 34,
@@ -290,7 +779,6 @@ const CONFIG = {
   chat: {
     maxMessages: 3,
     maxMessagesCap: 30,   // hard upper limit for maxMessages
-    maxChars: 0,          // 0 = show full message; >0 = truncate to N characters
     messageLifetime: 8500,
     clampLines: 2
   },
@@ -313,6 +801,14 @@ const CONFIG = {
     connectWebSocket: true,
     socketBase: "wss://io.socialstream.ninja/join"
   },
+  audience: {
+    enabled: true,
+    left: 945,   // 1080 - 135: rails sit flush against the right screen edge
+    top: 700,
+    scale: 1,
+    surgeEnabled: true,
+    surgeScore: 32
+  },
   ably: {
     key: null,
     channel: "splat-overlay",
@@ -320,16 +816,13 @@ const CONFIG = {
   }
 };
 
-const STYLE_PRESETS = ["sticker", "splat", "arcade", "chips", "comms", "spotlight", "glass", "caption", "sidebar", "neon", "bubble", "minimal"];
-const THEME_PRESETS = ["night", "broadcast", "comic", "comic-noir", "comic-midnight", "comic-grape"];
+const STYLE_PRESETS = ["minimal", "glass", "caption"];
+const THEME_PRESETS = ["night", "broadcast", "comic-grape"];
 const DEFAULT_THEME = "night";
 const THEME_FONT = {
-  night: '"DM Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif',
-  broadcast: '"Barlow Condensed", "Oswald", "Arial Narrow", Arial, sans-serif',
-  comic: '"Fredoka", "Baloo 2", "Arial Rounded MT Bold", Arial, sans-serif',
-  "comic-noir": '"Fredoka", "Baloo 2", "Arial Rounded MT Bold", Arial, sans-serif',
-  "comic-midnight": '"Fredoka", "Baloo 2", "Arial Rounded MT Bold", Arial, sans-serif',
-  "comic-grape": '"Fredoka", "Baloo 2", "Arial Rounded MT Bold", Arial, sans-serif'
+  night: '"DM Sans", system-ui, -apple-system, "Segoe UI", Arial, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif',
+  broadcast: '"Barlow Condensed", "Oswald", "Arial Narrow", Arial, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif',
+  "comic-grape": '"Fredoka", "Baloo 2", "Arial Rounded MT Bold", Arial, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif'
 };
 function applyThemeFont(theme) {
   const fam = THEME_FONT[theme];
@@ -343,13 +836,56 @@ let ssnSocket = null;
 let ablyClient = null;
 let ablyChannel = null;
 let lastLikeMilestone = 0;
+let producerStateSocket = null;
+let producerStateReconnectTimer = null;
+let producerStateConnected = false;
+let audienceSampleTimer = null;
+const fallbackJoinTimes = [];
+const AUDIENCE_PLATFORMS = ["youtube", "tiktok"];
+const audienceMetrics = {
+  tiktokViewers: null,
+  youtubeViewers: null
+};
+
+// Surge model (per platform, independent) — see the design handoff.
+// Join rate is derived from the viewer count itself: (now − 10s ago) scaled to joins/min.
+const SURGE = {
+  sampleMs: 500,
+  windowMs: 10000,     // look-back used to derive the join rate
+  minWindowMs: 5000,   // below this much history the rate isn't trustworthy yet
+  threshold: 90,       // joins/min on the combined scale
+  platformFactor: .55, // per-platform trigger = threshold * this (≈50/min)
+  tier2Ratio: 1.6,
+  tier3Ratio: 2.6,
+  onMs: 5000,          // hysteresis: sustained above trigger before surging
+  offMs: 10000,        // sustained below trigger before clearing
+  externalMs: 8000     // how long a Producer Dock / join-burst signal stands in
+};
+const audienceSurgeState = {
+  youtube: newSurgeState(),
+  tiktok: newSurgeState()
+};
+function newSurgeState() {
+  return { history: [], rate: 0, ratio: 0, surging: false, aboveSince: null, belowSince: null, externalUntil: 0, tier: 0 };
+}
 
 const overlay = document.getElementById("jjx-chat-overlay");
+const audienceWidget = document.getElementById("jjx-audience-widget");
+const audienceRows = {
+  tiktok: document.getElementById("jjx-tt-audience-row"),
+  youtube: document.getElementById("jjx-yt-audience-row")
+};
+const audienceValues = {
+  tiktok: document.getElementById("jjx-tt-metric-value"),
+  youtube: document.getElementById("jjx-yt-metric-value")
+};
 const eventZone = document.getElementById("event-zone");
 const chatZone = document.getElementById("chat-zone");
 const chatList = document.getElementById("chat-list");
 const params = new URLSearchParams(location.search);
-const SETTINGS_STORAGE_KEY = "jjxlive-chat-box-settings-v1";
+const isControllerPreview = params.get("preview") === "1";
+const SETTINGS_STORAGE_KEY = "jjxlive-chat-controller-settings-v1";
+const LEGACY_SETTINGS_STORAGE_KEY = "jjxlive-chat-box-settings-v1";
 
 function param(name, fallback) {
   const direct = params.get(name);
@@ -376,7 +912,6 @@ function applyUrlParams() {
   CONFIG.events.enabled = asBool(param("events", null), CONFIG.events.enabled);
   CONFIG.events.duration = Number(param("eventDuration", CONFIG.events.duration)) || CONFIG.events.duration;
   CONFIG.chat.maxMessages = Number(param("maxMessages", CONFIG.chat.maxMessages)) || CONFIG.chat.maxMessages;
-  CONFIG.chat.maxChars = Math.max(0, Number(param("maxChars", CONFIG.chat.maxChars)) || 0);
   CONFIG.chat.clampLines = Math.max(1, Number(param("lines", CONFIG.chat.clampLines)) || CONFIG.chat.clampLines);
   CONFIG.position.top = Number(param("top", CONFIG.position.top)) || CONFIG.position.top;
   CONFIG.position.right = Number(param("right", CONFIG.position.right)) || CONFIG.position.right;
@@ -385,7 +920,11 @@ function applyUrlParams() {
   const fontScale = Number(param("fontScale", 1)) || 1;
   const font = param("font", "");
   const bgOpacity = Number(param("bgOpacity", 1));
-  const textOpacity = Number(param("textOpacity", 1));
+  CONFIG.audience.enabled = asBool(param("audience", null), CONFIG.audience.enabled);
+  CONFIG.audience.left = Number(param("audienceX", CONFIG.audience.left));
+  CONFIG.audience.top = Number(param("audienceY", CONFIG.audience.top));
+  CONFIG.audience.scale = Number(param("audienceScale", CONFIG.audience.scale)) || CONFIG.audience.scale;
+  CONFIG.audience.surgeEnabled = asBool(param("audienceSurge", null), CONFIG.audience.surgeEnabled);
 
   document.documentElement.style.setProperty("--overlay-top", `${CONFIG.position.top}px`);
   document.documentElement.style.setProperty("--overlay-right", `${CONFIG.position.right}px`);
@@ -395,18 +934,285 @@ function applyUrlParams() {
   document.documentElement.style.setProperty("--event-height", `${CONFIG.position.eventHeight}px`);
   document.documentElement.style.setProperty("--event-gap", `${CONFIG.position.eventGap}px`);
   document.documentElement.style.setProperty("--clamp-lines", CONFIG.chat.clampLines);
-  applyOverlaySettings({ fontScale, font, bgOpacity, textOpacity });
+  applyOverlaySettings({
+    fontScale,
+    font,
+    bgOpacity,
+    audienceEnabled: CONFIG.audience.enabled,
+    audienceLeft: CONFIG.audience.left,
+    audienceTop: CONFIG.audience.top,
+    audienceScale: CONFIG.audience.scale,
+    audienceSurgeEnabled: CONFIG.audience.surgeEnabled
+  });
 }
 
 function safeFontFamily(font) {
   const allowed = {
-    rounded: '"Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif',
-    trebuch: '"Trebuchet MS", Arial, sans-serif',
-    arial: 'Arial, Helvetica, sans-serif',
-    impact: 'Impact, "Arial Black", sans-serif',
-    mono: '"Lucida Console", "Courier New", monospace'
+    rounded: '"Arial Rounded MT Bold", "Trebuchet MS", Arial, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif',
+    trebuch: '"Trebuchet MS", Arial, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif',
+    arial: 'Arial, Helvetica, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif',
+    impact: 'Impact, "Arial Black", "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif',
+    mono: '"Lucida Console", "Courier New", "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", monospace'
   };
   return allowed[String(font || "").toLowerCase()] || "";
+}
+
+function numericAudienceValue(value) {
+  if (value == null || value === "") return null;
+  const parsed = Number(String(value).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function audiencePath(data, path) {
+  return path.split(".").reduce((value, key) => value && typeof value === "object" ? value[key] : null, data);
+}
+
+function firstAudienceNumber(data, paths) {
+  for (const path of paths) {
+    const value = numericAudienceValue(audiencePath(data, path));
+    if (value != null) return value;
+  }
+  return null;
+}
+
+// Abbreviation rules are fixed by the design: exact under 1K, two decimals with
+// trailing zeros stripped up to 9,999, one decimal from 10K.
+function formatAudienceValue(value) {
+  if (value == null) return "—";
+  const n = Math.round(value);
+  if (n < 1000) return String(n);
+  const trim = text => text.replace(/\.?0+$/, "");
+  if (n < 10000) return `${trim((n / 1000).toFixed(2))}K`;
+  if (n < 1000000) return `${trim((n / 1000).toFixed(1))}K`;
+  return `${trim((n / 1000000).toFixed(1))}M`;
+}
+
+function audienceViewers(platform) {
+  return platform === "tiktok" ? audienceMetrics.tiktokViewers : audienceMetrics.youtubeViewers;
+}
+
+function renderAudienceMetrics() {
+  AUDIENCE_PLATFORMS.forEach(platform => {
+    const el = audienceValues[platform];
+    if (el) el.textContent = formatAudienceValue(audienceViewers(platform));
+  });
+  updateAudienceAria();
+}
+
+function updateAudienceAria() {
+  const surging = AUDIENCE_PLATFORMS.filter(platform => audienceSurgeState[platform].tier > 0);
+  audienceWidget.setAttribute(
+    "aria-label",
+    `YouTube viewers ${formatAudienceValue(audienceMetrics.youtubeViewers)}; ` +
+    `TikTok viewers ${formatAudienceValue(audienceMetrics.tiktokViewers)}` +
+    (surging.length ? `; ${surging.join(" and ")} surging` : "")
+  );
+}
+
+// Rate over the widest sample that is at least minWindowMs old, normalised to joins/min.
+function audienceJoinRate(history, now, current) {
+  if (!history.length) return 0;
+  let ref = history[0];
+  for (const sample of history) {
+    if (now - sample.t < SURGE.windowMs) break;
+    ref = sample;
+  }
+  const elapsed = now - ref.t;
+  if (elapsed < SURGE.minWindowMs) return 0;
+  return Math.max(0, (current - ref.v) * 60000 / elapsed);
+}
+
+function evaluateAudienceSurge(state, now) {
+  const trigger = SURGE.threshold * SURGE.platformFactor;
+  const hot = state.rate >= trigger;
+  if (hot) {
+    if (state.aboveSince == null) state.aboveSince = now;
+    state.belowSince = null;
+  } else {
+    if (state.belowSince == null) state.belowSince = now;
+    state.aboveSince = null;
+  }
+  if (!state.surging && hot && now - state.aboveSince >= SURGE.onMs) state.surging = true;
+  if (state.surging && !hot && now - state.belowSince >= SURGE.offMs) state.surging = false;
+
+  state.ratio = state.rate / trigger;
+  const on = CONFIG.audience.surgeEnabled && (state.surging || now < state.externalUntil);
+  state.tier = !on
+    ? 0
+    : state.ratio >= SURGE.tier3Ratio ? 3
+    : state.ratio >= SURGE.tier2Ratio ? 2
+    : 1;
+}
+
+function sampleAudienceSurge() {
+  const now = Date.now();
+  AUDIENCE_PLATFORMS.forEach(platform => {
+    const state = audienceSurgeState[platform];
+    const current = audienceViewers(platform);
+    if (current == null) {
+      state.history.length = 0;
+      state.rate = 0;
+    } else {
+      state.history.push({ t: now, v: current });
+      while (state.history.length > 2 && now - state.history[0].t > SURGE.windowMs * 2) state.history.shift();
+      state.rate = audienceJoinRate(state.history, now, current);
+    }
+    evaluateAudienceSurge(state, now);
+  });
+  renderAudienceSurge();
+}
+
+// Only touch the DOM when a tier actually changes — reassigning data-tier every
+// tick would restart the shake/pulse keyframes and make them stutter.
+function renderAudienceSurge() {
+  let changed = false;
+  AUDIENCE_PLATFORMS.forEach(platform => {
+    const row = audienceRows[platform];
+    if (!row) return;
+    const next = String(audienceSurgeState[platform].tier);
+    if (row.dataset.tier !== next) {
+      row.dataset.tier = next;
+      changed = true;
+    }
+  });
+  if (changed) updateAudienceAria();
+}
+
+// External surge signals (Producer Dock pulse, or the TikTok join-burst fallback)
+// stand in for the local join-rate model when it has nothing to go on. They only
+// ever assert tier 1 — the tier ramp needs a real rate.
+function setAudienceSurge(active, pulse = null, platform = null) {
+  const on = Boolean(active && CONFIG.audience.surgeEnabled);
+  const until = on ? Date.now() + SURGE.externalMs : 0;
+  (platform ? [platform] : AUDIENCE_PLATFORMS).forEach(key => {
+    audienceSurgeState[key].externalUntil = until;
+    evaluateAudienceSurge(audienceSurgeState[key], Date.now());
+  });
+  renderAudienceSurge();
+}
+
+function applyProducerPulse(pulse) {
+  if (!pulse || typeof pulse !== "object") return;
+  const score = numericAudienceValue(pulse.score) || 0;
+  const momentum = String(pulse.momentum || "steady").toLowerCase();
+  const primaryDriver = String(pulse.primaryDriver || "").toLowerCase();
+  const components = Array.isArray(pulse.components) ? pulse.components : [];
+  const componentScore = key => {
+    const component = components.find(item => String(item?.key || "").toLowerCase() === key);
+    return numericAudienceValue(component?.score) || 0;
+  };
+  const joinScore = componentScore("joins");
+  const viewerScore = componentScore("viewers");
+  const joinOrViewerDriven = /join|viewer/.test(primaryDriver) || joinScore >= CONFIG.audience.surgeScore || viewerScore >= CONFIG.audience.surgeScore;
+  const active = momentum === "rising" && joinOrViewerDriven && Math.max(score, joinScore, viewerScore) >= CONFIG.audience.surgeScore;
+  setAudienceSurge(active, { score });
+}
+
+function applyProducerSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return;
+  const tiktokViewers = numericAudienceValue(snapshot.metrics?.tiktok?.viewer_count?.currentValue);
+  const youtubeViewers = numericAudienceValue(snapshot.metrics?.youtube?.viewer_count?.currentValue);
+  updateAudienceMetrics({
+    tiktokViewers,
+    youtubeViewers
+  });
+  applyProducerPulse(snapshot.pulse);
+}
+
+function producerStateSocketUrl() {
+  try {
+    const requestedDock = param("dock", "");
+    const origin = requestedDock
+      ? new URL(requestedDock, location.href).origin
+      : /^(127\.0\.0\.1|localhost)$/i.test(location.hostname)
+        ? location.origin
+        : "http://127.0.0.1:4317";
+    return `${origin.replace(/^http/i, "ws")}/ws`;
+  } catch (_) {
+    return "ws://127.0.0.1:4317/ws";
+  }
+}
+
+function connectProducerState() {
+  window.clearTimeout(producerStateReconnectTimer);
+  if (producerStateSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(producerStateSocket.readyState)) return;
+  try {
+    producerStateSocket = new WebSocket(producerStateSocketUrl());
+  } catch (_) {
+    producerStateReconnectTimer = window.setTimeout(connectProducerState, 3000);
+    return;
+  }
+  producerStateSocket.onopen = () => {
+    producerStateConnected = true;
+  };
+  producerStateSocket.onmessage = event => {
+    let message;
+    try { message = JSON.parse(event.data); } catch (_) { return; }
+    if (message?.type === "snapshot") applyProducerSnapshot(message.payload);
+  };
+  producerStateSocket.onclose = () => {
+    producerStateConnected = false;
+    producerStateReconnectTimer = window.setTimeout(connectProducerState, 3000);
+  };
+  producerStateSocket.onerror = () => {
+    producerStateConnected = false;
+    try { producerStateSocket.close(); } catch (_) {}
+  };
+}
+
+function trackFallbackJoin(raw) {
+  if (producerStateConnected || !CONFIG.audience.surgeEnabled) return;
+  const data = unwrapAudiencePayload(raw);
+  if (!data) return;
+  const platform = platformKey(data.platform || data.source || data.type || data.site || "");
+  const event = String(data.event || data.action || data.typeEvent || "").toLowerCase();
+  if (platform !== "tiktok" || !["join", "roomjoin", "enter"].includes(event)) return;
+  const now = Date.now();
+  fallbackJoinTimes.push(now);
+  while (fallbackJoinTimes.length && now - fallbackJoinTimes[0] > 15000) fallbackJoinTimes.shift();
+  if (fallbackJoinTimes.length < 6) return;
+  // No clear-timer needed: the assertion carries its own SURGE.externalMs expiry.
+  setAudienceSurge(true, { score: Math.min(100, fallbackJoinTimes.length * 10) }, "tiktok");
+}
+
+function unwrapAudiencePayload(raw) {
+  let data = raw;
+  if (typeof data === "string") {
+    try { data = JSON.parse(data); } catch (_) { return null; }
+  }
+  if (!data || typeof data !== "object") return null;
+  if (data.detail && typeof data.detail === "object") data = data.detail;
+  if (data.action === "content" && data.value) {
+    try { data = JSON.parse(data.value); } catch (_) {}
+  }
+  return data && typeof data === "object" ? data : null;
+}
+
+function updateAudienceMetrics(raw) {
+  const data = unwrapAudiencePayload(raw);
+  if (!data) return;
+  const platform = platformKey(data.platform || data.source || data.type || data.site || "");
+
+  const direct = {
+    tiktokViewers: firstAudienceNumber(data, ["tiktokViewers", "ttViewers"]),
+    youtubeViewers: firstAudienceNumber(data, ["youtubeViewers", "ytViewers"])
+  };
+
+  Object.entries(direct).forEach(([key, value]) => {
+    if (value != null) audienceMetrics[key] = value;
+  });
+
+  const viewers = firstAudienceNumber(data, [
+    "viewerCount", "viewers", "liveViewers", "concurrentViewers", "userCount", "roomUserCount",
+    "roomStats.viewerCount", "roomStats.userCount", "roomInfo.userCount",
+    "statistics.concurrentViewers", "stats.viewers"
+  ]);
+  if (viewers != null) {
+    if (platform === "tiktok") audienceMetrics.tiktokViewers = viewers;
+    if (platform === "youtube") audienceMetrics.youtubeViewers = viewers;
+  }
+
+  renderAudienceMetrics();
 }
 
 function applyOverlaySettings(settings = {}) {
@@ -424,10 +1230,6 @@ function applyOverlaySettings(settings = {}) {
   if (settings.bgOpacity != null) {
     const bgOpacity = Math.max(.1, Math.min(1, Number(settings.bgOpacity)));
     document.documentElement.style.setProperty("--bg-opacity", String(bgOpacity));
-  }
-  if (settings.textOpacity != null) {
-    const textOpacity = Math.max(.3, Math.min(1, Number(settings.textOpacity)));
-    document.documentElement.style.setProperty("--text-opacity", String(textOpacity));
   }
   if (settings.fontSize != null) {
     const scale = Math.max(.75, Math.min(1.5, Number(settings.fontSize) / 15 || 1));
@@ -463,9 +1265,6 @@ function applyOverlaySettings(settings = {}) {
     CONFIG.chat.clampLines = lines;
     document.documentElement.style.setProperty("--clamp-lines", String(lines));
   }
-  if (settings.maxChars != null) {
-    CONFIG.chat.maxChars = Math.max(0, Math.min(600, Math.round(Number(settings.maxChars)) || 0));
-  }
   if (settings.maxMessages != null) {
     CONFIG.chat.maxMessages = Math.max(1, Math.min(CONFIG.chat.maxMessagesCap, Number(settings.maxMessages) || CONFIG.chat.maxMessages));
     while (chatQueue.length > CONFIG.chat.maxMessages) {
@@ -482,7 +1281,31 @@ function applyOverlaySettings(settings = {}) {
   if (settings.showJoinsAsEvents != null) {
     CONFIG.events.showJoinsAsEvents = Boolean(settings.showJoinsAsEvents);
   }
-  saveOverlaySettings(settings);
+  if (settings.audienceEnabled != null) {
+    CONFIG.audience.enabled = Boolean(settings.audienceEnabled);
+    audienceWidget.classList.toggle("is-hidden", !CONFIG.audience.enabled);
+  }
+  if (settings.audienceLeft != null) {
+    const left = Math.max(0, Math.min(1080, Number(settings.audienceLeft) || 0));
+    CONFIG.audience.left = left;
+    document.documentElement.style.setProperty("--audience-left", `${left}px`);
+  }
+  if (settings.audienceTop != null) {
+    const top = Math.max(0, Math.min(1890, Number(settings.audienceTop) || 0));
+    CONFIG.audience.top = top;
+    document.documentElement.style.setProperty("--audience-top", `${top}px`);
+  }
+  if (settings.audienceScale != null) {
+    const scale = Math.max(.65, Math.min(1.35, Number(settings.audienceScale) || 1));
+    CONFIG.audience.scale = scale;
+    document.documentElement.style.setProperty("--audience-scale", String(scale));
+  }
+  if (settings.audienceSurgeEnabled != null) {
+    CONFIG.audience.surgeEnabled = Boolean(settings.audienceSurgeEnabled);
+    if (!CONFIG.audience.surgeEnabled) setAudienceSurge(false);
+  }
+  if (settings.audienceMetrics) updateAudienceMetrics(settings.audienceMetrics);
+  if (!isControllerPreview) saveOverlaySettings(settings);
 }
 
 function saveOverlaySettings(settings = {}) {
@@ -491,11 +1314,18 @@ function saveOverlaySettings(settings = {}) {
     ...saved,
     ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value != null && value !== ""))
   };
+  delete next.textOpacity;
+  delete next.maxChars;
   try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
 }
 
 function loadOverlaySettings() {
-  try { return JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "{}") || {}; }
+  try {
+    const saved = localStorage.getItem(SETTINGS_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY) ||
+      "{}";
+    return JSON.parse(saved) || {};
+  }
   catch (_) { return {}; }
 }
 
@@ -505,6 +1335,16 @@ function sanitizeText(value) {
     ">": "&gt;",
     "&": "&amp;"
   }[char]));
+}
+
+function renderUnicodeEmoji(root) {
+  if (!root || !window.twemoji) return;
+  window.twemoji.parse(root, {
+    base: "https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/",
+    folder: "svg",
+    ext: ".svg",
+    className: "emoji"
+  });
 }
 
 const ALLOWED_IMAGE_HOSTS = /(^|\.)(tiktokcdn|ttlivecdn|byteoversea|ibyteimg|akamaized|giphy|tenor|socialstream|ggpht|googleusercontent|ytimg)\.[a-z.]+$/i;
@@ -594,20 +1434,6 @@ function sanitizeMessageContent(value) {
   }
   walk(template.content);
   return template.innerHTML || sanitizeText(raw);
-}
-
-function truncateForDisplay(message, maxChars) {
-  if (!maxChars || maxChars <= 0) return message;
-  const str = String(message ?? "");
-  if (!/</.test(str)) {
-    return str.length > maxChars ? str.slice(0, maxChars).replace(/\s+$/, "") + "…" : str;
-  }
-  // Message contains markup (emotes/stickers): measure visible text length only
-  const tmp = document.createElement("div");
-  tmp.innerHTML = str;
-  const visible = tmp.textContent || "";
-  if (visible.length <= maxChars) return str;
-  return visible.slice(0, maxChars).replace(/\s+$/, "") + "…";
 }
 
 function textBlob(...values) {
@@ -801,6 +1627,8 @@ function normalizeIncomingMessage(raw) {
 }
 
 function handleIncoming(raw) {
+  updateAudienceMetrics(raw);
+  trackFallbackJoin(raw);
   const msg = normalizeIncomingMessage(raw);
   if (msg.kind === "ignore") return;
   if (msg.kind === "event") {
@@ -854,10 +1682,11 @@ function renderChatMessage(item) {
       ${statusHtml}
       <span class="username">${sanitizeText(item.username)}</span>
     </div>
-    <div class="message-text">${sanitizeMessageContent(truncateForDisplay(item.message, CONFIG.chat.maxChars))}</div>
+    <div class="message-text">${sanitizeMessageContent(item.message)}</div>
     ${imageHtml}
   `;
   chatList.appendChild(row);
+  renderUnicodeEmoji(row);
 
   if (overlay.dataset.style === "chips") {
     window.setTimeout(() => removeChatElement(row), CONFIG.chat.messageLifetime);
@@ -898,6 +1727,7 @@ function renderEvent(item) {
       </span>
     </div>
   `;
+  renderUnicodeEmoji(eventZone);
   const duration = ["highGift", "diamondDrop", "bossEvent", "leagueEvent"].includes(item.type)
     ? CONFIG.events.highDuration
     : CONFIG.events.duration;
@@ -916,13 +1746,28 @@ function renderEvent(item) {
 }
 
 function startMockMode() {
+  let mockTt = 128;
+  let mockYt = 42;
+  updateAudienceMetrics({ tiktokViewers: mockTt, youtubeViewers: mockYt });
+  if (asBool(param("surge", null), false)) {
+    // Ramp the counts so the real join-rate model drives the tiers, rather than
+    // faking the surge flag — this exercises the escalation the same way a live
+    // FYP spike would. Expect tier 1 after ~5s of hysteresis, then 2 and 3.
+    let step = 1;
+    mockTimers.push(window.setInterval(() => {
+      step += .06;
+      mockTt += Math.max(1, Math.round(step * (1 + Math.random())));
+      mockYt += Math.max(0, Math.round(step * Math.random()));
+      updateAudienceMetrics({ tiktokViewers: mockTt, youtubeViewers: mockYt });
+    }, 500));
+  }
   const chats = [
-    "LET'S GOOO",
-    "Joe lock in",
-    "Jamie carried",
-    "W stream",
-    "No way haha",
-    "That was clean",
+    "LET'S GOOO 🔥🎉",
+    "Joe lock in 😂",
+    "Jamie carried 🫶🏽✨",
+    "W stream ❤️‍🔥",
+    "No way haha 🐿️",
+    "That was clean 🧑🏾‍🚀",
     "chat behave",
     "sticker check https://media.tenor.com/2roX3uxz_68AAAAM/cat-space.gif",
     "check this https://youtu.be/dQw4w9WgXcQ"
@@ -963,6 +1808,42 @@ function startMockMode() {
   }
   nextChat();
   nextEvent();
+}
+
+function startControllerPreview() {
+  CONFIG.chat.clampLines = Math.max(1, Number(param("lines", 2)) || 2);
+  document.documentElement.style.setProperty("--clamp-lines", String(CONFIG.chat.clampLines));
+
+  addChatMessage({
+    platform: "tiktok",
+    username: "NovaTap",
+    message: "that spin was wild 😂🔥"
+  });
+  addChatMessage({
+    platform: "youtube",
+    username: "RiffRaff",
+    message: "clutch moment 🫶🏽✨",
+    status: { kind: "member", label: "MEMBER" }
+  });
+  addChatMessage({
+    platform: "tiktok",
+    username: "BlueRoom",
+    message: "we are going to space 🧑🏾‍🚀"
+  });
+
+  activeEvent = true;
+  eventZone.className = "event-zone is-visible";
+  eventZone.dataset.eventType = "gift";
+  eventZone.innerHTML = `
+    <div class="event-card">
+      <span class="event-icon">+</span>
+      <span class="event-copy">
+        <span class="event-main">GalaxyAnna sent Galaxy</span>
+        <span class="event-value">Galaxy x1 ✨</span>
+      </span>
+    </div>
+  `;
+  renderUnicodeEmoji(eventZone);
 }
 
 function cycleStyle() {
@@ -1022,14 +1903,32 @@ function connectAblyControls() {
       if (data.kind === "event") showEvent(data.event || { type: "system", text: "Controller test event", icon: "!" });
       else addChatMessage(data.chat || { platform: "tiktok", username: "Controller", message: "Controller test chat" });
     });
+    ablyChannel.subscribe("jjx-audience-metrics", message => {
+      updateAudienceMetrics(message.data || {});
+    });
+    const requestCurrentSettings = () => {
+      ablyChannel.publish("jjx-chat-settings-request", {
+        source: "jjxlive-chat-box",
+        requestedAt: Date.now()
+      }).catch(() => {});
+    };
+    ablyClient.connection.on("connected", requestCurrentSettings);
+    requestCurrentSettings();
   } catch (_) {}
 }
 
 applyUrlParams();
-applyOverlaySettings(loadOverlaySettings());
-if (param("test", "0") === "1") startMockMode();
-connectSocialStreamSocket();
-connectAblyControls();
+if (!isControllerPreview) applyOverlaySettings(loadOverlaySettings());
+if (isControllerPreview) {
+  startControllerPreview();
+} else {
+  renderAudienceMetrics();
+  audienceSampleTimer = window.setInterval(sampleAudienceSurge, SURGE.sampleMs);
+  if (param("test", "0") === "1") startMockMode();
+  connectSocialStreamSocket();
+  connectAblyControls();
+  if (param("test", "0") !== "1") connectProducerState();
+}
 </script>
 </body>
 </html>

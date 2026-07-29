@@ -8,7 +8,8 @@
   GESTURE ENGINE — a control-room page (run it in a normal Chrome window, like the
   dock). It never touches your camera or the TikTok camera chain at all: it screen-
   captures the TIKTOK PROJECTOR WINDOW (you pick it in Chrome's window picker), runs
-  hand + face tracking on those pixels, and publishes tiny one-shot events over Ably:
+  hand + face tracking on those pixels, and publishes tiny one-shot events to the
+  Producer Dock over its local WebSocket:
 
     gesture-event { type: 'finger_heart' | 'clap' | 'head_down' | 'drop_bomb' | 'pet', x, y }
 
@@ -20,210 +21,487 @@
   over the preview (draw it around the actual stream content inside the captured
   window, excluding any window chrome/black bars).
 
-  Three separate Ably channels, split by consumer (Ably bills every message to
-  every ATTACHED client regardless of event name, so a high-frequency stream
-  must not share a channel with an overlay that doesn't use it):
+  The local event bus is split into three channels by consumer:
     - 'gesture-events' → gesture-event{type} — rare one-shots, cheap to share.
         consumers: gesture-fx-overlay.html, feed-jamie-overlay.html, bomb-drop-overlay.html
     - 'jamie-signals'  → body-colliders, fj-active — high-frequency while Feed Jamie is active.
         consumer: feed-jamie-overlay.html ONLY
     - 'ball-signals'   → bomb-colliders, bomb-config — bursty while a bomb is alive.
-        consumer: bomb-drop-overlay.html ONLY
+        consumers: bomb-drop-overlay.html and wheel-overlay.html
+    - 'wheel-interaction' → leased hand positions, body colliders and requested stills.
+        consumer: wheel-overlay.html, active only during an interactive payoff.
 
-  Cost safety: every publish is a one-shot with a per-gesture cooldown (no continuous
-  coordinate streaming — nothing like the old mic firehose), and all publishes run
-  through the same persisted daily cap guard as stream-dock/tracker.
+  Safety: gesture publishes are cooldown-gated, while continuous tracking signals
+  are frequency-limited and change-gated. jjx-core also enforces a local publish
+  rate ceiling as a final backstop.
 
   Keep this window visible (second monitor is ideal) — Chrome throttles hidden tabs,
   which would slow detection to a crawl.
 -->
 <style>
-  :root { --bg:#0d0a16; --panel:#171226; --border:#2c2344; --txt:#e5e1f0; --dim:#8b84a3; --acc:#a78bfa; --green:#4ade80; --danger:#ef4444; }
-  html,body { margin:0; padding:0; background:var(--bg); color:var(--txt); font:13px/1.5 'Segoe UI',sans-serif; }
-  .wrap { max-width:980px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
-  h1 { font-size:17px; margin:0; color:var(--acc); letter-spacing:.04em; }
-  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-  button { background:#241b3d; color:var(--txt); border:1px solid var(--border); border-radius:8px; padding:7px 14px; font-size:13px; font-weight:700; cursor:pointer; }
-  button.primary { background:#7c3aed; border-color:#7c3aed; color:#fff; }
-  button.small { padding:3px 9px; font-size:11px; }
-  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; }
-  .panel h2 { font-size:11px; margin:0 0 8px; color:var(--dim); letter-spacing:.1em; text-transform:uppercase; }
-  #previewWrap { position:relative; width:100%; max-width:640px; }
-  #preview { width:100%; display:block; border-radius:8px; background:#000; cursor:crosshair; }
+  :root {
+    --bg:#090711; --panel:#151020; --panel-2:#1c152b; --panel-3:#241a38;
+    --border:#35284d; --border-bright:#574177; --txt:#f5f2fb; --dim:#a59db7;
+    --acc:#a78bfa; --acc-2:#7c3aed; --green:#4ade80; --amber:#fbbf24;
+    --orange:#fb923c; --cyan:#22d3ee; --danger:#fb7185;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:var(--bg); color:var(--txt); font:14px/1.45 'Segoe UI',system-ui,sans-serif; }
+  body { background:
+    radial-gradient(circle at 15% -10%, rgba(124,58,237,.22), transparent 36rem),
+    radial-gradient(circle at 90% 15%, rgba(34,211,238,.07), transparent 30rem),
+    var(--bg); }
+  button,select,input { font:inherit; }
+  button { background:#281d3d; color:var(--txt); border:1px solid var(--border-bright); border-radius:9px; padding:8px 13px; font-size:12px; font-weight:750; cursor:pointer; transition:.16s ease; }
+  button:hover { border-color:var(--acc); transform:translateY(-1px); }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  button.primary { background:linear-gradient(135deg,#8b5cf6,#6d28d9); border-color:#a78bfa; color:#fff; box-shadow:0 8px 24px rgba(124,58,237,.25); }
+  button.small { padding:6px 10px; font-size:11px; }
+  button.quiet { background:transparent; border-color:var(--border); color:var(--dim); }
+  input[type=checkbox], input[type=radio], input[type=range] { accent-color:var(--acc); }
+  .app-shell { max-width:1440px; margin:0 auto; padding:18px; }
+  .topbar { position:sticky; top:0; z-index:10; padding:14px 16px; background:rgba(12,9,20,.94); border:1px solid var(--border); border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.22); backdrop-filter:blur(14px); }
+  .title-row { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+  h1 { font-size:19px; line-height:1.2; margin:0; color:#c4b5fd; letter-spacing:.035em; }
+  .subtitle { margin:4px 0 0; color:var(--dim); font-size:12px; }
+  .readiness { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+  .status-chip { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 9px; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); color:var(--dim); font-size:11px; font-weight:800; white-space:nowrap; }
+  .status-chip::before { content:''; width:7px; height:7px; border-radius:50%; background:#6b6378; box-shadow:0 0 0 3px rgba(107,99,120,.12); }
+  .status-chip[data-state=ready] { color:#bbf7d0; border-color:rgba(74,222,128,.45); background:rgba(22,101,52,.15); }
+  .status-chip[data-state=ready]::before { background:var(--green); box-shadow:0 0 0 3px rgba(74,222,128,.15); }
+  .status-chip[data-state=working] { color:#fde68a; border-color:rgba(251,191,36,.4); background:rgba(120,53,15,.14); }
+  .status-chip[data-state=working]::before { background:var(--amber); }
+  .status-chip[data-state=error] { color:#fecdd3; border-color:rgba(251,113,133,.45); background:rgba(136,19,55,.14); }
+  .status-chip[data-state=error]::before { background:var(--danger); }
+  .keep-open { display:flex; align-items:center; gap:9px; margin-top:12px; padding:9px 12px; border:1px solid rgba(251,191,36,.35); border-radius:10px; background:rgba(120,53,15,.16); color:#fde68a; font-size:12px; font-weight:700; }
+  .workspace { display:grid; grid-template-columns:minmax(520px,1.08fr) minmax(430px,.92fr); gap:14px; margin-top:14px; align-items:start; }
+  .left-column,.right-column { display:flex; flex-direction:column; gap:14px; min-width:0; }
+  .panel { background:linear-gradient(180deg,rgba(25,18,39,.98),rgba(18,13,29,.98)); border:1px solid var(--border); border-radius:14px; padding:15px; box-shadow:0 14px 36px rgba(0,0,0,.15); }
+  .section-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
+  .eyebrow { color:var(--acc); font-size:10px; font-weight:900; letter-spacing:.13em; text-transform:uppercase; }
+  h2 { margin:2px 0 0; font-size:16px; line-height:1.25; }
   .hint { font-size:11px; color:var(--dim); }
-  label.gest { display:flex; align-items:center; gap:6px; background:#1d1631; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
-  label.gest input { accent-color:var(--acc); }
-  #log { font:11px/1.6 monospace; color:var(--dim); max-height:150px; overflow-y:auto; }
-  #log .evt { color:var(--green); }
-  .stat { font:11px monospace; color:var(--dim); }
-  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10px; font-weight:800; background:#241b3d; border:1px solid var(--border); }
-  .pill.on { color:var(--green); border-color:var(--green); }
-  input[type=range] { accent-color: var(--acc); }
+  .row { display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+  .setup-flow { display:grid; gap:8px; margin:0 0 12px; padding:0; list-style:none; }
+  .setup-step { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:10px; align-items:center; min-height:52px; padding:9px 10px; background:var(--panel-2); border:1px solid var(--border); border-radius:11px; }
+  .setup-step:has(input:checked) { border-color:var(--acc); box-shadow:inset 3px 0 0 var(--acc); }
+  .step-number { display:grid; place-items:center; width:25px; height:25px; border-radius:50%; background:#302246; color:#d8ccff; font-size:11px; font-weight:900; }
+  .setup-step.complete .step-number { background:rgba(22,101,52,.38); color:#bbf7d0; }
+  .step-title { display:block; font-size:12px; font-weight:800; }
+  .step-copy { display:block; color:var(--dim); font-size:10px; margin-top:1px; }
+  .step-check { justify-self:end; color:var(--dim); font-size:10px; font-weight:850; white-space:nowrap; }
+  .setup-step.complete .step-check { color:var(--green); }
+  .region-radio { display:flex; align-items:flex-start; gap:8px; cursor:pointer; min-width:0; }
+  .region-radio input { margin-top:3px; }
+  #previewWrap { position:relative; width:100%; overflow:hidden; border:1px solid var(--border-bright); border-radius:12px; background:#000; }
+  #preview { width:100%; display:block; background:#000; cursor:crosshair; }
+  .preview-legend { position:absolute; left:9px; bottom:9px; display:flex; flex-wrap:wrap; gap:5px; pointer-events:none; }
+  .legend-item { padding:3px 7px; border-radius:999px; background:rgba(8,6,14,.84); border:1px solid currentColor; font-size:9px; font-weight:800; }
+  .capture-stat { display:flex; justify-content:space-between; gap:10px; margin-top:8px; }
+  .stat { font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--dim); overflow-wrap:anywhere; }
+  .gesture-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+  .gesture-card { min-width:0; padding:11px; background:var(--panel-2); border:1px solid var(--border); border-radius:12px; }
+  .gesture-card.wide { grid-column:1/-1; }
+  .gesture-card.disabled { opacity:.62; }
+  .gesture-card-head { display:flex; align-items:flex-start; gap:9px; }
+  .gesture-toggle { margin:3px 0 0; flex:0 0 auto; }
+  .gesture-name { display:block; font-size:12px; font-weight:850; }
+  .gesture-desc { display:block; color:var(--dim); font-size:10px; margin-top:2px; }
+  .gesture-status { display:inline-flex; margin:9px 0 8px; padding:3px 7px; border-radius:999px; background:#251a38; color:var(--dim); font-size:9px; font-weight:850; }
+  .gesture-status.ready { color:#bbf7d0; background:rgba(22,101,52,.2); }
+  .gesture-status.attention { color:#fde68a; background:rgba(120,53,15,.22); }
+  .card-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .calibration-box { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }
+  .calibration-box .stat { display:block; margin-top:6px; }
+  .range-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; margin-top:8px; }
+  .range-row input { width:100%; }
+  .supporting-title { margin:14px 0 7px; color:var(--dim); font-size:10px; font-weight:900; letter-spacing:.09em; text-transform:uppercase; }
+  details.panel { padding:0; overflow:hidden; }
+  details.panel > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 15px; cursor:pointer; list-style:none; }
+  details.panel > summary::-webkit-details-marker { display:none; }
+  details.panel > summary::after { content:'＋'; color:var(--acc); font-size:17px; }
+  details.panel[open] > summary::after { content:'−'; }
+  .details-body { padding:0 15px 15px; border-top:1px solid var(--border); }
+  .details-intro { margin:11px 0; color:var(--dim); font-size:11px; }
+  .record-row { display:grid; grid-template-columns:minmax(135px,1fr) auto auto minmax(120px,1fr); gap:7px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
+  .record-label { font-size:11px; font-weight:750; }
+  .advanced-setting { display:grid; grid-template-columns:170px minmax(120px,1fr) 54px; gap:9px; align-items:center; margin-top:10px; }
+  .log-toolbar { display:flex; gap:7px; align-items:center; }
+  select { color:var(--txt); background:var(--panel-3); border:1px solid var(--border-bright); border-radius:8px; padding:6px 9px; font-size:11px; }
+  #log { display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto; }
+  .log-entry { display:grid; grid-template-columns:76px minmax(0,1fr); gap:8px; padding:7px 8px; border:1px solid var(--border); border-radius:8px; background:rgba(9,7,17,.42); font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--dim); }
+  .log-entry[hidden] { display:none; }
+  .log-entry .log-time { color:#746d84; }
+  .log-entry.evt { color:#bbf7d0; border-color:rgba(74,222,128,.22); }
+  #logEmpty { display:grid; place-items:center; min-height:104px; color:var(--dim); text-align:center; border:1px dashed var(--border); border-radius:10px; font-size:11px; }
+  #logEmpty[hidden] { display:none; }
+  @media (max-width:1050px) {
+    .workspace { grid-template-columns:1fr; }
+    .topbar { position:static; }
+  }
+  @media (max-width:650px) {
+    .app-shell { padding:10px; }
+    .title-row { flex-direction:column; }
+    .readiness { justify-content:flex-start; }
+    .gesture-grid { grid-template-columns:1fr; }
+    .gesture-card.wide { grid-column:auto; }
+    .record-row { grid-template-columns:1fr auto auto; }
+    .record-row .rec-status { grid-column:1/-1; }
+    .advanced-setting { grid-template-columns:1fr auto; }
+    .advanced-setting input { grid-column:1/-1; grid-row:2; }
+  }
 </style>
-<script src="jjx-core.js?v=8"></script>
+<script src="jjx-core.js?v=10"></script>
 </head>
 <body>
-<div class="wrap">
-  <h1>🖐 GESTURE ENGINE <span id="ablyPill" class="pill">ably: …</span> <span id="capPill" class="pill">capture: off</span></h1>
-  <div class="hint">Captures the <b>TikTok projector window</b> (not the camera — the camera chain is untouched). Keep this window visible while streaming.</div>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="title-row">
+      <div>
+        <h1>🖐 GESTURE ENGINE</h1>
+        <p class="subtitle">Capture the TikTok projector, mark the important regions, and keep gesture effects running locally.</p>
+      </div>
+      <div class="readiness" aria-label="Engine readiness">
+        <span id="dockPill" class="status-chip" data-state="working">Dock connecting</span>
+        <span id="capPill" class="status-chip">Camera not captured</span>
+        <span id="modelsPill" class="status-chip" data-state="working">Models loading</span>
+        <span id="calPill" class="status-chip">Calibration incomplete</span>
+      </div>
+    </div>
+    <div class="keep-open">⚠️ Keep this Gesture Engine window visible for the entire stream. Chrome slows hidden tabs, which can delay or stop gesture detection.</div>
+  </header>
 
-  <div class="panel">
-    <h2>1 · Capture</h2>
-    <div class="row">
-      <button class="primary" id="btnCapture">🖥 Capture window…</button>
-      <button id="btnFullFrame" class="small">Reset boxes</button>
-      <span class="hint">After capturing, draw two boxes on the preview:</span>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <label class="gest"><input type="radio" name="drawMode" value="map" checked> <span style="color:#a78bfa;">🟪 Stream picture</span> — the whole 1080×1920 output (skip window chrome/black bars)</label>
-      <label class="gest"><input type="radio" name="drawMode" value="cam"> <span style="color:#4ade80;">🟩 Camera strip</span> — just where YOU are (tracking runs zoomed on this)</label>
-      <label class="gest"><input type="radio" name="drawMode" value="game"> <span style="color:#fb923c;">🟧 Ball Guys area</span> — the game region (bombs bounce off balls detected here)</label>
-    </div>
-    <div id="previewWrap" style="margin-top:10px;">
-      <canvas id="preview" width="640" height="360"></canvas>
-    </div>
-    <div class="stat" id="stat">waiting for capture…</div>
-  </div>
+  <main class="workspace">
+    <div class="left-column">
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">1 · Capture & calibrate</div>
+            <h2>Set up the projector view</h2>
+          </div>
+          <button id="btnFullFrame" class="small quiet">Reset calibration</button>
+        </div>
 
-  <div class="panel">
-    <h2>2 · Gestures</h2>
-    <div class="row">
-      <label class="gest"><input type="checkbox" id="en-finger_heart" checked> 🫰 Finger heart → hearts</label>
-      <label class="gest"><input type="checkbox" id="en-clap" checked> 👏 Clap → applause</label>
-      <label class="gest"><input type="checkbox" id="en-head_down" checked> 😔 Head down → awww</label>
-      <label class="gest"><input type="checkbox" id="en-drop_bomb" checked> 🖐 Hold fist, open hand → drop a bomb</label>
-      <label class="gest"><input type="checkbox" id="en-pet" checked> 🐕 Wave open hand in Jamie's corner (bottom-left) → pet him</label>
-      <label class="gest"><input type="checkbox" id="en-colliders" checked> ⚪ Bombs bounce off Ball Guys balls</label>
-      <label class="gest"><input type="checkbox" id="en-body_bounce" checked> 🧍 Feed Jamie treats bounce off YOU</label>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <span class="hint">Head-down calibration (works turned toward your monitor, not just facing camera):</span>
-      <button class="small" id="btnNeutral">Set NEUTRAL (your normal position)</button>
-      <button class="small" id="btnBowed">Set BOWED (head down, same angle)</button>
-      <span class="stat" id="pitchStat">head-Y: —</span>
-    </div>
-    <div class="row" style="margin-top:4px;">
-      <span class="hint">Live hand readout (for tuning if a gesture isn't firing) — hand 1:</span>
-      <span class="stat" id="handDebug">—</span>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <span class="hint" style="min-width:170px;">💣 Bomb floor Y (where bombs land)</span>
-      <input type="range" id="bombFloorY" min="200" max="1900" step="10" value="1650" style="flex:1;max-width:260px;">
-      <span class="stat" id="bombFloorYVal">1650px</span>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <span class="hint">Test fire:</span>
-      <button class="small" onclick="testFire('finger_heart')">🫰</button>
-      <button class="small" onclick="testFire('clap')">👏</button>
-      <button class="small" onclick="testFire('head_down')">😔</button>
-      <button class="small" onclick="testFire('drop_bomb')">🖐💣</button>
-    </div>
-  </div>
+        <ol class="setup-flow">
+          <li class="setup-step" id="step-capture">
+            <span class="step-number">1</span>
+            <div>
+              <span class="step-title">Capture the TikTok projector window</span>
+              <span class="step-copy">Choose the projector window—not your camera source.</span>
+            </div>
+            <button class="primary small" id="btnCapture">Capture window…</button>
+          </li>
+          <li class="setup-step" id="step-map">
+            <span class="step-number">2</span>
+            <label class="region-radio">
+              <input type="radio" name="drawMode" value="map" checked>
+              <span><span class="step-title" style="color:#c4b5fd;">Mark the stream picture</span><span class="step-copy">Draw around the full 1080×1920 picture; exclude window chrome and black bars.</span></span>
+            </label>
+            <span class="step-check" id="done-map">Not marked</span>
+          </li>
+          <li class="setup-step" id="step-cam">
+            <span class="step-number">3</span>
+            <label class="region-radio">
+              <input type="radio" name="drawMode" value="cam">
+              <span><span class="step-title" style="color:#86efac;">Mark your camera area</span><span class="step-copy">Draw tightly around where you appear so hands and face stay large enough to track.</span></span>
+            </label>
+            <span class="step-check" id="done-cam">Not marked</span>
+          </li>
+          <li class="setup-step" id="step-game">
+            <span class="step-number">4</span>
+            <label class="region-radio">
+              <input type="radio" name="drawMode" value="game">
+              <span><span class="step-title" style="color:#fdba74;">Mark the Ball Guys area</span><span class="step-copy">Optional. Lets both Bomb Drop and Spin the Screen’s falling ball collide with the game balls.</span></span>
+            </label>
+            <span class="step-check" id="done-game">Optional</span>
+          </li>
+        </ol>
 
-  <div class="panel">
-    <h2>2.5 · Record YOUR gestures (overrides the built-in detector for that action)</h2>
-    <div class="hint" style="margin-bottom:8px;">
-      Click ⏺, you get a 3-second countdown, then hold the pose steady for ~1.5s while your hand is in the green camera box.
-      Your recording becomes the trigger — a pose only fires when it clearly matches YOUR recording (and clearly does NOT match your other recordings),
-      held steady for a beat. Re-record any time; ✕ goes back to the built-in detector.
-    </div>
-    <div class="row" id="recRow-finger_heart">
-      <span style="min-width:170px;">🫰 Hearts pose</span>
-      <button class="small rec-btn" data-slot="finger_heart">⏺ Record</button>
-      <button class="small rec-clear" data-slot="finger_heart">✕</button>
-      <span class="stat rec-status" data-slot="finger_heart">built-in</span>
-    </div>
-    <div class="row" id="recRow-drop_hold">
-      <span style="min-width:170px;">💣 Bomb HOLD pose</span>
-      <button class="small rec-btn" data-slot="drop_hold">⏺ Record</button>
-      <button class="small rec-clear" data-slot="drop_hold">✕</button>
-      <span class="stat rec-status" data-slot="drop_hold">built-in (fist)</span>
-    </div>
-    <div class="row" id="recRow-drop_release">
-      <span style="min-width:170px;">💣 Bomb RELEASE pose</span>
-      <button class="small rec-btn" data-slot="drop_release">⏺ Record</button>
-      <button class="small rec-clear" data-slot="drop_release">✕</button>
-      <span class="stat rec-status" data-slot="drop_release">built-in (open hand)</span>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <span class="hint" style="min-width:170px;">Sensitivity (higher = stricter)</span>
-      <input type="range" id="recStrict" min="0.6" max="1.8" step="0.05" value="1" style="flex:1;max-width:220px;">
-      <span class="stat" id="recStrictVal">1.00</span>
-    </div>
-    <div class="row">
-      <span class="hint" style="min-width:170px;">Hold-steady time before firing</span>
-      <input type="range" id="recDwell" min="150" max="900" step="50" value="350" style="flex:1;max-width:220px;">
-      <span class="stat" id="recDwellVal">350ms</span>
-    </div>
-    <div class="row">
-      <span class="hint">Live match distances:</span>
-      <span class="stat" id="recMatchDebug">—</span>
-    </div>
-  </div>
+        <div id="previewWrap">
+          <canvas id="preview" width="640" height="360"></canvas>
+          <div class="preview-legend">
+            <span class="legend-item" style="color:#c4b5fd;">Stream</span>
+            <span class="legend-item" style="color:#86efac;">Camera</span>
+            <span class="legend-item" style="color:#fdba74;">Game</span>
+            <span class="legend-item" style="color:#f9a8d4;">Jamie pet zone</span>
+          </div>
+        </div>
+        <div class="capture-stat">
+          <span class="hint">Select a step above, then drag a box directly on the preview.</span>
+          <span class="stat" id="stat">Loading tracking models…</span>
+        </div>
+      </section>
 
-  <div class="panel">
-    <h2>3 · Event log</h2>
-    <div id="log"></div>
-  </div>
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">4 · Event log</div>
+            <h2>Recent engine activity</h2>
+          </div>
+          <div class="log-toolbar">
+            <select id="logFilter" aria-label="Filter event log">
+              <option value="all">All activity</option>
+              <option value="event">Gestures only</option>
+              <option value="system">System only</option>
+            </select>
+            <button class="small quiet" id="clearLog">Clear</button>
+          </div>
+        </div>
+        <div id="logEmpty">No activity yet.<br>Capture a window or use a Test button to confirm the engine is responding.</div>
+        <div id="log" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <div class="right-column">
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">2 · Gestures</div>
+            <h2>Choose what the engine can trigger</h2>
+          </div>
+          <span class="hint">Settings save automatically</span>
+        </div>
+
+        <div class="gesture-grid">
+          <article class="gesture-card" data-gesture="finger_heart">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-finger_heart" checked>
+              <span><span class="gesture-name">🫰 Finger heart</span><span class="gesture-desc">Sends hearts onto the screen.</span></span>
+            </label>
+            <span class="gesture-status" id="status-finger_heart">Waiting for setup</span>
+            <div class="card-actions">
+              <button class="small" onclick="testFire('finger_heart')">Test hearts</button>
+              <button class="small quiet open-advanced">Personalize</button>
+            </div>
+          </article>
+
+          <article class="gesture-card" data-gesture="clap">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-clap" checked>
+              <span><span class="gesture-name">👏 Clap</span><span class="gesture-desc">Triggers the applause effect.</span></span>
+            </label>
+            <span class="gesture-status" id="status-clap">Waiting for setup</span>
+            <div class="card-actions">
+              <button class="small" onclick="testFire('clap')">Test applause</button>
+              <span class="hint">No calibration needed</span>
+            </div>
+          </article>
+
+          <article class="gesture-card wide" data-gesture="head_down">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-head_down" checked>
+              <span><span class="gesture-name">😔 Head down</span><span class="gesture-desc">Triggers the “awww” reaction. Calibrate while facing the monitor at your normal angle.</span></span>
+            </label>
+            <span class="gesture-status attention" id="status-head_down">Needs head calibration</span>
+            <div class="card-actions">
+              <button class="small" onclick="testFire('head_down')">Test reaction</button>
+              <button class="small quiet" id="btnNeutral">1 · Set normal position</button>
+              <button class="small quiet" id="btnBowed">2 · Set head down</button>
+            </div>
+            <div class="calibration-box"><span class="stat" id="pitchStat">head-Y: —</span></div>
+          </article>
+
+          <article class="gesture-card wide" data-gesture="drop_bomb">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-drop_bomb" checked>
+              <span><span class="gesture-name">💣 Drop Bomb</span><span class="gesture-desc">Hold a fist, then open your hand to release a bomb.</span></span>
+            </label>
+            <span class="gesture-status" id="status-drop_bomb">Waiting for setup</span>
+            <div class="card-actions">
+              <button class="small" onclick="testFire('drop_bomb')">Test bomb</button>
+              <button class="small quiet open-advanced">Personalize poses</button>
+            </div>
+            <div class="calibration-box">
+              <span class="hint">Bomb floor — where the bomb lands</span>
+              <div class="range-row">
+                <input type="range" id="bombFloorY" min="10.42" max="98.96" step="0.01" value="85.94">
+                <span class="stat" id="bombFloorYVal">85.9%</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="gesture-card wide" data-gesture="pet">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-pet" checked>
+              <span><span class="gesture-name">🐕 Pet Jamie</span><span class="gesture-desc">Wave an open hand inside Jamie’s pink corner zone.</span></span>
+            </label>
+            <span class="gesture-status" id="status-pet">Waiting for setup</span>
+            <div class="card-actions">
+              <button class="small" onclick="testFire('pet')">Test pet</button>
+              <span class="hint">Uses the camera-area calibration</span>
+            </div>
+          </article>
+        </div>
+
+        <div class="supporting-title">Supporting tracking</div>
+        <div class="gesture-grid">
+          <article class="gesture-card" data-gesture="colliders">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-colliders" checked>
+              <span><span class="gesture-name">⚪ Ball collisions</span><span class="gesture-desc">Bombs and Spin the Screen ball drops bounce off Ball Guys balls.</span></span>
+            </label>
+            <span class="gesture-status" id="status-colliders">Optional game area</span>
+          </article>
+          <article class="gesture-card" data-gesture="body_bounce">
+            <label class="gesture-card-head">
+              <input class="gesture-toggle" type="checkbox" id="en-body_bounce" checked>
+              <span><span class="gesture-name">🧍 Body bounce</span><span class="gesture-desc">Jamie treats, screen shards, and Ball Drop bounce off your tracked body.</span></span>
+            </label>
+            <span class="gesture-status" id="status-body_bounce">Waiting for setup</span>
+          </article>
+        </div>
+
+        <div class="calibration-box">
+          <span class="hint">Live hand readout — useful only when tuning detection:</span>
+          <span class="stat" id="handDebug">—</span>
+          <span class="stat" id="wheelTrackStatus">Wheel interaction: idle</span>
+        </div>
+      </section>
+
+      <details class="panel" id="advancedDetection">
+        <summary>
+          <span><span class="eyebrow">3 · Advanced detection</span><strong style="display:block;margin-top:2px;">Personal gesture recordings</strong></span>
+          <span class="hint">Optional</span>
+        </summary>
+        <div class="details-body">
+          <p class="details-intro">Record your own poses only if the built-in detector does not suit you. You’ll get a three-second countdown, followed by about 1.5 seconds of recording inside the green camera area.</p>
+          <div class="record-row" id="recRow-finger_heart">
+            <span class="record-label">🫰 Hearts pose</span>
+            <button class="small rec-btn" data-slot="finger_heart">Record</button>
+            <button class="small quiet rec-clear" data-slot="finger_heart" aria-label="Clear hearts recording">Clear</button>
+            <span class="stat rec-status" data-slot="finger_heart">built-in</span>
+          </div>
+          <div class="record-row" id="recRow-drop_hold">
+            <span class="record-label">💣 Bomb hold pose</span>
+            <button class="small rec-btn" data-slot="drop_hold">Record</button>
+            <button class="small quiet rec-clear" data-slot="drop_hold" aria-label="Clear bomb hold recording">Clear</button>
+            <span class="stat rec-status" data-slot="drop_hold">built-in (fist)</span>
+          </div>
+          <div class="record-row" id="recRow-drop_release">
+            <span class="record-label">💣 Bomb release pose</span>
+            <button class="small rec-btn" data-slot="drop_release">Record</button>
+            <button class="small quiet rec-clear" data-slot="drop_release" aria-label="Clear bomb release recording">Clear</button>
+            <span class="stat rec-status" data-slot="drop_release">built-in (open hand)</span>
+          </div>
+          <label class="advanced-setting">
+            <span class="hint">Sensitivity (higher is stricter)</span>
+            <input type="range" id="recStrict" min="0.6" max="1.8" step="0.05" value="1">
+            <span class="stat" id="recStrictVal">1.00</span>
+          </label>
+          <label class="advanced-setting">
+            <span class="hint">Hold steady before firing</span>
+            <input type="range" id="recDwell" min="150" max="900" step="50" value="350">
+            <span class="stat" id="recDwellVal">350ms</span>
+          </label>
+          <div class="calibration-box">
+            <span class="hint">Live match distances:</span>
+            <span class="stat" id="recMatchDebug">—</span>
+          </div>
+        </div>
+      </details>
+    </div>
+  </main>
 </div>
 
 <script type="module">
 'use strict';
 import { FilesetResolver, HandLandmarker, FaceLandmarker, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
-const ABLY_KEY = null;
 const OUT_W = 1080, OUT_H = 1920;
 
-// ── Ably + shared daily cap guard (same budget as stream-dock/tracker) ────
-// Gestures go out on dedicated channels, not the busy shared splat-overlay
-// channel. Ably bills every message to every ATTACHED client regardless of
-// which event name that client subscribed to (subscribe-by-name filters
-// client-side only, per Ably's own billing docs) — so a high-frequency
-// stream must live on a channel that only its one real consumer attaches
-// to, or every other overlay on the shared channel pays for it too even
-// though it never reads it. Split accordingly:
+// ── Producer Dock local transport ────────────────────────────────────────
+// JJX.dockRealtime uses only the dock's local /overlay-ws WebSocket and HTTP
+// publish endpoint. The channel API intentionally keeps the old subscription
+// shape so the overlay consumers do not need a second event interface.
+// Traffic remains split by purpose:
 //   'gesture-events' — rare, cooldown-gated one-shot events (finger_heart/
-//                       clap/head_down/pluck/pet/drop_bomb). Cheap enough
-//                       that all three overlays sharing it doesn't matter.
+//                       clap/head_down/pet/drop_bomb).
 //   'jamie-signals'  — body-colliders + fj-active. High-frequency while
 //                       Feed Jamie is active; only feed-jamie-overlay.html
 //                       attaches to this one.
-//   'ball-signals'   — bomb-colliders + bomb-config. Only bomb-drop-overlay.html
-//                       attaches to this one.
-const ably = JJX.dockRealtime({ fallbackKey: ABLY_KEY });
-const ch = ably.channels.get('gesture-events');
-const jamieCh = ably.channels.get('jamie-signals');
-const ballCh = ably.channels.get('ball-signals');
-(function installAblyDailyCapGuard(channel) {
-  const CAP = 400000, LS_KEY = 'ablyDailyPublishGuard.v1';
-  const today = () => new Date().toISOString().slice(0, 10);
-  const load = () => { let s = null; try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {} const t = today(); return (!s || s.day !== t) ? { day: t, count: 0, tripped: false } : s; };
-  const save = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) {} };
-  const orig = channel.publish.bind(channel);
-  channel.publish = function(...args) {
-    let s = load();
-    if (s.tripped) return Promise.resolve();
-    s.count++;
-    if (s.count > CAP) { s.tripped = true; save(s); console.error('[Ably Safety] Daily publish cap reached — gesture-cam publishing halted.'); return Promise.resolve(); }
-    save(s);
-    return orig(...args);
-  };
-})(ch);
+//   'ball-signals'   — bomb-colliders + bomb-config. Bomb Drop and Spin the
+//                       Screen's falling ball share these game-ball colliders.
+const realtime = JJX.dockRealtime({});
+const ch = realtime.channels.get('gesture-events');
+const jamieCh = realtime.channels.get('jamie-signals');
+const ballCh = realtime.channels.get('ball-signals');
+const wheelInteractionCh = realtime.channels.get('wheel-interaction');
+
+/* Wheel interactions are explicitly leased for a few seconds by wheel-overlay.
+   Hands and pose colliders stay silent outside that lease: no continuous network
+   traffic, no extra pose inference, and no stale hand controlling a later spin. */
+let wheelTrackUntil = 0;
+let wheelTrackEventId = '';
+let wheelTrackNeedsHands = false;
+let wheelTrackNeedsBody = false;
+let wheelTrackEnded = true;
+let lastWheelHandsAt = 0;
+let lastWheelHands = null;
+const WHEEL_HAND_HZ = 20;
+
+wheelInteractionCh.subscribe('tracking-request', (msg) => {
+  const d = (msg && msg.data) || {};
+  const ms = Math.max(800, Math.min(6500, Number(d.ms) || 3200));
+  wheelTrackUntil = performance.now() + ms;
+  wheelTrackEventId = String(d.eventId || '');
+  wheelTrackNeedsHands = d.hands !== false;
+  wheelTrackNeedsBody = d.body !== false;
+  wheelTrackEnded = false;
+  lastWheelHands = null;
+  const status = document.getElementById('wheelTrackStatus');
+  if (status) status.textContent = `Wheel interaction: LIVE • ${String(d.mode || 'effect')} • ${(ms / 1000).toFixed(1)}s`;
+  wheelInteractionCh.publish('tracking-ready', {
+    eventId: wheelTrackEventId,
+    hands: wheelTrackNeedsHands,
+    body: wheelTrackNeedsBody,
+    ms,
+  }).catch(() => {});
+});
+
+function wheelHandsChanged(next) {
+  if (!lastWheelHands || lastWheelHands.length !== next.length) return true;
+  for (let i = 0; i < next.length; i++) {
+    const a = next[i], b = lastWheelHands[i];
+    if (a.id !== b.id || a.open !== b.open ||
+        Math.abs(a.x - b.x) > 4 || Math.abs(a.y - b.y) > 4) return true;
+  }
+  return false;
+}
+
+function publishWheelHands(samples, now) {
+  if (now >= wheelTrackUntil) {
+    if (!wheelTrackEnded) {
+      wheelTrackEnded = true;
+      const status = document.getElementById('wheelTrackStatus');
+      if (status) status.textContent = 'Wheel interaction: idle';
+      wheelInteractionCh.publish('hand-track', {
+        eventId: wheelTrackEventId, hands: [], ended: true,
+      }).catch(() => {});
+    }
+    return;
+  }
+  if (!wheelTrackNeedsHands) return;
+  if (now - lastWheelHandsAt < 1000 / WHEEL_HAND_HZ) return;
+  const changed = wheelHandsChanged(samples);
+  if (!changed && now - lastWheelHandsAt < 500) return;
+  lastWheelHandsAt = now;
+  lastWheelHands = samples.map((h) => ({ ...h }));
+  wheelInteractionCh.publish('hand-track', {
+    eventId: wheelTrackEventId,
+    hands: samples,
+    t: Math.round(now),
+  }).catch(() => {});
+}
 /* ── HEAD TRACKING for Spin The Screen (integration contract 2) ──────────────
    The wheel overlay's head-anchored effects (Stamp, Curse, Buckets, Avatar) read a
    live head box every frame. This page is the only place that can produce one: it
    already captures the projector pixels and already runs FaceLandmarker per frame,
    and it runs in desktop Chrome — TikTok Studio cannot host getDisplayMedia.
 
-   DELIBERATELY NOT WRAPPED by the daily publish-cap guard above. That guard exists
-   to stop a runaway metered Ably bill, and it wraps `ch` only. Head tracking is a
-   CONTINUOUS stream — the exact shape the guard is meant to catch — so routing it
-   through the guard would trip the cap in minutes and silently kill gesture events
-   with it. It is safe here for one specific reason: Ably is off (jjx-core
-   ABLY_ENABLED = false) and dockRealtime carries this over the local WebSocket,
-   where delivery is free. If Ably is ever switched back on, THIS STREAM MUST NOT
-   GO WITH IT — give it a socket-only path first. */
-const headCh = ably.channels.get('head-track');
+   Head tracking is a continuous stream, so it has its own 30 Hz ceiling and
+   meaningful-change gate below. It travels only over the Producer Dock's local
+   WebSocket transport. */
+const headCh = realtime.channels.get('head-track');
 const HEAD_HZ = 30;                 // publish ceiling; the render loop runs faster
 let lastHeadSent = 0, lastHeadBox = null;
 
@@ -276,7 +554,7 @@ ballCh.subscribe('scan-request', () => {
   colliderWindowUntil = performance.now() + 12000;
 });
 
-const targetsCh = ably.channels.get('game-targets');
+const targetsCh = realtime.channels.get('game-targets');
 const bktCanvas = document.createElement('canvas');
 const bktCtx = bktCanvas.getContext('2d', { willReadFrequently: true });
 const BKT_W = 160;
@@ -399,22 +677,41 @@ function publishTargets(now) {
    the cam rect in overlay coordinates is sent WITH the image rather than assumed. */
 const camSnapCanvas = document.createElement('canvas');
 const camSnapCtx = camSnapCanvas.getContext('2d');
-function camSnapshot() {
+function regionSnapshot(box, maxWidth = 720, quality = 0.82) {
   const vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh) return null;
-  const sx = camBox.x * vw, sy = camBox.y * vh;
-  const sw = Math.max(2, camBox.w * vw), sh = Math.max(2, camBox.h * vh);
-  const w = Math.min(720, Math.round(sw));
+  const sx = box.x * vw, sy = box.y * vh;
+  const sw = Math.max(2, box.w * vw), sh = Math.max(2, box.h * vh);
+  const w = Math.min(maxWidth, Math.round(sw));
   const h = Math.max(2, Math.round(w * sh / sw));
   if (camSnapCanvas.width !== w || camSnapCanvas.height !== h) { camSnapCanvas.width = w; camSnapCanvas.height = h; }
   camSnapCtx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
-  const tl = frameToOut(camBox.x, camBox.y);
-  const br = frameToOut(camBox.x + camBox.w, camBox.y + camBox.h);
+  const tl = frameToOut(box.x, box.y);
+  const br = frameToOut(box.x + box.w, box.y + box.h);
   return {
-    dataURL: camSnapCanvas.toDataURL('image/jpeg', 0.82),
+    dataURL: camSnapCanvas.toDataURL('image/jpeg', quality),
     rect: { x: Math.round(tl.x), y: Math.round(tl.y), w: Math.round(br.x - tl.x), h: Math.round(br.y - tl.y) },
   };
 }
+function camSnapshot() { return regionSnapshot(camBox, 720, 0.82); }
+
+/* On-demand stills for wheel effects. `frame` captures the calibrated stream
+   content, not browser chrome; `camera` captures only the live camera strip.
+   requestId lets overlapping echo frames return to the correct active spin. */
+wheelInteractionCh.subscribe('snapshot-request', (msg) => {
+  const d = (msg && msg.data) || {};
+  const scope = d.scope === 'camera' ? 'camera' : d.scope === 'game' ? 'game' : 'frame';
+  const box = scope === 'camera' ? camBox : scope === 'game' ? gameBox : mapBox;
+  const snap = regionSnapshot(box, scope === 'frame' ? 900 : 720, scope === 'frame' ? 0.78 : 0.84);
+  if (!snap) return;
+  wheelInteractionCh.publish('snapshot', {
+    ...snap,
+    scope,
+    requestId: String(d.requestId || ''),
+    eventId: String(d.eventId || ''),
+    seq: Number(d.seq) || 0,
+  }).catch(() => {});
+});
 // The overlay asks; this answers. Request/response so a snapshot is only ever
 // taken when an effect actually needs one.
 targetsCh.subscribe('cam-snapshot-request', () => {
@@ -425,14 +722,8 @@ targetsCh.subscribe('cam-snapshot-request', () => {
 // Verification hook — this file is a module, so nothing above is reachable from the
 // console otherwise. Same pattern as window.testFire / window.__gestTest below.
 window.__headTest = { publishHead, setChannel: (c) => { headCh.publish = c; } };
-window.__spinTest = { detectBucket, publishTargets, camSnapshot,
+window.__spinTest = { detectBucket, publishTargets, camSnapshot, regionSnapshot,
                       setTargetsChannel: (c) => { targetsCh.publish = c; } };
-
-const ablyPill = document.getElementById('ablyPill');
-ably.connection.on(sc => {
-  ablyPill.textContent = 'ably: ' + sc.current;
-  ablyPill.classList.toggle('on', sc.current === 'connected');
-});
 
 // ── Bomb floor position — slider publishes 'bomb-config' on 'ball-signals'
 // (throttled while dragging, so a long drag is a handful of messages,
@@ -440,16 +731,17 @@ ably.connection.on(sc => {
 // so a bomb overlay that loads after this page still ends up at the right floor.
 let bombFloorY = parseInt(localStorage.getItem('gestureCam.bombFloorY') || '1650', 10) || 1650;
 const bombFloorEl = document.getElementById('bombFloorY'), bombFloorVal = document.getElementById('bombFloorYVal');
-bombFloorEl.value = bombFloorY; bombFloorVal.textContent = bombFloorY + 'px';
+bombFloorEl.value = JJX.position.pxToPercent(bombFloorY, 'y', 2);
+bombFloorVal.textContent = JJX.position.formatPercent(bombFloorEl.value, 1);
 let _bombFloorTimer = null;
 function publishBombFloor() { ballCh.publish('bomb-config', { floorY: bombFloorY }).catch(() => {}); }
 bombFloorEl.addEventListener('input', () => {
-  bombFloorY = parseInt(bombFloorEl.value, 10);
-  bombFloorVal.textContent = bombFloorY + 'px';
+  bombFloorY = JJX.position.percentToPx(bombFloorEl.value, 'y');
+  bombFloorVal.textContent = JJX.position.formatPercent(bombFloorEl.value, 1);
   localStorage.setItem('gestureCam.bombFloorY', bombFloorY);
   if (!_bombFloorTimer) _bombFloorTimer = setTimeout(() => { _bombFloorTimer = null; publishBombFloor(); }, 200);
 });
-ably.connection.on('connected', () => publishBombFloor());
+realtime.connection.on('connected', () => publishBombFloor());
 
 // Feed Jamie pings 'fj-active' while it has treats on screen; that opens a short
 // window during which we scan the body and publish body-colliders. When Feed
@@ -461,18 +753,132 @@ const preview = document.getElementById('preview');
 const pctx = preview.getContext('2d');
 const statEl = document.getElementById('stat');
 const logEl = document.getElementById('log');
+const logEmptyEl = document.getElementById('logEmpty');
+const logFilterEl = document.getElementById('logFilter');
 const capPill = document.getElementById('capPill');
+const dockPill = document.getElementById('dockPill');
+const modelsPill = document.getElementById('modelsPill');
+const calPill = document.getElementById('calPill');
 const pitchStat = document.getElementById('pitchStat');
 const handDebugEl = document.getElementById('handDebug');
 const recMatchDebugEl = document.getElementById('recMatchDebug');
 
+const uiState = {
+  dock: false,
+  capture: false,
+  models: false,
+  modelError: false,
+  calibration: false,
+  gameCalibration: false,
+  headCalibration: false
+};
+
+function setStatusChip(el, text, state) {
+  el.textContent = text;
+  el.dataset.state = state || '';
+}
+
+function syncReadiness() {
+  const headToggle = document.getElementById('en-head_down');
+  const calibrationComplete = uiState.calibration && (!headToggle || !headToggle.checked || uiState.headCalibration);
+  setStatusChip(dockPill, uiState.dock ? 'Dock connected' : 'Dock reconnecting', uiState.dock ? 'ready' : 'working');
+  setStatusChip(capPill, uiState.capture ? 'Camera captured' : 'Camera not captured', uiState.capture ? 'ready' : '');
+  setStatusChip(
+    modelsPill,
+    uiState.modelError ? 'Models failed' : uiState.models ? 'Models ready' : 'Models loading',
+    uiState.modelError ? 'error' : uiState.models ? 'ready' : 'working'
+  );
+  setStatusChip(calPill, calibrationComplete ? 'Calibration complete' : 'Calibration incomplete', calibrationComplete ? 'ready' : '');
+}
+
+function syncGestureCards() {
+  for (const name of ['finger_heart', 'clap', 'head_down', 'drop_bomb', 'pet', 'colliders', 'body_bounce']) {
+    const check = document.getElementById('en-' + name);
+    const card = document.querySelector(`.gesture-card[data-gesture="${name}"]`);
+    const status = document.getElementById('status-' + name);
+    if (!check || !card || !status) continue;
+    card.classList.toggle('disabled', !check.checked);
+    status.className = 'gesture-status';
+    if (!check.checked) {
+      status.textContent = 'Disabled';
+    } else if (name === 'colliders' && !uiState.gameCalibration) {
+      status.textContent = 'Mark game area to enable';
+      status.classList.add('attention');
+    } else if (!uiState.models) {
+      status.textContent = uiState.modelError ? 'Models unavailable' : 'Models loading';
+      status.classList.add('attention');
+    } else if (!uiState.capture) {
+      status.textContent = 'Waiting for capture';
+    } else if (!uiState.calibration) {
+      status.textContent = 'Finish stream + camera setup';
+      status.classList.add('attention');
+    } else if (name === 'head_down' && !uiState.headCalibration) {
+      status.textContent = 'Needs head calibration';
+      status.classList.add('attention');
+    } else {
+      status.textContent = 'Ready';
+      status.classList.add('ready');
+    }
+  }
+}
+
+function applyLogFilter() {
+  const wanted = logFilterEl.value;
+  let visible = 0;
+  for (const item of logEl.children) {
+    const show = wanted === 'all' || item.dataset.kind === wanted;
+    item.hidden = !show;
+    if (show) visible++;
+  }
+  logEmptyEl.hidden = visible > 0;
+  if (!visible) {
+    logEmptyEl.innerHTML = logEl.children.length
+      ? 'No activity matches this filter.'
+      : 'No activity yet.<br>Capture a window or use a Test button to confirm the engine is responding.';
+  }
+}
+
 function log(msg, isEvt) {
   const d = document.createElement('div');
-  if (isEvt) d.className = 'evt';
-  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  d.className = 'log-entry' + (isEvt ? ' evt' : '');
+  d.dataset.kind = isEvt ? 'event' : 'system';
+  const time = document.createElement('span');
+  time.className = 'log-time';
+  time.textContent = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const message = document.createElement('span');
+  message.textContent = msg;
+  d.append(time, message);
   logEl.prepend(d);
   while (logEl.children.length > 60) logEl.lastChild.remove();
+  applyLogFilter();
 }
+
+logFilterEl.addEventListener('change', applyLogFilter);
+document.getElementById('clearLog').addEventListener('click', () => {
+  logEl.replaceChildren();
+  applyLogFilter();
+});
+document.querySelectorAll('.open-advanced').forEach(btn => btn.addEventListener('click', () => {
+  const details = document.getElementById('advancedDetection');
+  details.open = true;
+  details.scrollIntoView({ behavior:'smooth', block:'start' });
+}));
+
+realtime.connection.on('connected', () => {
+  uiState.dock = true;
+  syncReadiness();
+  log('Producer Dock connected locally');
+});
+for (const state of ['disconnected', 'failed', 'suspended']) {
+  realtime.connection.on(state, () => {
+    const wasConnected = uiState.dock;
+    uiState.dock = false;
+    syncReadiness();
+    if (wasConnected) log('Producer Dock connection lost — retrying');
+  });
+}
+syncReadiness();
+applyLogFilter();
 
 // ── Calibration boxes (normalized 0..1 within captured frame) ─────────────
 // mapBox (purple): where the full 1080x1920 stream picture sits in the captured
@@ -485,21 +891,55 @@ let gameBox = { x: 0, y: 0.3, w: 1, h: 0.55 }; // Ball Guys region — ball dete
 try { const c = JSON.parse(localStorage.getItem('gestureCam.crop.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) mapBox = c; } catch (e) {}
 try { const c = JSON.parse(localStorage.getItem('gestureCam.camBox.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) camBox = c; } catch (e) {}
 try { const c = JSON.parse(localStorage.getItem('gestureCam.gameBox.v1') || 'null'); if (c && c.w > 0.02 && c.h > 0.02) gameBox = c; } catch (e) {}
+let boxDone = {
+  map: !!localStorage.getItem('gestureCam.crop.v1'),
+  cam: !!localStorage.getItem('gestureCam.camBox.v1'),
+  game: !!localStorage.getItem('gestureCam.gameBox.v1')
+};
+try {
+  const savedDone = JSON.parse(localStorage.getItem('gestureCam.boxDone.v1') || 'null');
+  if (savedDone) boxDone = { map:!!savedDone.map, cam:!!savedDone.cam, game:!!savedDone.game };
+} catch (e) {}
+
 function saveBoxes() {
   try {
     localStorage.setItem('gestureCam.crop.v1', JSON.stringify(mapBox));
     localStorage.setItem('gestureCam.camBox.v1', JSON.stringify(camBox));
     localStorage.setItem('gestureCam.gameBox.v1', JSON.stringify(gameBox));
+    localStorage.setItem('gestureCam.boxDone.v1', JSON.stringify(boxDone));
   } catch (e) {}
 }
+
+function syncCalibrationUI() {
+  for (const mode of ['map', 'cam', 'game']) {
+    const step = document.getElementById('step-' + mode);
+    const check = document.getElementById('done-' + mode);
+    step.classList.toggle('complete', boxDone[mode]);
+    check.textContent = boxDone[mode] ? '✓ Marked' : mode === 'game' ? 'Optional' : 'Not marked';
+  }
+  uiState.calibration = boxDone.map && boxDone.cam;
+  uiState.gameCalibration = boxDone.game;
+  syncReadiness();
+  syncGestureCards();
+}
+
+function selectDrawMode(mode) {
+  const input = document.querySelector(`input[name="drawMode"][value="${mode}"]`);
+  if (input) input.checked = true;
+}
+
 document.getElementById('btnFullFrame').onclick = () => {
   mapBox = { x: 0, y: 0, w: 1, h: 1 };
   camBox = { x: 0, y: 0, w: 1, h: 0.3 };
   gameBox = { x: 0, y: 0.3, w: 1, h: 0.55 };
+  boxDone = { map:false, cam:false, game:false };
   saveBoxes();
-  log('boxes reset (stream = full frame, camera = top strip, game = middle band)');
+  selectDrawMode('map');
+  syncCalibrationUI();
+  log('Calibration reset — mark the stream picture and camera area again');
 };
 function drawMode() { return document.querySelector('input[name=drawMode]:checked').value; }
+syncCalibrationUI();
 
 let dragStart = null;
 preview.addEventListener('mousedown', e => {
@@ -522,7 +962,14 @@ preview.addEventListener('mouseup', () => {
   if (dragStart) {
     const mode = drawMode();
     const box = mode === 'cam' ? camBox : mode === 'game' ? gameBox : mapBox;
-    if (box.w > 0.02 && box.h > 0.02) { saveBoxes(); log(`${mode === 'cam' ? 'camera strip' : mode === 'game' ? 'Ball Guys area' : 'stream picture'} set: ${box.x.toFixed(2)},${box.y.toFixed(2)} ${box.w.toFixed(2)}x${box.h.toFixed(2)}`); }
+    if (box.w > 0.02 && box.h > 0.02) {
+      boxDone[mode] = true;
+      saveBoxes();
+      syncCalibrationUI();
+      log(`${mode === 'cam' ? 'Camera area' : mode === 'game' ? 'Ball Guys area' : 'Stream picture'} marked`);
+      if (mode === 'map' && !boxDone.cam) selectDrawMode('cam');
+      else if (mode === 'cam' && !boxDone.game) selectDrawMode('game');
+    }
   }
   dragStart = null;
 });
@@ -608,6 +1055,7 @@ function colliderSetChanged(out) {
 // ping opens a window), throttled + change-gated, so it isn't a constant
 // stream. Parts: circle {t:'c',x,y,r} or capsule {t:'l',x1,y1,x2,y2,r}.
 let bodyWindowUntil = 0, lastBodyScanAt = 0, lastBodyPubAt = 0, lastBodyParts = null;
+let lastWheelBodyPubAt = 0, lastWheelBodyParts = null;
 function mapPose(p) { const f = camToFrame(p.x, p.y); return frameToOut(f.x, f.y); }
 function buildBodyColliders(lm) {
   const vis = i => lm[i] && (lm[i].visibility == null || lm[i].visibility > 0.4);
@@ -632,10 +1080,10 @@ function buildBodyColliders(lm) {
   if (vis(14) && vis(16)) parts.push(cap(P(14), P(16), sw * 0.13));
   return parts;
 }
-function bodyPartsChanged(parts) {
-  if (!lastBodyParts || lastBodyParts.length !== parts.length) return true;
+function bodyPartsChanged(parts, previous = lastBodyParts) {
+  if (!previous || previous.length !== parts.length) return true;
   for (let i = 0; i < parts.length; i++) {
-    const a = parts[i], b = lastBodyParts[i];
+    const a = parts[i], b = previous[i];
     if (a.t !== b.t) return true;
     if (a.t === 'c') { if (Math.abs(a.x - b.x) > 14 || Math.abs(a.y - b.y) > 14 || Math.abs(a.r - b.r) > 12) return true; }
     else if (Math.abs(a.x1 - b.x1) > 14 || Math.abs(a.y1 - b.y1) > 14 || Math.abs(a.x2 - b.x2) > 14 || Math.abs(a.y2 - b.y2) > 14) return true;
@@ -652,7 +1100,7 @@ const DET_W = 640; // detection resolution — camera strip scaled up to this wi
 let handLandmarker = null, faceLandmarker = null, poseLandmarker = null;
 (async function loadModels() {
   try {
-    statEl.textContent = 'loading tracking models…';
+    statEl.textContent = 'Loading tracking models…';
     const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
     handLandmarker = await HandLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" },
@@ -669,9 +1117,18 @@ let handLandmarker = null, faceLandmarker = null, poseLandmarker = null;
       baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task", delegate: "GPU" },
       runningMode: "VIDEO", numPoses: 1
     });
-    statEl.textContent = 'models ready — capture a window to begin';
+    uiState.models = true;
+    uiState.modelError = false;
+    statEl.textContent = 'Models ready — capture a window to begin';
+    syncReadiness();
+    syncGestureCards();
+    log('Tracking models ready');
   } catch (e) {
+    uiState.modelError = true;
     statEl.textContent = '⚠ model load failed: ' + (e.message || e);
+    syncReadiness();
+    syncGestureCards();
+    log('Tracking models failed to load: ' + (e.message || e));
   }
 })();
 
@@ -685,16 +1142,22 @@ document.getElementById('btnCapture').onclick = async () => {
     video.srcObject = stream;
     await video.play();
     capturing = true;
-    capPill.textContent = 'capture: LIVE';
-    capPill.classList.add('on');
+    uiState.capture = true;
+    document.getElementById('step-capture').classList.add('complete');
+    document.getElementById('btnCapture').textContent = 'Change window…';
+    syncReadiness();
+    syncGestureCards();
     stream.getVideoTracks()[0].addEventListener('ended', () => {
       capturing = false;
-      capPill.textContent = 'capture: off';
-      capPill.classList.remove('on');
-      log('capture ended');
+      uiState.capture = false;
+      document.getElementById('step-capture').classList.remove('complete');
+      document.getElementById('btnCapture').textContent = 'Capture window…';
+      syncReadiness();
+      syncGestureCards();
+      log('Capture ended');
     });
-    log('capture started');
-  } catch (e) { log('capture failed/cancelled: ' + (e.message || e)); }
+    log('Projector capture started');
+  } catch (e) { log('Capture cancelled or failed: ' + (e.message || e)); }
 };
 
 // ── Gesture config + cooldowns ───────────────────────────────────────────
@@ -711,9 +1174,12 @@ try {
 for (const g of TOGGLE_IDS) document.getElementById('en-' + g).addEventListener('change', () => {
   const out = {}; for (const k of TOGGLE_IDS) out[k] = enabled(k);
   try { localStorage.setItem(TOGGLES_LS, JSON.stringify(out)); } catch (e) {}
+  syncReadiness();
+  syncGestureCards();
 });
+syncGestureCards();
 const COOLDOWN_MS = { finger_heart: 4000, clap: 2500, head_down: 6000, drop_bomb: 700, pet: 550 };
-const lastFired = { finger_heart: 0, clap: 0, head_down: 0, drop_bomb: 0, pet: 0 };
+const lastFired = { finger_heart: -Infinity, clap: -Infinity, head_down: -Infinity, drop_bomb: -Infinity, pet: -Infinity };
 function fire(type, x, y) {
   if (recActive) return; // never fire events while the user is recording a pose
   const now = performance.now();
@@ -725,7 +1191,7 @@ function fire(type, x, y) {
   if (type === 'drop_bomb') colliderWindowUntil = performance.now() + 12000;
 }
 window.testFire = type => {
-  lastFired[type] = 0;
+  lastFired[type] = -Infinity;
   const y = type === 'head_down' ? 500 : type === 'drop_bomb' ? 80 : OUT_H / 2;
   fire(type, OUT_W / 2, y);
 };
@@ -742,8 +1208,28 @@ window.testFire = type => {
 let poseCal = { neutral: null, bowed: null };
 try { const c = JSON.parse(localStorage.getItem('gestureCam.headY.v2') || 'null'); if (c) poseCal = c; } catch (e) {}
 let lastHeadY = null, headDownSince = 0;
-document.getElementById('btnNeutral').onclick = () => { if (lastHeadY != null) { poseCal.neutral = lastHeadY; localStorage.setItem('gestureCam.headY.v2', JSON.stringify(poseCal)); log('neutral head position set: ' + lastHeadY.toFixed(3)); } };
-document.getElementById('btnBowed').onclick = () => { if (lastHeadY != null) { poseCal.bowed = lastHeadY; localStorage.setItem('gestureCam.headY.v2', JSON.stringify(poseCal)); log('bowed head position set: ' + lastHeadY.toFixed(3)); } };
+function syncHeadCalibration() {
+  uiState.headCalibration = poseCal.neutral != null && poseCal.bowed != null;
+  document.getElementById('btnNeutral').textContent = (poseCal.neutral != null ? '✓ ' : '1 · ') + 'Set normal position';
+  document.getElementById('btnBowed').textContent = (poseCal.bowed != null ? '✓ ' : '2 · ') + 'Set head down';
+  syncReadiness();
+  syncGestureCards();
+}
+document.getElementById('btnNeutral').onclick = () => {
+  if (lastHeadY == null) return log('No face detected yet — start capture and keep your face inside the green camera area');
+  poseCal.neutral = lastHeadY;
+  localStorage.setItem('gestureCam.headY.v2', JSON.stringify(poseCal));
+  syncHeadCalibration();
+  log('Normal head position calibrated');
+};
+document.getElementById('btnBowed').onclick = () => {
+  if (lastHeadY == null) return log('No face detected yet — start capture and keep your face inside the green camera area');
+  poseCal.bowed = lastHeadY;
+  localStorage.setItem('gestureCam.headY.v2', JSON.stringify(poseCal));
+  syncHeadCalibration();
+  log('Head-down position calibrated');
+};
+syncHeadCalibration();
 function headYMetric(lm) {
   const nose = lm[1], eyeA = lm[33], eyeB = lm[263]; // outer eye corners, standard face-mesh indices
   const faceScale = Math.hypot(eyeA.x - eyeB.x, eyeA.y - eyeB.y) || 0.001;
@@ -1048,16 +1534,27 @@ function loop(now) {
 
   // ── Body colliders — pose runs only while Feed Jamie has treats (fj-active
   // window) AND the toggle is on, throttled + change-gated so it isn't a stream ──
-  if (enabled('body_bounce') && poseLandmarker && now < bodyWindowUntil && now - lastBodyScanAt > 130) {
+  const jamieNeedsBody = now < bodyWindowUntil;
+  const wheelNeedsBody = now < wheelTrackUntil && wheelTrackNeedsBody;
+  if (enabled('body_bounce') && poseLandmarker && (jamieNeedsBody || wheelNeedsBody) && now - lastBodyScanAt > 90) {
     lastBodyScanAt = now;
     let poseResult = null;
     try { poseResult = poseLandmarker.detectForVideo(detCanvas, now); } catch (e) {}
     const lm = poseResult && poseResult.landmarks && poseResult.landmarks[0];
     const parts = lm ? buildBodyColliders(lm) : [];
-    if (bodyPartsChanged(parts) || now - lastBodyPubAt > 1200) {
+    if (jamieNeedsBody && (bodyPartsChanged(parts, lastBodyParts) || now - lastBodyPubAt > 1200)) {
       lastBodyPubAt = now;
       lastBodyParts = parts;
       jamieCh.publish('body-colliders', { parts }).catch(() => {});
+    }
+    if (wheelNeedsBody && (bodyPartsChanged(parts, lastWheelBodyParts) || now - lastWheelBodyPubAt > 700)) {
+      lastWheelBodyPubAt = now;
+      lastWheelBodyParts = parts;
+      wheelInteractionCh.publish('body-track', {
+        eventId: wheelTrackEventId,
+        parts,
+        t: Math.round(now),
+      }).catch(() => {});
     }
     // preview feedback: dot the tracked body landmarks (camBox-normalized → preview px)
     if (lm) {
@@ -1088,6 +1585,7 @@ function loop(now) {
 
   // ── per-hand: grab (pluck) + finger-heart (+ custom recorded poses) ──
   const palmCenters = [];
+  const wheelHandSamples = [];
   for (let i = 0; i < 2; i++) {
     const lm = hands[i];
     if (!lm) {
@@ -1152,6 +1650,13 @@ function loop(now) {
     // Gated to that corner region so it only fires when you reach toward him, and
     // to open hands so it can't step on the pinch/fist gestures.
     const handOpen = grabFoldedCount <= 1 && pinchDist > HEART_PINCH_OFF;
+    wheelHandSamples.push({
+      id: i,
+      x: Math.round(palmPt.x),
+      y: Math.round(palmPt.y),
+      open: handOpen,
+      pinch: +pinchDist.toFixed(2),
+    });
     const inPetZone = pc.x >= PET_ZONE.x0 && pc.x <= PET_ZONE.x1 && pc.y >= PET_ZONE.y0 && pc.y <= PET_ZONE.y1;
     let petMove = 0;
     if (handOpen && inPetZone) {
@@ -1173,6 +1678,7 @@ function loop(now) {
     pctx.arc(dotF.x * pw, dotF.y * ph, (isGrabNow || isHeartNow) ? 8 : 4, 0, 6.283);
     pctx.fill();
   }
+  publishWheelHands(wheelHandSamples, now);
 
   // ── clap: both palms close together after approaching ──
   if (palmCenters.length === 2 && enabled('clap')) {

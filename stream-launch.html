@@ -287,7 +287,8 @@
       <div class="desc" id="producer-dock-desc"><strong>This is the only control surface you need open while live.</strong>
         AI producer, chat with the ✦ Attention lane, gift tracking, viewer history — plus the
         <strong>▾ Overlays</strong> tab in the bottom bar for every mid-stream overlay control
-        (Level Up, Anthem, Kegel, promo cards, follow meter, Jamie, resets). It also SERVES the
+        (Broadcast Messages, Supporter Spotlight, Level Up, Anthem, Kegel, gesture tests,
+        follow meter, Jamie, resets). It also SERVES the
         overlay URLs below, so it must be running for them to load at all. Start it from the
         <strong>Producer Dock</strong> desktop shortcut first — this card opens it, it can't launch it.</div>
     </div>
@@ -362,7 +363,8 @@
   <div class="section-label">Controllers — setup only</div>
   <p style="margin:0 0 10px;font-size:12px;line-height:1.5;opacity:.75;max-width:860px">
     <b>You no longer need any of these open while streaming.</b> Every mid-stream control — Level Up,
-    Anthem, Kegel segments and pace, promo cards, the follow meter toggle and test-fire, Jamie's
+    Anthem, Kegel sequence actions, Broadcast Messages, Supporter Spotlight, the follow meter
+    toggle and test-fire, Jamie's
     forces and visibility, and all the resets — lives in the Producer Dock's <b>▾ Overlays</b> tab
     (bottom bar). Keep these for <b>setup work between streams</b>: the things that are deliberately
     not in the dock because they are not one-handed mid-stream actions.
@@ -385,8 +387,10 @@
     </a>
     <a class="card" href="overlay-control.html" target="_blank" rel="noopener">
       <div class="icon">🎯</div>
-      <div class="title">Event Promo Controller <span style="opacity:.6">· setup</span></div>
-      <div class="desc"><b>Still needed for the image-slide promo system</b> (#event-promo-root in gift-bar, via 'event-promo' events) — slide uploads and rotation. NOT the same thing as the dock's Promo card, which drives the live-text ribbon card. Despite the filename this does not control Featured Splat, which the dock drives straight over the SSN featured channel.</div>
+      <div class="title">Overlay Studio <span style="opacity:.6">· setup</span></div>
+      <div class="desc"><b>Setup-only home for Event Promo images, players, timing, and rotation.</b>
+        Broadcast Message and Supporter Spotlight state now belongs to Producer Dock; the retired
+        announcement, comment-prompt, and browser-local top-gifter editors no longer appear here.</div>
     </a>
     <a class="card" href="league-sprint-control.html" target="_blank" rel="noopener">
       <div class="icon">🫟</div>
@@ -413,7 +417,7 @@
         Open it <strong>between</strong> streams, not during: it is two-handed and full-attention,
         the opposite of the dock. Needs the Producer Dock running.</div>
     </a>
-    <a class="card" href="wheel-control.html" target="_blank" rel="noopener">
+    <a class="card" href="wheel-control.html?v=2" target="_blank" rel="noopener">
       <div class="icon">🎡</div>
       <div class="title">Spin The Screen — Control</div>
       <div class="desc">Tier floors, which of the nine results are enabled, penny spins and
@@ -426,7 +430,8 @@
       <div class="title">Gesture Engine</div>
       <div class="desc">Watches your stream via screen capture and fires gesture-triggered events.
         <strong>Also feeds Spin The Screen</strong>: the head box its face-anchored effects track,
-        the game's bucket rect for Ball Drop, and the camera still Ball Drop freezes. Runs in
+        the game's bucket rect for Ball Drop, the camera still Ball Drop freezes, and the Ball
+        Guys collision geometry used by both Bomb Drop and the wheel's falling ball. Runs in
         desktop Chrome, NOT as a Studio source — it needs screen capture, which Studio cannot host.
         Optional: without it the wheel still works, using a fixed head anchor and its own bucket.
         Calibrate the three boxes (stream picture / camera strip / game area) after starting
@@ -436,7 +441,14 @@
 
   <details class="url-list">
     <summary>Overlay Source URLs (for TikTok Studio)</summary>
-    <div class="url-sub">These load automatically once added as browser sources — you only need these to add or re-add one.</div>
+    <div class="url-sub">These load automatically once added as browser sources — you only need these to add or re-add one.
+      Every URL uses the TikTok canvas fix: set <strong>Custom Resolution 1080×1392</strong>, then choose <strong>Stretch</strong>.
+      <strong>Gesture Suite replaces the separate Feed Jamie, Spin the Screen, Bomb Drop, Gesture FX,
+      and Follow Meter sources.</strong> Follow alerts are composited as the highest layer so they
+      always appear above a spin. Remove or hide those five individual sources in TikTok Studio to
+      prevent duplicate effects.
+      <strong>Hand Feed stays separate</strong> because it owns and renders the camera feed itself; it
+      is not driven by the Gesture Engine page.</div>
     <div id="url-rows"></div>
   </details>
 
@@ -587,7 +599,7 @@ document.getElementById("session-save").addEventListener("click", function () {
   var PAGES_BASE = "https://jjxlive-repo.github.io/overlays/";
   var OVERLAYS = [
     { name: "Gift Bar", file: "gift-bar.html" },
-    { name: "Feed Jamie", file: "feed-jamie-overlay.html" },
+    { name: "Gesture Suite", file: "gesture-suite-overlay.html", version: "5" },
     /* Top Splatty overlay retired 2026-07-18 — merged into Feed Jamie as
        Splatty Squad; the standalone source should come OFF TikTok Studio.
        Crowd Glass and Dog House retired the same way — files archived to
@@ -602,21 +614,12 @@ document.getElementById("session-save").addEventListener("click", function () {
        screen to render it. Absence of Ably is not absence of a consumer. */
     { name: "New Here", file: "new-here-overlay.html" },
     { name: "League Sprint", file: "league-sprint-overlay.html" },
-    { name: "Bomb Drop", file: "bomb-drop-overlay.html" },
     { name: "Hand Feed", file: "hand-feed-overlay.html" },
-    { name: "Gesture FX", file: "gesture-fx-overlay.html" },
     { name: "Featured Splat", file: "featured-splat.html", needsSession: true },
     { name: "SSN Chat", file: "ssn-chat-overlay.html", needsSession: true },
     { name: "Chat Box", file: "jjxlive-chat-box.html", needsSession: true },
     { name: "Kegel Workout", file: "kegel-workout-overlay.html" },
-    { name: "Splatties Level Up", file: "Splatties-LevelUp-Overlay.html" },
-    /* Spin The Screen. Renders wheel.spin from the dock — all nine effects plus the
-       supporter wall. Serve it from BASE, not Pages: the wall rehydrates from the dock's
-       /api/wheel/snapshot, and jjx-core's dockBase() resolves that to whatever origin
-       served the page. gesture-cam adds head tracking, the game's bucket rect and the cam
-       still when it is running; all three fall back cleanly, so this source is useful
-       on its own. */
-    { name: "Spin The Screen", file: "wheel-overlay.html" }
+    { name: "Splatties Level Up", file: "Splatties-LevelUp-Overlay.html" }
   ];
 
   function copyText(text, btn) {
@@ -654,9 +657,15 @@ document.getElementById("session-save").addEventListener("click", function () {
   var container = document.getElementById("url-rows");
   OVERLAYS.forEach(function (item) {
     var url = BASE + item.file;
+    var params = new URLSearchParams();
     if (item.needsSession) {
-      url += "?session=" + encodeURIComponent(SESSION || "YOURID");
+      params.set("session", SESSION || "YOURID");
     }
+    if (item.version) {
+      params.set("v", item.version);
+    }
+    params.set("ttlsFix", "1");
+    if (params.toString()) url += "?" + params.toString();
     var row = document.createElement("div");
     row.className = "url-row";
 

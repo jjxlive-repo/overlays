@@ -2,17 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=1080, height=1920, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SPIN THE SCREEN — Wheel Overlay</title>
-<!-- This file has referenced 'Boogaloo'/'Fredoka'/'DM Mono' in font-family everywhere
-     since checkpoint 4 with NO <link> ever loading them — every piece of text on this
-     overlay (hero line, reel labels, gift chip, brick names, tier labels, stamp ink)
-     has been silently falling back to the system default the whole time. Found live,
-     on stream. Matches the weight set the CSS actually uses (grep font-weight against
-     Fredoka/Boogaloo rules): 500/600/700 — Fredoka's own range tops out at 700, so an
-     explicit `font-weight:800` rule elsewhere just clamps to this 700 automatically. -->
+<!-- Typeface: Baloo 2 (600/700/800) — the Doodle Stream HUD family Feed Jamie uses.
+     One family across every module sharing the frame; the old Fredoka/Boogaloo/DM Mono
+     set is gone with the carnival skin (Doodle alignment, 2026-07-27). -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Fredoka:wght@500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
 <!--
   Spin the Screen — wheel overlay skeleton (checkpoint 3).
 
@@ -53,11 +50,12 @@
   /* Fixed 1080×1920. No viewport units, no bottom-anchoring — Studio scales the whole
      source, and vh/vw + bottom edges drift when it does (repo rule). */
   html, body {
-    width: 1080px; height: 1920px;
+    width: 1080px; min-width: 1080px;
+    height: 1920px; min-height: 1920px;
     overflow: hidden; background: transparent;
     /* The overlay must never eat clicks meant for Studio's own UI. */
     pointer-events: none;
-    font-family: 'Fredoka', 'DM Sans', system-ui, sans-serif;
+    font-family: 'Baloo 2', system-ui, sans-serif;
     color: #fff;
     -webkit-font-smoothing: antialiased;
   }
@@ -74,13 +72,13 @@
   #lane-wall      { left: 0; bottom: 0; width: 1080px; height: 350px; z-index: 5; }  /* scenery, not an event — and outside the bump */
   #lane-flare     { inset: 0; z-index: 20; }   /* legendFlare: under every effect, Legend only */
   #lane-wheel     { inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
-  /* Position + scale, operator-tunable (wheel-control.html "Reel size & position").
-     A wrapper around the reel rather than resizing .reel-frame itself, so the reel's
-     own internal geometry (viewport %, segment height, landing math) never has to
-     know this exists. Defaults to identity so an overlay with no dock connected — or
-     one that has not received a layout yet — renders exactly where it always did. */
+  /* Full-width rail layout. The operator owns two primary dials: total HEIGHT and a
+     vertical Y offset. Width is fixed to the 1080px source so every enabled result
+     can remain visible as the carousel turns. */
   #wheel-stage {
-    transform: translate(var(--wheel-x, 0px), var(--wheel-y, 0px)) scale(var(--wheel-scale, 1));
+    width: 1080px;
+    height: var(--wheel-reel-h, 220px);
+    transform: translateY(var(--wheel-y, 0px));
   }
   #lane-fx        { inset: 0; z-index: 45; }   /* the effect itself */
   #lane-impact    { inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
@@ -145,133 +143,257 @@
     max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     line-height: 1.05;
   }
-  .brick .b-usd { font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; color: rgba(250,245,255,.5); margin-top: 1px; }
-  .usd-0 .b-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 500; font-size: 20px; color: #A78BFA; }
-  .usd-1 .b-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 22px; color: #E879F9; text-shadow: 0 0 10px rgba(232,121,249,.85); }
-  .usd-2 .b-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 700; font-size: 23px; color: #FBBF24; text-shadow: 0 0 12px rgba(251,191,36,.85); }
-  .usd-3 .b-name { font-family: Boogaloo, Fredoka, system-ui, sans-serif; font-size: 27px; color: #FDE68A; text-shadow: 0 0 16px rgba(251,191,36,.95); }
+  .brick .b-usd { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 700; font-size: 12px; color: rgba(250,245,255,.5); margin-top: 1px; }
+  /* Dollar bands read through weight + hue, never glow (style-guide don'ts).
+     The two top bands wear the coin yellow — a brick IS money. */
+  .usd-0 .b-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 600; font-size: 20px; color: #c9b3e8; }
+  .usd-1 .b-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 700; font-size: 22px; color: #e795c9; }
+  .usd-2 .b-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: 23px; color: #ffd93b; }
+  .usd-3 .b-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: 26px; color: #ffd93b; }
   /* Inset ring + outer glow in ONE declaration, deliberately — these used to live on
      two separate rules (.brick.b-legend / .usd-3) with different specificity, and the
      ring silently ate the glow instead of the two combining. box-shadow does not
      merge across rules; whichever rule wins the cascade wins outright. */
-  .usd-3 { box-shadow: inset 0 0 0 2px rgba(251,191,36,.4), 0 0 16px rgba(251,191,36,.5); }  /* gold-edged brick, top tier only */
+  .usd-3 { box-shadow: inset 0 0 0 3px #ffd93b; }  /* solid gold-edged brick, top tier only — no glow */
 
-  /* ── WHEEL: EDGE-ON SCROLLING REEL. Segments scroll vertically past a
-     centre window and DECELERATE to land the resolved result under the
-     pointer — labels stay upright and readable the whole time (spec: "you
-     can read what's on each one as they spin"), unlike a top-down disc whose
-     text rotates. All segments are the same height = equal, visible, equal
-     weight (equal probability is enforced server-side; the reel must LOOK
-     equal too). Placeholder art: glyph + label per segment, rendered in code
-     so text is crisp — designed segment art can swap in later. */
-  :root { --seg-h: 112px; }   /* one segment's height — shared by CSS + JS landing math */
-  /* Housing is drawn in CSS, not the reel-housing.png art it replaced. A raster
-     housing fought the position/scale controls below: shrink it and the border
-     visibly softens, and any operator scale is a resample of a fixed-pixel image.
-     Vector paint (gradient fill, borders, box-shadow) stays crisp at any transform
-     scale for free, so the whole wrapper below can be resized with no quality cost.
-     The pink centre line and the two triangles are real elements (below), drawn
-     ABOVE the scrolling strip, not baked into a background that painted behind it. */
+  /* ── WHEEL: CENTER-STAGE RAIL. The rail always spans the full 1080px source.
+     Every enabled outcome remains visible as a complete nine-card pass while
+     repeated passes move horizontally behind a fixed centre marker. The winner
+     then holds in the centre so the spin reads as a shared stream moment rather
+     than a modal appearing and disappearing. */
+  /* Doodle HUD housing (Feed Jamie alignment): solid ink-bordered band with a flat
+     offset shadow — no gradient, no inner glow, no blur (style guide don'ts). The
+     band stays DARK (hybrid direction) so a spin still reads as an event over
+     gameplay; the CONSTRUCTION — #1a1a1a borders + flat shadows — is what matches
+     Feed Jamie's cream card. Gold is reserved for Legendary chances on the chips,
+     so no tier-legend housing variant. */
   .reel-frame {
-    /* width/height come from settings.wheel.reel (applyReelLayout), 900x1200 is only
-       the fallback for a page that has not received a layout yet. Everything inside —
-       the viewport window, the landing line, the gift chip — is positioned by
-       PERCENTAGE of this box, so it re-lays-out automatically at any width/height. */
-    position: relative; width: var(--wheel-reel-w, 900px); height: var(--wheel-reel-h, 1200px);
-    border-radius: 44px;
-    background: radial-gradient(ellipse at 50% 32%, #5B1799 0%, #3B0764 58%, #240449 100%);
-    border: 10px solid #7B2FBE;
-    box-shadow: 0 0 0 4px rgba(123,47,190,.4), inset 0 0 70px rgba(0,0,0,.4), 0 26px 80px rgba(0,0,0,.55);
-    opacity: 0; transform: scale(0.9); transition: opacity .3s ease, transform .3s ease;
-    /* Overrides the :root default below for this subtree — --wheel-content-scale is
-       set on #wheel-stage (an ancestor) by applyReelLayout, so .reel-seg's `height:
-       var(--seg-h)` grows/shrinks independently of the housing's own --wheel-scale. */
-    --seg-h: calc(112px * var(--wheel-content-scale, 1));
+    position: relative;
+    width: 1080px;
+    height: 100%;
+    overflow: visible;
+    border-top: 4px solid #1a1a1a;
+    border-bottom: 4px solid #1a1a1a;
+    background: #2a0447;
+    box-shadow: 0 6px 0 rgba(0,0,0,.5);
+    opacity: 0;
+    transform: scaleY(.88);
+    transition: opacity .3s ease, transform .3s cubic-bezier(.2,1,.3,1);
   }
-  .reel-frame.show { opacity: 1; transform: scale(1); }
-  .reel-frame.tier-legend {
-    border-color: #FBBF24;
-    box-shadow: 0 0 0 4px rgba(251,191,36,.45), inset 0 0 70px rgba(0,0,0,.4), 0 0 90px rgba(251,191,36,.5), 0 26px 80px rgba(0,0,0,.55);
+  .reel-frame.show { opacity: 1; transform: scaleY(1); }
+  /* Purple ribbon — Feed Jamie's CTA ribbon grammar (#6c3fd8 + #ffd93b). */
+  .reel-moment-title {
+    position: absolute; left: 50%; bottom: calc(100% + 16px); z-index: 12;
+    transform: translateX(-50%);
+    background: #6c3fd8; color: #ffd93b; white-space: nowrap;
+    border: 3px solid #1a1a1a; border-radius: 12px;
+    box-shadow: 0 4px 0 rgba(0,0,0,.35);
+    padding: 6px 22px 8px;
+    font-family: 'Baloo 2', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: clamp(24px, calc(var(--wheel-reel-h, 220px) * .13), 34px);
+    letter-spacing: .05em;
+    transition: transform .35s cubic-bezier(.2,1.35,.3,1);
   }
-  /* Landing indicator: a glowing line across the window's vertical centre, and two
-     triangles pointing in at it from the frame's edges — the same "here is the
-     result" cue the art used, now real elements so they render OVER the strip. */
-  .reel-line {
-    position: absolute; left: 7%; right: 7%; top: 50%; height: 4px; z-index: 5;
-    transform: translateY(-50%); pointer-events: none;
-    background: linear-gradient(90deg, transparent, #E879F9 12%, #E879F9 88%, transparent);
-    box-shadow: 0 0 16px rgba(232,121,249,.85), 0 0 36px rgba(232,121,249,.5);
+  .reel-moment-title:empty,
+  .reel-winner-label:empty,
+  .reel-seg .seg-label:empty {
+    display: none !important;
   }
-  .reel-frame.tier-legend .reel-line {
-    background: linear-gradient(90deg, transparent, #FBBF24 12%, #FBBF24 88%, transparent);
-    box-shadow: 0 0 16px rgba(251,191,36,.9), 0 0 40px rgba(251,191,36,.6);
+  .reel-frame.final-pass .reel-moment-title {
+    transform: translateX(-50%) scale(1.06);
   }
-  .reel-arrow {
-    position: absolute; top: 50%; width: 0; height: 0; z-index: 5;
-    border-top: 20px solid transparent; border-bottom: 20px solid transparent;
-    transform: translateY(-50%); pointer-events: none;
-    filter: drop-shadow(0 0 6px rgba(232,121,249,.7));
-  }
-  .reel-arrow.left  { left: 20px;  border-left: 26px solid #E879F9; }
-  .reel-arrow.right { right: 20px; border-right: 26px solid #E879F9; }
-  .reel-frame.tier-legend .reel-arrow { filter: drop-shadow(0 0 7px rgba(251,191,36,.8)); }
-  .reel-frame.tier-legend .reel-arrow.left  { border-left-color: #FBBF24; }
-  .reel-frame.tier-legend .reel-arrow.right { border-right-color: #FBBF24; }
-  /* Gift chip — credits WHAT was sent while the reel is still spinning, so the
-     attribution and the tension are the same beat (handoff lifecycle). Sits on the
-     housing's upper plate, above the window hole. */
-  /* Solid sticker chip, not a translucent glass pill — the old style this replaced was
-     rgba(42,4,71,.78) fill with a thin tinted border and a soft opacity-only feel,
-     the same "outdated opacity" look already fixed on the control page. Same
-     technique as the Follow Meter/Feed Jamie alert chips: OPAQUE fill, a thick ink
-     border, and a hard zero-blur offset shadow instead of a soft glow — legible over
-     arbitrary gameplay the same way theirs is. Colours stay in the wheel's own
-     ink/plum family rather than borrowing their neutral near-black. */
-  .gift-chip {
-    position: absolute; left: 50%; top: 15.5%; transform: translate(-50%, -50%) scale(.92);
-    display: flex; align-items: baseline; gap: 12px; white-space: nowrap;
-    padding: 10px 26px 12px; border-radius: 999px;
-    background: #3B0764; border: 4px solid #2A0447; box-shadow: 0 6px 0 #1A0322;
-    opacity: 0; transition: opacity .32s ease, transform .32s cubic-bezier(.2,1.3,.3,1);
-  }
-  .reel-frame.show .gift-chip { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  .gift-chip .g-name { font-family: Fredoka, system-ui, sans-serif; font-weight: 700; font-size: 30px; color: #FAF5FF; }
-  .gift-chip .g-amt  { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 25px; color: #E9D5FF; }
-  /* Money in mono so digits don't jitter between spins. */
-  .gift-chip .g-usd  { font-family: 'DM Mono', ui-monospace, monospace; font-weight: 500; font-size: 22px; color: #E879F9; }
-  /* Gold stays legend-only, per the design tokens — it lands on the border, shadow
-     and money figure, never the fill (max two background colours anywhere). */
-  .tier-legend .gift-chip { border-color: #6B4B0B; box-shadow: 0 6px 0 #4a3208; }
-  .tier-legend .gift-chip .g-usd { color: #FBBF24; }
-  /* Viewport = the art's window hole. Mask fades top & bottom so segments roll
-     in/out (the edge-of-cylinder feel) inside the window. */
   .reel-viewport {
-    position: absolute; left: 10.41%; top: 30.73%; width: 79.37%; height: 38.47%;
-    overflow: hidden;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
-            mask-image: linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
+    position: absolute; left: 0; right: 0; top: 0; height: 100%;
+    overflow: visible;
+    /* Keep the moving strip inside the 1080px rail horizontally while allowing the
+       selected card's ring and lift to rise beyond the rail edge. */
+    clip-path: inset(-180px 0 -180px 0);
   }
-  .reel-strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; transform: translateY(0); }
-  .reel-strip.spinning { transition: transform var(--spin-ms, 2200ms) cubic-bezier(.11,.68,.15,1); }
+  .reel-strip {
+    position: absolute; left: 0; top: 50%; height: 100%;
+    display: flex; align-items: center;
+    gap: 6px;
+    will-change: transform;
+    transform: translate3d(0,-50%,0);
+  }
+  /* Low-profile ticker chips: WIDE (icon beside label) instead of tall, solid
+     sticker fills with the 3px ink border + flat offset shadow. */
   .reel-seg {
-    height: var(--seg-h); display: flex; align-items: center; justify-content: center;
-    gap: calc(20px * var(--wheel-content-scale, 1)); padding: 0 calc(30px * var(--wheel-content-scale, 1));
+    --card-bg: #4B126F;
+    --card-ink: #fdf8ee;
+    position: relative;
+    flex: 0 0 auto;
+    height: 62%;
+    min-width: 0;
+    display: flex; flex-direction: row; align-items: center; justify-content: center;
+    gap: clamp(8px, calc(var(--wheel-reel-h, 220px) * .055), 16px);
+    overflow: visible;
+    border: 3px solid #1a1a1a;
+    border-radius: 14px;
+    background: var(--card-bg);
+    box-shadow: 0 4px 0 rgba(0,0,0,.45);
+    color: var(--card-ink);
+    opacity: .8;
+    transform: scale(.94);
+    transform-origin: 50% 50%;
+    transition:
+      opacity .16s ease,
+      border-color .3s ease,
+      box-shadow .3s ease,
+      background .3s ease;
+  }
+  /* Result type controls the chip's hue; tier reads through the escalation
+     grammar and gold, never through glow. */
+  .reel-seg.type-curse     { --card-bg:#7a285c; }
+  .reel-seg.type-stamp     { --card-bg:#8a3028; }
+  .reel-seg.type-flood     { --card-bg:#08749b; }
+  .reel-seg.type-weather   { --card-bg:#475569; }
+  .reel-seg.type-crack     { --card-bg:#5145cd; }
+  .reel-seg.type-spotlight { --card-bg:#936313; }
+  .reel-seg.type-frame     { --card-bg:#7e28a8; }
+  .reel-seg.type-avatar    { --card-bg:#11776f; }
+  .reel-seg.type-ball      { --card-bg:#2754b8; }
+  /* Focus = cream ring + deeper flat shadow. Never glow. */
+  .reel-frame:not(.landed) .reel-seg.center-focus {
+    border-color: #fdf8ee;
+    box-shadow: 0 6px 0 rgba(0,0,0,.5);
   }
   .reel-seg .seg-label {
-    font-size: calc(46px * var(--wheel-content-scale, 1));
-    font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 5px rgba(0,0,0,0.6);
+    max-width: 94%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: clamp(16px, calc(var(--wheel-reel-h, 220px) * .105), 26px);
+    font-weight: 800; line-height: 1.25; letter-spacing: .01em;
+    transform: scale(var(--wheel-content-scale, 1));
   }
+  .reel-frame.landed .reel-seg {
+    opacity: .28; transform: scale(.82);
+    transition: opacity .24s ease, transform .34s cubic-bezier(.2,1.25,.3,1),
+                border-color .3s ease, box-shadow .3s ease, background .3s ease;
+  }
+  .reel-frame.landed .reel-seg.winner {
+    --winner-ring: #fdf8ee;
+    z-index: 20;
+    opacity: 1;
+    transform: translateY(-8%) scale(1.12);
+    outline: 5px solid var(--winner-ring);
+    outline-offset: 6px;
+    border-color: #1a1a1a;
+    box-shadow: 0 7px 0 rgba(0,0,0,.5);
+    animation: reelWinnerLock .72s cubic-bezier(.2,1.25,.3,1) both;
+  }
+  @keyframes reelWinnerLock {
+    0% {
+      transform: translateY(0) scale(1.2);
+      outline-color: rgba(253,248,238,0);
+      outline-offset: 1px;
+    }
+    58% {
+      transform: translateY(-11%) scale(1.2);
+      outline-color: var(--winner-ring);
+      outline-offset: 8px;
+    }
+    100% {
+      transform: translateY(-8%) scale(1.12);
+      outline-color: var(--winner-ring);
+      outline-offset: 6px;
+    }
+  }
+  .reel-frame.tier-legend .reel-seg.winner {
+    --winner-ring: #fdf8ee;
+    color: #1a1a1a;
+    border-color: #1a1a1a;
+    background: #ffd93b;
+    box-shadow: 0 7px 0 rgba(0,0,0,.5);
+  }
+  /* Gold = coin yellow, whole-chip fill (yellow is currency; Legend IS spend). */
+  .reel-seg.gold {
+    color: #1a1a1a;
+    border-color: #1a1a1a;
+    background: #ffd93b;
+    box-shadow: 0 4px 0 rgba(0,0,0,.45);
+  }
+  .reel-seg.gold::after {
+    content: attr(data-gold-label);
+    position: absolute; left: 50%; top: -12px;
+    transform: translateX(-50%);
+    padding: 2px 9px 3px; border-radius: 999px;
+    color: #ffd93b; background: #6c3fd8;
+    border: 2px solid #1a1a1a;
+    font: 800 clamp(10px, calc(var(--wheel-reel-h, 220px) * .055), 13px)/1.2 'Baloo 2', system-ui, sans-serif;
+    letter-spacing: .05em;
+  }
+  .reel-seg.gold[data-gold-label=""]::after { display: none; }
+  .reel-arrow {
+    position: absolute; left: 50%; top: -4px; z-index: 22;
+    width: 0; height: 0;
+    transform: translateX(-50%);
+    border-left: clamp(13px, calc(var(--wheel-reel-h, 220px) * .09), 22px) solid transparent;
+    border-right: clamp(13px, calc(var(--wheel-reel-h, 220px) * .09), 22px) solid transparent;
+    border-top: clamp(18px, calc(var(--wheel-reel-h, 220px) * .13), 30px) solid #fdf8ee;
+  }
+  .reel-frame.tier-legend .reel-arrow { border-top-color: #ffd93b; }
+  .reel-winner-label {
+    position: absolute; left: 50%; bottom: calc(100% + 84px); z-index: 11;
+    transform: translateX(-50%) translateY(8px) scale(.94);
+    padding: 7px 20px 9px;
+    border: 4px solid #1a1a1a;
+    background: #fdf8ee;
+    border-radius: 12px;
+    box-shadow: 0 5px 0 rgba(0,0,0,.35);
+    color: #1a1a1a; white-space: nowrap;
+    text-transform: uppercase;
+    font-family: 'Baloo 2', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: clamp(22px, calc(var(--wheel-reel-h, 220px) * .13), 34px);
+    letter-spacing: .06em;
+    opacity: 0;
+    transition: opacity .24s ease, transform .3s cubic-bezier(.2,1.35,.3,1);
+  }
+  .reel-frame.landed .reel-winner-label {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  .reel-frame.tier-legend .reel-winner-label {
+    background: #ffd93b;
+    color: #1a1a1a;
+  }
+  /* Gift attribution anchors to the rail's lower edge. It remains compact so the
+     adjustable rail height controls screen coverage instead of the chip spilling
+     outside the operator-selected band. */
+  .gift-chip {
+    position: absolute; left: 50%; bottom: calc(100% + 84px); z-index: 10;
+    transform: translateX(-50%) scale(.92);
+    display: flex; align-items: center; gap: 10px; white-space: nowrap;
+    padding: 6px 16px 8px; border-radius: 999px;
+    background: #fdf8ee; border: 3px solid #1a1a1a; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+    opacity: 0; transition: opacity .32s ease, transform .32s cubic-bezier(.2,1.3,.3,1);
+  }
+  .reel-frame.show .gift-chip { opacity: 1; transform: translateX(-50%) scale(1); }
+  .reel-frame.landed .gift-chip {
+    opacity: 0; visibility: hidden;
+    transform: translateX(-50%) translateY(8px) scale(.94);
+  }
+  .gift-chip .g-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: clamp(17px, calc(var(--wheel-reel-h, 220px) * .1), 24px); color: #1a1a1a; }
+  .gift-chip .g-amt  { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 700; font-size: clamp(15px, calc(var(--wheel-reel-h, 220px) * .085), 21px); color: #1a1a1a; }
+  /* Money wears the coin-yellow badge — yellow = currency only, per the style guide. */
+  .gift-chip .g-usd  { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: clamp(14px, calc(var(--wheel-reel-h, 220px) * .08), 19px); color: #1a1a1a; background: #ffd93b; border: 2px solid #1a1a1a; border-radius: 999px; padding: 1px 10px 2px; }
   /* Result icons drawn from the icons.png sprite sheet, positioned by each icon's
      MEASURED centre (cells are a regular 444px grid but the art isn't centred in
      its cell — up to ~55px drift — so we place by content centre, not cell). */
   .wicon { display: inline-block; flex: 0 0 auto; background: url('assets/wheel/icons.png') no-repeat; }
+  .wicon.ball {
+    border: 3px solid #1a1a1a;
+    border-radius: 50%;
+    background: #8fb8f0;
+  }
 
   /* ── IMPACT: the result reveal card. Tier is read from SHAPE + SCALE +
      ICON + TEXT, never hue alone (streamer is red-green colorblind). ── */
   .impact {
-    text-align: center; padding: 40px 60px; border-radius: 28px;
-    background: rgba(10,8,18,0.72); border: 3px solid rgba(255,255,255,0.35);
-    box-shadow: 0 20px 70px rgba(0,0,0,0.6);
+    text-align: center; padding: 36px 56px; border-radius: 16px;
+    background: #fdf8ee; border: 3px solid #1a1a1a; color: #1a1a1a;
+    box-shadow: 0 6px 0 rgba(0,0,0,.35);
     opacity: 0; transform: scale(0.8); transition: opacity .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
   }
   .impact.show { opacity: 1; transform: scale(1); }
@@ -279,11 +401,12 @@
   .impact .i-user  { font-size: 40px; font-weight: 700; margin-bottom: 6px; max-width: 820px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .impact .i-tier  { font-size: 30px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; }
   .impact .i-result { font-size: 64px; font-weight: 800; letter-spacing: .04em; }
-  /* Tier accents: distinct BORDER + GLYPH, with color as a secondary cue only. */
-  .tier-spin     .i-tier { color: #9ecbff; }  .impact.tier-spin     { border-color: #4c9aff; }
-  .tier-power    .i-tier { color: #b6a6ff; }  .impact.tier-power    { border-color: #a98bff; transform: scale(0.8); }
-  .tier-takeover .i-tier { color: #ffd27a; }  .impact.tier-takeover { border-color: #ffb020; }
-  .tier-legend   .i-tier { color: #ffe08a; }  .impact.tier-legend   { border-color: #ffd700; box-shadow: 0 0 60px rgba(255,215,0,0.5), 0 20px 70px rgba(0,0,0,0.6); }
+  /* Tier accents: the doodle escalation ramp (green → orange → red) carried by the
+     tier label, size and glyph. Legend takes the whole card coin-gold. */
+  .tier-spin     .i-tier { color: #17a24b; }
+  .tier-power    .i-tier { color: #e8871a; }
+  .tier-takeover .i-tier { color: #e5312b; }
+  .tier-legend   .i-tier { color: #1a1a1a; }  .impact.tier-legend   { background: #ffd93b; }
 
   /* The AMBIENT and SIGNATURE lanes that checkpoint 3 shipped are gone, along with
      the RECEIPT card. The handoff's lifecycle is three phases and states it twice:
@@ -315,21 +438,21 @@
      without it, plum-on-skin and gold-on-skin both disappear. */
   .stamp-ink { position: absolute; }
   .stamp-ink .ink-plate {
-    position: absolute; inset: 0; background: #3B0764; opacity: .92;
+    position: absolute; inset: 0; background: #6c3fd8; opacity: .92;
     -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
     -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   }
   .stamp-ink .ink-name {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    font-family: Boogaloo, Fredoka, system-ui, sans-serif;
-    color: #FAF5FF; white-space: nowrap; letter-spacing: .02em;
+    font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800;
+    color: #fdf8ee; white-space: nowrap; letter-spacing: .02em;
     text-shadow:
-      3px 0 0 #2A0447, -3px 0 0 #2A0447, 0 3px 0 #2A0447, 0 -3px 0 #2A0447,
-      3px 3px 0 #2A0447, -3px 3px 0 #2A0447, 3px -3px 0 #2A0447, -3px -3px 0 #2A0447;
+      3px 0 0 #1a1a1a, -3px 0 0 #1a1a1a, 0 3px 0 #1a1a1a, 0 -3px 0 #1a1a1a,
+      3px 3px 0 #1a1a1a, -3px 3px 0 #1a1a1a, 3px -3px 0 #1a1a1a, -3px -3px 0 #1a1a1a;
   }
   .stamp-ink.legend .ink-plate { background: #6B4B0B; }
-  .stamp-ink.legend .ink-name  { color: #FDE68A; }
+  .stamp-ink.legend .ink-name  { color: #ffd93b; }
 
   @keyframes om-ripple { from { transform: scale(.25); opacity: .55; } to { transform: scale(1); opacity: 0; } }
   .ripple { border-radius: 50%; border: 3px solid rgba(232,121,249,.75); animation: om-ripple 520ms cubic-bezier(.2,.9,.2,1) both; }
@@ -351,19 +474,20 @@
 
   /* ── LEGEND FLARE — renders UNDER every effect at Legend and nowhere else.
      Quantity + frame takeover + gold + flourish, per the tier grammar. ── */
-  @keyframes om-flash  { 0% { opacity: 0; } 18% { opacity: .5; } 100% { opacity: 0; } }
+  @keyframes om-flash  { 0% { opacity: 0; } 18% { opacity: .16; } 100% { opacity: 0; } }
   @keyframes om-rays   { to { transform: rotate(360deg); } }
   @keyframes om-vign   { 0% { opacity: 0; } 22% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
   .lf-flash { position: absolute; inset: 0; background: #FBBF24; mix-blend-mode: screen; animation: om-flash 880ms ease-out both; }
   .lf-rays {
-    position: absolute; left: 50%; top: 50%; width: 2600px; height: 2600px; margin: -1300px 0 0 -1300px;
-    background: repeating-conic-gradient(rgba(251,191,36,.16) 0deg 6deg, transparent 6deg 14deg);
-    /* Masked to fade past 60% radius so the rays never show a hard circular edge. */
-    -webkit-mask-image: radial-gradient(circle, #000 42%, transparent 60%);
-            mask-image: radial-gradient(circle, #000 42%, transparent 60%);
+    position: absolute; left: 50%; top: 46%; width: 980px; height: 980px; margin: -490px 0 0 -490px;
+    background: repeating-conic-gradient(rgba(251,191,36,.10) 0deg 4deg, transparent 4deg 18deg);
+    opacity: .48;
+    /* A contained halo, not a page-sized sunburst. The stream remains visible. */
+    -webkit-mask-image: radial-gradient(circle, #000 28%, rgba(0,0,0,.72) 42%, transparent 54%);
+            mask-image: radial-gradient(circle, #000 28%, rgba(0,0,0,.72) 42%, transparent 54%);
     animation: om-rays 30s linear infinite;
   }
-  .lf-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, transparent 46%, rgba(180,83,9,.5) 100%); animation: om-vign var(--hold, 2600ms) ease-in-out both; }
+  .lf-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 42%, transparent 54%, rgba(28,8,42,.34) 100%); animation: om-vign var(--hold, 2600ms) ease-in-out both; }
 
   /* ── CURSE ◍ — the giver possesses the camera ──────────────────────
      The curse IS the giver's avatar: their face screen-blended over the
@@ -439,6 +563,47 @@
   #bump.shaking-hard { animation: om-shake 380ms ease-in-out both; }
   @keyframes om-tumble { from { transform: translate(0,0) rotate(0deg); opacity: 1; } to { transform: translate(var(--dx,0px), 1400px) rotate(var(--dr, 420deg)); opacity: .2; } }
   .shard { background: url('assets/wheel/glass-shards.png') center / cover no-repeat; animation: om-tumble var(--sd, 1100ms) cubic-bezier(.4,0,.9,1) both; }
+  .freeze-capture {
+    background-size: 100% 100%; background-position: center; overflow: hidden;
+    box-shadow: inset 0 0 0 3px rgba(255,255,255,.28), inset 0 0 90px rgba(192,132,252,.22);
+    filter: saturate(.72) contrast(1.08);
+  }
+  .freeze-capture::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(130deg, rgba(255,255,255,.13), transparent 28%, rgba(192,132,252,.14) 70%, transparent);
+    pointer-events: none;
+  }
+  /* Cream card + purple ribbon footer — the Feed Jamie card anatomy, replacing
+     the rgba + backdrop-blur pill (style guide: no blur pills). */
+  .freeze-prompt {
+    left: 70px; top: 650px; width: 940px; box-sizing: border-box; text-align: center;
+    padding: 20px 28px 0; border: 3px solid #1a1a1a;
+    border-radius: 16px; background: #fdf8ee; overflow: hidden;
+    box-shadow: 0 5px 0 rgba(0,0,0,.35);
+    font: 800 40px/1.1 'Baloo 2', system-ui, sans-serif; letter-spacing: .04em;
+    color: #1a1a1a;
+    opacity: 0; transform: translateY(12px);
+    transition: opacity .24s ease, transform .24s ease;
+  }
+  .freeze-prompt.show { opacity: 1; transform: translateY(0); }
+  .freeze-prompt.done { opacity: 0; transform: translateY(-12px); }
+  .freeze-prompt small {
+    display: block; margin: 16px -28px 0; padding: 7px 12px 9px;
+    border-top: 3px solid #1a1a1a; background: #6c3fd8;
+    font-size: 22px; font-weight: 800; letter-spacing: .08em; color: #ffd93b;
+  }
+  .freeze-shard {
+    overflow: hidden; background-repeat: no-repeat;
+    will-change: transform, opacity;
+    border: 1px solid rgba(250,245,255,.48);
+    box-shadow: 0 0 12px rgba(192,132,252,.28);
+  }
+  .freeze-shard.gold { border-color: rgba(253,230,138,.8); box-shadow: 0 0 18px rgba(251,191,36,.42); }
+  .hand-cursor {
+    border: 4px solid rgba(250,245,255,.9); border-radius: 50%;
+    box-shadow: 0 0 0 5px rgba(168,85,247,.34), 0 0 26px rgba(192,132,252,.9);
+    opacity: .9; transform: translate(-50%,-50%);
+  }
 
   /* ── SPOTLIGHT ▲ — the giver steals your light ────────────────────── */
   .sl-cone { background: url('assets/wheel/spotlight-cone.png') center top / 100% 100% no-repeat; opacity: .82;
@@ -449,7 +614,14 @@
   @keyframes om-rise { from { transform: translateY(150px) scale(.9); opacity: 0; } 70% { transform: translateY(-16px) scale(1.03); opacity: 1; } to { transform: translateY(0) scale(1); opacity: 1; } }
   .sl-giver { background-size: cover; background-position: center; border-radius: 50%; animation: om-rise 620ms cubic-bezier(.2,1.1,.3,1.2) both; }
   .sl-shadow { background: radial-gradient(ellipse, rgba(0,0,0,.72), transparent 70%); }
-  .sl-plate { font-family: Boogaloo, Fredoka, system-ui, sans-serif; color: #FDE68A; text-align: center; white-space: nowrap; }
+  .sl-plate {
+    font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800;
+    color: #ffd93b;
+    text-align: center;
+    white-space: nowrap;
+    line-height: 1;
+    text-shadow: 3px 0 0 #1a1a1a, -3px 0 0 #1a1a1a, 0 3px 0 #1a1a1a, 0 -3px 0 #1a1a1a;
+  }
   .sl-beam { background: linear-gradient(180deg, rgba(251,191,36,.35), transparent); transform-origin: 50% 0; animation: om-glitch 2600ms ease-in-out infinite; }
 
   /* ── FRAME ▣ — claim the frame ─────────────────────────────────────
@@ -474,18 +646,57 @@
   .invader { background-size: cover; background-position: center; border-radius: 50%; box-shadow: 0 0 0 4px #E879F9, 0 12px 40px rgba(0,0,0,.5); }
   .invader.legend { box-shadow: 0 0 0 4px #FBBF24, 0 0 40px rgba(251,191,36,.6); }
   .inv-tag {
-    font-family: Fredoka, system-ui, sans-serif; font-weight: 600; color: #FAF5FF; white-space: nowrap;
-    background: rgba(42,4,71,.85); border-radius: 999px; padding: 6px 18px;
+    font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; color: #1a1a1a; white-space: nowrap;
+    background: #fdf8ee; border: 3px solid #1a1a1a; box-shadow: 0 3px 0 rgba(0,0,0,.35); border-radius: 999px; padding: 6px 18px;
     opacity: 0; transform: scale(.7); transition: opacity .22s ease, transform .28s cubic-bezier(.2,1.4,.3,1);
   }
   .inv-tag.show { opacity: 1; transform: scale(1); }
   @keyframes om-drift { to { transform: translateY(-260px); opacity: 0; } }
   .drifting { animation: om-drift 700ms ease-in both; }
+  @keyframes om-echo-pop {
+    0% { opacity: 0; transform: translateY(22px) scale(.72) rotate(var(--er,0deg)); }
+    68% { opacity: 1; transform: translateY(-8px) scale(1.05) rotate(var(--er,0deg)); }
+    100% { opacity: 1; transform: translateY(0) scale(1) rotate(var(--er,0deg)); }
+  }
+  @keyframes om-echo-float {
+    0%,100% { margin-top: 0; }
+    50% { margin-top: -14px; }
+  }
+  .snapshot-echo {
+    border-radius: 50%; background-size: cover; background-position: center;
+    border: 6px solid #A855F7;
+    box-shadow: 0 16px 40px rgba(0,0,0,.52), 0 0 28px rgba(168,85,247,.58);
+    animation: om-echo-pop 480ms cubic-bezier(.18,1.2,.28,1) both,
+               om-echo-float 1800ms ease-in-out 500ms infinite;
+  }
+  .snapshot-echo.legend {
+    border-color: #FBBF24;
+    box-shadow: 0 16px 40px rgba(0,0,0,.52), 0 0 34px rgba(251,191,36,.74);
+  }
+  /* Cream card + purple ribbon header — same anatomy as the freeze prompt. */
+  .echo-countdown {
+    left: 90px; top: 650px; width: 900px; box-sizing: border-box; text-align: center;
+    padding: 0 26px 16px; border: 3px solid #1a1a1a;
+    border-radius: 16px; background: #fdf8ee; overflow: hidden;
+    box-shadow: 0 5px 0 rgba(0,0,0,.35);
+    font: 800 36px/1.1 'Baloo 2', system-ui, sans-serif; letter-spacing: .04em;
+    color: #1a1a1a;
+  }
+  .echo-countdown small {
+    display: block; margin: 0 -26px 12px; padding: 6px 12px 8px;
+    border-bottom: 3px solid #1a1a1a; background: #6c3fd8;
+    font-size: 18px; font-weight: 800; letter-spacing: .12em; color: #ffd93b;
+  }
 
   /* ── BALL DROP ● — the cam becomes a ball ──────────────────────────
      Layer order is fixed by the art: circular cam crop → shell (multiply)
      → gloss (screen) → rim ring. */
-  .ball { background-size: cover; background-position: center; overflow: hidden; will-change: transform, left, top; }
+  .ball {
+    /* A complete fallback sphere for previews or brief camera-still dropouts. */
+    background-image: radial-gradient(circle at 34% 27%, #fff 0 7%, #E879F9 10% 25%, #671491 55%, #240437 79%);
+    background-size: cover; background-position: center; overflow: hidden;
+    will-change: transform, left, top;
+  }
   /* The warped face is already circular with a feathered rim, so it needs no extra
      masking — just a touch of contrast to survive the multiply shading on top. */
   .ball.ball-lens { filter: saturate(1.12) contrast(1.06); }
@@ -494,7 +705,6 @@
   .ball-ring  { background: url('assets/wheel/ball-ring.png') center / 100% 100% no-repeat; }
   .ball-ring.legend { background-image: url('assets/wheel/ball-ring-legend.png'); }
   .ball-shadow { background: radial-gradient(ellipse, rgba(0,0,0,.55), transparent 70%); border-radius: 50%; }
-  .ball-trail { background: linear-gradient(180deg, rgba(251,191,36,.85), rgba(251,191,36,0)); border-radius: 6px; }
   /* The frozen cam still, covering the live cam so we own the pixels. */
   .cam-frozen { background-size: cover; background-position: center; }
   /* A real void, not a transparent punch. Transparent revealed the LIVE camera
@@ -513,9 +723,9 @@
   }
   .bucket-lip { background: url('assets/wheel/bucket-mouth.png') center top / 100% 100% no-repeat; }
   .ball-plate {
-    position: absolute; font-family: Boogaloo, Fredoka, system-ui, sans-serif; color: #FAF5FF;
-    text-shadow: 2px 0 0 #2A0447, -2px 0 0 #2A0447, 0 2px 0 #2A0447, 0 -2px 0 #2A0447,
-                 2px 2px 0 #2A0447, -2px 2px 0 #2A0447, 2px -2px 0 #2A0447, -2px -2px 0 #2A0447;
+    position: absolute; font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; color: #fdf8ee;
+    text-shadow: 2px 0 0 #1a1a1a, -2px 0 0 #1a1a1a, 0 2px 0 #1a1a1a, 0 -2px 0 #1a1a1a,
+                 2px 2px 0 #1a1a1a, -2px 2px 0 #1a1a1a, 2px -2px 0 #1a1a1a, -2px -2px 0 #1a1a1a;
     opacity: 0; transform: translateY(14px); transition: opacity .3s ease, transform .3s cubic-bezier(.2,1.3,.3,1);
   }
   .ball-plate.show { opacity: 1; transform: translateY(0); }
@@ -529,29 +739,24 @@
     transition: opacity .52s cubic-bezier(.18,1.2,.3,1), transform .52s cubic-bezier(.18,1.2,.3,1);
   }
   .hero.show { opacity: 1; transform: translateY(0) scale(1); }
-  /* A blurred dark halo behind the name. The 8-direction outline alone is not enough
-     over bright or busy gameplay — the same technique the Follow Meter uses to keep
-     its hero legible, and for the same reason: this is the ONE place the giver's name
-     is printed during impact, so it cannot be allowed to disappear into the frame. */
-  .hero::before {
-    content: ''; position: absolute; left: 90px; right: 90px; top: -26px; bottom: -14px;
-    background: rgba(13,8,22,.78); filter: blur(46px); border-radius: 50%; z-index: -1;
-  }
+  /* No blurred halo (style guide: no glow, no fading ghosts). Legibility over
+     gameplay comes from the ink 8-direction outline + flat offset shadow below. */
   .hero .h-name {
-    font-family: Boogaloo, Fredoka, system-ui, sans-serif; font-size: 112px; color: #FAF5FF;
+    font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: 104px; color: #fdf8ee;
     line-height: 1.02;
-    text-shadow: 4px 0 0 #2A0447, -4px 0 0 #2A0447, 0 4px 0 #2A0447, 0 -4px 0 #2A0447,
-                 4px 4px 0 #2A0447, -4px 4px 0 #2A0447, 4px -4px 0 #2A0447, -4px -4px 0 #2A0447,
-                 0 10px 0 rgba(42,4,71,.9);
+    text-shadow: 4px 0 0 #1a1a1a, -4px 0 0 #1a1a1a, 0 4px 0 #1a1a1a, 0 -4px 0 #1a1a1a,
+                 4px 4px 0 #1a1a1a, -4px 4px 0 #1a1a1a, 4px -4px 0 #1a1a1a, -4px -4px 0 #1a1a1a,
+                 0 9px 0 rgba(0,0,0,.35);
   }
-  .hero .h-what { font-family: Fredoka, system-ui, sans-serif; font-weight: 600; font-size: 38px; color: #C084FC; letter-spacing: .04em; }
-  .hero.tier-legend .h-name { color: #FDE68A; }
-  .hero.tier-legend .h-what { color: #FBBF24; }
+  .hero .h-what { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: 36px; color: #ffd93b; letter-spacing: .06em;
+    text-shadow: 2px 0 0 #1a1a1a, -2px 0 0 #1a1a1a, 0 2px 0 #1a1a1a, 0 -2px 0 #1a1a1a,
+                 2px 2px 0 #1a1a1a, -2px 2px 0 #1a1a1a, 2px -2px 0 #1a1a1a, -2px -2px 0 #1a1a1a; }
+  .hero.tier-legend .h-name { color: #ffd93b; }
 
   /* Dev-only heads-up so an operator loading the page in a browser knows it's alive
      and which transport it's on. Hidden inside Studio is fine — pointer-events off. */
   #conn { position: absolute; left: 12px; top: 12px; z-index: 90; font-size: 14px;
-    color: rgba(255,255,255,0.5); font-family: 'DM Mono', monospace; }
+    color: rgba(255,255,255,0.5); font-family: ui-monospace, monospace; }
 </style>
 </head>
 <body>
@@ -566,7 +771,7 @@
   </div>
 </div>
 
-<script src="jjx-core.js?v=8"></script>
+<script src="jjx-core.js?v=9"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -574,20 +779,91 @@
 const ABLY_KEY = JJX.ABLY_KEY;
 const ABLY_CH  = JJX.ABLY_MAIN_CHANNEL; // 'splat-overlay' — where the dock publishes wheel.spin
 
-// The eight results, short labels + a colorblind-safe glyph each. Order fixes the
-// wheel slice layout so the disc can be rotated to land the resolved result on the
-// pointer. (These are presentation; the dock owns the canonical result keys.)
+// All nine dock results. One complete horizontal pass contains each exactly once,
+// so every option remains visible and the carousel still LOOKS equal-weight.
 const RESULTS = [
   { key: 'curse',     label: 'Curse',     glyph: '🎥' },
   { key: 'stamp',     label: 'Stamp',     glyph: '🖋' },
   { key: 'flood',     label: 'Flood',     glyph: '🌊' },
   { key: 'weather',   label: 'Weather',   glyph: '⛈' },
-  { key: 'crack',     label: 'Crack',     glyph: '💥' },
+  { key: 'crack',     label: 'Freeze & Shatter', glyph: '💥' },
   { key: 'spotlight', label: 'Spotlight', glyph: '🔦' },
   { key: 'frame',     label: 'Frame',     glyph: '🖼' },
-  { key: 'avatar',    label: 'Avatar',    glyph: '👾' },
+  { key: 'avatar',    label: 'Snapshot Echo', glyph: '👾' },
+  { key: 'ball',      label: 'Ball Drop', glyph: '●' },
 ];
 const RESULT_BY_KEY = Object.fromEntries(RESULTS.map((r, i) => [r.key, { ...r, index: i }]));
+let enabledRailResults = RESULTS.slice();
+const CAROUSEL_COPY_KEY = 'jjx-wheel-carousel-copy-v1';
+const CAROUSEL_COPY_DEFAULT = {
+  momentTitle: 'GOLD CAN LAND ON ANY RESULT',
+  finalPassTitle: 'EVERYONE WATCH THE WINNER',
+  goldBadge: 'LEGEND',
+  winnerTemplate: '{result} WINS',
+  legendWinnerTemplate: 'LEGENDARY {result}',
+  resultLabels: Object.fromEntries(RESULTS.map((result) => [result.key, result.label])),
+};
+function normalizeCarouselCopy(source) {
+  const value = source && typeof source === 'object' ? source : {};
+  const pick = (candidate, fallback, max) => {
+    // Preserve intentional blank fields. Only values absent from older saved
+    // configs receive a default.
+    const text = candidate == null ? String(fallback || '') : String(candidate).trim();
+    return text.slice(0, max);
+  };
+  return {
+    momentTitle: pick(value.momentTitle, CAROUSEL_COPY_DEFAULT.momentTitle, 80),
+    finalPassTitle: pick(value.finalPassTitle, CAROUSEL_COPY_DEFAULT.finalPassTitle, 80),
+    goldBadge: pick(value.goldBadge, CAROUSEL_COPY_DEFAULT.goldBadge, 20),
+    winnerTemplate: pick(value.winnerTemplate, CAROUSEL_COPY_DEFAULT.winnerTemplate, 80),
+    legendWinnerTemplate: pick(value.legendWinnerTemplate, CAROUSEL_COPY_DEFAULT.legendWinnerTemplate, 80),
+    resultLabels: Object.fromEntries(RESULTS.map((result) => [
+      result.key,
+      pick(value.resultLabels && value.resultLabels[result.key], result.label, 40),
+    ])),
+  };
+}
+function loadCarouselCopy() {
+  try { return normalizeCarouselCopy(JSON.parse(localStorage.getItem(CAROUSEL_COPY_KEY) || 'null')); }
+  catch (e) { return normalizeCarouselCopy(null); }
+}
+let carouselCopy = loadCarouselCopy();
+function carouselResultLabel(key) {
+  return carouselCopy.resultLabels[key] ?? RESULT_BY_KEY[key]?.label ?? key;
+}
+function carouselWinnerLabel(key, tier) {
+  const template = tier === 'legend' ? carouselCopy.legendWinnerTemplate : carouselCopy.winnerTemplate;
+  return template.replace(/\{result\}/gi, carouselResultLabel(key));
+}
+function refreshActiveCarouselCopy() {
+  document.querySelectorAll('.reel-frame').forEach((frame) => {
+    const title = frame.querySelector('.reel-moment-title');
+    if (title) title.textContent = frame.classList.contains('final-pass')
+      ? carouselCopy.finalPassTitle
+      : carouselCopy.momentTitle;
+  });
+  document.querySelectorAll('.reel-seg[data-result-key]').forEach((segment) => {
+    const label = segment.querySelector('.seg-label');
+    if (label) label.textContent = carouselResultLabel(segment.dataset.resultKey);
+    if (segment.classList.contains('gold')) segment.dataset.goldLabel = carouselCopy.goldBadge;
+  });
+  document.querySelectorAll('.reel-winner-label[data-result-key]').forEach((node) => {
+    node.textContent = carouselWinnerLabel(node.dataset.resultKey, node.dataset.tier);
+  });
+}
+function applyCarouselCopy(source, persist = true) {
+  carouselCopy = normalizeCarouselCopy(source);
+  if (persist) {
+    try { localStorage.setItem(CAROUSEL_COPY_KEY, JSON.stringify(carouselCopy)); } catch (e) {}
+  }
+  refreshActiveCarouselCopy();
+}
+function setEnabledRailResults(keys) {
+  if (!Array.isArray(keys)) return;
+  const enabled = new Set(keys);
+  const filtered = RESULTS.filter((r) => enabled.has(r.key));
+  if (filtered.length) enabledRailResults = filtered;
+}
 
 // Icon sprite: each result's icon CENTRE in icons.png (1774×887, 2×4 grid), measured
 // from the art's alpha. Placed by centre, not by cell, because the icons drift up to
@@ -599,6 +875,12 @@ const ICON_CENTER = {
   crack: [265, 620], spotlight: [678, 621], frame: [1071, 623], avatar: [1497, 639],
 };
 function iconEl(key, box) {
+  if (key === 'ball') {
+    const ball = document.createElement('span');
+    ball.className = 'wicon ball';
+    ball.style.width = box + 'px'; ball.style.height = box + 'px';
+    return ball;
+  }
   const c = ICON_CENTER[key] || [ICON_SHEET_W / 8, ICON_SHEET_H / 4];
   const f = (box * 0.92) / ICON_NAT; // fit a nominal icon into ~92% of the box
   const s = document.createElement('span');
@@ -613,15 +895,18 @@ const TIER_LABEL = { spin: 'SPIN', power: 'POWER SPIN', takeover: 'TAKEOVER', le
 const TIER_GLYPH = { spin: '●', power: '◆', takeover: '★', legend: '👑' };
 
 // ═══════════════════════════════════════════════════════════════════
-// TIER SCALING — `k` multiplies effect scale, stroke weights, particle
-// counts, glow radius and bump amplitude. GOLD APPEARS NOWHERE EXCEPT
-// LEGEND; that exclusivity is the whole reason Legend reads as rare.
+// TIER SCALING
+// `k` is ENERGY: it may increase counts, repetition and bump intensity.
+// `size` is GEOMETRY: it grows gently and is used for physical dimensions.
+// Keeping those separate prevents nested pieces from each doubling at Legend.
+// Gold remains exclusive to Legend; rarity reads through treatment and quantity,
+// not through a single object swallowing the frame.
 // ═══════════════════════════════════════════════════════════════════
 const TIER = {
-  spin:     { k: 1.00, hold: 1200, ornament: '✦',  ring: '#7B2FBE' },
-  power:    { k: 1.35, hold: 1600, ornament: '✦✦', ring: '#A855F7' },
-  takeover: { k: 1.75, hold: 2100, ornament: '✷',  ring: '#E879F9' },
-  legend:   { k: 2.15, hold: 2600, ornament: '♛',  ring: '#FBBF24' },
+  spin:     { k: 1.00, size: 1.00, hold: 1200, ornament: '✦',  ring: '#7B2FBE' },
+  power:    { k: 1.35, size: 1.08, hold: 1600, ornament: '✦✦', ring: '#A855F7' },
+  takeover: { k: 1.75, size: 1.16, hold: 2100, ornament: '✷',  ring: '#E879F9' },
+  legend:   { k: 2.15, size: 1.24, hold: 2600, ornament: '♛',  ring: '#FBBF24' },
 };
 const tierOf = (spin) => TIER[spin?.tier] || TIER.spin;
 /**
@@ -677,18 +962,116 @@ function headPoint(h, ox, oy) {
 }
 const forehead = (h) => headPoint(h, 0, -0.26);
 
+// Short-lived gesture/body stream. gesture-cam publishes nothing on this channel
+// until an active effect leases it, then stops automatically when the lease ends.
+let interactionCh = null;
+let interactionHands = [];
+let interactionHandsAt = 0;
+let interactionBodies = [];
+let interactionBodiesAt = 0;
+let interactionEventId = '';
+let interactionRequestSeq = 0;
+const snapshotWaiters = new Map();
+const interactionHandHistory = new Map();
+
+function ingestInteractionHands(eventId, hands, now = performance.now()) {
+  interactionEventId = String(eventId || 'preview');
+  const next = [];
+  for (const raw of Array.isArray(hands) ? hands : []) {
+    if (!raw || !isFinite(raw.x) || !isFinite(raw.y)) continue;
+    const id = String(raw.id ?? next.length);
+    const prior = interactionHandHistory.get(id);
+    let vx = 0, vy = 0, speed = 0, travel = 0;
+    if (prior) {
+      const dt = Math.max(.016, Math.min(.32, (now - prior.t) / 1000));
+      vx = (raw.x - prior.x) / dt;
+      vy = (raw.y - prior.y) / dt;
+      speed = Math.hypot(vx, vy);
+      travel = Math.hypot(raw.x - prior.x, raw.y - prior.y);
+    }
+    interactionHandHistory.set(id, { x: raw.x, y: raw.y, t: now });
+    next.push({ ...raw, id, vx, vy, speed, travel });
+  }
+  interactionHands = next;
+  interactionHandsAt = now;
+}
+
+function requestInteraction(run, { ms = 3400, hands = true, body = true, mode = 'effect' } = {}) {
+  interactionEventId = String(run.spin.eventId || run.spin.revision || 'preview');
+  interactionHands = [];
+  interactionHandHistory.clear();
+  interactionBodies = [];
+  interactionHandsAt = interactionBodiesAt = 0;
+  if (!interactionCh) return;
+  try {
+    interactionCh.publish('tracking-request', {
+      eventId: interactionEventId,
+      ms: Math.max(800, Math.min(6500, ms)),
+      hands,
+      body,
+      mode,
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+function currentOpenHands(run) {
+  const id = String(run.spin.eventId || run.spin.revision || 'preview');
+  if (id !== interactionEventId || performance.now() - interactionHandsAt > 320) return [];
+  return interactionHands.filter((h) => h && h.open && isFinite(h.x) && isFinite(h.y));
+}
+
+function currentBodyParts(run) {
+  const id = String(run.spin.eventId || run.spin.revision || 'preview');
+  if (id !== interactionEventId || performance.now() - interactionBodiesAt > 900) return [];
+  return interactionBodies;
+}
+
+function askInteractionSnapshot(run, scope, seq, callback, timeoutMs = 650) {
+  if (!interactionCh) {
+    runTimer(run, () => callback(null), 0);
+    return;
+  }
+  const requestId = `${String(run.spin.eventId || run.spin.revision || 'preview')}:${scope}:${++interactionRequestSeq}`;
+  snapshotWaiters.set(requestId, { run, callback });
+  try {
+    interactionCh.publish('snapshot-request', {
+      requestId,
+      eventId: String(run.spin.eventId || run.spin.revision || 'preview'),
+      scope,
+      seq,
+    }).catch(() => {});
+  } catch (e) {}
+  runTimer(run, () => {
+    const pending = snapshotWaiters.get(requestId);
+    if (!pending) return;
+    snapshotWaiters.delete(requestId);
+    callback(null);
+  }, timeoutMs);
+}
+
+window.__wheelInteractionTest = {
+  setHands(eventId, hands) {
+    ingestInteractionHands(eventId, hands);
+  },
+  setBody(eventId, parts) {
+    interactionEventId = String(eventId || 'preview');
+    interactionBodies = Array.isArray(parts) ? parts : [];
+    interactionBodiesAt = performance.now();
+  },
+};
+
 // Stage timings (ms), inside the spec's recommended envelopes. Impact and ambient
 // scale up by tier. Every stage also has a WATCHDOG (see runStage) a bit longer than
 // its own duration, so a stuck stage can never freeze the machine.
 const TIMING = {
   receipt:  { show: 400, hold: 1400 },
-  spinning: { spin: 2000 },
+  spinning: { spin: 6500 },
   reveal:   { show: 500 },
   impact:   { spin: 2200, power: 2600, takeover: 3400, legend: 6000 },
   ambient:  { spin: 10000, power: 16000, takeover: 26000, legend: 40000 },
 };
 const STAGE_WATCHDOG_PAD = 4000; // a stage's watchdog fires this long after its planned end
-const MASTER_WATCHDOG_MS = 16000; // absolute ceiling for one spin's active run
+const MASTER_WATCHDOG_MS = 26000; // base ceiling; long operator-tuned spins extend it below
 
 // ═══════════════════════════════════════════════════════════════════
 // SMALL DOM + TIMER HELPERS — every timer and node is TRACKED so cleanup
@@ -699,41 +1082,38 @@ const laneWheel = $('wheel-stage'), laneImpact = $('lane-impact'),
       laneWall = $('lane-wall'), laneFx = $('lane-fx'), laneFlare = $('lane-flare'),
       bumpEl = $('bump');
 
-/**
- * REEL LAYOUT — position + scale, operator-tunable and dock-persisted.
- * Applies to #wheel-stage's CSS vars (see the rule above); reel-frame itself is
- * never touched, so its own show/hide transform keeps working untouched underneath.
+/** FULL-WIDTH RAIL LAYOUT — operator-tunable and dock-persisted.
+ * Height controls total screen coverage; Y moves the complete rail up/down. The old
+ * width/X/scale fields remain accepted in the saved object for schema compatibility,
+ * but a full-width rail deliberately ignores them.
  *
- * Two sources, same effect: settings.wheel.reel from /api/settings on connect (so a
- * fresh load gets the persisted layout immediately), and a live 'reel-layout' event
- * on wheel-fx for instant feedback while an operator is dragging the control page's
- * inputs — Save is what makes a live tweak survive the next reload.
+ * Legacy migration: the replaced cabinet defaulted to 1200px tall. Treat any saved
+ * height over the rail's 900px maximum as that old cabinet value and start the new
+ * rail at 220px rather than covering most of the stream on first load.
  */
-// The live value JS math (icon size, landing position) reads — kept in JS as well as
-// CSS because the icon sprite is imperatively sized in px (see iconEl), not something
-// a CSS var alone can resize; a transform:scale() on the sprite would just blur it.
 let wheelContentScale = 1;
+let wheelRailHeight = 220;
+let wheelSpinMs = 6500;
 
 function applyReelLayout(reel) {
   if (!reel) return;
-  const scale = Number(reel.scale), x = Number(reel.offsetX), y = Number(reel.offsetY);
+  const y = Number(reel.offsetY);
   const content = Number(reel.contentScale);
-  const w = Number(reel.width), h = Number(reel.height);
+  const requestedH = Number(reel.height);
+  const requestedSpinMs = Number(reel.spinMs);
   const stage = $('wheel-stage');
-  if (Number.isFinite(scale) && scale > 0) stage.style.setProperty('--wheel-scale', scale);
-  if (Number.isFinite(x)) stage.style.setProperty('--wheel-x', x + 'px');
-  if (Number.isFinite(y)) stage.style.setProperty('--wheel-y', y + 'px');
+  if (Number.isFinite(y)) stage.style.setProperty('--wheel-y', Math.max(-700, Math.min(700, y)) + 'px');
   if (Number.isFinite(content) && content > 0) {
-    wheelContentScale = content;
-    stage.style.setProperty('--wheel-content-scale', content);
+    wheelContentScale = Math.max(.75, Math.min(1.35, content));
+    stage.style.setProperty('--wheel-content-scale', wheelContentScale);
   }
-  // Real box dimensions, not a non-uniform transform — a non-uniform scaleX/scaleY
-  // would stretch the border, the corner radii and every glyph inside into an
-  // ellipse/oval mess. Setting actual width/height keeps everything crisp; the
-  // viewport window, landing line and gift chip are all positioned by percentage of
-  // this box already, so they re-lay-out for free at any width/height.
-  if (Number.isFinite(w) && w > 0) stage.style.setProperty('--wheel-reel-w', w + 'px');
-  if (Number.isFinite(h) && h > 0) stage.style.setProperty('--wheel-reel-h', h + 'px');
+  wheelRailHeight = Number.isFinite(requestedH) && requestedH <= 900
+    ? Math.max(160, requestedH)
+    : 220;
+  wheelSpinMs = Number.isFinite(requestedSpinMs)
+    ? Math.max(3000, Math.min(12000, requestedSpinMs))
+    : 6500;
+  stage.style.setProperty('--wheel-reel-h', wheelRailHeight + 'px');
 }
 window.applyReelLayout = applyReelLayout;   // exercised by wheel-control's live preview path too
 
@@ -757,7 +1137,15 @@ const seenRevisions = new Set(); // dedupe: a re-published/replayed spin renders
 
 /** One run context per active spin. Holds its timers + nodes so cleanup is total. */
 function makeRun(spin) {
-  return { spin, timers: new Set(), nodes: new Set(), rafs: new Set(), master: null, done: false };
+  return {
+    spin,
+    timers: new Set(),
+    nodes: new Set(),
+    rafs: new Set(),
+    snapshots: {},
+    master: null,
+    done: false,
+  };
 }
 function runTimer(run, fn, ms) {
   const t = setTimeout(() => { run.timers.delete(t); if (!run.done) fn(); }, ms);
@@ -774,9 +1162,30 @@ function cleanupRun(run) {
   for (const r of run.rafs) cancelAnimationFrame(r);
   run.rafs.clear();
   if (run.master) { clearTimeout(run.master); run.master = null; }
+  for (const [id, pending] of snapshotWaiters) {
+    if (pending.run === run) snapshotWaiters.delete(id);
+  }
   for (const n of run.nodes) n.remove(); // ambient/signature nodes are detached FIRST (below), so they survive
   run.nodes.clear();
 }
+
+/**
+ * Operator escape hatch. A browser-source refresh has always cleared transient
+ * wheel art, but that is too slow and too hidden when a preview is covering the
+ * live frame. Keep the permanent supporter wall, cancel the active/queued work,
+ * and empty every transient lane immediately.
+ */
+function clearWheelEffects() {
+  queue.splice(0, queue.length);
+  if (active) {
+    const run = active;
+    active = null;
+    cleanupRun(run);
+  }
+  [laneFlare, laneWheel, laneFx, laneImpact].forEach((lane) => lane.replaceChildren());
+  bumpEl.className = '';
+}
+window.clearWheelEffects = clearWheelEffects;
 
 function onWheelSpin(spin) {
   if (!spin || spin.type !== 'wheel.spin') return;
@@ -799,81 +1208,221 @@ function pump() {
   active.master = setTimeout(() => {
     console.warn('[wheel] master watchdog fired — force-completing', spin.eventId);
     finishActive();
-  }, MASTER_WATCHDOG_MS);
+  }, Math.max(MASTER_WATCHDOG_MS, wheelSpinMs + 18_000));
   startSpinning(active);
 }
 
-// ── Stage 1: SPINNING — edge-on reel. Segments scroll up and DECELERATE to
-// land the resolved result centred in the pink window. (Skipped when the dock
-// resolved a single-result pool — nothing to spin past.) ──
-const SEG_H_BASE = 112; // base segment height at contentScale 1 — keep in sync with the
-                        // 112px literal in .reel-frame's --seg-h calc()
-const REEL_CYCLES = 6;  // how many times the 8 results repeat down the strip
-// translateY that puts strip segment `i` centred in a viewport of height vpH. segH is
-// passed in rather than closed over, because it now varies with wheelContentScale —
-// landing math done against the WRONG segment height lands on the wrong result.
-function reelCenter(vpH, i, segH) { return (vpH / 2 - segH / 2) - i * segH; }
+// ── Stage 1: SPINNING — full-width horizontal carousel. One viewport contains one
+// complete pass, so all outcomes remain visible while repeated passes move through
+// the centre. The resolved card then HOLDS for a full second before impact. ──
+const REEL_CYCLES = 10;
+const REEL_GAP = 6;
+const WINNER_HOLD_MS = 1000;
+const GOLD_PASSES_BY_TIER = { spin: 1, power: 2, takeover: 4, legend: 8 };
+function carouselCenter(vpW, i, cardW) {
+  return vpW / 2 - cardW / 2 - i * (cardW + REEL_GAP);
+}
+function reelRandom(seed) {
+  let state = 2166136261;
+  for (const ch of String(seed || 'wheel')) {
+    state ^= ch.charCodeAt(0);
+    state = Math.imul(state, 16777619);
+  }
+  return () => {
+    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  };
+}
+function goldPlacements(passCount, landingGold, startIndex, landIndex, total, resultCount, seed) {
+  const count = Math.max(0, Math.min(8, Number(passCount) || 0));
+  const placements = new Set();
+  if (!count) return placements;
+  if (landingGold) placements.add(landIndex);
+
+  // Gold is a property of individual cards, never an entire repeated row. Shuffle
+  // the visible journey deterministically so replays look identical while the live
+  // rail still reads as naturally interspersed chance.
+  const first = Math.max(0, startIndex - Math.ceil(resultCount / 2));
+  const last = Math.min(total - 1, landIndex + Math.ceil(resultCount / 2));
+  const candidates = [];
+  for (let i = first; i <= last; i++) if (i !== landIndex) candidates.push(i);
+  const random = reelRandom(seed);
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+
+  const minGap = Math.max(2, Math.floor(resultCount / 3));
+  for (const index of candidates) {
+    if (placements.size >= count) break;
+    if ([...placements].every((placed) => Math.abs(placed - index) >= minGap)) placements.add(index);
+  }
+  // A very short enabled-results list may make the spacing rule impossible.
+  for (const index of candidates) {
+    if (placements.size >= count) break;
+    placements.add(index);
+  }
+  return placements;
+}
 
 function startSpinning(run) {
   const spin = run.spin;
-  if (spin.skippedSpinAnimation) { startImpact(run); return; }
+  if (spin.skippedSpinAnimation) { prepareImpact(run); return; }
 
+  // Settings determine which cards belong on the rail. Always include the resolved
+  // result even if a just-changed setting has not reached this page yet.
+  const reelResults = RESULTS.filter((r) =>
+    enabledRailResults.some((enabled) => enabled.key === r.key) || r.key === spin.result
+  );
   const frame = el(`reel-frame tier-${spin.tier}`);
   const vp = el('reel-viewport');
   const strip = el('reel-strip');
+  const momentTitle = el('reel-moment-title', esc(carouselCopy.momentTitle));
+  frame.appendChild(momentTitle);
   frame.appendChild(giftChip(spin));
-  // Snapshot the content scale ONCE per spin. It can change live (an operator
-  // dragging the control page) but must not change mid-spin — a scale that shifts
-  // between building the strip and landing on it would land on the wrong segment.
-  const segH = Math.round(SEG_H_BASE * wheelContentScale);
-  const iconBox = Math.round(78 * wheelContentScale);
-  // Build a long strip: the 8 results repeated REEL_CYCLES times, so there's
-  // plenty to scroll through before the landing row. Each segment: real icon
-  // (sprite) + upright label.
+  const idx = Math.max(0, reelResults.findIndex((r) => r.key === spin.result));
+  // Target the penultimate pass so cards remain available after the winner. The
+  // journey begins seven complete passes earlier: enough time for the viewer to
+  // see every option and the gold variants before the final slow pass.
+  const landIndex = (REEL_CYCLES - 2) * reelResults.length + idx;
+  const startIndex = Math.max(0, landIndex - 7 * reelResults.length);
+  const baseTier = spin.baseTier || spin.tier;
+  // Old authoritative payloads did not carry goldPasses/baseTier. Do not advertise a
+  // chance the resolver did not actually roll: non-Legend old spins show no gold,
+  // while new payloads (and the tester) display their real pass count.
+  const passCount = Number.isFinite(Number(spin.goldPasses))
+    ? Number(spin.goldPasses)
+    : (spin.baseTier ? GOLD_PASSES_BY_TIER[baseTier] : (spin.tier === 'legend' ? 8 : 0));
+  const totalSegments = REEL_CYCLES * reelResults.length;
+  const gold = goldPlacements(
+    passCount,
+    spin.tier === 'legend',
+    startIndex,
+    landIndex,
+    totalSegments,
+    reelResults.length,
+    spin.styleSeed || spin.seed || spin.eventId || spin.revision
+  );
+  const iconBox = Math.round(Math.max(36, Math.min(96, wheelRailHeight * .2 * wheelContentScale)));
+  const segments = [];
   for (let c = 0; c < REEL_CYCLES; c++) {
-    for (const r of RESULTS) {
-      const seg = el('reel-seg');
+    for (const r of reelResults) {
+      const seg = el(`reel-seg type-${r.key}`);
+      seg.dataset.resultKey = r.key;
+      if (gold.has(segments.length)) {
+        seg.classList.add('gold');
+        seg.dataset.goldLabel = carouselCopy.goldBadge;
+      }
+      if (segments.length === landIndex) seg.classList.add('winner');
       seg.appendChild(iconEl(r.key, iconBox));
-      seg.appendChild(el('seg-label', esc(r.label)));
+      seg.appendChild(el('seg-label', esc(carouselResultLabel(r.key))));
       strip.appendChild(seg);
+      segments.push(seg);
     }
   }
   vp.appendChild(strip);
   frame.appendChild(vp);
-  // Indicator line + arrows AFTER the viewport, with their own z-index (5) — real
-  // elements now, not a background image, so DOM order plus z-index is what puts
-  // them over the scrolling strip instead of under it.
-  frame.appendChild(el('reel-line'));
-  frame.appendChild(el('reel-arrow left'));
-  frame.appendChild(el('reel-arrow right'));
+  frame.appendChild(el('reel-arrow'));
+  const winnerLabel = el('reel-winner-label', esc(carouselWinnerLabel(spin.result, spin.tier)));
+  winnerLabel.dataset.resultKey = spin.result;
+  winnerLabel.dataset.tier = spin.tier;
+  frame.appendChild(winnerLabel);
   runNode(run, laneWheel, frame);
   reveal(frame, 'show');
+  publishFx('jamie-cue', { cue: 'anticipate', result: spin.result, tier: spin.tier, eventId: spin.eventId });
 
-  // Viewport height is % of the frame, so read it live rather than hard-coding.
-  const vpH = vp.clientHeight || 462;
+  const vpW = vp.clientWidth || 1080;
+  // Four visible slots: the low-profile band uses WIDE chips (icon beside label),
+  // cropping at the frame edges so the pass reads as a moving ticker.
+  const visibleSlots = 4;
+  const cardW = (vpW - REEL_GAP * (visibleSlots - 1)) / visibleSlots;
+  for (const seg of segments) seg.style.width = cardW + 'px';
 
-  // Land the resolved result in the last-but-one cycle, after scrolling ~3
-  // cycles of build-up — every result gets the same long run-up regardless of
-  // which won. The window centre is the art's pink line, so a centred segment
-  // lands exactly on the indicator.
-  const idx = RESULT_BY_KEY[spin.result]?.index ?? 0;
-  const landIndex = (REEL_CYCLES - 1) * RESULTS.length + idx;
-  const startIndex = Math.max(0, landIndex - 3 * RESULTS.length);
-
-  const spinMs = TIMING.spinning.spin;
-  strip.style.setProperty('--spin-ms', spinMs + 'ms');
-  strip.style.transform = `translateY(${reelCenter(vpH, startIndex, segH)}px)`;
-  void strip.offsetWidth; // commit the start position before transitioning
-  strip.classList.add('spinning');
-  strip.style.transform = `translateY(${reelCenter(vpH, landIndex, segH)}px)`; // decelerate to the winner
-
+  // One continuous position function owns the complete journey. Changing CSS
+  // transitions midway through a moving strip caused the browser to rebase from an
+  // in-between transform, which produced the visible forward/backward correction.
+  // This curve starts fast and reaches the exact winner with zero end velocity.
+  const spinMs = wheelSpinMs || TIMING.spinning.spin;
+  const pitch = cardW + REEL_GAP;
+  const startX = carouselCenter(vpW, startIndex, cardW);
+  const endX = carouselCenter(vpW, landIndex, cardW);
+  let focusedIndex = -1;
+  const paintReel = (x) => {
+    strip.style.transform = `translate3d(${x}px,-50%,0)`;
+    const nearest = Math.max(0, Math.min(
+      segments.length - 1,
+      Math.round((vpW / 2 - x - cardW / 2) / pitch)
+    ));
+    if (nearest !== focusedIndex) {
+      if (focusedIndex >= 0) segments[focusedIndex].classList.remove('center-focus');
+      segments[nearest].classList.add('center-focus');
+      focusedIndex = nearest;
+    }
+    // Only cards near the marker need a live transform. The centered card reaches
+    // 1.28× while its neighbours recede, so the current possibility is always clear.
+    const first = Math.max(0, nearest - 2);
+    const last = Math.min(segments.length - 1, nearest + 2);
+    for (let i = 0; i < segments.length; i++) {
+      if (i < first || i > last) {
+        segments[i].style.transform = 'scale(.88)';
+        segments[i].style.opacity = '.68';
+        segments[i].style.zIndex = '0';
+        continue;
+      }
+      const center = x + i * pitch + cardW / 2;
+      const focus = Math.max(0, 1 - Math.abs(center - vpW / 2) / pitch);
+      segments[i].style.transform = `scale(${(.88 + .28 * focus).toFixed(3)})`;
+      segments[i].style.opacity = String((.68 + .32 * focus).toFixed(3));
+      segments[i].style.zIndex = String(Math.round(focus * 10));
+    }
+  };
+  paintReel(startX);
+  const motionStarted = performance.now();
+  const moveReel = (now) => {
+    if (run.done) return;
+    const t = Math.max(0, Math.min(1, (now - motionStarted) / spinMs));
+    const progress = 1 - Math.pow(1 - t, 3); // continuous ease-out cubic
+    paintReel(startX + (endX - startX) * progress);
+    if (t < 1) {
+      const raf = requestAnimationFrame(moveReel);
+      run.rafs.add(raf);
+      return;
+    }
+    // Clear live focus styles before the landed CSS takes over. The strip is already
+    // exactly at endX, so this is a scale reveal—not a positional correction.
+    for (const seg of segments) {
+      seg.style.transform = '';
+      seg.style.opacity = '';
+      seg.style.zIndex = '';
+      seg.classList.remove('center-focus');
+    }
+    strip.style.transform = `translate3d(${endX}px,-50%,0)`;
+    frame.classList.add('landed');
+  };
+  const motionRaf = requestAnimationFrame(moveReel);
+  run.rafs.add(motionRaf);
+  runTimer(run, () => {
+    frame.classList.add('final-pass');
+    momentTitle.textContent = carouselCopy.finalPassTitle;
+  }, Math.round(spinMs * .58));
   runStage(run, () => {
     frame.classList.remove('show');
-    runTimer(run, () => { frame.remove(); run.nodes.delete(frame); startImpact(run); }, 300);
-  }, spinMs);
+    runTimer(run, () => { frame.remove(); run.nodes.delete(frame); prepareImpact(run); }, 300);
+  }, spinMs + WINNER_HOLD_MS);
 }
 
 // ── Stage 2: IMPACT (reveal + hold) ──
+function prepareImpact(run) {
+  const scope = run.spin.result === 'crack' ? 'frame'
+              : run.spin.result === 'avatar' ? 'camera'
+              : null;
+  if (!scope) { startImpact(run); return; }
+  askInteractionSnapshot(run, scope, 0, (snap) => {
+    if (snap) run.snapshots[scope] = snap;
+    startImpact(run);
+  }, 420);
+}
+
 function startImpact(run) {
   const spin = run.spin;
   const res = RESULT_BY_KEY[spin.result] || { label: spin.result };
@@ -917,8 +1466,9 @@ function startImpact(run) {
 // The curse IS the giver's avatar, worn over the streamer's tracked head.
 // ═══════════════════════════════════════════════════════════════════
 function runCurse(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size, ti = tierIndex(spin);
   const legend = spin.tier === 'legend';
+  publishFx('jamie-cue', { cue: 'confused', result: 'curse', x: headPoint(headNow, 0, 0).x, tier: spin.tier });
   // Legend: the corruption leaves the cam and takes the whole frame.
   const box = legend ? { x: 0, y: 0, w: 1080, h: 1920 } : camRect();
   const url = avatarUrl(spin);
@@ -929,15 +1479,15 @@ function runCurse(run) {
     // Released from head tracking and painted SOLID: a screen-blended avatar over
     // dark gameplay is invisible. Centre y is biased BELOW the hero band so the
     // name and the face are not fighting for the same rows.
-    const s = 680, cx = box.w / 2, cy = 1180;
+    const s = 500, cx = box.w / 2, cy = 1180;
     const ring = place(el('fx curse-halo legend'), cx - s / 2 - 26, cy - s / 2 - 26, s + 52, s + 52);
     runNode(run, laneFx, ring);
     // Orbit ghost offsets derive from the FRAME width, so they cannot clip out.
-    const orbit = box.w * 0.30;
+    const orbit = box.w * 0.26;
     for (let i = 0; i < 4; i++) {
       const a = (Math.PI * 2 * i) / 4;
       const g = place(el('fx curse-av curse-ghost g' + (i % 2 ? 2 : 1)),
-        cx + Math.cos(a) * orbit - 90, cy + Math.sin(a) * orbit - 90, 180, 180);
+        cx + Math.cos(a) * orbit - 66, cy + Math.sin(a) * orbit - 66, 132, 132);
       g.style.backgroundImage = `url('${url}')`;
       runNode(run, laneFx, g);
     }
@@ -972,14 +1522,14 @@ function runCurse(run) {
 
   const bars = legend ? 14 : 4 + ti * 2;
   for (let i = 0; i < bars; i++) {
-    const b = place(el('fx tear'), box.x, box.y + rnd(0, box.h), box.w, rnd(3, 16) * k);
+    const b = place(el('fx tear'), box.x, box.y + rnd(0, box.h), box.w, rnd(3, 16) * g);
     b.style.setProperty('--td', rnd(360, 700).toFixed(0) + 'ms');
     runNode(run, laneFx, b);
   }
   const drips = legend ? 18 : 5 + ti * 2;
   for (let i = 0; i < drips; i++) {
     const d = place(el('fx drip'), box.x + rnd(0, box.w), box.y, rnd(4, 13), 0);
-    d.style.setProperty('--dh', rnd(70, 230 * k).toFixed(0) + 'px');
+    d.style.setProperty('--dh', rnd(70, 230 * g).toFixed(0) + 'px');
     d.style.setProperty('--dd', rnd(700, 1500).toFixed(0) + 'ms');
     runNode(run, laneFx, d);
   }
@@ -997,7 +1547,7 @@ const FLOOD_COUNT = { spin: 1, power: 2, takeover: 3, legend: 5 };
 const FLOOD_GAP   = { spin: 560, power: 560, takeover: 490, legend: 430 };
 
 function runFlood(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size, ti = tierIndex(spin);
   const legend = spin.tier === 'legend';
   const n = FLOOD_COUNT[spin.tier], gap = FLOOD_GAP[spin.tier];
   let wetness = 0, film = null;
@@ -1009,7 +1559,7 @@ function runFlood(run) {
 
     runTimer(run, () => {
       const h = headNow;
-      const bw = 190 * k, bh = 150 * k;
+      const bw = 190 * g, bh = 150 * g;
       const crown = h.y;
       // Hover clamps when the cam sits at the top of frame and there is no headroom.
       const restY = Math.max(6, crown - bh * 0.86);
@@ -1042,10 +1592,10 @@ function runFlood(run) {
         const my = restY + bh * 0.34;
 
         const h2 = headNow, target = headPoint(h2, 0, -0.1);
-        const apex = -(112 + 48 * (k - 1));
+        const apex = -(112 + 48 * (g - 1));
         const dx = target.x - mx, dy = target.y - my;
 
-        const wrap = place(el('fx water-x'), mx, my, 96 * k, 150 * k);
+        const wrap = place(el('fx water-x'), mx, my, 96 * g, 150 * g);
         wrap.style.setProperty('--ax', dx.toFixed(0) + 'px');
         wrap.style.setProperty('--wd', '265ms');
         const w = el('water-y' + (fromLeft ? '' : ' flip'));   // sheet is right-moving art
@@ -1071,19 +1621,20 @@ function runFlood(run) {
       runTimer(run, () => {
         const h2 = headNow, c = headPoint(h2, 0, -0.05);
         canvasBump(k);
+        publishFx('impact', { kind: 'water', x: c.x, tier: spin.tier });
         // Splash crown biased ALONG the throw direction.
-        const sw = 300 * k;
+        const sw = 300 * g;
         runNode(run, laneFx, place(el('fx splash'), c.x - sw / 2 + dir * sw * 0.18, c.y - sw * 0.42, sw, sw * 0.7));
         // The impact ring rotates ±24° instead of lying flat.
         const rg = el('fx ripple');
-        const rs = 200 * k;
+        const rs = 200 * g;
         rg.style.cssText = `left:${c.x - rs / 2}px;top:${c.y - rs / 4}px;width:${rs}px;height:${rs / 2}px;` +
           `border-radius:50%;transform:rotate(${dir * 24}deg)`;
         runNode(run, laneFx, rg);
         // Comedy blobs fly downrange.
         for (let bl = 0; bl < 7; bl++) {
           const s2 = el('fx spark');
-          const sz = rnd(10, 26) * k;
+          const sz = rnd(10, 26) * g;
           s2.style.cssText = `left:${c.x}px;top:${c.y}px;width:${sz}px;height:${sz}px;background:#38BDF8;` +
             `--dx:${(dir * rnd(80, 260)).toFixed(0)}px;--dy:${rnd(-120, 90).toFixed(0)}px;--sd:${rnd(500, 800)}ms`;
           runNode(run, laneFx, s2);
@@ -1146,7 +1697,7 @@ function runFlood(run) {
 const WEATHER_N = { spin: 42, power: 90, takeover: 150, legend: 190 };
 
 function runWeather(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size, ti = tierIndex(spin);
   const legend = spin.tier === 'legend';
   const cam = camRect();
   // 42 in a strip inside the cam / 90 spilling past it / 150 and 190 full-frame.
@@ -1156,7 +1707,7 @@ function runWeather(run) {
 
   for (let i = 0; i < WEATHER_N[spin.tier]; i++) {
     const p = place(el('fx storm-p' + (legend ? ' gold' : '')),
-      region.x + rnd(0, region.w), region.y + rnd(0, region.h * 0.2), rnd(2, 5) * k, rnd(18, 46) * k);
+      region.x + rnd(0, region.w), region.y + rnd(0, region.h * 0.2), rnd(2, 5) * g, rnd(18, 46) * g);
     p.style.setProperty('--fy', rnd(region.h * 0.5, region.h).toFixed(0) + 'px');
     p.style.setProperty('--fx', rnd(-70, 70).toFixed(0) + 'px');
     p.style.setProperty('--pr', rnd(-16, 16).toFixed(0) + 'deg');
@@ -1180,6 +1731,7 @@ function runWeather(run) {
         }
         runNode(run, laneFx, place(el('fx lf-flash'), 0, 0, 1080, 1920));
         canvasBump(k);
+        publishFx('impact', { kind: 'strike', x, tier: spin.tier });
       }, 220 + s * 560);
     }
   }
@@ -1197,8 +1749,8 @@ const CRACK = {
   legend:   { reach: 900, spokes: 26, whole: true  },
 };
 
-function runCrack(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k;
+function runCrackLegacy(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
   const legend = spin.tier === 'legend';
   const cfg = CRACK[spin.tier];
   const cam = camRect();
@@ -1210,7 +1762,7 @@ function runCrack(run) {
     const len = cfg.reach * rnd(0.62, 1);
     const dur = rnd(180, 340);
     const s = el('fx spoke');
-    s.style.cssText = `left:${o.x}px;top:${o.y}px;width:${len}px;height:${(2.4 * k).toFixed(1)}px;` +
+    s.style.cssText = `left:${o.x}px;top:${o.y}px;width:${len}px;height:${(2.4 * g).toFixed(1)}px;` +
       `--cr:${ang}deg;--cd:${dur}ms`;
     runNode(run, laneFx, s);
     // Each spoke spawns a branch at a random 28–60° kink.
@@ -1218,7 +1770,7 @@ function runCrack(run) {
     const bx = o.x + Math.cos(ang * Math.PI / 180) * len * 0.62;
     const by = o.y + Math.sin(ang * Math.PI / 180) * len * 0.62;
     const b = el('fx spoke');
-    b.style.cssText = `left:${bx}px;top:${by}px;width:${(len * 0.45).toFixed(0)}px;height:${(1.8 * k).toFixed(1)}px;` +
+    b.style.cssText = `left:${bx}px;top:${by}px;width:${(len * 0.45).toFixed(0)}px;height:${(1.8 * g).toFixed(1)}px;` +
       `--cr:${kink}deg;--cd:${(dur * 1.2).toFixed(0)}ms;animation-delay:${(dur * 0.5).toFixed(0)}ms`;
     runNode(run, laneFx, b);
   }
@@ -1267,29 +1819,178 @@ function runCrack(run) {
  *   giver  how large the giver stands (they rise at the bottom of the beam, so a
  *          short beam necessarily means a smaller figure higher up the frame)
  */
+const SHATTER_GRID = {
+  spin: [3, 4], power: [4, 4], takeover: [4, 5], legend: [5, 5],
+};
+
+function runCrack(run) {
+  const spin = run.spin, k = tierOf(spin).k;
+  const legend = spin.tier === 'legend';
+  const snap = run.snapshots.frame || null;
+  const sourceRect = snap?.rect || { x: 0, y: 0, w: 1080, h: 1920 };
+  requestInteraction(run, { ms: 4400, hands: true, body: true, mode: 'swipe-shatter' });
+
+  const frozen = place(el('fx freeze-capture'), sourceRect.x, sourceRect.y, sourceRect.w, sourceRect.h);
+  if (snap?.dataURL) frozen.style.backgroundImage = `url('${snap.dataURL}')`;
+  else frozen.style.background = 'linear-gradient(145deg,rgba(36,18,55,.88),rgba(8,18,32,.86))';
+  runNode(run, laneFx, frozen);
+
+  const web = place(el('fx crack-web'), 40, 330, 1000, 1000);
+  web.style.opacity = '.72';
+  runNode(run, laneFx, web);
+  const prompt = el('fx freeze-prompt');
+  prompt.innerHTML = `${esc(displayName(spin))} FROZE THE SCREEN<small>OPEN HAND • SWIPE IT AWAY</small>`;
+  runNode(run, laneFx, prompt);
+  reveal(prompt, 'show');
+  publishFx('jamie-cue', { cue: 'look', result: 'crack', x: 540, tier: spin.tier });
+
+  let shattered = false;
+  const previous = new Map();
+  let cursor = null;
+
+  const shatter = (impulse = { x: rnd(-180, 180), y: 420, atX: 540 }) => {
+    if (shattered || run.done) return;
+    shattered = true;
+    prompt.classList.add('done');
+    frozen.style.opacity = '0';
+    frozen.style.transition = 'opacity 100ms linear';
+    web.style.opacity = '0';
+    web.style.transition = 'opacity 100ms linear';
+    if (cursor) cursor.style.opacity = '0';
+    canvasBump(k, 440);
+    bumpEl.classList.remove('shaking-hard'); void bumpEl.offsetWidth;
+    bumpEl.classList.add('shaking-hard');
+    publishFx('shake', { ms: 380 });
+    publishFx('impact', { kind: 'glass', x: impulse.atX, tier: spin.tier });
+    runTimer(run, () => bumpEl.classList.remove('shaking-hard'), 430);
+    sparkBurst(run, { x: impulse.atX, y: 820 }, Math.round(16 * k), k, legend);
+
+    const [cols, rows] = SHATTER_GRID[spin.tier] || SHATTER_GRID.spin;
+    const cellW = sourceRect.w / cols, cellH = sourceRect.h / rows;
+    const pieces = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = sourceRect.x + col * cellW, y = sourceRect.y + row * cellH;
+        const shard = place(el('fx freeze-shard' + (legend ? ' gold' : '')), x, y, cellW + 2, cellH + 2);
+        if (snap?.dataURL) {
+          shard.style.backgroundImage = `url('${snap.dataURL}')`;
+          shard.style.backgroundSize = `${sourceRect.w}px ${sourceRect.h}px`;
+          shard.style.backgroundPosition = `${-col * cellW}px ${-row * cellH}px`;
+        } else {
+          shard.style.background = `linear-gradient(${rnd(110,160)}deg,#2A0447,#7B2FBE)`;
+        }
+        const cut = Math.round(rnd(8, 25));
+        shard.style.clipPath = `polygon(${cut}% 0,100% ${Math.round(rnd(0,18))}%,${100-cut/2}% 100%,0 ${Math.round(rnd(78,100))}%)`;
+        runNode(run, laneFx, shard);
+        pieces.push({
+          el: shard, baseX: x, baseY: y, x, y, w: cellW, h: cellH,
+          vx: impulse.x * rnd(.55, 1.1) + (x + cellW / 2 - impulse.atX) * rnd(.8, 1.6),
+          vy: impulse.y * rnd(.45, .95) - rnd(120, 520),
+          rot: rnd(-8, 8), vr: rnd(-190, 190), hits: 0,
+        });
+      }
+    }
+
+    let last = performance.now();
+    const physics = (now) => {
+      if (run.done) return;
+      const dt = Math.min(.035, (now - last) / 1000); last = now;
+      const bodies = currentBodyParts(run);
+      let alive = 0;
+      for (const p of pieces) {
+        if (p.y > 2050 || p.el.style.opacity === '0') continue;
+        alive++;
+        p.vy += 1500 * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+        const hit = p.hits < 3
+          ? bodyCollision(p.x + p.w / 2, p.y + p.h / 2, Math.min(p.w, p.h) * .26, bodies)
+          : null;
+        if (hit && p.vx * hit.nx + p.vy * hit.ny < 0) {
+          const vn = p.vx * hit.nx + p.vy * hit.ny;
+          p.x += hit.nx * hit.penetration; p.y += hit.ny * hit.penetration;
+          p.vx = (p.vx - 1.55 * vn * hit.nx) * .72;
+          p.vy = (p.vy - 1.55 * vn * hit.ny) * .72;
+          p.vr *= -.74; p.hits++;
+        }
+        if (p.x < -p.w * .6 || p.x > 1080 - p.w * .4) p.vx *= -.58;
+        p.el.style.transform = `translate3d(${p.x - p.baseX}px,${p.y - p.baseY}px,0) rotate(${p.rot}deg)`;
+        if (p.y > 1840) p.el.style.opacity = String(Math.max(0, (2050 - p.y) / 210));
+      }
+      if (alive) {
+        const id = requestAnimationFrame(physics);
+        run.rafs.add(id);
+      }
+    };
+    const id = requestAnimationFrame(physics);
+    run.rafs.add(id);
+  };
+
+  const watchSwipe = (now) => {
+    if (run.done || shattered) return;
+    const hand = currentOpenHands(run)[0];
+    if (hand) {
+      if (!cursor) {
+        cursor = place(el('fx hand-cursor'), hand.x, hand.y, 54, 54);
+        runNode(run, laneFx, cursor);
+      }
+      cursor.style.opacity = '.9';
+      cursor.style.left = hand.x + 'px'; cursor.style.top = hand.y + 'px';
+      if (hand.speed > 820 && hand.travel > 42) {
+        shatter({ x: hand.vx * .34, y: hand.vy * .24 + 260, atX: hand.x });
+        return;
+      }
+      const prior = previous.get(hand.id);
+      if (prior) {
+        const dt = Math.max(.016, (now - prior.t) / 1000);
+        const dx = hand.x - prior.x, dy = hand.y - prior.y;
+        const speed = Math.hypot(dx, dy) / dt;
+        if (speed > 820 && Math.hypot(dx, dy) > 42) {
+          shatter({ x: dx / dt * .34, y: dy / dt * .24 + 260, atX: hand.x });
+          return;
+        }
+      }
+      previous.set(hand.id, { x: hand.x, y: hand.y, t: now });
+    } else if (cursor) cursor.style.opacity = '0';
+    const id = requestAnimationFrame(watchSwipe);
+    run.rafs.add(id);
+  };
+  const id = requestAnimationFrame(watchSwipe);
+  run.rafs.add(id);
+  runTimer(run, () => shatter(), 2100);
+  return 2800;
+}
+
 const SPOTLIGHT = {
   spin:     { dark: 0.16, reach: 0.42, cone: 0.42, giver: 0.66 },
   power:    { dark: 0.34, reach: 0.62, cone: 0.58, giver: 0.78 },
   takeover: { dark: 0.56, reach: 0.82, cone: 0.74, giver: 0.90 },
   legend:   { dark: 0.80, reach: 1.00, cone: 0.92, giver: 1.00 },
 };
+const SPOTLIGHT_TYPE = {
+  spin:     { name: 48, sub: 27 },
+  power:    { name: 56, sub: 30 },
+  takeover: { name: 64, sub: 33 },
+  legend:   { name: 72, sub: 36 },
+};
 
 function runSpotlight(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
   const legend = spin.tier === 'legend';
   const cfg = SPOTLIGHT[spin.tier] || SPOTLIGHT.spin;
+  const type = SPOTLIGHT_TYPE[spin.tier] || SPOTLIGHT_TYPE.spin;
   const ground = LAYOUTS[layout].ground;
   // The beam stops short at low tiers, so the "floor" the giver stands on is the
   // bottom of the beam rather than the layout's ground line.
   const beamFloor = Math.round(ground * cfg.reach);
   const stageX = 540;
+  publishFx('jamie-cue', { cue: 'look', result: 'spotlight', x: stageX, tier: spin.tier });
 
   const dark = place(el('fx sl-dark'), 0, 0, 1080, 1920);
   dark.style.background = `rgba(10,4,20,${cfg.dark})`;
   dark.style.opacity = '0';
   runNode(run, laneFx, dark);
 
-  const W = 520 * k;
+  const W = Math.min(680, 520 * g);
   const cone = place(el('fx sl-cone'), 200 - W / 2, 0, W, beamFloor);
   cone.style.opacity = String(cfg.cone);
   const pool = place(el('fx sl-pool'), 200 - W / 2, beamFloor - 70, W, 140);
@@ -1310,7 +2011,7 @@ function runSpotlight(run) {
   runTimer(run, () => moveTo(stageX, W * 0.82), 1600);   // tightens to 0.82×
 
   runTimer(run, () => {
-    const s = 300 * k * cfg.giver;
+    const s = 300 * g * cfg.giver;
     // Hard cast shadow so they read as standing IN the beam, not pasted over it —
     // on the BEAM floor, which at low tiers is well above the layout ground line.
     runNode(run, laneFx, place(el('fx sl-shadow'), stageX - s * 0.8, beamFloor - 40, s * 1.6, 90));
@@ -1318,9 +2019,15 @@ function runSpotlight(run) {
     g.style.backgroundImage = `url('${avatarUrl(spin)}')`;
     runNode(run, laneFx, g);
 
-    const plate = place(el('fx sl-plate'), stageX - 400, beamFloor + 16, 800, 120);
-    plate.innerHTML = `<div style="font-size:${52 * k}px">${esc(displayName(spin))}</div>` +
-      `<div style="font-size:${30 * k}px;color:#C084FC">${legend ? 'OWNS THE STAGE' : 'HAS THE LIGHT'}</div>`;
+    // The two lines scale with the tier. At Legend they need about 200px, not
+    // the old fixed 120px; placing that fixed box below a 1740px beam let the
+    // second line cross the 1920px canvas edge. Size from the actual type and
+    // clamp the complete plate into the frame with a small safe margin.
+    const plateHeight = type.name + type.sub + 28;
+    const plateTop = Math.min(beamFloor + 16, 1920 - plateHeight - 32);
+    const plate = place(el('fx sl-plate'), stageX - 400, plateTop, 800, plateHeight);
+    plate.innerHTML = `<div style="font-size:${type.name}px">${esc(displayName(spin))}</div>` +
+      `<div style="font-size:${type.sub}px;color:#ffd93b">${legend ? 'OWNS THE STAGE' : 'HAS THE LIGHT'}</div>`;
     runNode(run, laneFx, plate);
 
     if (legend) {
@@ -1370,6 +2077,7 @@ function runFrame(run) {
   const spin = run.spin, t = tierOf(spin), k = t.k, ti = tierIndex(spin);
   const legend = spin.tier === 'legend';
   const ins = FRAME_INSET[spin.tier], th = FRAME_THICK[spin.tier];
+  publishFx('jamie-cue', { cue: 'look', result: 'frame', x: 540, tier: spin.tier });
 
   // border-image needs a REAL border-width on a wrapper div to render at all.
   const m = place(el('fx marquee' + (legend ? ' legend' : '')), ins, ins, 1080 - ins * 2, 1920 - ins * 2);
@@ -1414,8 +2122,8 @@ function runFrame(run) {
 // ═══════════════════════════════════════════════════════════════════
 const AVATAR_EXTRA = { spin: 0, power: 0, takeover: 2, legend: 5 };
 
-function runAvatar(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k;
+function runAvatarLegacy(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
   const legend = spin.tier === 'legend';
   const n = 1 + AVATAR_EXTRA[spin.tier];
   const url = avatarUrl(spin);
@@ -1423,7 +2131,7 @@ function runAvatar(run) {
   for (let i = 0; i < n; i++) {
     runTimer(run, () => {
       const h = headNow;
-      const s = (190 - i * 14) * k;
+      const s = (190 - i * 14) * g;
       const fromLeft = i % 2 === 0;
       const anchor = headPoint(h, fromLeft ? -0.75 : 0.75, rnd(-0.35, 0.35));
       // Clamp into frame — the head can sit near an edge.
@@ -1444,7 +2152,7 @@ function runAvatar(run) {
         sparkBurst(run, { x: x + s / 2, y: y + s / 2 }, Math.round(9 * k), k, legend);
         if (i === 0) {
           const tag = el('fx inv-tag');
-          tag.style.cssText = `left:${x + s + 12}px;top:${y + s / 2 - 22}px;font-size:${30 * k}px`;
+          tag.style.cssText = `left:${x + s + 12}px;top:${y + s / 2 - 22}px;font-size:${30 * g}px`;
           tag.textContent = displayName(spin);        // viewer input — textContent
           runNode(run, laneFx, tag);
           reveal(tag, 'show');
@@ -1458,12 +2166,76 @@ function runAvatar(run) {
   return 520 + holdOf(spin) + 700;
 }
 
+const ECHO_COUNT = { spin: 2, power: 3, takeover: 4, legend: 5 };
+const ECHO_POSITIONS = [
+  { x: 70,  y: 500, r: -10 },
+  { x: 790, y: 480, r:  11 },
+  { x: 150, y: 1030, r: 8 },
+  { x: 745, y: 1080, r: -8 },
+  { x: 420, y: 1320, r: 4 },
+];
+const ECHO_POSITIONS_CAM_BOTTOM = [
+  { x: 70,  y: 90,  r: -10 },
+  { x: 790, y: 120, r:  11 },
+  { x: 150, y: 430, r: 8 },
+  { x: 745, y: 470, r: -8 },
+  { x: 420, y: 760, r: 4 },
+];
+
+function runAvatar(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
+  const legend = spin.tier === 'legend';
+  const count = ECHO_COUNT[spin.tier] || ECHO_COUNT.spin;
+  const giver = esc(displayName(spin));
+  const prompt = el('fx echo-countdown');
+  prompt.style.top = layout === 'cam-bottom' ? '1050px' : '790px';
+  prompt.innerHTML = `<small>${giver} TRIGGERED</small>SNAPSHOT ECHO`;
+  runNode(run, laneFx, prompt);
+  publishFx('jamie-cue', { cue: 'confused', result: 'avatar', x: 540, tier: spin.tier });
+
+  const addEcho = (snap, index) => {
+    if (run.done) return;
+    const positions = layout === 'cam-bottom' ? ECHO_POSITIONS_CAM_BOTTOM : ECHO_POSITIONS;
+    const pos = positions[index % positions.length];
+    const size = Math.min(250, (180 + index * 8) * g);
+    const node = place(el('fx snapshot-echo' + (legend ? ' legend' : '')), pos.x, pos.y, size, size);
+    node.style.setProperty('--er', pos.r + 'deg');
+    node.style.animationDelay = (index * 40) + 'ms,' + (500 + index * 70) + 'ms';
+    node.style.backgroundImage = snap?.dataURL
+      ? `url('${snap.dataURL}')`
+      : `url('${avatarUrl(spin)}')`;
+    runNode(run, laneFx, node);
+    ripple(run, { x: pos.x + size / 2, y: pos.y + size / 2 }, g, legend);
+    sparkBurst(run, { x: pos.x + size / 2, y: pos.y + size / 2 }, Math.round(5 * k), g, legend);
+    canvasBump(Math.max(0.65, k * .45), 300);
+    prompt.innerHTML = index + 1 < count
+      ? `<small>${giver} TRIGGERED</small>SNAPSHOT ECHO ${index + 1}/${count}`
+      : `<small>SNAPSHOT ECHO</small>${giver} CAUGHT IN IT`;
+    if (index + 1 === count && legend) {
+      publishFx('jamie-cue', { cue: 'celebrate', result: 'avatar', x: pos.x + size / 2, tier: spin.tier });
+    }
+  };
+
+  const first = run.snapshots.camera || camStill;
+  addEcho(first, 0);
+  for (let i = 1; i < count; i++) {
+    runTimer(run, () => {
+      askInteractionSnapshot(run, 'camera', i, (snap) => addEcho(snap || first, i), 520);
+    }, i * 210);
+  }
+  runTimer(run, () => {
+    prompt.style.transition = 'opacity .35s ease';
+    prompt.style.opacity = '0';
+  }, count * 210 + 650);
+  return count * 210 + 900;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // BALL DROP ● — the cam becomes a ball.
 //
 // CONTRACT 3 (game-scene): when `targetsNow` is present the ball lands in the
-// GAME'S OWN bucket and we draw a lock-on reticle instead of a bucket. When it is
-// absent we draw our own bucket on the layout's ground line. BOTH PATHS MUST WORK.
+// GAME'S OWN bucket. When it is absent, the fallback sphere lands on the layout's
+// ground line. We never draw a second bucket over the game.
 //
 // CONTRACT 4 (camera): the overlay does not own the cam — Studio does. It does not
 // need to. The effect freezes the cam at detach anyway, so we cover the live cam
@@ -1570,17 +2342,19 @@ function fisheyeFace(still, head, lens) {
   return out.toDataURL('image/png');
 }
 
-const BALL_BOUNCES = { spin: 1, power: 1, takeover: 2, legend: 2 };
+const BALL_SCALE   = { spin: 0.78, power: 0.82, takeover: 0.86, legend: 0.90 };
 
 function runBall(run) {
-  const spin = run.spin, t = tierOf(spin), k = t.k;
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
   const legend = spin.tier === 'legend';
   const h = headNow;
   const ground = LAYOUTS[layout].ground;
+  requestInteraction(run, { ms: 4300, hands: false, body: true, mode: 'ball-body' });
+  publishFx('jamie-cue', { cue: 'chase', result: 'ball', x: headPoint(h, 0, 0).x, tier: spin.tier });
 
-  // Target: the game's own bucket when tracked, else one we draw ourselves.
+  // Target: the game's own bucket when tracked, otherwise a centered landing zone.
   const tracked = !!targetsNow;
-  const bw = 300 * k, bh = 230 * k;
+  const bw = 300 * g, bh = 230 * g;
   // targetsNow is the bucket's INTERIOR — the clear space between its walls and
   // above its floor — so the ball can be contained by it rather than parked on top.
   const target = tracked
@@ -1610,7 +2384,9 @@ function runBall(run) {
   // NOTHING is frozen or punched yet. Through the shrink the REAL camera is still
   // live underneath — the face has to be visible right up to the moment the ball
   // leaves with it, or there is nothing to take.
-  const size = Math.max(h.w, h.h) * 1.15;
+  // The ball is always head-sized. Tier adds polish and activity around it, never
+  // another full multiplier on the captured camera crop.
+  const size = Math.min(320, Math.max(220, Math.max(h.w, h.h) * BALL_SCALE[spin.tier]));
   const c0 = headPoint(h, 0, 0);
   const ball = el('fx ball');
   place(ball, camR.x, camR.y, camR.w, camR.h);
@@ -1655,9 +2431,9 @@ function runBall(run) {
       frozen.style.backgroundImage = `url('${camStill.dataURL}')`;
       runNode(run, laneFx, frozen);
     }
-    {
+    if (camStill) {
       const c = headPoint(h, 0, 0);
-      const d = Math.max(h.w, h.h) * 1.30;
+      const d = Math.min(360, size * 1.10);
       const hole = place(el('fx cam-hole'), c.x - d / 2, c.y - d / 2, d, d);
       runNode(run, laneFx, hole);
       for (let i = 0; i < 7; i++) {
@@ -1670,35 +2446,57 @@ function runBall(run) {
     }
 
     sparkBurst(run, { x: c0.x, y: c0.y }, Math.round(12 * k), k, legend);
-    if (legend) {
-      const trail = place(el('fx ball-trail'), c0.x - 6, c0.y, 12, 0);
-      runNode(run, laneFx, trail);
-      trail.style.transition = 'height 1.2s linear';
-      void trail.offsetWidth;
-      trail.style.height = (ground - c0.y) + 'px';
-    }
-
-    let x = c0.x, y = c0.y, vx = (target.x - c0.x) / 1.15, vy = 0, rot = 0;
-    const G = 2700, REST = 0.58;
-    const bounces = BALL_BOUNCES[spin.tier];
-    let bounced = 0, last = performance.now(), settled = false;
+    let x = c0.x, y = c0.y, vx = (target.x - c0.x) / 0.82, vy = 160, rot = 0;
+    // Weighted drop, not a rubber ball. Collisions can redirect it enough to sell
+    // the interaction, but the bucket floor captures it instead of springing it up.
+    const G = 3400, COLLISION_REST = 0.18;
+    let last = performance.now(), settled = false, captured = false;
     // Separate cap for the game-ball colliders, and a per-drop ceiling: a ball resting
     // against or grazing a static collider must be able to STOP bouncing off it. Without
     // this a resting contact re-satisfies `dist < rr` every single animation frame
     // forever, and each one fired a network publish — a live 60/s request storm that
     // never ended on its own, discovered live on stream.
     let colliderBounces = 0;
-    const MAX_COLLIDER_BOUNCES = 6;
+    let bodyBounces = 0;
+    const MAX_COLLIDER_BOUNCES = 3;
+    const MAX_BODY_BOUNCES = 2;
+    const fallStartedAt = performance.now();
 
     const step = (now) => {
       if (run.done) return;
       const dt = Math.min(0.032, (now - last) / 1000); last = now;
       vy += G * dt; x += vx * dt; y += vy * dt;
       rot += vx * dt * 0.4;                        // rotation from horizontal velocity
+      const radius = size / 2;
+
+      // Once its lower edge crosses the mouth, the ball belongs to the bucket.
+      // Outside body/game colliders can no longer kick it back out.
+      if (!captured && tracked && vy > 0 && y + radius >= target.mouthY &&
+          x + radius > target.left && x - radius < target.right) {
+        captured = true;
+        vx *= 0.18;
+      }
+
+      // After the ball has cleared the face it can bounce off the streamer's tracked
+      // shoulders, torso and arms. The short delay prevents an immediate collision
+      // with the head collider at the exact point the ball detaches from it.
+      if (!captured && bodyBounces < MAX_BODY_BOUNCES && now - fallStartedAt > 300) {
+        const hit = bodyCollision(x, y, size * .43, currentBodyParts(run));
+        if (hit) {
+          const vn = vx * hit.nx + vy * hit.ny;
+          if (vn < 0) {
+            x += hit.nx * hit.penetration; y += hit.ny * hit.penetration;
+            vx = (vx - 1.25 * vn * hit.nx) * .62;
+            vy = (vy - 1.25 * vn * hit.ny) * .62;
+            bodyBounces++;
+            canvasBump(k * .65);
+          }
+        }
+      }
 
       // Bounce off the Ball Guys balls, exactly as Bomb Drop does. They are static
       // and immovable; we take the normal and reflect.
-      for (const b of gameBalls) {
+      for (const b of captured ? [] : gameBalls) {
         if (colliderBounces >= MAX_COLLIDER_BOUNCES) break;
         const dx2 = x - b.x, dy2 = y - b.y;
         const rr = (b.r || 0) + size / 2;
@@ -1712,7 +2510,8 @@ function runBall(run) {
         // storm: correct position, wrong velocity, re-penetrate next frame, repeat.
         if (vn >= 0) continue;
         x = b.x + nx * rr; y = b.y + ny * rr;
-        vx = (vx - 2 * vn * nx) * REST; vy = (vy - 2 * vn * ny) * REST;
+        vx = (vx - (1 + COLLISION_REST) * vn * nx) * .72;
+        vy = (vy - (1 + COLLISION_REST) * vn * ny) * .72;
         colliderBounces++;
         canvasBump(k * 0.7);
         ball.style.transform = 'rotate(' + rot + 'deg) scale(1.09)';
@@ -1720,25 +2519,30 @@ function runBall(run) {
       }
       // WALLS. Once the ball is below the bucket's mouth it is inside the U, so the
       // sides are solid: bounce off them instead of sliding out through the drawing.
-      if (tracked && y > target.mouthY) {
-        if (x - size / 2 < target.left)  { x = target.left + size / 2;  vx = Math.abs(vx) * REST; }
-        if (x + size / 2 > target.right) { x = target.right - size / 2; vx = -Math.abs(vx) * REST; }
-      }
-      const rest = target.floor - size / 2;
-      if (!settled && y >= rest) {
-        if (bounced < bounces) {
-          y = rest; vy = -vy * REST; vx *= 0.82; bounced++;
-          canvasBump(k);
-          // UNIFORM pulse only — a squash would warp the face inside.
-          ball.style.transform = `rotate(${rot}deg) scale(1.09)`;
-          setTimeout(() => { if (!run.done) ball.style.transform = `rotate(${rot}deg) scale(1)`; }, 110);
+      if (tracked && (captured || y + radius > target.mouthY)) {
+        const safeLeft = target.left + radius;
+        const safeRight = target.right - radius;
+        if (safeLeft <= safeRight) {
+          if (x < safeLeft)  { x = safeLeft;  vx = captured ? 0 : Math.abs(vx) * COLLISION_REST; }
+          if (x > safeRight) { x = safeRight; vx = captured ? 0 : -Math.abs(vx) * COLLISION_REST; }
         } else {
-          // Arc SOLVED ballistically to the mouth so the gag always lands.
-          settled = true;
-          y = rest; vy = 0; vx = 0;
-          landInBucket(run, ball, target, size, k, legend, bucket, tracked);
-          return;
+          x = target.x;
+          vx = 0;
         }
+        if (captured) {
+          const lock = 1 - Math.exp(-10 * dt);
+          x += (target.x - x) * lock;
+          vx *= Math.exp(-12 * dt);
+        }
+      }
+      const rest = target.floor - radius;
+      if (!settled && y >= rest) {
+        // Heavy landing: one compression beat, zero upward velocity.
+        settled = true;
+        captured = tracked || captured;
+        y = rest; x = target.x; vy = 0; vx = 0;
+        settleBallDrop(run, ball, target, size, k, legend, tracked);
+        return;
       }
       // Ground shadow tightens as it falls.
       const prox = Math.max(0.25, 1 - Math.abs(rest - y) / 900);
@@ -1760,32 +2564,17 @@ function runBall(run) {
   return 460 + 1900;
 }
 
-/** Entry: the bucket squashes and springs back, the ball rattles with a damped
- *  horizontal wobble, the front lip paints OVER it so it reads as genuinely inside. */
-function landInBucket(run, ball, target, size, k, legend, bucket, tracked) {
+/** Entry: lock the ball to the bucket floor and play one short impact pulse. */
+function settleBallDrop(run, ball, target, size, k, legend, tracked) {
   canvasBump(k, 520);
-  ball.style.transform = 'scale(1.06)';
+  publishFx('impact', { kind: 'object', x: target.x, tier: run.spin.tier });
+  if (legend) publishFx('jamie-cue', { cue: 'celebrate', result: 'ball', x: target.x, tier: run.spin.tier });
+  ball.style.left = (target.x - size / 2) + 'px';
+  ball.style.top = (target.floor - size) + 'px';
+  ball.style.transform = 'scale(1.035)';
   setTimeout(() => { if (!run.done) ball.style.transform = 'scale(1)'; }, 120);
 
-  // Damped horizontal wobble inside the bucket.
-  let amp = 26 * k, i = 0;
-  const wob = setInterval(() => {
-    if (run.done || i++ > 7) { clearInterval(wob); return; }
-    ball.style.left = (target.x - size / 2 + (i % 2 ? amp : -amp)) + 'px';
-    amp *= 0.62;
-  }, 90);
-  run.timers.add(wob);
-
-  if (bucket) {
-    // Our own bucket squashes and springs back on entry.
-    bucket.style.transformOrigin = '50% 100%';
-    bucket.style.transition = 'transform .16s ease-out';
-    bucket.style.transform = 'scale(1.08, 0.9)';
-    setTimeout(() => { if (!run.done) bucket.style.transform = 'scale(1)'; }, 170);
-    // Front lip paints OVER the ball — this is what sells "inside" rather than "behind".
-    const lip = place(el('fx bucket-lip'), target.x - target.w / 2, target.mouthY - 6, target.w, target.h * 0.42);
-    runNode(run, laneFx, lip);
-  }
+  const g = tierOf(run.spin).size;
 
   if (tierIndex(run.spin) >= 2) {
     const n = legend ? 34 : 16;
@@ -1800,8 +2589,8 @@ function landInBucket(run, ball, target, size, k, legend, bucket, tracked) {
   }
 
   const plate = el('fx ball-plate');
-  plate.style.cssText = `left:0;top:${target.mouthY - 120}px;width:1080px;text-align:center;font-size:${44 * k}px`;
-  plate.textContent = tracked ? 'IN THE BUCKET' : 'DUNKED';
+  plate.style.cssText = `left:0;top:${target.mouthY - 120}px;width:1080px;text-align:center;font-size:${44 * g}px`;
+  plate.textContent = tracked ? 'IN THE BUCKET' : 'BALL DROP';
   runNode(run, laneFx, plate);
   reveal(plate, 'show');
 }
@@ -1871,13 +2660,14 @@ let fxCh = null;
 // every other overlay on the stream should be able to flood the dock even if some
 // future bug calls it too often — 50ms floor is comfortably under the tightest
 // legitimate beat spacing in this file (Stamp's Legend marks, 110ms apart).
-let lastFxPublishAt = 0;
+const lastFxPublishAt = new Map();
 const FX_PUBLISH_MIN_GAP_MS = 50;
 function publishFx(kind, data) {
   if (!fxCh) return;   // no dock yet: everything still plays here, just alone
   const now = performance.now();
-  if (now - lastFxPublishAt < FX_PUBLISH_MIN_GAP_MS) return;
-  lastFxPublishAt = now;
+  const last = lastFxPublishAt.get(kind) || 0;
+  if (now - last < FX_PUBLISH_MIN_GAP_MS) return;
+  lastFxPublishAt.set(kind, now);
   try { fxCh.publish(kind, data).catch(() => {}); } catch (e) {}
 }
 
@@ -1902,11 +2692,12 @@ bumpEl.addEventListener('animationend', (e) => {
 
 /** N sparks off a point, each carrying its own vector as a custom property. */
 function sparkBurst(run, at, n, k, gold) {
+  const geo = Math.min(1.28, Math.max(0.85, k));
   for (let i = 0; i < n; i++) {
     const a = (Math.PI * 2 * i) / n + Math.random() * 0.5;
-    const d = (60 + Math.random() * 120) * k;
+    const d = (60 + Math.random() * 120) * geo;
     const s = el('fx spark');
-    const size = (4 + Math.random() * 5) * k;
+    const size = (4 + Math.random() * 5) * geo;
     s.style.cssText = `left:${at.x}px;top:${at.y}px;width:${size}px;height:${size}px;` +
       `background:${gold ? '#FDE68A' : '#E879F9'};` +
       `--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d).toFixed(1)}px;` +
@@ -1916,10 +2707,11 @@ function sparkBurst(run, at, n, k, gold) {
 }
 
 function ripple(run, at, k, gold) {
-  const size = 150 * k;
+  const geo = Math.min(1.28, Math.max(0.85, k));
+  const size = 150 * geo;
   const r = el('fx ripple' + (gold ? ' legend' : ''));
   r.style.cssText = `left:${at.x - size / 2}px;top:${at.y - size / 2}px;width:${size}px;height:${size}px;` +
-    `border-width:${(2.2 * k).toFixed(1)}px`;
+    `border-width:${(2.2 * geo).toFixed(1)}px`;
   runNode(run, laneFx, r);
 }
 
@@ -1948,10 +2740,10 @@ const EFFECTS = {
   curse:     { hero: true,  run: runCurse },
   flood:     { hero: true,  run: runFlood },
   weather:   { hero: true,  run: runWeather },
-  crack:     { hero: true,  run: runCrack },
+  crack:     { hero: false, run: runCrack },
   spotlight: { hero: false, run: runSpotlight },
   frame:     { hero: true,  run: runFrame },
-  avatar:    { hero: true,  run: runAvatar },
+  avatar:    { hero: false, run: runAvatar },
   ball:      { hero: true,  run: runBall },
 };
 
@@ -1968,6 +2760,36 @@ function place(node, x, y, w, h) {
   node.style.left = x + 'px'; node.style.top = y + 'px';
   node.style.width = w + 'px'; node.style.height = h + 'px';
   return node;
+}
+
+function closestOnSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy || 1e-6;
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  return { x: x1 + t * dx, y: y1 + t * dy };
+}
+
+/** Circle-vs-body collision against gesture-cam's head circle and limb capsules. */
+function bodyCollision(x, y, radius, parts) {
+  let best = null;
+  for (const part of parts || []) {
+    let q, reach;
+    if (part.t === 'c') {
+      q = { x: Number(part.x), y: Number(part.y) };
+      reach = radius + Number(part.r || 0);
+    } else if (part.t === 'l') {
+      q = closestOnSegment(x, y, Number(part.x1), Number(part.y1), Number(part.x2), Number(part.y2));
+      reach = radius + Number(part.r || 0);
+    } else continue;
+    const dx = x - q.x, dy = y - q.y;
+    const dist = Math.hypot(dx, dy);
+    if (!(dist < reach) || !isFinite(dist)) continue;
+    const nx = dist > .001 ? dx / dist : 0;
+    const ny = dist > .001 ? dy / dist : -1;
+    const hit = { nx, ny, penetration: reach - dist };
+    if (!best || hit.penetration > best.penetration) best = hit;
+  }
+  return best;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1994,10 +2816,10 @@ function place(node, x, y, w, h) {
  * the name at that size, so a long name gets a wider plate instead of smaller text. It
  * will overhang the face, which is what a stamp pressed across someone's face does.
  */
-const STAMP_PLATE = { spin: 0.95, power: 1.20, takeover: 1.45, legend: 1.70 };
-const STAMP_FONT  = { spin: 62,   power: 78,   takeover: 94,   legend: 112 };
-/** Boogaloo is a narrow display face; this is its rough advance per character. */
-const GLYPH_W = 0.52;
+const STAMP_PLATE = { spin: 0.95, power: 1.08, takeover: 1.22, legend: 1.36 };
+const STAMP_FONT  = { spin: 62,   power: 72,   takeover: 84,   legend: 94 };
+/** Baloo 2 at weight 800; rough advance per character. */
+const GLYPH_W = 0.58;
 
 /** Legend presses FOUR marks — brow, both cheeks, chin — each on its own tracked
  *  face point, the die walking between them. Cheek/chin marks run smaller. */
@@ -2012,6 +2834,7 @@ function runStamp(run) {
   const spin = run.spin;
   const t = tierOf(spin);
   const k = t.k;
+  const g = t.size;
   const legend = spin.tier === 'legend';
   const name = displayName(spin);
 
@@ -2035,9 +2858,9 @@ function runStamp(run) {
   // texture maps 1:1 instead of being stretched. Clamped so a long name cannot
   // produce an absurdly tall slab.
   const markHeight = (w) => Math.max(90, Math.min(w / 2, 300));
-  const swingMs = 320 + 70 * k;
-  const pressMs = 86 + 22 * k;
-  const liftMs  = 400 + 70 * k;
+  const swingMs = 320 + 70 * g;
+  const pressMs = 86 + 22 * g;
+  const liftMs  = 400 + 70 * g;
 
   // One die walks between the marks: move → press → beat, then on to the next.
   const MOVE_MS = 165, BEAT_MS = 110;
@@ -2063,8 +2886,8 @@ function runStamp(run) {
       if (first) {
         // Pre-position off the arc so the swing has somewhere to come FROM.
         die.style.transition = 'none';
-        die.style.left = (p.x - dieSize / 2 + 190 * k) + 'px';
-        die.style.top  = (p.y - dieSize / 2 - 250 * k) + 'px';
+        die.style.left = (p.x - dieSize / 2 + 190 * g) + 'px';
+        die.style.top  = (p.y - dieSize / 2 - 250 * g) + 'px';
         die.style.transform = `rotate(${rot + 26}deg) scale(1)`;
         die.style.opacity = '0';
         void die.offsetWidth;
@@ -2096,9 +2919,10 @@ function runStamp(run) {
     runTimer(run, () => {
       const at = headPoint(headNow, m.ox, m.oy);
       canvasBump(k * m.scale);
+      publishFx('impact', { kind: 'press', x: at.x, tier: spin.tier });
       ripple(run, at, k * m.scale, legend);
       sparkBurst(run, at, Math.round(10 * k * m.scale), k * m.scale, legend);
-      layInk(run, name, m, w, h, legend, k);
+      layInk(run, name, m, w, h, legend, g);
     }, clock);
 
     // LIFT away, revealing the impression underneath.
@@ -2107,7 +2931,7 @@ function runStamp(run) {
       const rot = (headNow.roll || 0) + m.rot;
       const last = i === marks.length - 1;
       die.style.transition = `transform ${liftMs}ms ease, top ${liftMs}ms ease, opacity ${liftMs}ms ease`;
-      die.style.top = (p.y - dieSize / 2 - 46 * k) + 'px';
+      die.style.top = (p.y - dieSize / 2 - 46 * g) + 'px';
       die.style.transform = `rotate(${rot}deg) scale(1)`;
       if (last) die.style.opacity = '0';
     }, clock + 30);
@@ -2344,6 +3168,9 @@ function giftChip(spin) {
 // The Ably-shaped channels.get()/subscribe() API below is the facade's, not Ably's.
 // A local test hook (window.wheelTest) drives the page with no dock for verification.
 // ═══════════════════════════════════════════════════════════════════
+// Initialized before connect(): dockRealtime may report an already-open local socket
+// synchronously, and hydrate() must never hit this binding in its temporal dead zone.
+let hydrated = false;
 function connect() {
   const conn = $('conn');
   try {
@@ -2360,14 +3187,35 @@ function connect() {
       const p = msg && msg.data;
       if (p) onWheelSpin({ ...p, preview: true });
     });
+    ch.subscribe('wheel.clear', () => clearWheelEffects());
     hydrate();
     // Head tracking rides the same socket on its own channel (contract 2). It is a
     // continuous stream, so it stays OFF the batched publish path and off Ably.
     // Absent tracker = the layout fallback, which every head-anchored effect
     // already renders correctly.
     client.channels.get('head-track').subscribe('head', (msg) => window.setHead(msg.data));
-    // Contracts 3 + 4. Both are optional by design: absent targets => Ball Drop draws
-    // its own bucket, absent still => it flies the sphere art and leaves the cam alone.
+    interactionCh = client.channels.get('wheel-interaction');
+    interactionCh.subscribe('hand-track', (msg) => {
+      const d = (msg && msg.data) || {};
+      if (String(d.eventId || '') !== interactionEventId) return;
+      ingestInteractionHands(d.eventId, d.hands);
+    });
+    interactionCh.subscribe('body-track', (msg) => {
+      const d = (msg && msg.data) || {};
+      if (String(d.eventId || '') !== interactionEventId) return;
+      interactionBodies = Array.isArray(d.parts) ? d.parts : [];
+      interactionBodiesAt = performance.now();
+    });
+    interactionCh.subscribe('snapshot', (msg) => {
+      const d = (msg && msg.data) || {};
+      const pending = snapshotWaiters.get(String(d.requestId || ''));
+      if (!pending || pending.run.done) return;
+      snapshotWaiters.delete(String(d.requestId || ''));
+      pending.callback(d);
+    });
+    // Contracts 3 + 4. Both are optional by design: absent targets => Ball Drop uses
+    // the ground-line landing zone; absent still => it flies the sphere art and leaves
+    // the camera alone.
     // Ball Guys colliders — Ball Drop bounces off the same balls Bomb Drop does.
     ballSignalsCh = client.channels.get('ball-signals');
     ballSignalsCh.subscribe('bomb-colliders', (msg) => {
@@ -2381,9 +3229,10 @@ function connect() {
     // when a Ball Drop fires — requesting at detach would arrive too late to cover.
     // Camera-level beats, for the other overlays sharing this frame (see publishFx).
     fxCh = client.channels.get('wheel-fx');
-    // Live reel position/scale — see applyReelLayout. Instant feedback while an
+    // Live rail height/Y position — see applyReelLayout. Instant feedback while an
     // operator is dragging the control page's inputs, ahead of Save.
     fxCh.subscribe('reel-layout', (msg) => applyReelLayout(msg && msg.data));
+    fxCh.subscribe('reel-copy', (msg) => applyCarouselCopy(msg && msg.data, true));
     // gesture-cam snapshots the COMPOSITED projector, so a still taken while an effect
     // is on screen contains that effect. That is how the ball came to carry its own
     // black hole: the periodic capture ran during a Ball Drop, baked the hole in, and
@@ -2437,7 +3286,6 @@ window.wheelPreloadCount = () => ({ requested: PRELOAD.length, decoded: preloade
 // through addSupporter() reproduces the exact wall, and the dock never needs to
 // know what a course or a closer is.
 // ═══════════════════════════════════════════════════════════════════
-let hydrated = false;
 async function hydrate() {
   if (hydrated) return;
   // Resolve the dock the same way every other page does — never hardcode it. When
@@ -2473,11 +3321,15 @@ async function hydrate() {
     console.warn('[wheel] hydrate failed (will retry on next connect):', e.message);
   }
 
-  // The reel's persisted position/scale — separate try/catch, because a failure
+  // The rail's persisted height/Y position — separate try/catch, because a failure
   // here (or on a dock predating the setting) must not block wall hydration above.
   try {
     const res = await fetch(base + '/api/settings', { cache: 'no-store' });
-    if (res.ok) applyReelLayout((await res.json()).settings?.wheel?.reel);
+    if (res.ok) {
+      const wheelSettings = (await res.json()).settings?.wheel;
+      applyReelLayout(wheelSettings?.reel);
+      setEnabledRailResults(wheelSettings?.enabledResults);
+    }
   } catch (e) { /* falls back to the CSS default (identity) — see #wheel-stage */ }
 }
 

@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SSN Chat Visual Options</title>
+<title>JJxLive Chat Controller</title>
 <link href="https://fonts.googleapis.com/css2?family=Boogaloo&family=Chewy&family=DM+Sans:wght@500;700;900&family=Rubik:wght@500;700&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
-<script src="jjx-core.js?v=8"></script>
+<script src="https://cdn.jsdelivr.net/npm/@twemoji/api@17.0.3/dist/twemoji.min.js" integrity="sha384-Y5xukbGJwykbHHkTbLJykYLcBPFxrwipTbEh0puxhkz9CZ90raTPGe2Ks4vCxsYU" crossorigin="anonymous"></script>
+<script src="jjx-core.js?v=10"></script>
 <style>
 * { box-sizing: border-box; }
 html, body {
@@ -30,9 +31,9 @@ h1 {
   font-size: 15px;
   line-height: 1.45;
 }
-.quick-links {
+.status-bar,
+.settings-section {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
   gap: 10px;
   margin: 0 0 22px;
   padding: 12px;
@@ -40,16 +41,99 @@ h1 {
   border-radius: 8px;
   background: rgba(255,255,255,.045);
 }
-.quick-links h2 {
-  grid-column: 1 / -1;
+.status-bar {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: center;
+}
+.choice-step {
+  display: grid;
+  grid-template-columns:minmax(240px,1fr) auto;
+  align-items:center;
+  gap:14px;
+  margin:0 0 14px;
+  padding:12px;
+  border:1px solid rgba(192,132,252,.28);
+  border-radius:8px;
+  background:rgba(255,255,255,.045);
+}
+.choice-heading {
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  min-width:0;
+}
+.choice-heading h2 {
+  margin:0 0 3px;
+  color:#F0ABFC;
+  font-size:14px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.choice-heading p {
+  margin:0;
+  color:rgba(250,245,255,.62);
+  font-size:12px;
+  line-height:1.35;
+}
+.choice-number {
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border:1px solid rgba(253,230,138,.58);
+  border-radius:50%;
+  color:#FDE68A;
+  background:rgba(253,230,138,.08);
+  font-size:12px;
+  font-weight:900;
+}
+.layout-heading { margin:0 0 10px; }
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.settings-section {
+  align-content: start;
+  margin-bottom: 0;
+}
+.settings-section h2 {
   margin: 0 0 2px;
   color: #F0ABFC;
   font-size: 14px;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+.settings-section .control-row,
+.settings-section .toggle-row,
+.settings-section .theme-row {
+  grid-column: auto;
+}
+.advanced-panel {
+  grid-column: 1 / -1;
+}
+.advanced-panel summary {
+  color: #F0ABFC;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.advanced-panel[open] summary {
+  margin-bottom: 12px;
+}
 .quick-link {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   padding: 9px 10px;
   border-radius: 7px;
@@ -130,14 +214,117 @@ h1 {
   height: 18px;
 }
 .controller-status {
-  grid-column: 1 / -1;
+  color: #FAF5FF;
+  font-size: 12px;
+  font-weight: 800;
+}
+.controller-status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #C084FC;
+  box-shadow: 0 0 10px rgba(192,132,252,.6);
+}
+.controller-status[data-state="connected"]::before {
+  background: #69C9D0;
+  box-shadow: 0 0 10px rgba(105,201,208,.72);
+}
+.controller-status[data-state="warning"]::before {
+  background: #FDE68A;
+  box-shadow: 0 0 10px rgba(253,230,138,.72);
+}
+.controller-status[data-state="error"]::before {
+  background: #FF4F4F;
+  box-shadow: 0 0 10px rgba(255,79,79,.72);
+}
+.status-help {
+  margin-top: 4px;
   color: rgba(250,245,255,.58);
   font-size: 12px;
 }
 .grid {
+  --preview-grid:rgba(255,255,255,.04);
+  --preview-stage:#111018;
+  --preview-halo:rgba(59,130,246,.20);
+  --preview-boundary:#F43F5E;
+  --preview-event-a:rgba(59,7,100,.88);
+  --preview-event-b:rgba(22,5,31,.82);
+  --preview-event-border:rgba(253,230,138,.55);
+  --preview-event-glow:rgba(232,121,249,.38);
+  --preview-tt:#69C9D0;
+  --preview-yt:#FF4F4F;
+  --preview-gold:#FDE68A;
+  --preview-accent:#A855F7;
+  --preview-accent-light:#C084FC;
+  --preview-name:#C4B9D6;
+  --preview-text:#FAF5FF;
+  --preview-card:rgba(0,0,0,.32);
+  --preview-special:rgba(253,230,138,.08);
+  --preview-halo-text:none;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 18px;
+  margin: 0 0 22px;
+}
+.grid[data-preview-theme="night"] {
+  --preview-stage:#080c14;
+  --preview-halo:rgba(121,230,255,.16);
+  --preview-boundary:rgba(121,230,255,.42);
+  --preview-event-a:rgba(8,12,20,.88);
+  --preview-event-b:rgba(18,23,36,.88);
+  --preview-event-border:rgba(255,214,107,.48);
+  --preview-event-glow:rgba(121,230,255,.22);
+  --preview-tt:#79e6ff;
+  --preview-yt:#ff9aa8;
+  --preview-gold:#ffd66b;
+  --preview-accent:#79e6ff;
+  --preview-accent-light:#c9d2e6;
+  --preview-name:#c9d2e6;
+  --preview-text:#fff;
+  --preview-card:rgba(8,12,20,.54);
+  --preview-special:rgba(255,214,107,.10);
+  --preview-halo-text:0 1px 2px rgba(0,0,0,.88),0 0 7px rgba(0,0,0,.62);
+}
+.grid[data-preview-theme="broadcast"] {
+  --preview-stage:#0e1118;
+  --preview-halo:rgba(255,191,31,.14);
+  --preview-boundary:rgba(255,191,31,.54);
+  --preview-event-a:rgba(255,191,31,.94);
+  --preview-event-b:rgba(255,138,0,.92);
+  --preview-event-border:rgba(255,255,255,.34);
+  --preview-event-glow:rgba(255,138,0,.28);
+  --preview-tt:#25f4ee;
+  --preview-yt:#ff4157;
+  --preview-gold:#ffbf1f;
+  --preview-accent:#ffbf1f;
+  --preview-accent-light:#f5f7fb;
+  --preview-name:#f5f7fb;
+  --preview-text:#fff;
+  --preview-card:rgba(25,31,43,.82);
+  --preview-special:rgba(255,191,31,.13);
+  --preview-halo-text:0 1px 2px rgba(0,0,0,.74);
+}
+.grid[data-preview-theme="comic-grape"] {
+  --preview-stage:#1a0b2c;
+  --preview-halo:rgba(168,85,247,.24);
+  --preview-boundary:#F43F5E;
+  --preview-event-a:rgba(59,7,100,.88);
+  --preview-event-b:rgba(22,5,31,.82);
+  --preview-event-border:rgba(253,230,138,.55);
+  --preview-event-glow:rgba(232,121,249,.38);
+  --preview-tt:#7de0ff;
+  --preview-yt:#ff87b6;
+  --preview-gold:#ffd85a;
+  --preview-accent:#A855F7;
+  --preview-accent-light:#C084FC;
+  --preview-name:#d9c9f0;
+  --preview-text:#f7f0ff;
+  --preview-card:rgba(42,17,71,.72);
+  --preview-special:rgba(253,230,138,.12);
+  --preview-halo-text:2px 2px 0 #0c0320;
 }
 .option {
   border: 1px solid rgba(250,245,255,.15);
@@ -145,25 +332,40 @@ h1 {
   background: rgba(255,255,255,.045);
   overflow: hidden;
 }
+.option:has(.push-style.active) {
+  border-color: rgba(253,230,138,.72);
+  box-shadow: 0 0 22px rgba(253,230,138,.12);
+}
 .stage {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 235 / 260;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(255,255,255,.04) 1px, transparent 1px),
-    radial-gradient(circle at 50% 38%, rgba(59,130,246,.2), transparent 42%),
-    #111018;
+    linear-gradient(90deg, var(--preview-grid) 1px, transparent 1px),
+    linear-gradient(0deg, var(--preview-grid) 1px, transparent 1px),
+    radial-gradient(circle at 50% 38%, var(--preview-halo), transparent 42%),
+    var(--preview-stage);
   background-size: 24px 24px, 24px 24px, auto, auto;
 }
 .stage::before {
-  content: "";
-  position: absolute;
-  inset: 56px 10px 10px;
-  border: 2px solid #F43F5E;
-  border-radius: 2px;
-  opacity: .8;
+  display:none;
+}
+.overlay-preview-shell {
+  position:absolute;
+  left:0;
+  top:0;
+  width:235px;
+  height:260px;
+  transform-origin:top left;
+}
+.overlay-preview-frame {
+  display:block;
+  width:235px;
+  height:260px;
+  border:0;
+  background:transparent;
+  pointer-events:none;
 }
 .chat {
   position: absolute;
@@ -181,13 +383,13 @@ h1 {
   max-width: 78%;
   padding: 7px 10px;
   border-radius: 6px;
-  border: 1px solid rgba(253,230,138,.55);
-  background: linear-gradient(135deg, rgba(59,7,100,.88), rgba(22,5,31,.82));
-  box-shadow: 0 10px 22px rgba(0,0,0,.34), 0 0 18px rgba(232,121,249,.38);
+  border: 1px solid var(--preview-event-border);
+  background: linear-gradient(135deg, var(--preview-event-a), var(--preview-event-b));
+  box-shadow: 0 10px 22px rgba(0,0,0,.34), 0 0 18px var(--preview-event-glow);
 }
 .event b {
   display: block;
-  color: #FDE68A;
+  color: var(--preview-gold);
   font-family: "Sora", sans-serif;
   font-size: 10px;
   line-height: 1;
@@ -220,9 +422,18 @@ h1 {
   font-size: 15px;
   font-weight: 900;
   line-height: 1.12;
+  color:var(--preview-text);
+  text-shadow:var(--preview-halo-text);
 }
-.tt { color: #69C9D0; margin-right: 4px; }
-.yt { color: #FF4F4F; margin-right: 4px; }
+.emoji {
+  display: inline-block;
+  width: 1.08em;
+  height: 1.08em;
+  margin: 0 .04em;
+  vertical-align: -.16em;
+}
+.tt { color: var(--preview-tt); margin-right: 4px; }
+.yt { color: var(--preview-yt); margin-right: 4px; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -234,9 +445,9 @@ h1 {
   font-weight: 900;
   line-height: 1;
   letter-spacing: .05em;
-  color: #3B0764;
-  background: linear-gradient(135deg, #FDE68A, #E879F9 54%, #C084FC);
-  box-shadow: 0 0 12px rgba(232,121,249,.62), inset 0 1px 0 rgba(255,255,255,.45);
+  color: var(--preview-stage);
+  background: linear-gradient(135deg, var(--preview-gold), var(--preview-yt) 54%, var(--preview-accent-light));
+  box-shadow: 0 0 12px var(--preview-event-glow), inset 0 1px 0 rgba(255,255,255,.45);
 }
 .msg.is-special::after {
   content: "";
@@ -244,8 +455,8 @@ h1 {
   inset: -1px;
   border-radius: inherit;
   pointer-events: none;
-  border: 1px solid rgba(253,230,138,.46);
-  box-shadow: 0 0 18px rgba(232,121,249,.44);
+  border: 1px solid color-mix(in srgb,var(--preview-gold) 54%,transparent);
+  box-shadow: 0 0 18px var(--preview-event-glow);
 }
 .caption { padding: 13px 14px 14px; }
 .caption h2 {
@@ -326,165 +537,77 @@ h1 {
 
 .glass .chat {
   padding: 12px;
-  border: 1px solid rgba(250,245,255,.20);
+  border: 1px solid color-mix(in srgb, var(--preview-accent-light) 24%, transparent);
   border-radius: 7px;
-  background: rgba(8,8,14,.24);
-  box-shadow: inset 0 0 24px rgba(192,132,252,.11);
+  background: color-mix(in srgb, var(--preview-stage) 58%, transparent);
+  box-shadow: inset 0 0 24px var(--preview-event-glow);
 }
 .glass .msg {
   padding: 7px 9px;
-  border-left: 3px solid #A855F7;
+  border-left: 3px solid var(--preview-accent);
   border-radius: 6px;
-  background: rgba(0,0,0,.32);
+  background: var(--preview-card);
 }
 .glass .msg.is-special {
-  border-left-color: #FDE68A;
-  background: radial-gradient(circle at 88% 8%, rgba(253,230,138,.20), transparent 32%), rgba(30,12,44,.58);
+  border-left-color: var(--preview-gold);
+  background:
+    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--preview-gold) 22%, transparent), transparent 32%),
+    var(--preview-special);
 }
-.glass .name { color: #C084FC; }
-.glass .text { text-shadow: 0 2px 0 rgba(0,0,0,.6); }
+.glass .name { color: var(--preview-accent-light); }
+.glass .text { text-shadow: var(--preview-halo-text); }
 
 .captionLook .chat {
   padding: 12px 4px;
-  background: linear-gradient(90deg, transparent, rgba(0,0,0,.22) 16%, rgba(0,0,0,.18) 82%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--preview-stage) 68%, transparent) 16%,
+    color-mix(in srgb, var(--preview-stage) 58%, transparent) 82%,
+    transparent
+  );
 }
 .captionLook .msg {
   padding: 0 0 0 10px;
-  border-left: 3px solid rgba(168,85,247,.86);
+  border-left: 3px solid var(--preview-accent);
 }
 .captionLook .msg.is-special {
-  background: linear-gradient(90deg, rgba(253,230,138,.14), transparent 78%);
+  background: linear-gradient(90deg, var(--preview-special), transparent 78%);
 }
-.captionLook .name { color: #F0ABFC; text-shadow: 0 2px 0 rgba(0,0,0,.75); }
+.captionLook .name { color: var(--preview-accent-light); text-shadow: var(--preview-halo-text); }
 .captionLook .text {
   font-size: 17px;
-  text-shadow: 0 2px 0 rgba(0,0,0,.85), 0 0 8px rgba(0,0,0,.75);
+  text-shadow: var(--preview-halo-text);
 }
-
-.sticker .chat { padding: 12px 8px; gap: 9px; }
-.sticker .msg {
-  width: fit-content;
-  max-width: 96%;
-  padding: 8px 10px;
-  border-radius: 7px;
-  background: rgba(18,18,26,.78);
-  box-shadow: 0 8px 18px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.12);
-}
-.sticker .msg:nth-of-type(even) { margin-left: auto; }
-.sticker .msg.is-special {
-  background: linear-gradient(135deg, rgba(253,230,138,.92), rgba(232,121,249,.86));
-}
-.sticker .msg.is-special .name,
-.sticker .msg.is-special .text { color: #3B0764; text-shadow: none; }
-
-.sidebar .chat {
-  padding: 10px 8px 10px 14px;
-  border-left: 3px solid rgba(232,121,249,.82);
-  background: linear-gradient(90deg, rgba(59,7,100,.32), rgba(0,0,0,.08));
-  gap: 10px;
-}
-.sidebar .msg { overflow: visible; padding-left: 4px; }
-.sidebar .msg::before {
-  content: "";
-  position: absolute;
-  left: -14px;
-  top: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #A855F7;
-  box-shadow: 0 0 14px rgba(168,85,247,.84);
-}
-.sidebar .msg.is-special::before { background: #FDE68A; box-shadow: 0 0 16px rgba(253,230,138,.95); }
-.sidebar .name { color: #C084FC; }
-.sidebar .text { font-size: 16px; text-shadow: 0 2px 0 rgba(0,0,0,.72); }
-
-.splat .chat {
-  padding: 12px;
-  background:
-    radial-gradient(circle at 16% 14%, rgba(232,121,249,.72) 0 5px, transparent 6px),
-    radial-gradient(circle at 91% 20%, rgba(192,132,252,.72) 0 7px, transparent 8px);
-}
-.splat .msg {
-  padding: 7px 9px 8px;
-  border-radius: 7px 13px 8px 16px;
-  background: linear-gradient(135deg, rgba(123,47,190,.92), rgba(59,7,100,.9));
-  box-shadow: 0 7px 0 rgba(24,4,42,.85), 0 12px 22px rgba(0,0,0,.38);
-}
-.splat .msg.is-special {
-  background: radial-gradient(circle at 82% 12%, rgba(253,230,138,.34), transparent 31%), linear-gradient(135deg, rgba(168,85,247,.98), rgba(59,7,100,.94));
-}
-.splat .name { color: #F0ABFC; }
-.splat .text {
-  font-family: "Chewy", "Boogaloo", cursive;
-  font-size: 19px;
-  font-weight: 400;
-  text-shadow: 0 3px 0 rgba(59,7,100,.95);
-}
-
-.neon .chat {
-  padding: 12px 8px;
-  border-top: 2px solid rgba(232,121,249,.6);
-  border-bottom: 2px solid rgba(104,211,255,.5);
-  background: linear-gradient(180deg, transparent, rgba(0,0,0,.34) 18%, rgba(0,0,0,.34) 82%, transparent);
-}
-.neon .msg {
-  padding: 5px 0 5px 11px;
-  border-left: 3px solid #E879F9;
-}
-.neon .msg.is-special {
-  border-left-color: #FDE68A;
-  background: linear-gradient(90deg, rgba(253,230,138,.16), transparent 78%);
-}
-.neon .name { color: #69C9D0; text-shadow: 0 0 10px rgba(105,201,208,.75); }
-.neon .text { font-size: 16px; text-shadow: 0 0 6px rgba(232,121,249,.85), 0 2px 0 rgba(0,0,0,.75); }
-
-.bubble .chat { padding: 12px 4px; }
-.bubble .msg {
-  width: fit-content;
-  max-width: 100%;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(250,245,255,.90);
-  box-shadow: 0 8px 18px rgba(0,0,0,.28);
-}
-.bubble .msg:nth-of-type(even) { margin-left: auto; background: rgba(192,132,252,.92); }
-.bubble .msg.is-special {
-  background: linear-gradient(135deg, rgba(253,230,138,.96), rgba(250,245,255,.94));
-}
-.bubble .name,
-.bubble .text { color: #16051F; text-shadow: none; }
-.bubble .msg:nth-of-type(even) .name,
-.bubble .msg:nth-of-type(even) .text { color: #FAF5FF; }
 
 .minimal .chat { padding: 12px 10px; gap: 6px; }
 .minimal .msg {
-  padding: 6px 9px;
-  border-radius: 5px;
-  background: rgba(0,0,0,.34);
+  padding: 6px 8px 6px 10px;
+  border-left: 2px solid var(--preview-name);
+  background: transparent;
 }
-.minimal .msg .tt,
-.minimal .msg .yt { display: none; }
+.minimal .msg:has(.tt) { border-left-color: var(--preview-tt); }
+.minimal .msg:has(.yt) { border-left-color: var(--preview-yt); }
 .minimal .name {
   font-family: "Rubik", sans-serif;
   font-size: 11px;
   font-weight: 500;
-  color: #C4B9D6;
+  color: var(--preview-name);
   text-shadow: none;
 }
-.minimal .name:has(.tt) { color: #7EDCE2; }
-.minimal .name:has(.yt) { color: #FF8A8A; }
+.minimal .name:has(.tt) { color: var(--preview-tt); }
+.minimal .name:has(.yt) { color: var(--preview-yt); }
 .minimal .text {
   font-family: "DM Sans", sans-serif;
   font-size: 14px;
   font-weight: 500;
   line-height: 1.25;
-  color: #FAF5FF;
+  color: var(--preview-text);
   text-shadow: none;
 }
 .minimal .msg.is-special {
-  border-left: 2px solid #FDE68A;
-  background: rgba(0,0,0,.34);
+  border-left: 2px solid var(--preview-gold);
+  background: var(--preview-special);
 }
 .minimal .badge {
   margin-right: 5px;
@@ -492,7 +615,7 @@ h1 {
   border-radius: 0;
   font-size: 9px;
   letter-spacing: .06em;
-  color: #FDE68A;
+  color: var(--preview-gold);
   background: none;
   box-shadow: none;
 }
@@ -501,127 +624,172 @@ h1 {
   from { opacity: 0; transform: translateY(22px) scale(.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@media (max-width: 760px) {
+  body { padding: 16px; }
+  .status-bar,
+  .choice-step,
+  .settings-grid { grid-template-columns: 1fr; }
+  .status-actions { justify-content: flex-start; }
+}
 </style>
 </head>
 <body>
 <main class="wrap">
-  <h1>SSN Chat Window Options</h1>
-  <p class="sub">Messages persist until newer messages push them out. Gifts and other visible events appear as a small toast, then fade away so the chat area does not clog up.</p>
-  <section class="quick-links" aria-label="JJxLive live overlay controls">
-    <h2>JJxLive One-Overlay Controller</h2>
-    <div class="theme-row" aria-label="Overlay theme">
-      <span class="theme-label">Theme</span>
-      <button class="theme-btn active" type="button" data-theme-button="night">Night</button>
-      <button class="theme-btn" type="button" data-theme-button="broadcast">Broadcast</button>
-      <button class="theme-btn" type="button" data-theme-button="comic">Sticker Comic</button>
-      <button class="theme-btn" type="button" data-theme-button="comic-noir">Comic Noir</button>
-      <button class="theme-btn" type="button" data-theme-button="comic-midnight">Comic Midnight</button>
-      <button class="theme-btn" type="button" data-theme-button="comic-grape">Comic Grape</button>
+  <h1>JJxLive Chat Controller</h1>
+  <p class="sub">Choose a color theme, then a message layout. Both choices stay active together; messages persist until newer messages push them out.</p>
+  <section class="status-bar" aria-label="Live overlay status and actions">
+    <div>
+      <div class="controller-status" id="jjx-controller-status" data-state="connecting" role="status" aria-live="polite">Connecting to the live overlay controls…</div>
+      <div class="status-help">Every change publishes automatically. Use Test Preview to see sample chat and emoji.</div>
     </div>
-    <div class="control-row">
-      <div class="control">
-        <label for="jjx-style">Style Preset</label>
-        <select id="jjx-style">
-          <option value="neon">Neon Rail</option>
-          <option value="minimal">Minimal</option>
-          <option value="sticker">Sticker</option>
-          <option value="splat">Splat</option>
-          <option value="arcade">Arcade</option>
-          <option value="chips">Chips</option>
-          <option value="comms">Comms</option>
-          <option value="spotlight">Spotlight</option>
-          <option value="glass">Glass</option>
-          <option value="caption">Caption</option>
-          <option value="sidebar">Sidebar</option>
-          <option value="bubble">Bubble</option>
-        </select>
-      </div>
-      <div class="control">
-        <label for="jjx-font">Font</label>
-        <select id="jjx-font">
-          <option value="">Theme default</option>
-          <option value="rounded">Rounded</option>
-          <option value="trebuch">Trebuchet</option>
-          <option value="arial">Arial</option>
-          <option value="impact">Impact</option>
-          <option value="mono">Arcade Mono</option>
-        </select>
-      </div>
-      <div class="control">
-        <label for="jjx-font-scale">Font Size <span id="jjx-font-scale-label">100%</span></label>
-        <input id="jjx-font-scale" type="range" min="80" max="140" step="5" value="100">
-      </div>
-      <div class="control">
-        <label for="jjx-bg-opacity">Background Opacity <span id="jjx-bg-opacity-label">100%</span></label>
-        <input id="jjx-bg-opacity" type="range" min="10" max="100" step="5" value="100">
-      </div>
-      <div class="control">
-        <label for="jjx-text-opacity">Text Opacity <span id="jjx-text-opacity-label">100%</span></label>
-        <input id="jjx-text-opacity" type="range" min="30" max="100" step="5" value="100">
-      </div>
-      <div class="control">
-        <label for="jjx-one-overlay-url">One Overlay URL</label>
-        <select id="jjx-one-overlay-url">
-          <option>jjxlive-chat-box.html</option>
-          <option>jjxlive-chat-box.html?test=1</option>
-        </select>
-      </div>
-      <div class="control">
-        <label for="jjx-box-width">Width <span id="jjx-box-width-label">235px</span></label>
-        <input id="jjx-box-width" type="range" min="180" max="420" step="5" value="235">
-      </div>
-      <div class="control">
-        <label for="jjx-box-height">Height <span id="jjx-box-height-label">210px</span></label>
-        <input id="jjx-box-height" type="range" min="120" max="520" step="5" value="210">
-      </div>
-      <div class="control">
-        <label for="jjx-max-messages">Max Messages <span id="jjx-max-messages-label">3</span></label>
-        <input id="jjx-max-messages" type="range" min="1" max="20" step="1" value="3">
-      </div>
-      <div class="control">
-        <label for="jjx-msg-lines">Message Lines <span id="jjx-msg-lines-label">2</span></label>
-        <input id="jjx-msg-lines" type="range" min="1" max="6" step="1" value="2">
-      </div>
-      <div class="control">
-        <label for="jjx-max-chars">Max Characters <span id="jjx-max-chars-label">Off</span></label>
-        <input id="jjx-max-chars" type="range" min="0" max="400" step="10" value="0">
-      </div>
-      <div class="control">
-        <label for="jjx-pos-x">Position X — from right <span id="jjx-pos-x-label">34px</span></label>
-        <input id="jjx-pos-x" type="range" min="0" max="900" step="2" value="34">
-      </div>
-      <div class="control">
-        <label for="jjx-pos-y">Position Y — from top <span id="jjx-pos-y-label">134px</span></label>
-        <input id="jjx-pos-y" type="range" min="0" max="1700" step="2" value="134">
-      </div>
+    <div class="status-actions">
+      <a class="quick-link" href="jjxlive-chat-box.html" target="_blank" rel="noopener">Open Live Overlay</a>
+      <a class="quick-link" href="jjxlive-chat-box.html?test=1" target="_blank" rel="noopener">Open Test Preview</a>
+      <button class="quick-link" id="jjx-reset-defaults" type="button">Reset Defaults</button>
     </div>
-    <div class="toggle-row" aria-label="Event visibility toggles">
-      <label class="toggle"><input id="jjx-show-follows" type="checkbox"> Show follows</label>
-      <label class="toggle"><input id="jjx-show-likes" type="checkbox" checked> Show like milestones</label>
-      <label class="toggle"><input id="jjx-show-joins" type="checkbox"> Show joins</label>
-    </div>
-    <div class="controller-status" id="jjx-controller-status">Controller ready. Load one overlay URL, then use these buttons to change it live.</div>
   </section>
-  <section class="grid">
-    <article class="option neon">
-      <div class="stage"><div class="chat">
-        <div class="event"><b>EVENT</b><span>Member message</span></div>
-        <div class="msg"><div class="name"><span class="tt">TT</span>NovaTap</div><div class="text">left side is wild</div></div>
-        <div class="msg is-special"><div class="name"><span class="yt">YT</span><span class="badge">MEMBER</span>RiffRaff</div><div class="text">chat clutch moment</div></div>
-        <div class="msg"><div class="name"><span class="tt">TT</span>BlueRoom</div><div class="text">10 seconds no way</div></div>
-      </div></div>
-      <div class="caption"><h2>Neon Rail</h2><p>High contrast, minimal background, very readable on dark camera scenes.</p><button class="push-style" type="button" data-style-button="neon">Push Neon Rail to one overlay</button></div>
+
+  <section class="choice-step" aria-labelledby="theme-step-title">
+    <div class="choice-heading">
+      <span class="choice-number">1</span>
+      <div>
+        <h2 id="theme-step-title">Color Theme</h2>
+        <p>Sets the palette and default type treatment for every layout preview below.</p>
+      </div>
+    </div>
+    <div class="theme-row" aria-label="Color theme">
+      <button class="theme-btn active" type="button" data-theme-button="night" aria-pressed="true">Night</button>
+      <button class="theme-btn" type="button" data-theme-button="broadcast" aria-pressed="false">Broadcast</button>
+      <button class="theme-btn" type="button" data-theme-button="comic-grape" aria-pressed="false">JJx Grape</button>
+    </div>
+  </section>
+
+  <div class="choice-heading layout-heading">
+    <span class="choice-number">2</span>
+    <div>
+      <h2>Message Layout</h2>
+      <p>Choose how messages are shaped and spaced. This does not change the selected color theme.</p>
+    </div>
+  </div>
+
+  <section class="grid" data-preview-theme="night" aria-label="Message layout">
+    <article class="option minimal">
+      <div class="stage">
+        <div class="overlay-preview-shell">
+          <iframe class="overlay-preview-frame" data-preview-style="minimal" title="Minimal Rail live overlay preview" loading="eager"></iframe>
+        </div>
+      </div>
+      <div class="caption"><h2>Minimal Rail</h2><p>Transparent messages with platform-colored rails and a quiet green supporter highlight.</p><button class="push-style" type="button" data-style-button="minimal" aria-pressed="true">Use Minimal Rail</button></div>
     </article>
 
-    <article class="option minimal">
-      <div class="stage"><div class="chat">
-        <div class="event"><b>GIFT</b><span>GalaxyAnna · Galaxy x1</span></div>
-        <div class="msg"><div class="name"><span class="tt">TT</span>NovaTap</div><div class="text">left side is wild</div></div>
-        <div class="msg is-special"><div class="name"><span class="yt">YT</span><span class="badge">MEMBER</span>RiffRaff</div><div class="text">chat clutch moment</div></div>
-        <div class="msg"><div class="name"><span class="tt">TT</span>BlueRoom</div><div class="text">10 seconds no way</div></div>
-      </div></div>
-      <div class="caption"><h2>Minimal</h2><p>Quiet translucent cards. Platform shown by name color only — TikTok cyan, YouTube red. Cleanest, least distracting.</p><button class="push-style" type="button" data-style-button="minimal">Push Minimal to one overlay</button></div>
+    <article class="option glass">
+      <div class="stage">
+        <div class="overlay-preview-shell">
+          <iframe class="overlay-preview-frame" data-preview-style="glass" title="Soft Glass live overlay preview" loading="eager"></iframe>
+        </div>
+      </div>
+      <div class="caption"><h2>Soft Glass</h2><p>Low-opacity message cards add separation while keeping the camera visible underneath.</p><button class="push-style" type="button" data-style-button="glass" aria-pressed="false">Use Soft Glass</button></div>
     </article>
+
+    <article class="option captionLook">
+      <div class="stage">
+        <div class="overlay-preview-shell">
+          <iframe class="overlay-preview-frame" data-preview-style="caption" title="Clean Caption live overlay preview" loading="eager"></iframe>
+        </div>
+      </div>
+      <div class="caption"><h2>Clean Caption</h2><p>No cards or rails—just platform color and a strong text halo for readability.</p><button class="push-style" type="button" data-style-button="caption" aria-pressed="false">Use Clean Caption</button></div>
+    </article>
+  </section>
+
+  <section class="settings-grid" aria-label="Chat customization">
+    <section class="settings-section">
+      <h2>Text &amp; Cards</h2>
+      <div class="control-row">
+        <div class="control">
+          <label for="jjx-font">Font</label>
+          <select id="jjx-font">
+            <option value="">Theme default</option>
+            <option value="rounded">Rounded</option>
+            <option value="trebuch">Trebuchet</option>
+            <option value="arial">Arial</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="jjx-font-scale">Font Size <span id="jjx-font-scale-label">100%</span></label>
+          <input id="jjx-font-scale" type="range" min="80" max="140" step="5" value="100">
+        </div>
+        <div class="control">
+          <label for="jjx-bg-opacity">Card Opacity <span id="jjx-bg-opacity-label">100%</span></label>
+          <input id="jjx-bg-opacity" type="range" min="10" max="100" step="5" value="100">
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h2>Chat &amp; Events</h2>
+      <div class="control-row">
+        <div class="control">
+          <label for="jjx-max-messages">Messages Shown <span id="jjx-max-messages-label">3</span></label>
+          <input id="jjx-max-messages" type="range" min="1" max="12" step="1" value="3">
+        </div>
+        <div class="control">
+          <label for="jjx-msg-lines">Lines Per Message <span id="jjx-msg-lines-label">2</span></label>
+          <input id="jjx-msg-lines" type="range" min="1" max="4" step="1" value="2">
+        </div>
+      </div>
+      <div class="toggle-row" aria-label="Event visibility">
+        <label class="toggle"><input id="jjx-show-follows" type="checkbox"> Follows</label>
+        <label class="toggle"><input id="jjx-show-likes" type="checkbox" checked> Like milestones</label>
+        <label class="toggle"><input id="jjx-show-joins" type="checkbox"> Joins</label>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h2>Audience Widget</h2>
+      <div class="status-help">Concurrent viewers per platform. Lives inside the Chat Box browser source, but moves independently using normalized canvas percentages. Surge (shake + green chevron + hot numbers) triggers off the join rate, so it needs viewers climbing to fire.</div>
+      <div class="toggle-row">
+        <label class="toggle"><input id="jjx-audience-enabled" type="checkbox" checked> Show audience widget</label>
+        <label class="toggle"><input id="jjx-audience-surge" type="checkbox" checked> Show viewer surge</label>
+      </div>
+      <div class="control-row">
+        <div class="control">
+          <label for="jjx-audience-scale">Size <span id="jjx-audience-scale-label">100%</span></label>
+          <input id="jjx-audience-scale" type="range" min="65" max="120" step="5" value="100">
+        </div>
+      </div>
+      <div class="control-row">
+        <div class="control">
+          <label for="jjx-audience-x">From Left <span id="jjx-audience-x-label">77.8%</span></label>
+          <input id="jjx-audience-x" type="range" min="0" max="100" step="0.01" value="77.78">
+        </div>
+        <div class="control">
+          <label for="jjx-audience-y">From Top <span id="jjx-audience-y-label">4.6%</span></label>
+          <input id="jjx-audience-y" type="range" min="0" max="100" step="0.01" value="4.58">
+        </div>
+      </div>
+    </section>
+
+    <details class="settings-section advanced-panel">
+      <summary>Advanced Layout</summary>
+      <div class="control-row">
+        <div class="control">
+          <label for="jjx-box-width">Width <span id="jjx-box-width-label">235px</span></label>
+          <input id="jjx-box-width" type="range" min="180" max="420" step="5" value="235">
+        </div>
+        <div class="control">
+          <label for="jjx-box-height">Height <span id="jjx-box-height-label">210px</span></label>
+          <input id="jjx-box-height" type="range" min="120" max="520" step="5" value="210">
+        </div>
+        <div class="control">
+          <label for="jjx-pos-x">From Right <span id="jjx-pos-x-label">3.1%</span></label>
+          <input id="jjx-pos-x" type="range" min="0" max="100" step="0.01" value="3.15">
+        </div>
+        <div class="control">
+          <label for="jjx-pos-y">From Top <span id="jjx-pos-y-label">7%</span></label>
+          <input id="jjx-pos-y" type="range" min="0" max="100" step="0.01" value="6.98">
+        </div>
+      </div>
+    </details>
   </section>
 </main>
 <script>
@@ -632,21 +800,51 @@ const CONTROL_CONFIG = {
 
 let ablyClient = null;
 let controlChannel = null;
-let currentStyle = "neon";
+let currentStyle = "minimal";
 let currentTheme = "night";
 let pendingPayload = null;
 let isControlConnected = false;
 const CONTROLLER_STORAGE_KEY = "jjxlive-chat-controller-settings-v1";
+const CONTROLLER_DEFAULTS = {
+  style: "minimal",
+  theme: "night",
+  font: "",
+  fontScale: 1,
+  bgOpacity: 1,
+  showFollowsAsEvents: false,
+  showLikesAsEvents: true,
+  showJoinsAsEvents: false,
+  width: 235,
+  height: 210,
+  maxMessages: 3,
+  clampLines: 2,
+  right: 34,
+  top: 134,
+  audienceEnabled: true,
+  audienceLeft: 945,  // 1080 - 135: viewer rails sit flush against the right edge
+  audienceTop: 700,
+  audienceScale: 1,
+  audienceSurgeEnabled: true
+};
+function canvasPercent(px, axis) {
+  return JJX.position.pxToPercent(px, axis, 2);
+}
+function designPixels(percent, axis) {
+  return JJX.position.percentToPx(percent, axis);
+}
+function percentLabel(value) {
+  return JJX.position.formatPercent(value, 1);
+}
+const ALLOWED_STYLES = ["minimal", "glass", "caption"];
+const ALLOWED_THEMES = ["night", "broadcast", "comic-grape"];
 
 const statusEl = document.getElementById("jjx-controller-status");
-const styleEl = document.getElementById("jjx-style");
+const resetDefaultsEl = document.getElementById("jjx-reset-defaults");
 const fontEl = document.getElementById("jjx-font");
 const fontScaleEl = document.getElementById("jjx-font-scale");
 const fontScaleLabel = document.getElementById("jjx-font-scale-label");
 const bgOpacityEl = document.getElementById("jjx-bg-opacity");
 const bgOpacityLabel = document.getElementById("jjx-bg-opacity-label");
-const textOpacityEl = document.getElementById("jjx-text-opacity");
-const textOpacityLabel = document.getElementById("jjx-text-opacity-label");
 const showFollowsEl = document.getElementById("jjx-show-follows");
 const showLikesEl = document.getElementById("jjx-show-likes");
 const showJoinsEl = document.getElementById("jjx-show-joins");
@@ -654,24 +852,84 @@ const widthEl = document.getElementById("jjx-box-width");
 const heightEl = document.getElementById("jjx-box-height");
 const maxMessagesEl = document.getElementById("jjx-max-messages");
 const msgLinesEl = document.getElementById("jjx-msg-lines");
-const maxCharsEl = document.getElementById("jjx-max-chars");
 const posXEl = document.getElementById("jjx-pos-x");
 const posYEl = document.getElementById("jjx-pos-y");
 const widthLabel = document.getElementById("jjx-box-width-label");
 const heightLabel = document.getElementById("jjx-box-height-label");
 const maxMessagesLabel = document.getElementById("jjx-max-messages-label");
 const msgLinesLabel = document.getElementById("jjx-msg-lines-label");
-const maxCharsLabel = document.getElementById("jjx-max-chars-label");
 const posXLabel = document.getElementById("jjx-pos-x-label");
 const posYLabel = document.getElementById("jjx-pos-y-label");
+const audienceEnabledEl = document.getElementById("jjx-audience-enabled");
+const audienceSurgeEl = document.getElementById("jjx-audience-surge");
+const audienceXEl = document.getElementById("jjx-audience-x");
+const audienceYEl = document.getElementById("jjx-audience-y");
+const audienceScaleEl = document.getElementById("jjx-audience-scale");
+const audienceXLabel = document.getElementById("jjx-audience-x-label");
+const audienceYLabel = document.getElementById("jjx-audience-y-label");
+const audienceScaleLabel = document.getElementById("jjx-audience-scale-label");
+const PREVIEW_WIDTH = 235;
+const PREVIEW_HEIGHT = 260;
 
-function setStatus(text) {
-  if (statusEl) statusEl.textContent = text;
+function resizeOverlayPreviewFrames() {
+  document.querySelectorAll(".stage").forEach(stage => {
+    const shell = stage.querySelector(".overlay-preview-shell");
+    if (!shell) return;
+    const scale = stage.clientWidth / PREVIEW_WIDTH;
+    shell.style.transform = `scale(${scale})`;
+  });
+}
+
+function updateOverlayPreviewFrames(settings = {}) {
+  document.querySelectorAll(".overlay-preview-frame").forEach(frame => {
+    const url = new URL("jjxlive-chat-box.html", location.href);
+    url.searchParams.set("preview", "1");
+    url.searchParams.set("style", frame.dataset.previewStyle || "minimal");
+    url.searchParams.set("theme", settings.theme || currentTheme);
+    url.searchParams.set("fontScale", String(settings.fontScale ?? Number(fontScaleEl?.value || 100) / 100));
+    url.searchParams.set("bgOpacity", String(settings.bgOpacity ?? Number(bgOpacityEl?.value || 100) / 100));
+    url.searchParams.set("lines", String(settings.clampLines ?? Number(msgLinesEl?.value || 2)));
+    url.searchParams.set("maxMessages", String(settings.maxMessages ?? Number(maxMessagesEl?.value || 3)));
+    const font = settings.font ?? fontEl?.value;
+    if (font) url.searchParams.set("font", font);
+    const nextSrc = url.href;
+    if (frame.src !== nextSrc) frame.src = nextSrc;
+  });
+  requestAnimationFrame(resizeOverlayPreviewFrames);
+}
+
+if (window.ResizeObserver) {
+  const previewResizeObserver = new ResizeObserver(resizeOverlayPreviewFrames);
+  document.querySelectorAll(".stage").forEach(stage => previewResizeObserver.observe(stage));
+} else {
+  window.addEventListener("resize", resizeOverlayPreviewFrames);
+}
+
+function renderPreviewEmoji() {
+  const previewGrid = document.querySelector(".grid");
+  if (!previewGrid || !window.twemoji) return;
+  window.twemoji.parse(previewGrid, {
+    base: "https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/",
+    folder: "svg",
+    ext: ".svg",
+    className: "emoji"
+  });
+}
+
+function setStatus(text, state = "connecting") {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.dataset.state = state;
 }
 
 function loadSavedControllerSettings() {
-  try { return JSON.parse(localStorage.getItem(CONTROLLER_STORAGE_KEY) || "{}") || {}; }
-  catch (_) { return {}; }
+  try {
+    return {
+      ...CONTROLLER_DEFAULTS,
+      ...(JSON.parse(localStorage.getItem(CONTROLLER_STORAGE_KEY) || "{}") || {})
+    };
+  }
+  catch (_) { return { ...CONTROLLER_DEFAULTS }; }
 }
 
 function saveControllerSettings(payload) {
@@ -679,34 +937,42 @@ function saveControllerSettings(payload) {
 }
 
 function applyControllerSettingsToForm(settings = {}) {
-  const ALL_STYLES = ["sticker","splat","arcade","chips","comms","spotlight","glass","caption","sidebar","neon","bubble","minimal"];
-  currentStyle = ALL_STYLES.includes(settings.style) ? settings.style : "neon";
-  currentTheme = ["night","broadcast","comic","comic-noir","comic-midnight","comic-grape"].includes(settings.theme) ? settings.theme : "night";
-  if (styleEl) styleEl.value = currentStyle;
-  if (fontEl && settings.font != null) fontEl.value = settings.font;
-  if (fontScaleEl && settings.fontScale != null) fontScaleEl.value = Math.round(Number(settings.fontScale) * 100);
-  if (bgOpacityEl && settings.bgOpacity != null) bgOpacityEl.value = Math.round(Number(settings.bgOpacity) * 100);
-  if (textOpacityEl && settings.textOpacity != null) textOpacityEl.value = Math.round(Number(settings.textOpacity) * 100);
-  if (showFollowsEl && settings.showFollowsAsEvents != null) showFollowsEl.checked = Boolean(settings.showFollowsAsEvents);
-  if (showLikesEl && settings.showLikesAsEvents != null) showLikesEl.checked = Boolean(settings.showLikesAsEvents);
-  if (showJoinsEl && settings.showJoinsAsEvents != null) showJoinsEl.checked = Boolean(settings.showJoinsAsEvents);
-  if (widthEl && settings.width != null) widthEl.value = settings.width;
-  if (heightEl && settings.height != null) heightEl.value = settings.height;
-  if (maxMessagesEl && settings.maxMessages != null) maxMessagesEl.value = settings.maxMessages;
-  if (msgLinesEl && settings.clampLines != null) msgLinesEl.value = settings.clampLines;
-  if (maxCharsEl && settings.maxChars != null) maxCharsEl.value = settings.maxChars;
-  if (posXEl && settings.right != null) posXEl.value = settings.right;
-  if (posYEl && settings.top != null) posYEl.value = settings.top;
+  const next = { ...CONTROLLER_DEFAULTS, ...settings };
+  currentStyle = ALLOWED_STYLES.includes(next.style) ? next.style : CONTROLLER_DEFAULTS.style;
+  currentTheme = ALLOWED_THEMES.includes(next.theme) ? next.theme : CONTROLLER_DEFAULTS.theme;
+  const previewGrid = document.querySelector(".grid");
+  if (previewGrid) previewGrid.dataset.previewTheme = currentTheme;
+  if (fontEl) fontEl.value = next.font;
+  if (fontScaleEl) fontScaleEl.value = Math.round(Number(next.fontScale) * 100);
+  if (bgOpacityEl) bgOpacityEl.value = Math.round(Number(next.bgOpacity) * 100);
+  if (showFollowsEl) showFollowsEl.checked = Boolean(next.showFollowsAsEvents);
+  if (showLikesEl) showLikesEl.checked = Boolean(next.showLikesAsEvents);
+  if (showJoinsEl) showJoinsEl.checked = Boolean(next.showJoinsAsEvents);
+  if (widthEl) widthEl.value = next.width;
+  if (heightEl) heightEl.value = next.height;
+  if (maxMessagesEl) maxMessagesEl.value = next.maxMessages;
+  if (msgLinesEl) msgLinesEl.value = next.clampLines;
+  if (posXEl) posXEl.value = canvasPercent(next.right, "x");
+  if (posYEl) posYEl.value = canvasPercent(next.top, "y");
+  if (audienceEnabledEl) audienceEnabledEl.checked = Boolean(next.audienceEnabled);
+  if (audienceSurgeEl) audienceSurgeEl.checked = Boolean(next.audienceSurgeEnabled);
+  if (audienceXEl) audienceXEl.value = canvasPercent(next.audienceLeft, "x");
+  if (audienceYEl) audienceYEl.value = canvasPercent(next.audienceTop, "y");
+  if (audienceScaleEl) audienceScaleEl.value = Math.round(Number(next.audienceScale) * 100);
   updateSizeLabels();
   if (fontScaleLabel) fontScaleLabel.textContent = `${Math.round(Number(fontScaleEl?.value || 100))}%`;
   if (bgOpacityLabel) bgOpacityLabel.textContent = `${Math.round(Number(bgOpacityEl?.value || 100))}%`;
-  if (textOpacityLabel) textOpacityLabel.textContent = `${Math.round(Number(textOpacityEl?.value || 100))}%`;
   document.querySelectorAll("[data-style-button]").forEach(button => {
-    button.classList.toggle("active", button.dataset.styleButton === currentStyle);
+    const isActive = button.dataset.styleButton === currentStyle;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
   document.querySelectorAll("[data-theme-button]").forEach(button => {
-    button.classList.toggle("active", button.dataset.themeButton === currentTheme);
+    const isActive = button.dataset.themeButton === currentTheme;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
+  updateOverlayPreviewFrames(next);
 }
 
 function connectControlChannel() {
@@ -716,48 +982,63 @@ function connectControlChannel() {
   try {
     ablyClient = JJX.dockRealtime({ fallbackKey: CONTROL_CONFIG.ABLY_KEY });
     controlChannel = ablyClient.channels.get(CONTROL_CONFIG.ABLY_CHANNEL);
+    controlChannel.subscribe("jjx-chat-settings-request", () => publishSettings());
     ablyClient.connection.on("connected", () => {
       isControlConnected = true;
-      setStatus("Connected. Changes will update the one live overlay.");
+      setStatus("Connected. Changes update the live overlay automatically.", "connected");
       if (pendingPayload) sendPayload(pendingPayload);
       else publishSettings();
     });
     ablyClient.connection.on("disconnected", () => {
       isControlConnected = false;
-      setStatus("Disconnected. Reconnecting...");
+      setStatus("Disconnected. Reconnecting…", "warning");
     });
-    ablyClient.connection.on("failed", () => setStatus("Connection failed. Check network or Ably key."));
+    ablyClient.connection.on("failed", () => setStatus("Connection failed. Check the network connection.", "error"));
   } catch (error) {
-    setStatus("Could not start live controls.");
+    setStatus("Could not start live controls.", "error");
   }
 }
 
 function sendPayload(payload) {
   if (!controlChannel || !isControlConnected) {
     pendingPayload = payload;
-    setStatus("Controller is connecting. Latest change will send when ready.");
+    setStatus("Connecting. The latest change will send when ready.", "connecting");
     return;
   }
   pendingPayload = null;
   controlChannel.publish("jjx-chat-settings", payload)
-    .then(() => setStatus(`Sent ${payload.style} style at ${Math.round((payload.fontScale || 1) * 100)}% font size.`))
+    .then(() => setStatus(`Live: ${themeLabel(payload.theme)} · ${styleLabel(payload.style)} · ${Math.round((payload.fontScale || 1) * 100)}% type`, "connected"))
     .catch(() => {
       pendingPayload = payload;
-      setStatus("Could not send settings. Will retry on reconnect.");
+      setStatus("Could not send settings. Retrying on reconnect.", "warning");
     });
+}
+
+function styleLabel(style) {
+  return {
+    minimal: "Minimal Rail",
+    glass: "Soft Glass",
+    caption: "Clean Caption"
+  }[style] || "Chat";
+}
+
+function themeLabel(theme) {
+  return {
+    night: "Night",
+    broadcast: "Broadcast",
+    "comic-grape": "JJx Grape"
+  }[theme] || "Theme";
 }
 
 function publishSettings(extra = {}) {
   const fontScale = Number(fontScaleEl?.value || 100) / 100;
   const bgOpacity = Number(bgOpacityEl?.value || 100) / 100;
-  const textOpacity = Number(textOpacityEl?.value || 100) / 100;
   const payload = {
     style: currentStyle,
     theme: currentTheme,
     font: fontEl?.value || "",
     fontScale,
     bgOpacity,
-    textOpacity,
     showFollowsAsEvents: Boolean(showFollowsEl?.checked),
     showLikesAsEvents: Boolean(showLikesEl?.checked),
     showJoinsAsEvents: Boolean(showJoinsEl?.checked),
@@ -765,28 +1046,39 @@ function publishSettings(extra = {}) {
     height: Number(heightEl?.value || 210),
     maxMessages: Number(maxMessagesEl?.value || 3),
     clampLines: Number(msgLinesEl?.value || 2),
-    maxChars: Number(maxCharsEl?.value || 0),
-    right: Number(posXEl?.value ?? 34),
-    top: Number(posYEl?.value ?? 134),
+    right: designPixels(posXEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.right, "x"), "x"),
+    top: designPixels(posYEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.top, "y"), "y"),
+    audienceEnabled: Boolean(audienceEnabledEl?.checked),
+    audienceLeft: designPixels(audienceXEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.audienceLeft, "x"), "x"),
+    audienceTop: designPixels(audienceYEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.audienceTop, "y"), "y"),
+    audienceScale: Number(audienceScaleEl?.value || 100) / 100,
+    audienceSurgeEnabled: Boolean(audienceSurgeEl?.checked),
     ...extra
   };
+  const previewGrid = document.querySelector(".grid");
+  if (previewGrid) previewGrid.dataset.previewTheme = payload.theme;
+  updateOverlayPreviewFrames(payload);
   document.querySelectorAll("[data-style-button]").forEach(button => {
-    button.classList.toggle("active", button.dataset.styleButton === payload.style);
+    const isActive = button.dataset.styleButton === payload.style;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
   document.querySelectorAll("[data-theme-button]").forEach(button => {
-    button.classList.toggle("active", button.dataset.themeButton === payload.theme);
+    const isActive = button.dataset.themeButton === payload.theme;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
   });
-  if (styleEl) styleEl.value = payload.style;
   if (fontScaleLabel) fontScaleLabel.textContent = `${Math.round(fontScale * 100)}%`;
   if (bgOpacityLabel) bgOpacityLabel.textContent = `${Math.round(bgOpacity * 100)}%`;
-  if (textOpacityLabel) textOpacityLabel.textContent = `${Math.round(textOpacity * 100)}%`;
   if (widthLabel) widthLabel.textContent = `${payload.width}px`;
   if (heightLabel) heightLabel.textContent = `${payload.height}px`;
   if (maxMessagesLabel) maxMessagesLabel.textContent = String(payload.maxMessages);
   if (msgLinesLabel) msgLinesLabel.textContent = String(payload.clampLines);
-  if (maxCharsLabel) maxCharsLabel.textContent = payload.maxChars > 0 ? `${payload.maxChars}` : "Off";
-  if (posXLabel) posXLabel.textContent = `${payload.right}px`;
-  if (posYLabel) posYLabel.textContent = `${payload.top}px`;
+  if (posXLabel) posXLabel.textContent = percentLabel(posXEl?.value);
+  if (posYLabel) posYLabel.textContent = percentLabel(posYEl?.value);
+  if (audienceXLabel) audienceXLabel.textContent = percentLabel(audienceXEl?.value);
+  if (audienceYLabel) audienceYLabel.textContent = percentLabel(audienceYEl?.value);
+  if (audienceScaleLabel) audienceScaleLabel.textContent = `${Math.round(payload.audienceScale * 100)}%`;
   saveControllerSettings(payload);
   sendPayload(payload);
 }
@@ -794,20 +1086,17 @@ function publishSettings(extra = {}) {
 document.addEventListener("click", event => {
   const themeButton = event.target.closest("[data-theme-button]");
   if (themeButton) {
-    currentTheme = themeButton.dataset.themeButton || "night";
+    const requestedTheme = themeButton.dataset.themeButton || CONTROLLER_DEFAULTS.theme;
+    currentTheme = ALLOWED_THEMES.includes(requestedTheme) ? requestedTheme : CONTROLLER_DEFAULTS.theme;
     publishSettings({ theme: currentTheme });
     return;
   }
   const button = event.target.closest("[data-style-button]");
   if (button) {
-    currentStyle = button.dataset.styleButton || "neon";
+    const requestedStyle = button.dataset.styleButton || CONTROLLER_DEFAULTS.style;
+    currentStyle = ALLOWED_STYLES.includes(requestedStyle) ? requestedStyle : CONTROLLER_DEFAULTS.style;
     publishSettings({ style: currentStyle });
   }
-});
-
-styleEl?.addEventListener("change", () => {
-  currentStyle = styleEl.value || "neon";
-  publishSettings({ style: currentStyle });
 });
 
 fontEl?.addEventListener("change", () => publishSettings());
@@ -821,40 +1110,49 @@ bgOpacityEl?.addEventListener("input", () => {
   if (bgOpacityLabel) bgOpacityLabel.textContent = `${Math.round(bgOpacity * 100)}%`;
 });
 bgOpacityEl?.addEventListener("change", () => publishSettings());
-textOpacityEl?.addEventListener("input", () => {
-  const textOpacity = Number(textOpacityEl.value || 100) / 100;
-  if (textOpacityLabel) textOpacityLabel.textContent = `${Math.round(textOpacity * 100)}%`;
-});
-textOpacityEl?.addEventListener("change", () => publishSettings());
 showFollowsEl?.addEventListener("change", () => publishSettings());
 showLikesEl?.addEventListener("change", () => publishSettings());
 showJoinsEl?.addEventListener("change", () => publishSettings());
+audienceEnabledEl?.addEventListener("change", () => publishSettings());
+audienceSurgeEl?.addEventListener("change", () => publishSettings());
+resetDefaultsEl?.addEventListener("click", () => {
+  try { localStorage.removeItem(CONTROLLER_STORAGE_KEY); } catch (_) {}
+  applyControllerSettingsToForm(CONTROLLER_DEFAULTS);
+  publishSettings();
+});
 
 function updateSizeLabels() {
   if (widthLabel) widthLabel.textContent = `${widthEl?.value || 235}px`;
   if (heightLabel) heightLabel.textContent = `${heightEl?.value || 210}px`;
   if (maxMessagesLabel) maxMessagesLabel.textContent = String(maxMessagesEl?.value || 3);
   if (msgLinesLabel) msgLinesLabel.textContent = String(msgLinesEl?.value || 2);
-  if (maxCharsLabel) maxCharsLabel.textContent = Number(maxCharsEl?.value || 0) > 0 ? `${maxCharsEl.value}` : "Off";
-  if (posXLabel) posXLabel.textContent = `${posXEl?.value ?? 34}px`;
-  if (posYLabel) posYLabel.textContent = `${posYEl?.value ?? 134}px`;
+  if (posXLabel) posXLabel.textContent = percentLabel(posXEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.right, "x"));
+  if (posYLabel) posYLabel.textContent = percentLabel(posYEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.top, "y"));
+  if (audienceXLabel) audienceXLabel.textContent = percentLabel(audienceXEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.audienceLeft, "x"));
+  if (audienceYLabel) audienceYLabel.textContent = percentLabel(audienceYEl?.value ?? canvasPercent(CONTROLLER_DEFAULTS.audienceTop, "y"));
+  if (audienceScaleLabel) audienceScaleLabel.textContent = `${audienceScaleEl?.value || 100}%`;
 }
 widthEl?.addEventListener("input", updateSizeLabels);
 heightEl?.addEventListener("input", updateSizeLabels);
 maxMessagesEl?.addEventListener("input", updateSizeLabels);
 msgLinesEl?.addEventListener("input", updateSizeLabels);
-maxCharsEl?.addEventListener("input", updateSizeLabels);
 posXEl?.addEventListener("input", updateSizeLabels);
 posYEl?.addEventListener("input", updateSizeLabels);
+audienceXEl?.addEventListener("input", updateSizeLabels);
+audienceYEl?.addEventListener("input", updateSizeLabels);
+audienceScaleEl?.addEventListener("input", updateSizeLabels);
 widthEl?.addEventListener("change", () => publishSettings());
 heightEl?.addEventListener("change", () => publishSettings());
 maxMessagesEl?.addEventListener("change", () => publishSettings());
 msgLinesEl?.addEventListener("change", () => publishSettings());
-maxCharsEl?.addEventListener("change", () => publishSettings());
 posXEl?.addEventListener("change", () => publishSettings());
 posYEl?.addEventListener("change", () => publishSettings());
+audienceXEl?.addEventListener("change", () => publishSettings());
+audienceYEl?.addEventListener("change", () => publishSettings());
+audienceScaleEl?.addEventListener("change", () => publishSettings());
 updateSizeLabels();
 applyControllerSettingsToForm(loadSavedControllerSettings());
+renderPreviewEmoji();
 
 connectControlChannel();
 </script>
