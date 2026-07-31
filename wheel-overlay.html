@@ -143,7 +143,18 @@
     max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     line-height: 1.05;
   }
-  .brick .b-usd { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 700; font-size: 12px; color: rgba(250,245,255,.5); margin-top: 1px; }
+  /* $-amount FONT tracks the LAST ROLLED TIER (v2 handoff): cream → pink → purple →
+     gold-with-glow-chip, all on a dark pill chip. This is a second, independent axis
+     from the brick MATERIAL, which stays dollar-banded — material says how much they
+     have given lifetime; the chip says how lucky their last roll was. */
+  .brick .b-usd {
+    font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: .08em; color: rgba(250,245,255,.78);
+    background: rgba(0,0,0,.3); padding: 1px 8px; border-radius: 999px; margin-top: 2px;
+  }
+  .tf-power    .b-usd { font-weight: 800; font-size: 13px; color: #F0A8D8; text-shadow: 0 1px 2px rgba(0,0,0,.7); background: rgba(0,0,0,.32); }
+  .tf-takeover .b-usd { font-weight: 800; font-size: 14px; color: #C084FC; text-shadow: 0 1px 2px rgba(0,0,0,.8); background: rgba(0,0,0,.36); padding: 1px 9px; }
+  .tf-legend   .b-usd { font-weight: 800; font-size: 15px; color: #ffd93b; text-shadow: 0 1px 2px rgba(0,0,0,.9); background: rgba(0,0,0,.46); padding: 1px 10px; box-shadow: 0 0 9px rgba(255,217,59,.55); }
   /* Dollar bands read through weight + hue, never glow (style-guide don'ts).
      The two top bands wear the coin yellow — a brick IS money. */
   .usd-0 .b-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 600; font-size: 20px; color: #c9b3e8; }
@@ -156,228 +167,10 @@
      merge across rules; whichever rule wins the cascade wins outright. */
   .usd-3 { box-shadow: inset 0 0 0 3px #ffd93b; }  /* solid gold-edged brick, top tier only — no glow */
 
-  /* ── WHEEL: CENTER-STAGE RAIL. The rail always spans the full 1080px source.
-     Every enabled outcome remains visible as a complete nine-card pass while
-     repeated passes move horizontally behind a fixed centre marker. The winner
-     then holds in the centre so the spin reads as a shared stream moment rather
-     than a modal appearing and disappearing. */
-  /* Doodle HUD housing (Feed Jamie alignment): solid ink-bordered band with a flat
-     offset shadow — no gradient, no inner glow, no blur (style guide don'ts). The
-     band stays DARK (hybrid direction) so a spin still reads as an event over
-     gameplay; the CONSTRUCTION — #1a1a1a borders + flat shadows — is what matches
-     Feed Jamie's cream card. Gold is reserved for Legendary chances on the chips,
-     so no tier-legend housing variant. */
-  .reel-frame {
-    position: relative;
-    width: 1080px;
-    height: 100%;
-    overflow: visible;
-    border-top: 4px solid #1a1a1a;
-    border-bottom: 4px solid #1a1a1a;
-    background: #2a0447;
-    box-shadow: 0 6px 0 rgba(0,0,0,.5);
-    opacity: 0;
-    transform: scaleY(.88);
-    transition: opacity .3s ease, transform .3s cubic-bezier(.2,1,.3,1);
-  }
-  .reel-frame.show { opacity: 1; transform: scaleY(1); }
-  /* Purple ribbon — Feed Jamie's CTA ribbon grammar (#6c3fd8 + #ffd93b). */
-  .reel-moment-title {
-    position: absolute; left: 50%; bottom: calc(100% + 16px); z-index: 12;
-    transform: translateX(-50%);
-    background: #6c3fd8; color: #ffd93b; white-space: nowrap;
-    border: 3px solid #1a1a1a; border-radius: 12px;
-    box-shadow: 0 4px 0 rgba(0,0,0,.35);
-    padding: 6px 22px 8px;
-    font-family: 'Baloo 2', system-ui, sans-serif;
-    font-weight: 800;
-    font-size: clamp(24px, calc(var(--wheel-reel-h, 220px) * .13), 34px);
-    letter-spacing: .05em;
-    transition: transform .35s cubic-bezier(.2,1.35,.3,1);
-  }
-  .reel-moment-title:empty,
-  .reel-winner-label:empty,
-  .reel-seg .seg-label:empty {
-    display: none !important;
-  }
-  .reel-frame.final-pass .reel-moment-title {
-    transform: translateX(-50%) scale(1.06);
-  }
-  .reel-viewport {
-    position: absolute; left: 0; right: 0; top: 0; height: 100%;
-    overflow: visible;
-    /* Keep the moving strip inside the 1080px rail horizontally while allowing the
-       selected card's ring and lift to rise beyond the rail edge. */
-    clip-path: inset(-180px 0 -180px 0);
-  }
-  .reel-strip {
-    position: absolute; left: 0; top: 50%; height: 100%;
-    display: flex; align-items: center;
-    gap: 6px;
-    will-change: transform;
-    transform: translate3d(0,-50%,0);
-  }
-  /* Low-profile ticker chips: WIDE (icon beside label) instead of tall, solid
-     sticker fills with the 3px ink border + flat offset shadow. */
-  .reel-seg {
-    --card-bg: #4B126F;
-    --card-ink: #fdf8ee;
-    position: relative;
-    flex: 0 0 auto;
-    height: 62%;
-    min-width: 0;
-    display: flex; flex-direction: row; align-items: center; justify-content: center;
-    gap: clamp(8px, calc(var(--wheel-reel-h, 220px) * .055), 16px);
-    overflow: visible;
-    border: 3px solid #1a1a1a;
-    border-radius: 14px;
-    background: var(--card-bg);
-    box-shadow: 0 4px 0 rgba(0,0,0,.45);
-    color: var(--card-ink);
-    opacity: .8;
-    transform: scale(.94);
-    transform-origin: 50% 50%;
-    transition:
-      opacity .16s ease,
-      border-color .3s ease,
-      box-shadow .3s ease,
-      background .3s ease;
-  }
-  /* Result type controls the chip's hue; tier reads through the escalation
-     grammar and gold, never through glow. */
-  .reel-seg.type-curse     { --card-bg:#7a285c; }
-  .reel-seg.type-stamp     { --card-bg:#8a3028; }
-  .reel-seg.type-flood     { --card-bg:#08749b; }
-  .reel-seg.type-weather   { --card-bg:#475569; }
-  .reel-seg.type-crack     { --card-bg:#5145cd; }
-  .reel-seg.type-spotlight { --card-bg:#936313; }
-  .reel-seg.type-frame     { --card-bg:#7e28a8; }
-  .reel-seg.type-avatar    { --card-bg:#11776f; }
-  .reel-seg.type-ball      { --card-bg:#2754b8; }
-  /* Focus = cream ring + deeper flat shadow. Never glow. */
-  .reel-frame:not(.landed) .reel-seg.center-focus {
-    border-color: #fdf8ee;
-    box-shadow: 0 6px 0 rgba(0,0,0,.5);
-  }
-  .reel-seg .seg-label {
-    max-width: 94%;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-size: clamp(16px, calc(var(--wheel-reel-h, 220px) * .105), 26px);
-    font-weight: 800; line-height: 1.25; letter-spacing: .01em;
-    transform: scale(var(--wheel-content-scale, 1));
-  }
-  .reel-frame.landed .reel-seg {
-    opacity: .28; transform: scale(.82);
-    transition: opacity .24s ease, transform .34s cubic-bezier(.2,1.25,.3,1),
-                border-color .3s ease, box-shadow .3s ease, background .3s ease;
-  }
-  .reel-frame.landed .reel-seg.winner {
-    --winner-ring: #fdf8ee;
-    z-index: 20;
-    opacity: 1;
-    transform: translateY(-8%) scale(1.12);
-    outline: 5px solid var(--winner-ring);
-    outline-offset: 6px;
-    border-color: #1a1a1a;
-    box-shadow: 0 7px 0 rgba(0,0,0,.5);
-    animation: reelWinnerLock .72s cubic-bezier(.2,1.25,.3,1) both;
-  }
-  @keyframes reelWinnerLock {
-    0% {
-      transform: translateY(0) scale(1.2);
-      outline-color: rgba(253,248,238,0);
-      outline-offset: 1px;
-    }
-    58% {
-      transform: translateY(-11%) scale(1.2);
-      outline-color: var(--winner-ring);
-      outline-offset: 8px;
-    }
-    100% {
-      transform: translateY(-8%) scale(1.12);
-      outline-color: var(--winner-ring);
-      outline-offset: 6px;
-    }
-  }
-  .reel-frame.tier-legend .reel-seg.winner {
-    --winner-ring: #fdf8ee;
-    color: #1a1a1a;
-    border-color: #1a1a1a;
-    background: #ffd93b;
-    box-shadow: 0 7px 0 rgba(0,0,0,.5);
-  }
-  /* Gold = coin yellow, whole-chip fill (yellow is currency; Legend IS spend). */
-  .reel-seg.gold {
-    color: #1a1a1a;
-    border-color: #1a1a1a;
-    background: #ffd93b;
-    box-shadow: 0 4px 0 rgba(0,0,0,.45);
-  }
-  .reel-seg.gold::after {
-    content: attr(data-gold-label);
-    position: absolute; left: 50%; top: -12px;
-    transform: translateX(-50%);
-    padding: 2px 9px 3px; border-radius: 999px;
-    color: #ffd93b; background: #6c3fd8;
-    border: 2px solid #1a1a1a;
-    font: 800 clamp(10px, calc(var(--wheel-reel-h, 220px) * .055), 13px)/1.2 'Baloo 2', system-ui, sans-serif;
-    letter-spacing: .05em;
-  }
-  .reel-seg.gold[data-gold-label=""]::after { display: none; }
-  .reel-arrow {
-    position: absolute; left: 50%; top: -4px; z-index: 22;
-    width: 0; height: 0;
-    transform: translateX(-50%);
-    border-left: clamp(13px, calc(var(--wheel-reel-h, 220px) * .09), 22px) solid transparent;
-    border-right: clamp(13px, calc(var(--wheel-reel-h, 220px) * .09), 22px) solid transparent;
-    border-top: clamp(18px, calc(var(--wheel-reel-h, 220px) * .13), 30px) solid #fdf8ee;
-  }
-  .reel-frame.tier-legend .reel-arrow { border-top-color: #ffd93b; }
-  .reel-winner-label {
-    position: absolute; left: 50%; bottom: calc(100% + 84px); z-index: 11;
-    transform: translateX(-50%) translateY(8px) scale(.94);
-    padding: 7px 20px 9px;
-    border: 4px solid #1a1a1a;
-    background: #fdf8ee;
-    border-radius: 12px;
-    box-shadow: 0 5px 0 rgba(0,0,0,.35);
-    color: #1a1a1a; white-space: nowrap;
-    text-transform: uppercase;
-    font-family: 'Baloo 2', system-ui, sans-serif;
-    font-weight: 800;
-    font-size: clamp(22px, calc(var(--wheel-reel-h, 220px) * .13), 34px);
-    letter-spacing: .06em;
-    opacity: 0;
-    transition: opacity .24s ease, transform .3s cubic-bezier(.2,1.35,.3,1);
-  }
-  .reel-frame.landed .reel-winner-label {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
-  }
-  .reel-frame.tier-legend .reel-winner-label {
-    background: #ffd93b;
-    color: #1a1a1a;
-  }
-  /* Gift attribution anchors to the rail's lower edge. It remains compact so the
-     adjustable rail height controls screen coverage instead of the chip spilling
-     outside the operator-selected band. */
-  .gift-chip {
-    position: absolute; left: 50%; bottom: calc(100% + 84px); z-index: 10;
-    transform: translateX(-50%) scale(.92);
-    display: flex; align-items: center; gap: 10px; white-space: nowrap;
-    padding: 6px 16px 8px; border-radius: 999px;
-    background: #fdf8ee; border: 3px solid #1a1a1a; box-shadow: 0 4px 0 rgba(0,0,0,.35);
-    opacity: 0; transition: opacity .32s ease, transform .32s cubic-bezier(.2,1.3,.3,1);
-  }
-  .reel-frame.show .gift-chip { opacity: 1; transform: translateX(-50%) scale(1); }
-  .reel-frame.landed .gift-chip {
-    opacity: 0; visibility: hidden;
-    transform: translateX(-50%) translateY(8px) scale(.94);
-  }
-  .gift-chip .g-name { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: clamp(17px, calc(var(--wheel-reel-h, 220px) * .1), 24px); color: #1a1a1a; }
-  .gift-chip .g-amt  { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 700; font-size: clamp(15px, calc(var(--wheel-reel-h, 220px) * .085), 21px); color: #1a1a1a; }
-  /* Money wears the coin-yellow badge — yellow = currency only, per the style guide. */
-  .gift-chip .g-usd  { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: clamp(14px, calc(var(--wheel-reel-h, 220px) * .08), 19px); color: #1a1a1a; background: #ffd93b; border: 2px solid #1a1a1a; border-radius: 999px; padding: 1px 10px 2px; }
+  /* ── WHEEL: v2 TIER REEL. The reel's own visuals (carnival wheel / slot card)
+     are built inline by startSpinning, ported verbatim from the gift-wheel
+     handoff — no shared CSS beyond the om-* keyframes above. The old effect-
+     carousel rail styles went with the old mechanic. ── */
   /* Result icons drawn from the icons.png sprite sheet, positioned by each icon's
      MEASURED centre (cells are a regular 444px grid but the art isn't centred in
      its cell — up to ~55px drift — so we place by content centre, not cell). */
@@ -463,6 +256,12 @@
      animation. */
   @keyframes om-spark { from { transform: translate(0,0) scale(1); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
   .spark { border-radius: 50%; animation: om-spark var(--sd, 520ms) cubic-bezier(.2,.8,.3,1) both; }
+  /* v2 reel + effect beats, ported from the gift-wheel handoff prototype. */
+  @keyframes om-pop { 0% { transform: scale(.5); opacity: 0; } 60% { transform: scale(1.07); opacity: 1; } 100% { transform: scale(1); } }
+  @keyframes om-ring { 0% { transform: scale(.15); opacity: 1; } 78% { opacity: .9; } 100% { transform: scale(1); opacity: 0; } }
+  @keyframes om-twinkle { 0% { transform: scale(.2); opacity: 0; } 30% { opacity: 1; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(.3); opacity: 0; } }
+  /* Chip sparks fly the same om-spark vector but carry the chip sprite art. */
+  .chip-spark { animation: om-spark var(--sd, 520ms) cubic-bezier(.2,.8,.3,1) both; background-position: center; background-repeat: no-repeat; background-size: contain; }
 
   /* Canvas bump. Lives on #bump, NOT on #stage — the handoff warns that a bump
      sharing an element with another transform silently replaces it. The WALL is
@@ -791,79 +590,27 @@ const RESULTS = [
   { key: 'frame',     label: 'Frame',     glyph: '🖼' },
   { key: 'avatar',    label: 'Snapshot Echo', glyph: '👾' },
   { key: 'ball',      label: 'Ball Drop', glyph: '●' },
+  { key: 'money',     label: 'Cash Blast', glyph: '$' },
+  { key: 'meteor',    label: 'Meteor Shower', glyph: '✶' },
 ];
 const RESULT_BY_KEY = Object.fromEntries(RESULTS.map((r, i) => [r.key, { ...r, index: i }]));
-let enabledRailResults = RESULTS.slice();
-const CAROUSEL_COPY_KEY = 'jjx-wheel-carousel-copy-v1';
-const CAROUSEL_COPY_DEFAULT = {
-  momentTitle: 'GOLD CAN LAND ON ANY RESULT',
-  finalPassTitle: 'EVERYONE WATCH THE WINNER',
-  goldBadge: 'LEGEND',
-  winnerTemplate: '{result} WINS',
-  legendWinnerTemplate: 'LEGENDARY {result}',
-  resultLabels: Object.fromEntries(RESULTS.map((result) => [result.key, result.label])),
+/* ── v2 TIER REEL CONFIG (gift-wheel handoff, 2026-07-30) ─────────────────
+   The reel no longer spins through EFFECTS — each gift is hard-mapped to one
+   effect by the dock, and the on-screen suspense is which TIER landed. The
+   effect-carousel machinery (carousel copy, gold passes, enabled-rail filter)
+   went with the old mechanic. Reel visuals are the handoff's carnival wheel
+   (default) or slot card (?reel=slot); duration scales with gift value. */
+const TIER_LABEL_REEL = { spin: 'NORMAL', power: 'RARE', takeover: 'EPIC', legend: 'LEGENDARY' };
+// Purple-family duotones matching the overlay chrome — reel-only palette.
+const WHEEL_SEG = {
+  spin: ['#8a63d2', '#4C1D95'], power: ['#F0A8D8', '#B0367E'],
+  takeover: ['#C084FC', '#7C2D9C'], legend: ['#FFE07A', '#E0A80D'],
 };
-function normalizeCarouselCopy(source) {
-  const value = source && typeof source === 'object' ? source : {};
-  const pick = (candidate, fallback, max) => {
-    // Preserve intentional blank fields. Only values absent from older saved
-    // configs receive a default.
-    const text = candidate == null ? String(fallback || '') : String(candidate).trim();
-    return text.slice(0, max);
-  };
-  return {
-    momentTitle: pick(value.momentTitle, CAROUSEL_COPY_DEFAULT.momentTitle, 80),
-    finalPassTitle: pick(value.finalPassTitle, CAROUSEL_COPY_DEFAULT.finalPassTitle, 80),
-    goldBadge: pick(value.goldBadge, CAROUSEL_COPY_DEFAULT.goldBadge, 20),
-    winnerTemplate: pick(value.winnerTemplate, CAROUSEL_COPY_DEFAULT.winnerTemplate, 80),
-    legendWinnerTemplate: pick(value.legendWinnerTemplate, CAROUSEL_COPY_DEFAULT.legendWinnerTemplate, 80),
-    resultLabels: Object.fromEntries(RESULTS.map((result) => [
-      result.key,
-      pick(value.resultLabels && value.resultLabels[result.key], result.label, 40),
-    ])),
-  };
-}
-function loadCarouselCopy() {
-  try { return normalizeCarouselCopy(JSON.parse(localStorage.getItem(CAROUSEL_COPY_KEY) || 'null')); }
-  catch (e) { return normalizeCarouselCopy(null); }
-}
-let carouselCopy = loadCarouselCopy();
-function carouselResultLabel(key) {
-  return carouselCopy.resultLabels[key] ?? RESULT_BY_KEY[key]?.label ?? key;
-}
-function carouselWinnerLabel(key, tier) {
-  const template = tier === 'legend' ? carouselCopy.legendWinnerTemplate : carouselCopy.winnerTemplate;
-  return template.replace(/\{result\}/gi, carouselResultLabel(key));
-}
-function refreshActiveCarouselCopy() {
-  document.querySelectorAll('.reel-frame').forEach((frame) => {
-    const title = frame.querySelector('.reel-moment-title');
-    if (title) title.textContent = frame.classList.contains('final-pass')
-      ? carouselCopy.finalPassTitle
-      : carouselCopy.momentTitle;
-  });
-  document.querySelectorAll('.reel-seg[data-result-key]').forEach((segment) => {
-    const label = segment.querySelector('.seg-label');
-    if (label) label.textContent = carouselResultLabel(segment.dataset.resultKey);
-    if (segment.classList.contains('gold')) segment.dataset.goldLabel = carouselCopy.goldBadge;
-  });
-  document.querySelectorAll('.reel-winner-label[data-result-key]').forEach((node) => {
-    node.textContent = carouselWinnerLabel(node.dataset.resultKey, node.dataset.tier);
-  });
-}
-function applyCarouselCopy(source, persist = true) {
-  carouselCopy = normalizeCarouselCopy(source);
-  if (persist) {
-    try { localStorage.setItem(CAROUSEL_COPY_KEY, JSON.stringify(carouselCopy)); } catch (e) {}
-  }
-  refreshActiveCarouselCopy();
-}
-function setEnabledRailResults(keys) {
-  if (!Array.isArray(keys)) return;
-  const enabled = new Set(keys);
-  const filtered = RESULTS.filter((r) => enabled.has(r.key));
-  if (filtered.length) enabledRailResults = filtered;
-}
+const EFFECT_GLYPH = { stamp: '✦', flood: '◒', crack: '◆', ball: '●', money: '$', meteor: '✶' };
+const REEL_STYLE = new URLSearchParams(location.search).get('reel') === 'slot' ? 'slot' : 'wheel';
+/** Reel duration derives from gift value: smaller gift = quicker reel (450–2800ms). */
+function giftPower(value) { return Math.min(1, Math.max(0, Math.log10(1 + (Number(value) || 0)) / Math.log10(5001))); }
+function reelDuration(value) { return Math.round(450 + giftPower(value) * 2350); }
 
 // Icon sprite: each result's icon CENTRE in icons.png (1774×887, 2×4 grid), measured
 // from the art's alpha. Placed by centre, not by cell, because the icons drift up to
@@ -880,6 +627,16 @@ function iconEl(key, box) {
     ball.className = 'wicon ball';
     ball.style.width = box + 'px'; ball.style.height = box + 'px';
     return ball;
+  }
+  // money/meteor postdate icons.png — a styled glyph span instead of a wrong
+  // sprite-sheet region (the fallback centre would show a slice of another icon).
+  if (key === 'money' || key === 'meteor') {
+    const s = document.createElement('span');
+    s.style.cssText = `display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;` +
+      `width:${box}px;height:${box}px;font:800 ${Math.round(box * .62)}px 'Baloo 2',sans-serif;` +
+      (key === 'money' ? 'color:#7fce6c' : 'color:#ffd93b');
+    s.textContent = key === 'money' ? '$' : '✶';
+    return s;
   }
   const c = ICON_CENTER[key] || [ICON_SHEET_W / 8, ICON_SHEET_H / 4];
   const f = (box * 0.92) / ICON_NAT; // fit a nominal icon into ~92% of the box
@@ -1082,41 +839,6 @@ const laneWheel = $('wheel-stage'), laneImpact = $('lane-impact'),
       laneWall = $('lane-wall'), laneFx = $('lane-fx'), laneFlare = $('lane-flare'),
       bumpEl = $('bump');
 
-/** FULL-WIDTH RAIL LAYOUT — operator-tunable and dock-persisted.
- * Height controls total screen coverage; Y moves the complete rail up/down. The old
- * width/X/scale fields remain accepted in the saved object for schema compatibility,
- * but a full-width rail deliberately ignores them.
- *
- * Legacy migration: the replaced cabinet defaulted to 1200px tall. Treat any saved
- * height over the rail's 900px maximum as that old cabinet value and start the new
- * rail at 220px rather than covering most of the stream on first load.
- */
-let wheelContentScale = 1;
-let wheelRailHeight = 220;
-let wheelSpinMs = 6500;
-
-function applyReelLayout(reel) {
-  if (!reel) return;
-  const y = Number(reel.offsetY);
-  const content = Number(reel.contentScale);
-  const requestedH = Number(reel.height);
-  const requestedSpinMs = Number(reel.spinMs);
-  const stage = $('wheel-stage');
-  if (Number.isFinite(y)) stage.style.setProperty('--wheel-y', Math.max(-700, Math.min(700, y)) + 'px');
-  if (Number.isFinite(content) && content > 0) {
-    wheelContentScale = Math.max(.75, Math.min(1.35, content));
-    stage.style.setProperty('--wheel-content-scale', wheelContentScale);
-  }
-  wheelRailHeight = Number.isFinite(requestedH) && requestedH <= 900
-    ? Math.max(160, requestedH)
-    : 220;
-  wheelSpinMs = Number.isFinite(requestedSpinMs)
-    ? Math.max(3000, Math.min(12000, requestedSpinMs))
-    : 6500;
-  stage.style.setProperty('--wheel-reel-h', wheelRailHeight + 'px');
-}
-window.applyReelLayout = applyReelLayout;   // exercised by wheel-control's live preview path too
-
 function el(cls, html) { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; }
 function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])); }
 /* Trigger a CSS enter-transition reliably. A forced reflow commits the pre-transition
@@ -1208,207 +930,172 @@ function pump() {
   active.master = setTimeout(() => {
     console.warn('[wheel] master watchdog fired — force-completing', spin.eventId);
     finishActive();
-  }, Math.max(MASTER_WATCHDOG_MS, wheelSpinMs + 18_000));
+  }, MASTER_WATCHDOG_MS);
   startSpinning(active);
 }
 
-// ── Stage 1: SPINNING — full-width horizontal carousel. One viewport contains one
-// complete pass, so all outcomes remain visible while repeated passes move through
-// the centre. The resolved card then HOLDS for a full second before impact. ──
-const REEL_CYCLES = 10;
-const REEL_GAP = 6;
-const WINNER_HOLD_MS = 1000;
-const GOLD_PASSES_BY_TIER = { spin: 1, power: 2, takeover: 4, legend: 8 };
-function carouselCenter(vpW, i, cardW) {
-  return vpW / 2 - cardW / 2 - i * (cardW + REEL_GAP);
-}
-function reelRandom(seed) {
-  let state = 2166136261;
-  for (const ch of String(seed || 'wheel')) {
-    state ^= ch.charCodeAt(0);
-    state = Math.imul(state, 16777619);
-  }
-  return () => {
-    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
-    return (state >>> 0) / 4294967296;
-  };
-}
-function goldPlacements(passCount, landingGold, startIndex, landIndex, total, resultCount, seed) {
-  const count = Math.max(0, Math.min(8, Number(passCount) || 0));
-  const placements = new Set();
-  if (!count) return placements;
-  if (landingGold) placements.add(landIndex);
+// ── Stage 1: SPINNING — v2 TIER REEL (handoff choreography, ported verbatim).
+// The reel is pure suspense about the TIER; the effect is already fixed by the
+// gift. Two visuals: a 440px carnival wheel at (540,700) with purple-duotone
+// wedges (default), or a cream slot card (?reel=slot). Both fade at dur+700 and
+// hand off to the effect; the effect starts while the reel is still fading, per
+// the prototype's timing. ──
 
-  // Gold is a property of individual cards, never an entire repeated row. Shuffle
-  // the visible journey deterministically so replays look identical while the live
-  // rail still reads as naturally interspersed chance.
-  const first = Math.max(0, startIndex - Math.ceil(resultCount / 2));
-  const last = Math.min(total - 1, landIndex + Math.ceil(resultCount / 2));
-  const candidates = [];
-  for (let i = first; i <= last; i++) if (i !== landIndex) candidates.push(i);
-  const random = reelRandom(seed);
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+/** N chip sprites off a point, each flying its own om-spark vector. Gold uses
+ *  chip-8 (the gold chip); otherwise chips 1–7 cycle. */
+function chipBurst(run, x, y, n, gold, geo = 1) {
+  for (let i = 0; i < n; i++) {
+    const a = (Math.PI * 2 * i) / n + rnd(0, .5), d = (100 + rnd(0, 190)) * geo, s = rnd(18, 32);
+    const c = el('fx chip-spark');
+    c.style.cssText += `;z-index:34;left:${x}px;top:${y}px;width:${s}px;height:${s}px;` +
+      `background-image:url('assets/wheel/${gold ? 'chip-8' : 'chip-' + (1 + (i % 7))}.png');` +
+      `--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d).toFixed(0)}px;` +
+      `--sd:${rnd(430, 700).toFixed(0)}ms`;
+    runNode(run, laneFx, c);
   }
+}
 
-  const minGap = Math.max(2, Math.floor(resultCount / 3));
-  for (const index of candidates) {
-    if (placements.size >= count) break;
-    if ([...placements].every((placed) => Math.abs(placed - index) >= minGap)) placements.add(index);
+/** Impact ring: cream (default), gold (mode truthy), or water (mode 'water' —
+ *  cyan glow + twinkle glints, Legend liquid grammar). */
+function rippleFx(run, x, y, w, h, rot, mode) {
+  const water = mode === 'water';
+  const wrap = el('fx');
+  wrap.style.cssText += `;z-index:33;left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px;transform:rotate(${rot}deg)`;
+  const ring = document.createElement('div');
+  ring.style.cssText = `position:absolute;inset:0;border-radius:50%;border:8px solid ${water ? '#7ee3ff' : mode ? '#ffd93b' : '#fdf8ee'};` +
+    `box-shadow:0 0 0 4px #1a1a1a, inset 0 0 0 4px #1a1a1a${water ? ', 0 0 22px 4px rgba(120,225,255,.8)' : ''};animation:om-ring 640ms cubic-bezier(.2,.9,.2,1) both`;
+  wrap.appendChild(ring);
+  runNode(run, laneFx, wrap);
+  if (water) {
+    for (let i = 0; i < 6; i++) {
+      const a = rnd(0, Math.PI * 2), rr = Math.min(w, h) * .5 * rnd(.7, 1.05);
+      const tw = el('fx');
+      tw.style.cssText += `;z-index:34;left:${(x + Math.cos(a) * rr - 4).toFixed(0)}px;top:${(y + Math.sin(a) * rr - 4).toFixed(0)}px;` +
+        `width:8px;height:8px;border-radius:50%;background:#eafcff;box-shadow:0 0 8px 2px rgba(120,225,255,.9);` +
+        `animation:om-twinkle ${rnd(450, 700).toFixed(0)}ms ease-out ${rnd(0, 200).toFixed(0)}ms both`;
+      runNode(run, laneFx, tw);
+    }
   }
-  // A very short enabled-results list may make the spacing rule impossible.
-  for (const index of candidates) {
-    if (placements.size >= count) break;
-    placements.add(index);
-  }
-  return placements;
 }
 
 function startSpinning(run) {
   const spin = run.spin;
   if (spin.skippedSpinAnimation) { prepareImpact(run); return; }
 
-  // Settings determine which cards belong on the rail. Always include the resolved
-  // result even if a just-changed setting has not reached this page yet.
-  const reelResults = RESULTS.filter((r) =>
-    enabledRailResults.some((enabled) => enabled.key === r.key) || r.key === spin.result
-  );
-  const frame = el(`reel-frame tier-${spin.tier}`);
-  const vp = el('reel-viewport');
-  const strip = el('reel-strip');
-  const momentTitle = el('reel-moment-title', esc(carouselCopy.momentTitle));
-  frame.appendChild(momentTitle);
-  frame.appendChild(giftChip(spin));
-  const idx = Math.max(0, reelResults.findIndex((r) => r.key === spin.result));
-  // Target the penultimate pass so cards remain available after the winner. The
-  // journey begins seven complete passes earlier: enough time for the viewer to
-  // see every option and the gold variants before the final slow pass.
-  const landIndex = (REEL_CYCLES - 2) * reelResults.length + idx;
-  const startIndex = Math.max(0, landIndex - 7 * reelResults.length);
-  const baseTier = spin.baseTier || spin.tier;
-  // Old authoritative payloads did not carry goldPasses/baseTier. Do not advertise a
-  // chance the resolver did not actually roll: non-Legend old spins show no gold,
-  // while new payloads (and the tester) display their real pass count.
-  const passCount = Number.isFinite(Number(spin.goldPasses))
-    ? Number(spin.goldPasses)
-    : (spin.baseTier ? GOLD_PASSES_BY_TIER[baseTier] : (spin.tier === 'legend' ? 8 : 0));
-  const totalSegments = REEL_CYCLES * reelResults.length;
-  const gold = goldPlacements(
-    passCount,
-    spin.tier === 'legend',
-    startIndex,
-    landIndex,
-    totalSegments,
-    reelResults.length,
-    spin.styleSeed || spin.seed || spin.eventId || spin.revision
-  );
-  const iconBox = Math.round(Math.max(36, Math.min(96, wheelRailHeight * .2 * wheelContentScale)));
-  const segments = [];
-  for (let c = 0; c < REEL_CYCLES; c++) {
-    for (const r of reelResults) {
-      const seg = el(`reel-seg type-${r.key}`);
-      seg.dataset.resultKey = r.key;
-      if (gold.has(segments.length)) {
-        seg.classList.add('gold');
-        seg.dataset.goldLabel = carouselCopy.goldBadge;
-      }
-      if (segments.length === landIndex) seg.classList.add('winner');
-      seg.appendChild(iconEl(r.key, iconBox));
-      seg.appendChild(el('seg-label', esc(carouselResultLabel(r.key))));
-      strip.appendChild(seg);
-      segments.push(seg);
+  const tier = spin.tier, idx = Math.max(0, TIER_ORDER.indexOf(tier));
+  const dur = reelDuration(spin.gift?.totalValue);
+  const cx = 540, cy = 700;
+  const rnodes = [];
+  const rmk = (css, parent) => {
+    const d = document.createElement('div');
+    d.style.cssText = css;
+    runNode(run, parent || laneWheel, d);
+    rnodes.push(d);
+    return d;
+  };
+  const fadeReel = () => {
+    runTimer(run, () => rnodes.forEach((n) => { n.style.transition = 'opacity .35s ease'; n.style.opacity = '0'; }), dur + 700);
+    runTimer(run, () => rnodes.forEach((n) => { n.remove(); run.nodes.delete(n); }), dur + 1100);
+  };
+  const pill = (topY) => {
+    const p = rmk(`position:absolute;z-index:62;left:0;top:${topY}px;width:1080px;text-align:center;animation:om-pop 260ms cubic-bezier(.2,1.4,.3,1) both`);
+    const s = document.createElement('span');
+    s.style.cssText = `display:inline-block;white-space:nowrap;background:#C084FC;color:#1a1a1a;border:4px solid #1a1a1a;border-radius:999px;` +
+      `padding:6px 22px;font:800 26px 'Baloo 2',sans-serif;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 5px 0 rgba(0,0,0,.35)`;
+    const platform = spin.platform === 'youtube' ? 'YouTube' : spin.platform === 'twitch' ? 'Twitch' : 'TikTok';
+    s.textContent = `${displayName(spin)} · ${spin.gift?.name || 'GIFT'} · ${platform}`;
+    p.appendChild(s);
+    return p;
+  };
+  const callout = () => {
+    const c = rmk(`position:absolute;z-index:63;left:0;top:${cy + 200}px;width:1080px;text-align:center;` +
+      `font:800 78px 'Baloo 2',sans-serif;color:${WHEEL_SEG[tier][0]};text-shadow:${
+        '4px 0 0 #1a1a1a,-4px 0 0 #1a1a1a,0 4px 0 #1a1a1a,0 -4px 0 #1a1a1a,4px 4px 0 #1a1a1a,-4px 4px 0 #1a1a1a,4px -4px 0 #1a1a1a,-4px -4px 0 #1a1a1a'
+      },0 7px 0 rgba(0,0,0,.35);animation:om-pop 300ms cubic-bezier(.2,1.5,.3,1) both`);
+    c.textContent = TIER_LABEL_REEL[tier] + '!';
+    chipBurst(run, cx, cy + 230, 12, tier === 'legend');
+  };
+  publishFx('jamie-cue', { cue: 'anticipate', result: spin.result, tier, eventId: spin.eventId });
+
+  if (REEL_STYLE === 'slot') {
+    const H = 104, W = 420, reps = 8;
+    pill(cy - H / 2 - 92);
+    const card = rmk(`position:absolute;z-index:60;left:${cx - W / 2 - 14}px;top:${cy - H / 2 - 14}px;width:${W + 28}px;height:${H + 28}px;` +
+      `box-sizing:border-box;padding:14px;background:#fdf8ee;border:5px solid #1a1a1a;border-radius:22px;` +
+      `box-shadow:0 8px 0 rgba(0,0,0,.35);animation:om-pop 260ms cubic-bezier(.2,1.4,.3,1) both`);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `position:relative;width:${W - 28}px;height:${H}px;border-radius:12px;overflow:hidden;border:4px solid #1a1a1a;background:#241041`;
+    card.appendChild(wrap);
+    const strip = document.createElement('div');
+    strip.style.cssText = `position:absolute;left:0;top:0;width:100%;transition:transform ${dur}ms cubic-bezier(.1,.7,.15,1)`;
+    for (let r = 0; r < reps; r++) TIER_ORDER.forEach((tk) => {
+      const c = document.createElement('div');
+      c.style.cssText = `height:${H}px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:12px;` +
+        `font:800 34px 'Baloo 2',sans-serif;letter-spacing:.04em;color:#fdf8ee;text-shadow:2px 0 0 #1a1a1a,-2px 0 0 #1a1a1a,0 2px 0 #1a1a1a,0 -2px 0 #1a1a1a;` +
+        `background:linear-gradient(180deg, ${WHEEL_SEG[tk][0]}, ${WHEEL_SEG[tk][1]});border-bottom:4px solid #1a1a1a`;
+      c.textContent = TIER_LABEL_REEL[tk];
+      strip.appendChild(c);
+    });
+    wrap.appendChild(strip);
+    const shade = document.createElement('div');
+    shade.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg, rgba(0,0,0,.45), transparent 30%, transparent 70%, rgba(0,0,0,.45))';
+    wrap.appendChild(shade);
+    const targetIndex = (reps - 2) * 4 + idx;
+    requestAnimationFrame(() => { strip.style.transform = `translateY(${-(targetIndex * H)}px)`; });
+    runTimer(run, () => { shade.style.opacity = '0'; card.style.animation = 'om-bump 300ms cubic-bezier(.2,.9,.2,1) both'; callout(); canvasBump(1.2); }, dur + 40);
+    runTimer(run, () => prepareImpact(run), dur + 700);
+    fadeReel();
+  } else {
+    const R2 = 220;
+    pill(cy - R2 - 110);
+    const wrap = rmk(`position:absolute;z-index:60;left:${cx - R2}px;top:${cy - R2}px;width:${R2 * 2}px;height:${R2 * 2}px;animation:om-pop 280ms cubic-bezier(.2,1.4,.3,1) both`);
+    const disc = document.createElement('div');
+    const wedges = TIER_ORDER.map((tk, i) => `${WHEEL_SEG[tk][0]} ${i * 90}deg,${WHEEL_SEG[tk][1]} ${i * 90 + 90}deg`).join(',');
+    disc.style.cssText = `position:absolute;inset:0;border-radius:50%;` +
+      `box-shadow:0 0 0 8px #1a1a1a,0 0 0 16px #fdf8ee,0 0 0 21px #1a1a1a,0 12px 0 8px rgba(0,0,0,.35);` +
+      `background:radial-gradient(circle at 50% 36%, rgba(255,255,255,.26), transparent 52%),` +
+      `radial-gradient(circle at 50% 50%, transparent 58%, rgba(20,5,40,.42) 100%),` +
+      `conic-gradient(${wedges});` +
+      `transform:rotate(0deg);transition:transform ${dur}ms cubic-bezier(.13,.85,.2,1)`;
+    for (let i = 0; i < 4; i++) {
+      const spoke = document.createElement('div');
+      spoke.style.cssText = `position:absolute;left:50%;top:0;width:6px;height:50%;margin-left:-3px;background:#1a1a1a;transform-origin:50% 100%;transform:rotate(${i * 90}deg)`;
+      disc.appendChild(spoke);
     }
+    for (let i = 0; i < 12; i++) {
+      const stud = document.createElement('div');
+      stud.style.cssText = `position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;` +
+        `background:#fdf8ee;border:3px solid #1a1a1a;box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);transform:rotate(${i * 30}deg) translate(0,${-(R2 - 22)}px)`;
+      disc.appendChild(stud);
+    }
+    TIER_ORDER.forEach((tk, i) => {
+      const ang = i * 90 + 45;
+      const lab = document.createElement('div');
+      lab.style.cssText = `position:absolute;left:50%;top:50%;width:150px;margin-left:-75px;text-align:center;` +
+        `transform:rotate(${ang}deg) translate(0,-138px) rotate(${-ang}deg);` +
+        `font:800 24px 'Baloo 2',sans-serif;letter-spacing:.03em;color:#fdf8ee;text-shadow:2px 0 0 #1a1a1a,-2px 0 0 #1a1a1a,0 2px 0 #1a1a1a,0 -2px 0 #1a1a1a`;
+      lab.textContent = TIER_LABEL_REEL[tk];
+      disc.appendChild(lab);
+    });
+    wrap.appendChild(disc);
+    const hub = document.createElement('div');
+    hub.style.cssText = `position:absolute;left:50%;top:50%;width:84px;height:84px;margin:-42px 0 0 -42px;border-radius:50%;` +
+      `background:#fdf8ee;border:6px solid #1a1a1a;box-shadow:0 4px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;` +
+      `font:800 30px 'Baloo 2',sans-serif;color:#1a1a1a;z-index:2`;
+    hub.textContent = EFFECT_GLYPH[spin.result] || '✦';
+    wrap.appendChild(hub);
+    const ptr = document.createElement('div');
+    ptr.style.cssText = `position:absolute;left:50%;top:-34px;margin-left:-20px;width:0;height:0;z-index:3;` +
+      `border-left:20px solid transparent;border-right:20px solid transparent;border-top:36px solid #fdf8ee;` +
+      `filter:drop-shadow(0 -3px 0 #1a1a1a) drop-shadow(3px 0 0 #1a1a1a) drop-shadow(-3px 0 0 #1a1a1a) drop-shadow(0 4px 0 rgba(0,0,0,.3))`;
+    wrap.appendChild(ptr);
+    const extra = 3 + Math.round((dur / 2800) * 4);
+    const R = extra * 360 + ((360 - (idx * 90 + 45)) % 360);
+    requestAnimationFrame(() => { disc.style.transform = `rotate(${R}deg)`; });
+    runTimer(run, () => { rippleFx(run, cx, cy, R2 * 2.4, R2 * 2.4, 0, tier === 'legend'); callout(); canvasBump(1.2); }, dur + 40);
+    runTimer(run, () => prepareImpact(run), dur + 700);
+    fadeReel();
   }
-  vp.appendChild(strip);
-  frame.appendChild(vp);
-  frame.appendChild(el('reel-arrow'));
-  const winnerLabel = el('reel-winner-label', esc(carouselWinnerLabel(spin.result, spin.tier)));
-  winnerLabel.dataset.resultKey = spin.result;
-  winnerLabel.dataset.tier = spin.tier;
-  frame.appendChild(winnerLabel);
-  runNode(run, laneWheel, frame);
-  reveal(frame, 'show');
-  publishFx('jamie-cue', { cue: 'anticipate', result: spin.result, tier: spin.tier, eventId: spin.eventId });
-
-  const vpW = vp.clientWidth || 1080;
-  // Four visible slots: the low-profile band uses WIDE chips (icon beside label),
-  // cropping at the frame edges so the pass reads as a moving ticker.
-  const visibleSlots = 4;
-  const cardW = (vpW - REEL_GAP * (visibleSlots - 1)) / visibleSlots;
-  for (const seg of segments) seg.style.width = cardW + 'px';
-
-  // One continuous position function owns the complete journey. Changing CSS
-  // transitions midway through a moving strip caused the browser to rebase from an
-  // in-between transform, which produced the visible forward/backward correction.
-  // This curve starts fast and reaches the exact winner with zero end velocity.
-  const spinMs = wheelSpinMs || TIMING.spinning.spin;
-  const pitch = cardW + REEL_GAP;
-  const startX = carouselCenter(vpW, startIndex, cardW);
-  const endX = carouselCenter(vpW, landIndex, cardW);
-  let focusedIndex = -1;
-  const paintReel = (x) => {
-    strip.style.transform = `translate3d(${x}px,-50%,0)`;
-    const nearest = Math.max(0, Math.min(
-      segments.length - 1,
-      Math.round((vpW / 2 - x - cardW / 2) / pitch)
-    ));
-    if (nearest !== focusedIndex) {
-      if (focusedIndex >= 0) segments[focusedIndex].classList.remove('center-focus');
-      segments[nearest].classList.add('center-focus');
-      focusedIndex = nearest;
-    }
-    // Only cards near the marker need a live transform. The centered card reaches
-    // 1.28× while its neighbours recede, so the current possibility is always clear.
-    const first = Math.max(0, nearest - 2);
-    const last = Math.min(segments.length - 1, nearest + 2);
-    for (let i = 0; i < segments.length; i++) {
-      if (i < first || i > last) {
-        segments[i].style.transform = 'scale(.88)';
-        segments[i].style.opacity = '.68';
-        segments[i].style.zIndex = '0';
-        continue;
-      }
-      const center = x + i * pitch + cardW / 2;
-      const focus = Math.max(0, 1 - Math.abs(center - vpW / 2) / pitch);
-      segments[i].style.transform = `scale(${(.88 + .28 * focus).toFixed(3)})`;
-      segments[i].style.opacity = String((.68 + .32 * focus).toFixed(3));
-      segments[i].style.zIndex = String(Math.round(focus * 10));
-    }
-  };
-  paintReel(startX);
-  const motionStarted = performance.now();
-  const moveReel = (now) => {
-    if (run.done) return;
-    const t = Math.max(0, Math.min(1, (now - motionStarted) / spinMs));
-    const progress = 1 - Math.pow(1 - t, 3); // continuous ease-out cubic
-    paintReel(startX + (endX - startX) * progress);
-    if (t < 1) {
-      const raf = requestAnimationFrame(moveReel);
-      run.rafs.add(raf);
-      return;
-    }
-    // Clear live focus styles before the landed CSS takes over. The strip is already
-    // exactly at endX, so this is a scale reveal—not a positional correction.
-    for (const seg of segments) {
-      seg.style.transform = '';
-      seg.style.opacity = '';
-      seg.style.zIndex = '';
-      seg.classList.remove('center-focus');
-    }
-    strip.style.transform = `translate3d(${endX}px,-50%,0)`;
-    frame.classList.add('landed');
-  };
-  const motionRaf = requestAnimationFrame(moveReel);
-  run.rafs.add(motionRaf);
-  runTimer(run, () => {
-    frame.classList.add('final-pass');
-    momentTitle.textContent = carouselCopy.finalPassTitle;
-  }, Math.round(spinMs * .58));
-  runStage(run, () => {
-    frame.classList.remove('show');
-    runTimer(run, () => { frame.remove(); run.nodes.delete(frame); prepareImpact(run); }, 300);
-  }, spinMs + WINNER_HOLD_MS);
 }
 
 // ── Stage 2: IMPACT (reveal + hold) ──
@@ -2735,16 +2422,198 @@ function legendFlare(run) {
 // Only `stamp` is built (checkpoint 4); the rest fall back to the placeholder
 // card until checkpoint 7, which is why `run` is dispatched, not assumed.
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// CASH BLAST $ — Money Gun. Volleys of bills fired from alternating bottom
+// corners with a muzzle flash; bills bounce off the Ball Guys colliders,
+// ground-bounce, and bank in the game bucket when one is tracked.
+// Ported from the gift-wheel handoff prototype; physics constants are final.
+// ═══════════════════════════════════════════════════════════════════
+const MONEY_VOLLEYS = { spin: 1, power: 2, takeover: 3, legend: 5 };
+
+function runMoney(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
+  const legend = spin.tier === 'legend';
+  const volleys = MONEY_VOLLEYS[spin.tier] || 1;
+  const gap = 420;
+  const bucket = targetsNow
+    ? { left: targetsNow.x, right: targetsNow.x + targetsNow.w, mouth: targetsNow.y, floor: targetsNow.y + targetsNow.h }
+    : null;
+  const groundY = (LAYOUTS[layout] || LAYOUTS['cam-top']).ground;
+  publishFx('jamie-cue', { cue: 'anticipate', result: 'money', x: 540, tier: spin.tier });
+  const banked = [];
+  let bankCount = 0;
+  runTimer(run, () => { banked.forEach((n) => { n.style.transition = 'opacity .5s ease'; n.style.opacity = '0'; }); },
+    (volleys - 1) * gap + holdOf(spin) + 900);
+  for (let v = 0; v < volleys; v++) {
+    const fromLeft = v % 2 === 0, ox = fromLeft ? 70 : 1010, oy = 1440;
+    runTimer(run, () => {
+      const flash = el('fx');
+      flash.style.cssText += `;z-index:31;left:${ox - 90}px;top:${oy - 90}px;width:180px;height:180px;border-radius:50%;` +
+        `background:radial-gradient(circle, rgba(255,250,220,.9), rgba(255,217,59,.4) 45%, transparent 70%);transition:opacity .18s ease`;
+      runNode(run, laneFx, flash);
+      runTimer(run, () => { flash.style.opacity = '0'; }, 70);
+      canvasBump(k);
+      const tgt = headPoint(headNow, 0, 0), parts = [];
+      const n = Math.round(9 * k);
+      for (let i = 0; i < n; i++) {
+        const spread = rnd(-.22, .22);
+        const dx = tgt.x - ox + rnd(-140, 140), dy = tgt.y - oy;
+        const speed = rnd(1500, 2100);
+        const ang = Math.atan2(dy, dx) + spread;
+        const bw = 76 * g, bh = 42 * g;
+        const bill = el('fx');
+        bill.style.cssText += `;z-index:30;left:${ox - bw / 2}px;top:${oy - bh / 2}px;width:${bw}px;height:${bh}px;box-sizing:border-box;` +
+          `border:3px solid #1a1a1a;border-radius:7px;background:linear-gradient(180deg,#7fce6c,#3f9c3a);` +
+          `box-shadow:inset 0 0 0 3px rgba(255,255,255,.25),0 3px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;` +
+          `font:800 ${Math.round(22 * g)}px 'Baloo 2',sans-serif;color:#fdf8ee;` +
+          `text-shadow:2px 0 0 #1a1a1a,-2px 0 0 #1a1a1a,0 2px 0 #1a1a1a,0 -2px 0 #1a1a1a;will-change:transform,opacity`;
+        bill.textContent = '$';
+        runNode(run, laneFx, bill);
+        parts.push({ el: bill, x: ox, y: oy, bx: ox, by: oy, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, rot: rnd(0, 360), rv: rnd(-540, 540), life: 0 });
+      }
+      let last = performance.now();
+      const step = (now) => {
+        if (run.done) return;
+        const dt = Math.min(.032, (now - last) / 1000); last = now;
+        let alive = 0;
+        for (const p of parts) {
+          if (p.done || p.settled) continue;
+          p.life += dt; p.vy += 1500 * dt;
+          p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.rv * dt;
+          for (const c of gameBalls) {
+            const dx2 = p.x - c.x, dy2 = p.y - c.y, d = Math.hypot(dx2, dy2), rr = c.r + 18;
+            if (d > 0 && d < rr) {
+              const nx = dx2 / d, ny = dy2 / d, dot = p.vx * nx + p.vy * ny;
+              if (dot < 0) { p.vx -= 2 * dot * nx * .6; p.vy -= 2 * dot * ny * .6; p.rv = rnd(-720, 720); }
+              p.x = c.x + nx * rr; p.y = c.y + ny * rr;
+            }
+          }
+          if (bucket && p.vy > 0 && p.y >= bucket.mouth && p.x > bucket.left + 16 && p.x < bucket.right - 16) {
+            p.settled = true;
+            bankCount++;
+            const restY = bucket.floor - 24 - Math.min(90, bankCount * 7) - rnd(0, 14);
+            const restX = Math.max(bucket.left + 42, Math.min(bucket.right - 42, p.x + rnd(-20, 20)));
+            p.el.style.transition = 'transform 260ms cubic-bezier(.25,.9,.3,1.1)';
+            p.el.style.transform = `translate3d(${(restX - p.bx).toFixed(1)}px,${(restY - p.by).toFixed(1)}px,0) rotate(${rnd(-24, 24).toFixed(0)}deg)`;
+            banked.push(p.el);
+            if (bankCount % 3 === 1) rippleFx(run, (bucket.left + bucket.right) / 2, bucket.mouth, 200, 110, 0, legend);
+            continue;
+          }
+          const floorY = bucket ? bucket.floor - 8 : groundY;
+          if (p.y > floorY && p.vy > 0) {
+            p.y = floorY; p.vy = -Math.abs(p.vy) * .45; p.vx *= .72; p.rv *= .6;
+            if (Math.abs(p.vy) < 130) p.life = Math.max(p.life, 1.9);
+          }
+          if (p.life > 2.4 || p.y > 2000) { p.done = true; p.el.style.opacity = '0'; continue; }
+          alive++;
+          p.el.style.opacity = String(p.life > 2 ? Math.max(0, (2.4 - p.life) / .4) : 1);
+          p.el.style.transform = `translate3d(${(p.x - p.bx).toFixed(1)}px,${(p.y - p.by).toFixed(1)}px,0) rotate(${p.rot.toFixed(1)}deg)`;
+        }
+        if (alive) run.rafs.add(requestAnimationFrame(step));
+      };
+      run.rafs.add(requestAnimationFrame(step));
+      runTimer(run, () => {
+        const c = headPoint(headNow, rnd(-.15, .15), rnd(-.2, .1));
+        rippleFx(run, c.x, c.y, 260 * g, 170 * g, fromLeft ? 18 : -18, legend);
+        chipBurst(run, c.x, c.y, Math.round(8 * k), legend);
+      }, 340);
+    }, v * gap);
+  }
+  return (volleys - 1) * gap + 960;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// METEOR SHOWER ✶ — YouTube Meteor Shower. Fireballs from the top carom off
+// the tracked head circle and the Ball Guys colliders (graze burst + thud per
+// bounce), detonating on the 3rd contact, the ground, or off-screen.
+// Ported from the gift-wheel handoff prototype; physics constants are final.
+// ═══════════════════════════════════════════════════════════════════
+const METEOR_COUNT = { spin: 3, power: 5, takeover: 8, legend: 12 };
+
+function runMeteor(run) {
+  const spin = run.spin, t = tierOf(spin), k = t.k, g = t.size;
+  const legend = spin.tier === 'legend';
+  const n = METEOR_COUNT[spin.tier] || 3;
+  const groundY = (LAYOUTS[layout] || LAYOUTS['cam-top']).ground;
+  publishFx('jamie-cue', { cue: 'look', result: 'meteor', x: 540, tier: spin.tier });
+  const hardShake = () => {
+    bumpEl.classList.remove('shaking-hard'); void bumpEl.offsetWidth;
+    bumpEl.classList.add('shaking-hard');
+    publishFx('shake', { ms: 380 });
+    runTimer(run, () => bumpEl.classList.remove('shaking-hard'), 430);
+  };
+  for (let i = 0; i < n; i++) {
+    runTimer(run, () => {
+      const sx = rnd(80, 1000);
+      const ang = Math.PI / 2 + rnd(-.35, .35), speed = rnd(1400, 1750);
+      const len = rnd(120, 170) * g, thick = len * .3;
+      const m = { x: sx, y: -80, bx: sx, by: -80, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, bounces: 0 };
+      const fireball = el('fx');
+      fireball.style.cssText += `;z-index:31;left:${sx - len / 2}px;top:${-80 - thick / 2}px;width:${len}px;height:${thick}px;` +
+        `border-radius:999px;transform-origin:50% 50%;will-change:transform;` +
+        `background:radial-gradient(circle at 88% 50%, #fff6d8 0 18%, transparent 30%),` +
+        `linear-gradient(90deg, transparent, rgba(229,49,43,.35) 30%, rgba(232,135,26,.75) 65%, rgba(255,217,59,.95) 100%)`;
+      runNode(run, laneFx, fireball);
+      const boom = (big) => {
+        fireball.remove(); run.nodes.delete(fireball);
+        const s = big ? 1 : .6;
+        const flash = el('fx');
+        flash.style.cssText += `;z-index:32;left:${m.x - 110 * g * s}px;top:${m.y - 75 * g * s}px;width:${220 * g * s}px;height:${150 * g * s}px;` +
+          `border-radius:50%;background:radial-gradient(ellipse, rgba(255,246,216,.85), rgba(232,135,26,.4) 55%, transparent 75%);transition:opacity .25s ease`;
+        runNode(run, laneFx, flash);
+        runTimer(run, () => { flash.style.opacity = '0'; }, 80);
+        rippleFx(run, m.x, m.y, 250 * g * s, 150 * g * s, 0, legend);
+        chipBurst(run, m.x, m.y, Math.round(7 * k * s), legend);
+        canvasBump(k, 320);
+        publishFx('impact', { kind: 'meteor', x: m.x, tier: spin.tier });
+      };
+      let last = performance.now();
+      const step = (now) => {
+        if (run.done) return;
+        const dt = Math.min(.032, (now - last) / 1000); last = now;
+        m.vy += 800 * dt;
+        m.x += m.vx * dt; m.y += m.vy * dt;
+        // The head circle reads LIVE each frame, so a moving head still catches carom.
+        const h = headNow;
+        const headC = { x: h.x + h.w / 2, y: h.y + h.h / 2, r: h.w * .58 };
+        for (const c of [headC, ...gameBalls]) {
+          const dx2 = m.x - c.x, dy2 = m.y - c.y, d = Math.hypot(dx2, dy2), rr = c.r + 14;
+          if (d > 0 && d < rr) {
+            if (m.bounces >= 2) { boom(true); return; }
+            m.bounces++;
+            const nx = dx2 / d, ny = dy2 / d, dot = m.vx * nx + m.vy * ny;
+            if (dot < 0) { m.vx -= 2 * dot * nx * .62; m.vy -= 2 * dot * ny * .62; }
+            m.x = c.x + nx * rr; m.y = c.y + ny * rr;
+            rippleFx(run, m.x, m.y, 170 * g, 100 * g, 0, legend);
+            chipBurst(run, m.x, m.y, Math.round(5 * k), legend, .5);
+            canvasBump(k * (c === headC ? 1.6 : 1), 300);
+            if (c === headC && (legend || spin.tier === 'takeover')) hardShake();
+          }
+        }
+        if (m.y >= groundY - 10 || m.x < -120 || m.x > 1200) { boom(true); return; }
+        const rot = Math.atan2(m.vy, m.vx) * 180 / Math.PI;
+        fireball.style.transform = `translate3d(${(m.x - m.bx).toFixed(1)}px,${(m.y - m.by).toFixed(1)}px,0) rotate(${rot.toFixed(1)}deg)`;
+        run.rafs.add(requestAnimationFrame(step));
+      };
+      run.rafs.add(requestAnimationFrame(step));
+    }, i * 190 + rnd(0, 90));
+  }
+  if (legend) runTimer(run, hardShake, Math.round(n * 190 * .6));
+  return n * 190 + 960;
+}
+
 const EFFECTS = {
   stamp:     { hero: false, run: runStamp },
-  curse:     { hero: true,  run: runCurse },
+  curse:     { hero: true,  run: runCurse },     // retired v1 — hydration of old rows only
   flood:     { hero: true,  run: runFlood },
-  weather:   { hero: true,  run: runWeather },
+  weather:   { hero: true,  run: runWeather },   // retired v1 — hydration of old rows only
   crack:     { hero: false, run: runCrack },
-  spotlight: { hero: false, run: runSpotlight },
-  frame:     { hero: true,  run: runFrame },
-  avatar:    { hero: false, run: runAvatar },
+  spotlight: { hero: false, run: runSpotlight }, // retired v1 — hydration of old rows only
+  frame:     { hero: true,  run: runFrame },     // retired v1 — hydration of old rows only
+  avatar:    { hero: false, run: runAvatar },    // retired v1 — hydration of old rows only
   ball:      { hero: true,  run: runBall },
+  money:     { hero: true,  run: runMoney },
+  meteor:    { hero: true,  run: runMeteor },
 };
 
 const TIER_ORDER = ['spin', 'power', 'takeover', 'legend'];
@@ -3102,11 +2971,13 @@ function addSupporter(spin, opts) {
   const prev = supporters[slotIndex];
   if (prev && prev.node) prev.node.remove();
 
-  const b = brickEl(slot, (band === 3 ? 'b-legend' : 'b' + (1 + (slotIndex % 3))) + ` usd-${band}`);
+  // Material stays dollar-banded; the $-chip font tracks the rolled TIER (v2).
+  const tierClass = ` tf-${TIER_ORDER.includes(spin.tier) ? spin.tier : 'spin'}`;
+  const b = brickEl(slot, (band === 3 ? 'b-legend' : 'b' + (1 + (slotIndex % 3))) + ` usd-${band}` + tierClass);
   b.appendChild(el('b-name', esc(displayName(spin))));
   b.appendChild(el('b-usd', usdLabel(spin)));
   laneWall.appendChild(b);
-  supporters[slotIndex] = { node: b, usd, eventId: spin.eventId };
+  supporters[slotIndex] = { node: b, usd, tier: spin.tier, eventId: spin.eventId };
 
   // Lay this course's closers so the wall has no open edge. The left closer goes
   // in as soon as the course is started; the right one when the course completes.
@@ -3135,31 +3006,11 @@ function usdOf(spin) {
   return Number.isFinite(coins) && coins > 0 ? coins * COIN_USD : 0;
 }
 
-/** What to call the units on screen. Presentation only — tiering never reads this. */
-const PLATFORM_UNIT = { tiktok: 'coins', youtube: 'jewels', twitch: 'bits' };
-function unitOf(spin) { return PLATFORM_UNIT[spin?.platform] || 'coins'; }
-
 /** Money as shown on the wall/chip: whole dollars once we're past $1, cents below,
  *  so a Rose reads "$0.25" and a Galaxy reads "$10" rather than "$10.00". */
 function usdLabel(spin) {
   const usd = usdOf(spin);
   return usd >= 1 ? '$' + Math.round(usd) : '$' + usd.toFixed(2);
-}
-
-/** The gift chip shown on the reel housing during the spin. Every part is optional:
- *  an anonymous or unnamed gift still produces a valid chip rather than "undefined". */
-function giftChip(spin) {
-  const chip = el('gift-chip');
-  const name = spin?.gift?.name;
-  const count = Number(spin?.gift?.repeatCount);
-  const coins = Number(spin?.gift?.totalValue);
-  // el() assigns innerHTML, and gift names arrive from the platform — esc() them.
-  // The numbers are Number()-coerced above, so they cannot carry markup.
-  if (name) chip.appendChild(el('g-name', esc(name)));
-  if (Number.isFinite(count) && count > 1) chip.appendChild(el('g-amt', `×${count}`));
-  chip.appendChild(el('g-amt', `${Number.isFinite(coins) ? coins : 0} ${unitOf(spin)}`));
-  chip.appendChild(el('g-usd', usdLabel(spin)));
-  return chip;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3229,10 +3080,8 @@ function connect() {
     // when a Ball Drop fires — requesting at detach would arrive too late to cover.
     // Camera-level beats, for the other overlays sharing this frame (see publishFx).
     fxCh = client.channels.get('wheel-fx');
-    // Live rail height/Y position — see applyReelLayout. Instant feedback while an
-    // operator is dragging the control page's inputs, ahead of Save.
-    fxCh.subscribe('reel-layout', (msg) => applyReelLayout(msg && msg.data));
-    fxCh.subscribe('reel-copy', (msg) => applyCarouselCopy(msg && msg.data, true));
+    // v2: the tier reel is fixed geometry (handoff: "recreate exactly"), so the old
+    // reel-layout / reel-copy operator channels are gone with the effect carousel.
     // gesture-cam snapshots the COMPOSITED projector, so a still taken while an effect
     // is on screen contains that effect. That is how the ball came to carry its own
     // black hole: the periodic capture ran during a Ball Drop, baked the hole in, and
@@ -3262,6 +3111,14 @@ const PRELOAD = [
   'glass-crack-web.png', 'glass-shards.png',
   'spotlight-cone.png', 'spotlight-floor-pool.png',
   'splat-badge.png', 'storm-star.png',
+  // v2 gift-wheel handoff sprites: reel chips + effect art.
+  'chip-1.png', 'chip-2.png', 'chip-3.png', 'chip-4.png',
+  'chip-5.png', 'chip-6.png', 'chip-7.png', 'chip-8.png',
+  'ball-blue.png', 'ball-gold.png', 'bucket-left.png', 'bucket-right.png',
+  'ring.png', 'stamp.png',
+  'shard-1.png', 'shard-2.png', 'shard-3.png', 'shard-4.png',
+  'shard-5.png', 'shard-6.png', 'shard-7.png', 'shard-8.png',
+  'splash-1.png', 'splash-2.png', 'splash-3.png',
 ];
 let preloaded = 0;
 PRELOAD.forEach((f) => {
@@ -3320,17 +3177,6 @@ async function hydrate() {
     // socket keeps retrying, and the next connect calls this again.
     console.warn('[wheel] hydrate failed (will retry on next connect):', e.message);
   }
-
-  // The rail's persisted height/Y position — separate try/catch, because a failure
-  // here (or on a dock predating the setting) must not block wall hydration above.
-  try {
-    const res = await fetch(base + '/api/settings', { cache: 'no-store' });
-    if (res.ok) {
-      const wheelSettings = (await res.json()).settings?.wheel;
-      applyReelLayout(wheelSettings?.reel);
-      setEnabledRailResults(wheelSettings?.enabledResults);
-    }
-  } catch (e) { /* falls back to the CSS default (identity) — see #wheel-stage */ }
 }
 
 // Test hook — feed a WheelSpin-shaped object straight into the machine.

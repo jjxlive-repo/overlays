@@ -78,51 +78,6 @@
   }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
-  .placement-layout { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
-  .placement-editor { flex: 0 0 270px; }
-  .placement-canvas {
-    position: relative; width: 270px; height: 480px; overflow: hidden;
-    border: 1px solid var(--bd2); border-radius: 10px;
-    background:
-      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
-      #0D0716;
-    background-size: 27px 24px;
-    touch-action: none; user-select: none;
-  }
-  .placement-safe {
-    position: absolute; left: 0; right: 0; pointer-events: none;
-    background: repeating-linear-gradient(135deg, rgba(248,113,113,.13) 0 5px, rgba(248,113,113,.04) 5px 10px);
-    border-bottom: 1px dashed rgba(248,113,113,.45);
-  }
-  .placement-safe.top { top: 0; height: 42.5px; }
-  .placement-safe.bottom { top: 317.5px; bottom: 0; border-top: 1px dashed rgba(248,113,113,.45); border-bottom: 0; }
-  .placement-centre {
-    position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
-    background: rgba(251,191,36,.48); pointer-events: none;
-  }
-  .placement-rail {
-    position: absolute; left: 0; width: 270px; min-height: 70px;
-    display: flex; align-items: center; gap: 3px; padding: 9px 4px;
-    border-top: 3px solid #21032F; border-bottom: 3px solid #21032F;
-    background: linear-gradient(90deg,#240437,#501075,#240437);
-    box-shadow: inset 0 0 0 1px rgba(232,121,249,.25), 0 5px 14px rgba(0,0,0,.55);
-    cursor: grab; touch-action: none;
-  }
-  .placement-rail.dragging { cursor: grabbing; border-color: #FBBF24; }
-  .placement-card {
-    flex: 1 1 0; min-width: 0; height: 68%; border-radius: 4px;
-    background: #2E1150; border: 1px solid rgba(255,255,255,.17);
-  }
-  .placement-card.gold { background: linear-gradient(#FDE68A,#D99B09); border-color: #FFF1A8; }
-  .placement-label {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-    padding: 3px 7px; border-radius: 999px; background: #12051F;
-    border: 1px solid var(--accent); color: #fff; font-size: 9px; font-weight: 800;
-    letter-spacing: .06em; text-transform: uppercase; pointer-events: none; white-space: nowrap;
-  }
-  .placement-caption { margin-top: 7px; color: var(--txt-dim); font-size: 10px; text-align: center; }
-  #reel { flex: 1 1 430px; min-width: min(430px,100%); }
   label.field { display: block; }
   label.field span {
     display: block; font-size: 11px; font-weight: 700; letter-spacing: .05em;
@@ -185,9 +140,9 @@
     <h2>Tier floors</h2>
     <div class="hint">
       In <b>coin equivalents</b> — 1 TikTok coin = 1 YouTube jewel = $0.01 of viewer spend, and a
-      Super Chat converts at the same rate. A gift below the <code>spin</code> floor produces
-      <b>no spin at all</b>: that floor doubles as the qualification threshold. Floors must be
-      strictly increasing.
+      Super Chat converts at the same rate. Floors decide which <b>TIER</b> a wheel gift's reel
+      lands on; they must be strictly increasing. The six wheel gifts below <b>always spin</b> —
+      one under the spin floor still qualifies at NORMAL — while any other gift never spins at all.
     </div>
     <div class="grid" id="thresholds"></div>
     <label class="toggle" style="margin-top:16px">
@@ -198,13 +153,13 @@
   </section>
 
   <section>
-    <h2>Enabled results</h2>
+    <h2>Wheel gifts</h2>
     <div class="hint">
-      Disabled results are never selected and never shown; probability redistributes equally among
-      the rest. At least one must stay on. With exactly one enabled the overlay skips the spin
-      animation — a reel that can only land on one slice is a lie. Freeze &amp; Shatter and
-      Snapshot Echo use the Gesture Engine's captured stream; keep that window open for their
-      interactive versions. Both still have a safe fallback when tracking is unavailable.
+      v2 mechanic: each gift is <b>hard-mapped</b> to its own effect — nothing is rolled. The reel
+      spins for the tier only. Unticking an effect is a kill switch: its gift then produces
+      <b>no spin at all</b> (never a different effect). At least one must stay on. Freeze &amp;
+      Shatter and Ball Drop use the Gesture Engine's captured stream; keep that window open for
+      their full versions. Both fall back safely when tracking is unavailable.
     </div>
     <div class="results" id="results"></div>
   </section>
@@ -218,57 +173,6 @@
       is RESOLVED, so a spin always plays with the timing that was set when it fired.
     </div>
     <div class="grid" id="hold"></div>
-  </section>
-
-  <section>
-    <h2>Carousel coverage &amp; position</h2>
-    <div class="hint">
-      The Center-Stage Rail always spans the full stream width so every enabled result stays visible.
-      <b>Rail height</b> controls its total screen coverage. <b>Y position</b> is normalized to a
-      percentage of the canvas, so it stays correct at every browser-source height (positive is down).
-      <b>Spin time</b> controls the complete fast-to-slow carousel
-      moment. The card under the marker grows as it passes, and Legendary chances are mixed through
-      the rail as individual gold cards. The cards own the full rail; headline and winner copy sit
-      above it. <b>Card scale</b> adjusts only the icons and labels inside.
-      Changes apply to the live overlay <b>immediately</b> as you type; Save makes them survive a reload.
-    </div>
-    <div class="placement-layout">
-      <div class="placement-editor">
-        <div class="placement-canvas" id="reel-placement" aria-label="1080 by 1920 rail placement canvas">
-          <div class="placement-safe top"></div>
-          <div class="placement-safe bottom"></div>
-          <div class="placement-centre"></div>
-          <div class="placement-rail" id="reel-placement-rail">
-            <i class="placement-card"></i><i class="placement-card gold"></i><i class="placement-card"></i>
-            <i class="placement-card"></i><i class="placement-card gold"></i><i class="placement-card"></i>
-            <i class="placement-card"></i><i class="placement-card gold"></i><i class="placement-card"></i>
-            <span class="placement-label">Drag rail</span>
-          </div>
-        </div>
-        <div class="placement-caption">Full 1080×1920 canvas · hatched areas are covered by platform UI</div>
-      </div>
-      <div class="grid" id="reel"></div>
-    </div>
-    <div class="row" style="margin-top:14px">
-      <button id="reel-reset">↺ Reset to default</button>
-    </div>
-  </section>
-
-  <section>
-    <h2>Carousel copy</h2>
-    <div class="hint">
-      Edit the words viewers see during the spin. Use <code>{result}</code> in either winner
-      template to insert the selected option name. <b>Leave any box blank to hide that copy
-      completely.</b> Changes preview live and save locally in both the control and overlay, so
-      they survive browser-source reloads.
-    </div>
-    <div class="grid" id="carousel-copy-core"></div>
-    <h3 style="margin:18px 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt-dim)">Option names</h3>
-    <div class="grid" id="carousel-copy-results"></div>
-    <div class="row" style="margin-top:14px">
-      <button id="carousel-copy-reset">↺ Reset carousel copy</button>
-      <span class="msg" id="carousel-copy-msg"></span>
-    </div>
   </section>
 
   <section>
@@ -297,16 +201,17 @@
   <section>
     <h2>Wheel tester</h2>
     <div class="hint">
-      <b>Test full wheel spin</b> shows the real spinning rail, lands on your selected result,
-      and then plays its effect. <b>Preview result only</b> skips directly to the effect.
-      Neither test lays a brick or persists, but both appear on the live overlay.
+      Pick a <b>gift</b> — its effect is fixed by the map, so the selects mirror production
+      exactly. <b>Test full spin</b> plays the tier reel, then the gift's effect.
+      <b>Preview effect only</b> skips the reel. Neither lays a brick or persists, but both
+      appear on the live overlay.
     </div>
     <div class="row">
       <input type="text" id="pv-name" value="jaz plays" placeholder="sender name" style="width:170px">
-      <select id="pv-result"></select>
+      <select id="pv-gift"></select>
       <select id="pv-tier"></select>
-      <button class="primary" id="pv-spin">🎡 Test full wheel spin</button>
-      <button id="pv-go">▶ Preview result only</button>
+      <button class="primary" id="pv-spin">🎡 Test full spin</button>
+      <button id="pv-go">▶ Preview effect only</button>
       <button id="pv-clear">■ Clear wheel effect</button>
     </div>
     <div class="msg" id="pv-msg"></div>
@@ -330,26 +235,19 @@
 
 <script src="jjx-core.js?v=10"></script>
 <script>
-/* Presentation only — the dock owns the canonical result keys (shared/schemas/wheel.ts). */
-const RESULTS = [
-  ['curse','◍ Curse'], ['stamp','✦ Stamp'], ['flood','◒ Buckets'], ['weather','❉ Weather'],
-  ['crack','◆ Freeze & Shatter'], ['spotlight','▲ Spotlight'], ['frame','▣ Frame'], ['avatar','◉ Snapshot Echo'],
-  ['ball','● Ball Drop'],
+/* v2: the six wheel gifts, each hard-mapped to one effect. Mirrors GIFT_EFFECT_MAP in
+   the dock's shared/schemas/wheel.ts — the dock owns the canonical map; this is
+   presentation plus the tester's payload source. */
+const GIFTS = [
+  { id: 'hand-heart',    name: 'Hand Heart',    platform: 'tiktok',  value: 1,    effect: 'stamp',  label: '🫰 Hand Heart → ✦ Stamp' },
+  { id: 'money-gun',     name: 'Money Gun',     platform: 'tiktok',  value: 500,  effect: 'money',  label: '💵 Money Gun → $ Cash Blast' },
+  { id: 'galaxy',        name: 'Galaxy',        platform: 'tiktok',  value: 1000, effect: 'crack',  label: '🌌 Galaxy → ◆ Freeze & Shatter' },
+  { id: 'whale',         name: 'Whale',         platform: 'tiktok',  value: 2000, effect: 'flood',  label: '🐋 Whale → ◒ Flood' },
+  { id: 'meteor-shower', name: 'Meteor Shower', platform: 'youtube', value: 3000, effect: 'meteor', label: '☄️ Meteor Shower → ✶ Meteor Shower' },
+  { id: 'diamond-gun',   name: 'Diamond Gun',   platform: 'tiktok',  value: 5000, effect: 'ball',   label: '💎 Diamond Gun → ● Ball Drop' },
 ];
-const CAROUSEL_COPY_KEY = 'jjx-wheel-carousel-copy-v1';
-const CAROUSEL_COPY_DEFAULT = {
-  momentTitle: 'GOLD CAN LAND ON ANY RESULT',
-  finalPassTitle: 'EVERYONE WATCH THE WINNER',
-  goldBadge: 'LEGEND',
-  winnerTemplate: '{result} WINS',
-  legendWinnerTemplate: 'LEGENDARY {result}',
-  resultLabels: {
-    curse: 'Curse', stamp: 'Stamp', flood: 'Flood', weather: 'Weather',
-    crack: 'Freeze & Shatter', spotlight: 'Spotlight', frame: 'Frame',
-    avatar: 'Snapshot Echo', ball: 'Ball Drop',
-  },
-};
 const TIERS = ['spin','power','takeover','legend'];
+const TIER_REEL_LABEL = { spin: 'NORMAL', power: 'RARE', takeover: 'EPIC', legend: 'LEGENDARY' };
 const THRESHOLD_HINT = { spin:'qualification floor', power:'', takeover:'', legend:'' };
 
 const $ = (id) => document.getElementById(id);
@@ -359,85 +257,6 @@ let current = null;                   // last-loaded settings.wheel
 function setConn(text, cls) { const p = $('conn'); p.textContent = text; p.className = 'pill ' + (cls || ''); }
 function say(el, text, cls) { const n = $(el); n.textContent = text; n.className = 'msg ' + (cls || ''); }
 
-function normalizeCarouselCopy(source) {
-  const value = source && typeof source === 'object' ? source : {};
-  const pick = (candidate, fallback, max) => {
-    // Missing values belong to older saves and inherit the shipped default.
-    // An explicitly empty field is intentional and must remain hidden.
-    const text = candidate == null ? String(fallback || '') : String(candidate).trim();
-    return text.slice(0, max);
-  };
-  return {
-    momentTitle: pick(value.momentTitle, CAROUSEL_COPY_DEFAULT.momentTitle, 80),
-    finalPassTitle: pick(value.finalPassTitle, CAROUSEL_COPY_DEFAULT.finalPassTitle, 80),
-    goldBadge: pick(value.goldBadge, CAROUSEL_COPY_DEFAULT.goldBadge, 20),
-    winnerTemplate: pick(value.winnerTemplate, CAROUSEL_COPY_DEFAULT.winnerTemplate, 80),
-    legendWinnerTemplate: pick(value.legendWinnerTemplate, CAROUSEL_COPY_DEFAULT.legendWinnerTemplate, 80),
-    resultLabels: Object.fromEntries(Object.entries(CAROUSEL_COPY_DEFAULT.resultLabels).map(([key, fallback]) => [
-      key, pick(value.resultLabels && value.resultLabels[key], fallback, 40),
-    ])),
-  };
-}
-function loadCarouselCopy() {
-  try { return normalizeCarouselCopy(JSON.parse(localStorage.getItem(CAROUSEL_COPY_KEY) || 'null')); }
-  catch (e) { return normalizeCarouselCopy(null); }
-}
-let carouselCopy = loadCarouselCopy();
-let carouselCopyPushTimer = null;
-function addCarouselCopyField(container, id, label, value, maxLength, note) {
-  const field = document.createElement('label');
-  field.className = 'field';
-  const title = document.createElement('span');
-  title.textContent = label;
-  const input = document.createElement('input');
-  input.type = 'text'; input.id = id; input.maxLength = maxLength; input.value = value;
-  field.appendChild(title); field.appendChild(input);
-  if (note) {
-    const help = document.createElement('div');
-    help.className = 'usd'; help.textContent = note; field.appendChild(help);
-  }
-  container.appendChild(field);
-  input.addEventListener('input', () => pushCarouselCopyLive());
-}
-function buildCarouselCopyForm() {
-  const core = $('carousel-copy-core'), results = $('carousel-copy-results');
-  core.replaceChildren(); results.replaceChildren();
-  addCarouselCopyField(core, 'copy-momentTitle', 'Spin headline', carouselCopy.momentTitle, 80, 'shown above the moving rail');
-  addCarouselCopyField(core, 'copy-finalPassTitle', 'Final-pass headline', carouselCopy.finalPassTitle, 80, 'shown as the wheel slows');
-  addCarouselCopyField(core, 'copy-goldBadge', 'Gold card badge', carouselCopy.goldBadge, 20, 'small label on each Legendary chance');
-  addCarouselCopyField(core, 'copy-winnerTemplate', 'Winner line', carouselCopy.winnerTemplate, 80, 'use {result}');
-  addCarouselCopyField(core, 'copy-legendWinnerTemplate', 'Legendary winner line', carouselCopy.legendWinnerTemplate, 80, 'use {result}');
-  for (const [key, fallback] of Object.entries(CAROUSEL_COPY_DEFAULT.resultLabels)) {
-    addCarouselCopyField(results, 'copy-result-' + key, fallback, carouselCopy.resultLabels[key], 40, key);
-  }
-}
-function readCarouselCopyForm() {
-  return normalizeCarouselCopy({
-    momentTitle: $('copy-momentTitle').value,
-    finalPassTitle: $('copy-finalPassTitle').value,
-    goldBadge: $('copy-goldBadge').value,
-    winnerTemplate: $('copy-winnerTemplate').value,
-    legendWinnerTemplate: $('copy-legendWinnerTemplate').value,
-    resultLabels: Object.fromEntries(Object.keys(CAROUSEL_COPY_DEFAULT.resultLabels).map((key) => [
-      key, $('copy-result-' + key).value,
-    ])),
-  });
-}
-function pushCarouselCopyLive(immediate = false) {
-  carouselCopy = readCarouselCopyForm();
-  try { localStorage.setItem(CAROUSEL_COPY_KEY, JSON.stringify(carouselCopy)); } catch (e) {}
-  say('carousel-copy-msg', '✓ Copy saved · live on the next spin', 'ok');
-  clearTimeout(carouselCopyPushTimer);
-  const send = () => reelFxCh.publish('reel-copy', carouselCopy).catch(() => {});
-  if (immediate) send(); else carouselCopyPushTimer = setTimeout(send, 80);
-}
-buildCarouselCopyForm();
-$('carousel-copy-reset').addEventListener('click', () => {
-  carouselCopy = normalizeCarouselCopy(null);
-  buildCarouselCopyForm();
-  pushCarouselCopyLive(true);
-});
-
 /* ── build the form ── */
 for (const t of TIERS) {
   const l = document.createElement('label'); l.className = 'field';
@@ -446,9 +265,9 @@ for (const t of TIERS) {
                 `<div class="usd" id="usd-${t}">—</div>`;
   $('thresholds').appendChild(l);
 }
-for (const [k, label] of RESULTS) {
+for (const g of GIFTS) {
   const l = document.createElement('label');
-  l.innerHTML = `<input type="checkbox" id="res-${k}"><span>${label}</span>`;
+  l.innerHTML = `<input type="checkbox" id="res-${g.effect}"><span>${g.label}</span>`;
   $('results').appendChild(l);
 }
 for (const [id, label, min, max, step, note] of [
@@ -461,111 +280,6 @@ for (const [id, label, min, max, step, note] of [
                 '<div class="usd">' + note + '</div>';
   document.getElementById('lens').appendChild(l);
 }
-const REEL_BOUNDS = {
-  /* Width/X/scale stay in the object because the dock schema predates the full-width
-     rail and expects the complete shape. They remain hidden compatibility values;
-     the overlay deliberately ignores them. */
-  width:        { label: 'WIDTH',       min: 1080, max: 1080, step: 1,    def: 1080, hidden: true, note: 'full stream width' },
-  height:       { label: 'RAIL HEIGHT', min: 160,  max: 900,  step: 10,   def: 220,  note: 'px, total screen coverage' },
-  spinMs:       { label: 'SPIN TIME',   min: 3000, max: 12000, step: 500, def: 6500, persisted: false, note: 'ms, live fast-to-slow preview' },
-  scale:        { label: 'SCALE',       min: 1,    max: 1,    step: 1,    def: 1,    hidden: true, note: 'fixed for rail' },
-  offsetX:      { label: 'X',           min: 0,    max: 0,    step: 1,    def: 0,    hidden: true, note: 'full width is centred' },
-  offsetY:      { label: 'Y POSITION',  min: -36.5, max: 36.5, step: 0.01, def: 0, axis: 'y', normalized: true, note: '% of canvas height, down is positive' },
-  contentScale: { label: 'CARD SCALE',  min: 0.75, max: 1.35, step: 0.05, def: 1,    note: 'icons + labels inside the rail' },
-};
-function reelToUi(id, storedValue) {
-  const bounds = REEL_BOUNDS[id];
-  return bounds.normalized
-    ? JJX.position.pxToPercent(storedValue, bounds.axis, 2)
-    : Number(storedValue);
-}
-function reelToStored(id, uiValue) {
-  const bounds = REEL_BOUNDS[id];
-  return bounds.normalized
-    ? JJX.position.percentToPx(uiValue, bounds.axis)
-    : Number(uiValue);
-}
-for (const [id, b] of Object.entries(REEL_BOUNDS)) {
-  const l = document.createElement('label'); l.className = 'field';
-  l.hidden = !!b.hidden;
-  const inputType = b.hidden ? 'number' : 'range';
-  l.innerHTML = "<span>" + b.label + "</span>" +
-                '<input type="' + inputType + '" min="' + b.min + '" max="' + b.max + '" step="' + b.step + '" id="reel-' + id + '">' +
-                (b.hidden ? '' : '<div class="range-value" id="reel-value-' + id + '">—</div>') +
-                '<div class="usd">' + b.note + '</div>';
-  document.getElementById('reel').appendChild(l);
-  document.getElementById('reel-' + id).value = b.def;
-  document.getElementById('reel-' + id).addEventListener('input', () => {
-    refreshReelControl(id);
-    pushReelLayoutLive();
-  });
-}
-function formatReelControl(id, uiValue) {
-  const value = Number(uiValue);
-  if (id === 'offsetY') return JJX.position.formatPercent(value, 1);
-  if (id === 'height') return Math.round(value) + 'px · ' + JJX.position.formatPercent(JJX.position.pxToPercent(value, 'y', 1), 1);
-  if (id === 'spinMs') return (value / 1000).toFixed(1).replace(/\.0$/, '') + ' seconds';
-  if (id === 'contentScale') return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + '×';
-  return String(value);
-}
-function refreshReelControl(id) {
-  const input = $('reel-' + id);
-  const readout = $('reel-value-' + id);
-  if (readout) readout.textContent = formatReelControl(id, input.value);
-  if (id === 'height' || id === 'offsetY') renderReelPlacement();
-}
-function refreshAllReelControls() {
-  Object.keys(REEL_BOUNDS).forEach(refreshReelControl);
-}
-
-/* Drag-to-place editor: the mini canvas is a literal 25% rendering of the
-   1080×1920 source. The live rail is vertically centred, then offset, so the
-   control uses the same centre + offset equation as wheel-overlay.html. */
-const REEL_PLACEMENT_SCALE = 0.25;
-let reelPlacementDrag = null;
-function renderReelPlacement() {
-  const rail = $('reel-placement-rail');
-  const heightInput = $('reel-height');
-  const yInput = $('reel-offsetY');
-  if (!rail || !heightInput || !yInput) return;
-  const height = Number(heightInput.value) || REEL_BOUNDS.height.def;
-  const offsetY = reelToStored('offsetY', yInput.value);
-  rail.style.height = (height * REEL_PLACEMENT_SCALE) + 'px';
-  rail.style.top = ((JJX.position.height / 2 - height / 2 + offsetY) * REEL_PLACEMENT_SCALE) + 'px';
-}
-function setReelPlacementFromPixels(offsetPixels) {
-  const bounds = REEL_BOUNDS.offsetY;
-  const ui = JJX.position.pxToPercent(offsetPixels, 'y', 2);
-  const clamped = Math.max(bounds.min, Math.min(bounds.max, ui));
-  $('reel-offsetY').value = clamped;
-  refreshReelControl('offsetY');
-  pushReelLayoutLive();
-}
-const reelPlacementRail = $('reel-placement-rail');
-reelPlacementRail.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  reelPlacementDrag = {
-    pointerId: event.pointerId,
-    startY: event.clientY,
-    startOffset: reelToStored('offsetY', $('reel-offsetY').value),
-  };
-  reelPlacementRail.classList.add('dragging');
-  reelPlacementRail.setPointerCapture(event.pointerId);
-});
-reelPlacementRail.addEventListener('pointermove', (event) => {
-  if (!reelPlacementDrag || reelPlacementDrag.pointerId !== event.pointerId) return;
-  const deltaY = (event.clientY - reelPlacementDrag.startY) / REEL_PLACEMENT_SCALE;
-  setReelPlacementFromPixels(reelPlacementDrag.startOffset + deltaY);
-});
-function endReelPlacement(event) {
-  if (!reelPlacementDrag || reelPlacementDrag.pointerId !== event.pointerId) return;
-  reelPlacementDrag = null;
-  reelPlacementRail.classList.remove('dragging');
-  if (reelPlacementRail.hasPointerCapture(event.pointerId)) reelPlacementRail.releasePointerCapture(event.pointerId);
-}
-reelPlacementRail.addEventListener('pointerup', endReelPlacement);
-reelPlacementRail.addEventListener('pointercancel', endReelPlacement);
-refreshAllReelControls();
 for (const t of TIERS) {
   const l = document.createElement('label'); l.className = 'field';
   l.innerHTML = "<span>" + t.toUpperCase() + " — hold (ms)</span>" +
@@ -588,8 +302,8 @@ for (const [id, label] of [['spinMinutes','SPIN — minutes'], ['powerMinutes','
   l.innerHTML = `<span>${label}</span><input type="number" min="1" max="1440" step="1" id="ex-${id}">`;
   $('expiry').appendChild(l);
 }
-for (const [k, label] of RESULTS) $('pv-result').add(new Option(label, k));
-for (const t of TIERS) $('pv-tier').add(new Option(t.toUpperCase(), t));
+for (const g of GIFTS) $('pv-gift').add(new Option(g.label, g.id));
+for (const t of TIERS) $('pv-tier').add(new Option(TIER_REEL_LABEL[t] + ' (' + t + ')', t));
 $('pv-tier').value = 'takeover';
 
 /* Coins → dollars, shown live so the floors are readable as money. */
@@ -605,16 +319,16 @@ function refreshUsd() {
 function validate() {
   const v = TIERS.map((t) => Number($('th-' + t).value));
   const increasing = v.every((n, i) => Number.isFinite(n) && n >= 1 && (i === 0 || n > v[i - 1]));
-  const anyResult = RESULTS.some(([k]) => $('res-' + k).checked);
+  const anyResult = GIFTS.some((g) => $('res-' + g.effect).checked);
   const ok = increasing && anyResult;
   $('save').disabled = !ok;
   if (!increasing) say('msg', 'Tier floors must be strictly increasing (spin < power < takeover < legend).', 'bad');
-  else if (!anyResult) say('msg', 'At least one result must stay enabled.', 'bad');
+  else if (!anyResult) say('msg', 'At least one wheel gift must stay enabled.', 'bad');
   else say('msg', '', '');
   return ok;
 }
 TIERS.forEach((t) => $('th-' + t).addEventListener('input', refreshUsd));
-RESULTS.forEach(([k]) => $('res-' + k).addEventListener('change', validate));
+GIFTS.forEach((g) => $('res-' + g.effect).addEventListener('change', validate));
 
 /* ── load / save ── */
 async function load() {
@@ -625,20 +339,9 @@ async function load() {
     current = w;
     for (const t of TIERS) $('th-' + t).value = w.thresholds[t];
     $('penny').checked = !!w.allowPennySpins;
-    for (const [k] of RESULTS) $('res-' + k).checked = w.enabledResults.includes(k);
+    for (const g of GIFTS) $('res-' + g.effect).checked = w.enabledResults.includes(g.effect);
     $('lens-power').value = (w.lens && w.lens.power) || '';
     $('lens-crop').value = (w.lens && w.lens.crop) || '';
-    for (const id of Object.keys(REEL_BOUNDS)) {
-      const bounds = REEL_BOUNDS[id];
-      const saved = (w.reel && w.reel[id] != null) ? w.reel[id] : REEL_BOUNDS[id].def;
-      // The replaced cabinet used a 1200px default. A value above the new rail's
-      // maximum is legacy, so show the safe 220px rail default instead.
-      let normalized = reelToUi(id, saved);
-      if (!Number.isFinite(normalized)) normalized = bounds.def;
-      if (id === 'height' && normalized > REEL_BOUNDS.height.max) normalized = REEL_BOUNDS.height.def;
-      $('reel-' + id).value = Math.max(bounds.min, Math.min(bounds.max, normalized));
-    }
-    refreshAllReelControls();
     for (const t of TIERS) $('hold-' + t).value = (w.holdMs && w.holdMs[t]) || '';
     refreshHold();
     $('ex-spinMinutes').value = w.signatureExpiry.spinMinutes;
@@ -661,11 +364,8 @@ $('save').addEventListener('click', async () => {
     thresholds: Object.fromEntries(TIERS.map((t) => [t, Number($('th-' + t).value)])),
     holdMs: Object.fromEntries(TIERS.map((t) => [t, Number($('hold-' + t).value)])),
     lens: { power: Number($('lens-power').value), crop: Number($('lens-crop').value) },
-    reel: Object.fromEntries(Object.entries(REEL_BOUNDS)
-      .filter(([, bounds]) => bounds.persisted !== false)
-      .map(([id]) => [id, reelToStored(id, $('reel-' + id).value)])),
     allowPennySpins: $('penny').checked,
-    enabledResults: RESULTS.map(([k]) => k).filter((k) => $('res-' + k).checked),
+    enabledResults: GIFTS.map((g) => g.effect).filter((k) => $('res-' + k).checked),
     signatureExpiry: {
       spinMinutes: Number($('ex-spinMinutes').value),
       powerMinutes: Number($('ex-powerMinutes').value),
@@ -703,51 +403,27 @@ async function readState() {
 /* ── preview ── */
 const client = JJX.dockRealtime({});
 const previewCh = client.channels.get(JJX.ABLY_MAIN_CHANNEL);
-client.connection.on('connected', () => {
-  setConn('dock: connected', 'ok');
-  setTimeout(() => pushCarouselCopyLive(true), 120);
-});
+client.connection.on('connected', () => setConn('dock: connected', 'ok'));
 client.connection.on('disconnected', () => setConn('dock: reconnecting…', ''));
 
-/* ── reel layout: live, not just previewed ──────────────────────────
-   Every other control here needs the explicit Preview button because playing an
-   effect is a real, visible event on stream. Moving the reel is not an event, it is
-   scenery — so it pushes on every input, same channel and event name the wheel
-   overlay's applyReelLayout() already listens for (see wheel-overlay.html). Save is
-   still required for the change to survive a reload; this is the live-tweak path,
-   not a replacement for persistence. */
-const reelFxCh = client.channels.get('wheel-fx');
-let reelPushTimer = null;
-function pushReelLayoutLive() {
-  clearTimeout(reelPushTimer);
-  reelPushTimer = setTimeout(() => {
-    const payload = Object.fromEntries(Object.keys(REEL_BOUNDS).map((id) => [id, reelToStored(id, $('reel-' + id).value)]));
-    if (Object.values(payload).some((v) => !Number.isFinite(v))) return;
-    reelFxCh.publish('reel-layout', payload).catch(() => {});
-  }, 80);
-}
-$('reel-reset').addEventListener('click', () => {
-  for (const id of Object.keys(REEL_BOUNDS)) $('reel-' + id).value = REEL_BOUNDS[id].def;
-  refreshAllReelControls();
-  pushReelLayoutLive();
-});
-
 function sendWheelPreview(skipSpinAnimation) {
-  const result = $('pv-result').value, tier = $('pv-tier').value;
-  /* Shaped exactly like a resolved spin so the overlay's real path runs unchanged.
-     A random revision keeps repeat previews from being swallowed by revision-dedupe. */
+  const g = GIFTS.find((x) => x.id === $('pv-gift').value) || GIFTS[0];
+  const tier = $('pv-tier').value;
+  /* Shaped exactly like a resolved spin so the overlay's real path runs unchanged:
+     the gift carries its id/name/value and result IS the gift's mapped effect —
+     mirroring the dock's deterministic resolution. A random revision keeps repeat
+     previews from being swallowed by revision-dedupe. */
   const spin = {
     type: 'wheel.spin', schemaVersion: 2,
     revision: 900000 + Math.floor(Math.random() * 99999),
     eventId: 'preview-' + Date.now(),
-    sessionId: 'preview', issuedAt: Date.now(), simulation: true, platform: 'tiktok',
+    sessionId: 'preview', issuedAt: Date.now(), simulation: true, platform: g.platform,
     // A real-looking name: the hero line is the giver's credit, and previewing it
     // as the literal word PREVIEW made it impossible to judge whether it reads.
     user: { username: (document.getElementById('pv-name').value || 'PREVIEW').slice(0, 40) },
-    gift: { name: 'Preview', repeatCount: 1, totalValue: { spin: 50, power: 500, takeover: 2500, legend: 9000 }[tier] },
-    tier, baseTier: tier,
-    goldPasses: { spin: 1, power: 2, takeover: 4, legend: 8 }[tier],
-    result, variant: 'default', styleSeed: 'preview',
+    gift: { id: g.id, name: g.name, repeatCount: 1, totalValue: g.value },
+    tier,
+    result: g.effect, variant: 'default', styleSeed: 'preview',
     signature: { class: 'small', createdAt: Date.now(), expiresAt: null },
     /* Take the hold from the FORM, not from what is saved. Tuning a number and
        previewing it is the whole point of having both on one page — requiring a Save
@@ -761,8 +437,8 @@ function sendWheelPreview(skipSpinAnimation) {
   previewCh.publish('wheel.preview', spin)
     .then(() => say(
       'pv-msg',
-      (skipSpinAnimation ? '▶ result preview' : '🎡 full wheel spin') +
-        ' sent — ' + result + ' at ' + tier.toUpperCase() + ' (no brick laid)',
+      (skipSpinAnimation ? '▶ effect preview' : '🎡 full spin') +
+        ' sent — ' + g.name + ' → ' + g.effect + ' at ' + TIER_REEL_LABEL[tier] + ' (no brick laid)',
       'ok',
     ))
     .catch((e) => say('pv-msg', 'Could not reach the overlay: ' + e.message, 'bad'));
