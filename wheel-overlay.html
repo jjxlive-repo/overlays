@@ -1041,7 +1041,12 @@ function startSpinning(run) {
     shade.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg, rgba(0,0,0,.45), transparent 30%, transparent 70%, rgba(0,0,0,.45))';
     wrap.appendChild(shade);
     const targetIndex = (reps - 2) * 4 + idx;
-    requestAnimationFrame(() => { strip.style.transform = `translateY(${-(targetIndex * H)}px)`; });
+    // Forced reflow, NOT rAF: rAF runs before the initial style is committed (and is
+    // paused outright in a throttled browser source), so the strip appeared already
+    // landed with no travel. void offsetWidth commits translateY(0) as the start
+    // state; the next assignment then transitions. Same idiom as reveal().
+    void strip.offsetWidth;
+    strip.style.transform = `translateY(${-(targetIndex * H)}px)`;
     runTimer(run, () => { shade.style.opacity = '0'; card.style.animation = 'om-bump 300ms cubic-bezier(.2,.9,.2,1) both'; callout(); canvasBump(1.2); }, dur + 40);
     runTimer(run, () => prepareImpact(run), dur + 700);
     fadeReel();
@@ -1091,7 +1096,10 @@ function startSpinning(run) {
     wrap.appendChild(ptr);
     const extra = 3 + Math.round((dur / 2800) * 4);
     const R = extra * 360 + ((360 - (idx * 90 + 45)) % 360);
-    requestAnimationFrame(() => { disc.style.transform = `rotate(${R}deg)`; });
+    // Forced reflow, NOT rAF — see the slot variant above; without this the disc's
+    // first rendered frame IS the final rotation and the wheel never visibly spins.
+    void disc.offsetWidth;
+    disc.style.transform = `rotate(${R}deg)`;
     runTimer(run, () => { rippleFx(run, cx, cy, R2 * 2.4, R2 * 2.4, 0, tier === 'legend'); callout(); canvasBump(1.2); }, dur + 40);
     runTimer(run, () => prepareImpact(run), dur + 700);
     fadeReel();
