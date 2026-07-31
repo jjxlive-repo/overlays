@@ -459,14 +459,16 @@
 </div>
 
 <script>
-/* Session resolution: page URL param wins, this browser's saved copy is the
-   fallback — so a plain bookmark (no param) still works once the ID has been
-   saved here, and pasting a ?session= URL updates the saved copy. */
+/* Session resolution: page URL param wins, this browser's saved copy is next,
+   and the known SSN session ID is the last-resort default — localStorage is
+   per-ORIGIN, so without the default a fresh origin (Pages vs dock vs file://)
+   rendered every session-bearing Studio URL with a YOURID placeholder. */
 var LS_SESSION = "jjx.ssnSession";
+var DEFAULT_SESSION = "fOijBG8wP80iaADQaBzY";
 var qsSession = new URLSearchParams(location.search).get("session") || "";
 var storedSession = "";
 try { storedSession = localStorage.getItem(LS_SESSION) || ""; } catch (e) {}
-var SESSION = qsSession || storedSession;
+var SESSION = qsSession || storedSession || DEFAULT_SESSION;
 if (SESSION) {
   try { localStorage.setItem(LS_SESSION, SESSION); } catch (e) {}
   /* keep the param visible in the address bar so a re-bookmark carries it */
@@ -582,18 +584,10 @@ document.getElementById("session-save").addEventListener("click", function () {
 
 (function () {
   "use strict";
-  /* STUDIO SOURCES COME FROM GITHUB PAGES AGAIN (2026-07-30): TikTok Studio requires
-     https:// browser-source URLs, which rules the dock's plain-http origin out for
-     Studio specifically. Pages-hosted overlays still get their events — jjx-core's
-     dockBase() defaults any non-local origin to http://127.0.0.1:4317, and Chrome
-     treats 127.0.0.1 as potentially trustworthy so neither the ws:// socket nor the
-     hydration fetch is mixed-content-blocked (Test C). The dock must be RUNNING for
-     events to exist either way; ?dock=/#dock= stays available as an override.
-
-     DOCK_BASE remains the right origin for operator pages opened in plain Chrome
-     (wheel-control, stream-dock, tracker) — same-origin with the dock's API. */
-  var BASE = "https://jjxlive-repo.github.io/overlays/";
-  var DOCK_BASE = "http://127.0.0.1:4317/overlays/";
+  /* SERVE OVERLAYS FROM THE DOCK (local). Every overlay takes its events from the
+     dock's local socket (/overlay-ws via jjx-core's dockRealtime); serving the pages
+     from the same origin keeps everything on this PC with nothing in the way. */
+  var BASE = "http://127.0.0.1:4317/overlays/";
   var OVERLAYS = [
     { name: "Gift Bar", file: "gift-bar.html" },
     { name: "Gesture Suite", file: "gesture-suite-overlay.html", version: "5" },
