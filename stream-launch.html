@@ -582,18 +582,21 @@ document.getElementById("session-save").addEventListener("click", function () {
 
 (function () {
   "use strict";
-  /* STUDIO SOURCES COME FROM GITHUB PAGES AGAIN (2026-07-30): TikTok Studio requires
-     https:// browser-source URLs, which rules the dock's plain-http origin out for
-     Studio specifically. Pages-hosted overlays still get their events — jjx-core's
-     dockBase() defaults any non-local origin to http://127.0.0.1:4317, and Chrome
-     treats 127.0.0.1 as potentially trustworthy so neither the ws:// socket nor the
-     hydration fetch is mixed-content-blocked (Test C). The dock must be RUNNING for
-     events to exist either way; ?dock=/#dock= stays available as an override.
+  /* SERVE OVERLAYS FROM THE DOCK, NOT GITHUB PAGES (changed 2026-07-24).
+     Every overlay now takes its events from the dock's local socket (/overlay-ws, via jjx-core's
+     dockRealtime). That resolver returns location.origin when the page is served from localhost,
+     so a dock-hosted overlay connects straight back to the dock with nothing in the way.
 
-     DOCK_BASE remains the right origin for operator pages opened in plain Chrome
-     (wheel-control, stream-dock, tracker) — same-origin with the dock's API. */
-  var BASE = "https://jjxlive-repo.github.io/overlays/";
-  var DOCK_BASE = "http://127.0.0.1:4317/overlays/";
+     Served from Pages instead, the page is a PUBLIC origin reaching a PRIVATE address, which
+     Chrome's Private Network Access rules can refuse — and since Ably was disabled (the account
+     is cancelled) there is no longer a fallback to catch that. A refused Pages-hosted overlay now
+     renders nothing and reports nothing. The dock must be running for events to exist at all, so
+     hosting the page there costs nothing and removes the failure mode entirely.
+
+     PAGES_BASE stays as an emergency copy if the dock is dead — it will render but receive no
+     events. Append ?dock=http://127.0.0.1:4317 to force its socket target. */
+  var BASE = "http://127.0.0.1:4317/overlays/";
+  var PAGES_BASE = "https://jjxlive-repo.github.io/overlays/";
   var OVERLAYS = [
     { name: "Gift Bar", file: "gift-bar.html" },
     { name: "Gesture Suite", file: "gesture-suite-overlay.html", version: "5" },
