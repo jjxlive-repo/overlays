@@ -607,7 +607,24 @@ const WHEEL_SEG = {
   takeover: ['#C084FC', '#7C2D9C'], legend: ['#FFE07A', '#E0A80D'],
 };
 const EFFECT_GLYPH = { stamp: '✦', flood: '◒', crack: '◆', ball: '●', money: '$', meteor: '✶' };
-const REEL_STYLE = new URLSearchParams(location.search).get('reel') === 'slot' ? 'slot' : 'wheel';
+/* Operator-tunable reel config. The URL param is only the pre-hydrate default;
+   dock settings win (snapshot hydrate), and wheel-control's `wheel.reel-config`
+   publish applies live without a reload. Offsets move the reel's centre off
+   (540, 700); scale resizes around that centre. Applied per spin — the reel is
+   rebuilt for every run, so a change shows on the next spin. */
+const reelCfg = {
+  style: new URLSearchParams(location.search).get('reel') === 'slot' ? 'slot' : 'wheel',
+  offsetX: 0, offsetY: 0, scale: 1,
+};
+function applyReelConfig(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  if (cfg.style === 'wheel' || cfg.style === 'slot') reelCfg.style = cfg.style;
+  const n = (v, lo, hi) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : null);
+  const x = n(cfg.offsetX, -400, 400); if (x !== null) reelCfg.offsetX = x;
+  const y = n(cfg.offsetY, -500, 500); if (y !== null) reelCfg.offsetY = y;
+  const s = n(cfg.scale, 0.3, 1.5); if (s !== null) reelCfg.scale = s;
+}
+window.applyReelConfig = applyReelConfig;   // exercised by wheel-control's live path
 /** Reel duration derives from gift value: smaller gift = quicker reel (450–2800ms). */
 function giftPower(value) { return Math.min(1, Math.max(0, Math.log10(1 + (Number(value) || 0)) / Math.log10(5001))); }
 function reelDuration(value) { return Math.round(450 + giftPower(value) * 2350); }
@@ -984,15 +1001,27 @@ function startSpinning(run) {
 
   const tier = spin.tier, idx = Math.max(0, TIER_ORDER.indexOf(tier));
   const dur = reelDuration(spin.gift?.totalValue);
-  const cx = 540, cy = 700;
+  // Operator offsets move the reel's centre; scale resizes around it (reelCfg).
+  const cx = 540 + reelCfg.offsetX, cy = 700 + reelCfg.offsetY;
   const rnodes = [];
   const rmk = (css, parent) => {
     const d = document.createElement('div');
     d.style.cssText = css;
-    runNode(run, parent || laneWheel, d);
+    runNode(run, parent || reelRoot, d);
     rnodes.push(d);
     return d;
   };
+  /* One scaled root for every reel node. Scale CANNOT go on the wheel/card
+     itself — om-pop animates transform on those with fill:both, so it would
+     overwrite any scale set there the moment the entrance animation ends. */
+  const reelRoot = (() => {
+    const d = document.createElement('div');
+    d.style.cssText = `position:absolute;left:0;top:0;width:1080px;height:1920px;` +
+      `transform-origin:${cx}px ${cy}px;transform:scale(${reelCfg.scale})`;
+    runNode(run, laneWheel, d);
+    rnodes.push(d);
+    return d;
+  })();
   const fadeReel = () => {
     runTimer(run, () => rnodes.forEach((n) => { n.style.transition = 'opacity .35s ease'; n.style.opacity = '0'; }), dur + 700);
     runTimer(run, () => rnodes.forEach((n) => { n.remove(); run.nodes.delete(n); }), dur + 1100);
@@ -1017,7 +1046,7 @@ function startSpinning(run) {
   };
   publishFx('jamie-cue', { cue: 'anticipate', result: spin.result, tier, eventId: spin.eventId });
 
-  if (REEL_STYLE === 'slot') {
+  if (reelCfg.style === 'slot') {
     const H = 104, W = 420, reps = 8;
     pill(cy - H / 2 - 92);
     const card = rmk(`position:absolute;z-index:60;left:${cx - W / 2 - 14}px;top:${cy - H / 2 - 14}px;width:${W + 28}px;height:${H + 28}px;` +
@@ -3047,6 +3076,10 @@ function connect() {
       if (p) onWheelSpin({ ...p, preview: true });
     });
     ch.subscribe('wheel.clear', () => clearWheelEffects());
+    // Live reel tuning from wheel-control (style / offsets / scale). Takes effect on
+    // the next spin — the reel is rebuilt per run. Persistence is the dock settings
+    // save; this channel exists so tuning shows without waiting for a reload.
+    ch.subscribe('wheel.reel-config', (msg) => applyReelConfig(msg.data));
     hydrate();
     // Head tracking rides the same socket on its own channel (contract 2). It is a
     // continuous stream, so it stays OFF the batched publish path and off Ably.
@@ -3164,6 +3197,10 @@ async function hydrate() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const snap = await res.json();
     hydrated = true;
+
+    // Operator reel settings (style / offsets / scale) — applied before anything
+    // replays so a resumed spin already renders with the configured reel.
+    applyReelConfig(snap.reel);
 
     // Rebuild the wall SILENTLY. These bricks were laid minutes ago; dropping 33
     // of them again on load would read as 33 new supporters arriving at once.
