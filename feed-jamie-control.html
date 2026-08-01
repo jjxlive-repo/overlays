@@ -286,7 +286,6 @@
     <div class="card-h">Fire a test</div>
     <div id="test-row"></div>
   </div>
-  <div id="live-goals" class="stack"></div>
   <div class="card" id="log-card">
     <div class="card-h">Event log</div>
     <div id="log-rows"><div class="note">nothing yet — events and test fires land here</div></div>
@@ -300,7 +299,7 @@
     <button data-tab="canvas" class="active">Canvas</button>
     <button data-tab="copy">Copy</button>
     <button data-tab="rules">Rules</button>
-    <button data-tab="gifts">Gifts &amp; Goals</button>
+    <button data-tab="gifts">Gifts &amp; Game</button>
     <button data-tab="look">Look &amp; Sound</button>
     <button data-tab="adv">Advanced</button>
   </div>
@@ -346,13 +345,18 @@
       <textarea id="gift-editor" spellcheck="false" style="margin-top:6px;"></textarea>
       <div class="btnrow"><button onclick="applyGiftMappings()">Apply JSON</button></div>
     </details>
-    <div class="card-h" style="margin:16px 0 8px;">Milestone goals</div>
-    <div id="milestones-controls"></div>
-    <div id="setup-goals"></div>
+    <div class="card-h" style="margin:16px 0 8px;">Points &amp; XP game</div>
+    <div class="note">Viewers earn points for free engagement (chatting, likes, follows, shares, waving), spend them on <b>!spin</b> (or !spin2/3/4 for pricier tiers with better odds), and every win levels Jamie up. Keyword throws can cost points too. Wheel position is on Canvas.</div>
+    <div id="game-controls"></div>
     <div class="btnrow">
-      <button class="primary" onclick="addGoal()">➕ Add goal</button>
-      <button class="warn" onclick="if(confirm('Reset all milestone totals (likes + comments) back to 0?')) send({cmd:'MILESTONE_RESET'})">↩ Reset totals</button>
+      <button onclick="send({cmd:'POINTS_ADD', data:{username:testUser(), amount:500}}); addLog('🪙 +500 pts → tester')">🪙 +500 pts to tester</button>
+      <button onclick="send({cmd:'SPIN_TEST', data:{tier:1, username:testUser()}}); addLog('🎡 test !spin')">🎡 !spin</button>
+      <button onclick="send({cmd:'SPIN_TEST', data:{tier:4, username:testUser()}}); addLog('🎡 test !spin4')">🎡 !spin4</button>
+      <button onclick="send({cmd:'XP_ADD', data:{amount:50}}); addLog('✨ +50 XP')">✨ +50 XP</button>
+      <button class="warn" onclick="if(confirm('Reset Jamie XP to 0?')) send({cmd:'XP_RESET'})">↩ Reset XP</button>
+      <button class="warn" onclick="if(confirm('Wipe EVERY viewer point balance? This is their earned loyalty — there is no undo.')) send({cmd:'POINTS_RESET'})">⚠ Wipe all points</button>
     </div>
+    <div id="game-status" class="note">game: waiting for overlay…</div>
   </div>
 
   <!-- Look & Sound tab -->
@@ -367,7 +371,7 @@
 
   <!-- Advanced tab -->
   <div id="tab-adv" class="hidden">
-    <div class="note" style="margin-bottom:10px;">Rarely-touched settings live here — reach zone geometry, movement physics, asset overrides, audio timing, Splatty Squad rules, presets.</div>
+    <div class="note" style="margin-bottom:10px;">Rarely-touched settings live here — reach zone geometry, movement physics, asset overrides, audio timing, presets.</div>
     <details class="adv"><summary>Reach zone <span class="sub">· catch geometry</span></summary><div class="body" id="adv-reach"></div></details>
     <details class="adv"><summary>Movement physics <span class="sub">· speeds, spin, lifetimes</span></summary><div class="body" id="adv-movement"></div></details>
     <details class="adv"><summary>Jamie growth <span class="sub">· size per catch</span></summary><div class="body" id="adv-growth"></div></details>
@@ -381,16 +385,6 @@
       <div id="asset-list"></div>
     </div></details>
     <details class="adv"><summary>Audio timing <span class="sub">· cooldown (volumes are in Look &amp; Sound)</span></summary><div class="body" id="adv-audio"></div></details>
-    <details class="adv"><summary>Splatty Squad <span class="sub">· rules — placement is on Canvas</span></summary><div class="body" id="adv-squad">
-      <div id="squad-toggles"></div>
-      <div class="btnrow">
-        <button onclick="send({cmd:'SQUAD_TEST_GIFT', data:{platform:'tiktok', amount:300, username:testUser()}}); addLog('🎡 squad test — TT 300c')">🎡 Test TT 300c</button>
-        <button onclick="send({cmd:'SQUAD_TEST_GIFT', data:{platform:'youtube', amount:800, username:testUser()}}); addLog('🎡 squad test — YT 800💎')">🎡 Test YT 800💎</button>
-        <button onclick="send({cmd:'SQUAD_ADD_CARE', data:{usd: +(prompt('Add care $ (e.g. 5 = 1000 coins)','5')||0)}})">+ CARE</button>
-        <button class="warn" onclick="if(confirm('Reset squad roster + Jamie tier?')) send({cmd:'SQUAD_RESET'})">RESET SQUAD</button>
-      </div>
-      <div id="sq-status" class="note">squad: waiting for overlay…</div>
-    </div></details>
     <details class="adv"><summary>Debug &amp; force <span class="sub">· guides, forced outcomes, extra tests</span></summary><div class="body" id="adv-debug">
       <div class="btnrow">
         <button onclick="send({cmd:'FORCE_JACKPOT'})">★ Force corner jackpot</button>
@@ -454,27 +448,31 @@ const FJ_DEFAULT_CONFIG = {
     intensityThresholds: { l2: 50, l3: 250, l4: 500, l5: 1000 },
     instantFeed: { enabled: true, maxCoins: 1 },
     giftMappings: [],
-    superchat: { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } },
-    milestones: {
-      enabled: true, scale: 1,
-      goals: [
-        { id: 'goal-likes', label: 'Like Goal', counter: 'likes', target: 1000, baseValue: 0,
-          action: 'heartme', autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
-          enabled: true, completed: false, x: 540, y: 1740 },
-        { id: 'goal-comments', label: 'Comment Goal', counter: 'comments', target: 50, baseValue: 0,
-          action: 'jackpot', autoEscalate: true, escalateMode: 'multiply', escalateAmount: 50, escalateFactor: 2,
-          enabled: true, completed: false, x: 540, y: 1840 }
-      ]
-    }
+    superchat: { enabled: true, thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 }, sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 } }
   },
+  /* the points → !spin → XP game (mirror of the overlay's defaults) */
+  game: {
+    enabled: true,
+    points: {
+      perComment: 5, commentCooldownSec: 60, likesPerPoint: 10,
+      followBonus: 100, shareBonus: 50, subscribeBonus: 200,
+      waveBonus: 10, waveCooldownSec: 120,
+      waveKeywords: 'wave, hi jamie, hey jamie, 👋',
+      keywordCost: 10, balanceCommand: true
+    },
+    spin: { costs: [50, 150, 400, 1000], baseXp: [10, 25, 60, 150], perUserCooldownSec: 10, maxQueued: 5 },
+    xp: { thresholds: [100, 250, 500, 1000, 2000, 4000], auraEnabled: true },
+    xpTag: { enabled: true, offsetY: 12, scale: 1 }
+  },
+  wheel: { enabled: true, x: 540, y: 0, size: 300, spinMs: 2100, holdMs: 900 },
   prompts: {
     enabled: true, intervalSec: 4, x: 540, y: 110, scale: 1, opacity: 1, bgOpacity: 0.45,
-    /* No emoji — this copy now feeds the HUD card's 250px ribbon. */
-    list: ['SAY BALL · TREAT · TOY', 'HEART ME = BIG REACTION', 'FOLLOW TO FEED JAMIE']
+    /* No emoji — this copy feeds the ribbon's fixed-width slot. */
+    list: ['LEVEL JAMIE UP — !SPIN', 'CHAT + WAVE = EARN PTS', 'SAY BALL · TREAT · TOY']
   },
-  /* HUD goal card — Jamie sticker + LVL n/6 + rotating CTA ribbon. While it is
-     on it replaces the prompt pill and the squad care meter on the overlay, so
-     the canvas hides those two chips (see buildEls). */
+  /* CTA ribbon — the HUD card condensed to one purple rotating row. While it
+     is on it replaces the prompt pill on the overlay, so the canvas hides that
+     chip (see buildEls). */
   hud: { enabled: true, x: 0, y: 430, scale: 1 },
   copy: {
     follow: '@{username} threw Jamie a ball! 🎾',
@@ -483,13 +481,18 @@ const FJ_DEFAULT_CONFIG = {
     jackpot: '@{username} triggered a Jamie JACKPOT! 🌟',
     jackpotGift: '@{username} triggered a JACKPOT with {gift}! 🌟',
     subscribe: '@{username} unlocked Jamie’s golden ball! ⭐',
-    milestoneReached: '🎯 {goal} reached! ({total} {counter})',
     likeMeter: '🦴 {current}/{target}',
     pluck: 'YOURS! 🤏',
     giftSignFallback: 'THROW {item}',
-    wheelSpinUser: '@{username} spins the treat wheel…',
+    wheelSpinUser: '@{username} spins for Jamie…',
     wheelSpinAnon: 'treat wheel…',
-    wheelWin: '{winner} won a {item}!'
+    wheelWin: '{winner} won a {item} · +{xp} XP!',
+    wheelBust: '{winner} — BUST! Jamie keeps the {item} 😅',
+    pointsBalance: '@{username} · {pts} pts',
+    needPoints: '@{username} needs {cost} pts — chat to earn!',
+    wheelBusy: '@{username} — wheel queue is full, hold on!',
+    levelUp: 'JAMIE LEVELED UP → LVL {level}! 🎉',
+    xpGain: '+{xp} XP'
   },
   visuals: {
     usernameLabels: true, likeMeter: true, particleLevel: 'low', blueAccent: true, stickerBorder: true, highContrast: false,
@@ -542,41 +545,11 @@ let CFG = fjClone(FJ_DEFAULT_CONFIG);
 try { const s = JSON.parse(localStorage.getItem(FJ_LS_CONFIG) || 'null'); if (s) CFG = fjDeepMerge(CFG, s); } catch (e) {}
 if (!CFG.copy || typeof CFG.copy !== 'object') CFG.copy = fjClone(FJ_DEFAULT_CONFIG.copy);
 
-/* control-side mirror of the overlay's Splatty Squad config. The overlay owns
-   the real copy (feedJamie.squad.cfg.v1) and deep-merges SQUAD_CONFIG partials
-   into it, so we only ever SEND the keys the user touched here. */
-const SQC_LS = 'feedJamie.squadCtl.v1';
-let SQC = {
-  enabled: true,
-  crowd: { x: 890, y: 0 },
-  wheel: { enabled: true, x: 540, y: 0, size: 300, minCoins: 1 },
-  tiers: { enabled: true, decayPerMin: 0.4, meterX: 260, meterY: 0, meterScale: 1,
-           labelZero: 'FEED JAMIE!', labelPrefix: 'JAMIE LVL',
-           labelMax: 'MAX LEVEL',
-           labelNext: '{current} / {target}',
-           tierNames: '1, 2, 3, 4, 5, 6' },
-};
-let sqcSeeded = false;
-try { const s = JSON.parse(localStorage.getItem(SQC_LS) || 'null'); if (s) { SQC = fjDeepMerge(SQC, s); sqcSeeded = true; } } catch (e) {}
-if (SQC.tiers.tierNames === 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC') {
-  SQC.tiers.tierNames = 'T1, T2, T3, T4, T5, T6';
-}
-if (SQC.tiers.labelPrefix === 'JAMIE IS') SQC.tiers.labelPrefix = 'JAMIE DRIP';
-if (SQC.tiers.labelNext === '{coins} coins to {tier}') SQC.tiers.labelNext = '{coins} coins to level up';
-if (SQC.tiers.tierNames === 'T1, T2, T3, T4, T5, T6') SQC.tiers.tierNames = '1, 2, 3, 4, 5, 6';
-if (SQC.tiers.labelPrefix === 'JAMIE DRIP') SQC.tiers.labelPrefix = 'JAMIE LVL';
-if (SQC.tiers.labelNext === '{coins} coins to level up') SQC.tiers.labelNext = '{current} / {target}';
-if (SQC.tiers.labelMax === 'MAX DRIP — keep him there!') SQC.tiers.labelMax = 'MAX LEVEL';
-try { localStorage.setItem(SQC_LS, JSON.stringify(SQC)); } catch (e) {}
-let sqTimer = null, sqPending = {};
-function sqPush(partial) {
-  SQC = fjDeepMerge(SQC, partial);
-  sqPending = fjDeepMerge(sqPending, partial);
-  sqcSeeded = true;
-  try { localStorage.setItem(SQC_LS, JSON.stringify(SQC)); } catch (e) {}
-  clearTimeout(sqTimer);
-  sqTimer = setTimeout(() => { send({ cmd: 'SQUAD_CONFIG', data: sqPending }); sqPending = {}; }, 120);
-}
+/* The Splatty Squad's control-side mirror (SQC/sqPush) is gone with the squad
+   itself (2026-08-01): the game's settings live in CFG.game/CFG.wheel and ride
+   the ordinary CONFIG_UPDATE push like everything else.
+   Stale keys left in this browser: feedJamie.squadCtl.v1 (harmless). */
+try { localStorage.removeItem('feedJamie.squadCtl.v1'); } catch (e) {}
 
 /* ── COMMS ─────────────────────────────────────────────────────── */
 let bc = null, ably = null, ablyChannel = null;
@@ -737,33 +710,18 @@ function renderStatus(s) {
   $id('st-likes').textContent = `${s.likeProgress ?? 0} / ${s.likesPerTreat ?? '?'}`;
   $id('st-growth').textContent = s.growth ? s.growth.toFixed(2) + '×' : '—';
   syncKillButtons();
-  if (s.squad) {
-    const sq = s.squad;
-    $id('sq-status').textContent =
-      `Jamie: Lvl ${sq.tier} · care $${sq.careUsd} (decay ${sq.decayPerMin}/min) · ` +
-      `${sq.gifterCount} gifters · top: ${sq.topTreater ? sq.topTreater.name + ' ($' + sq.topTreater.usd + ')' : '—'}`;
-    /* first contact with no saved control-side copy: adopt the overlay's rule
-       values so the Advanced toggles don't show stale defaults */
-    if (!sqcSeeded) {
-      SQC.enabled = !!sq.enabled;
-      SQC.wheel.enabled = !!sq.wheel;
-      SQC.tiers.enabled = !!sq.tiers;
-      SQC.tiers.decayPerMin = +sq.decayPerMin || SQC.tiers.decayPerMin;
-      if (sq.copy) SQC.tiers = fjDeepMerge(SQC.tiers, sq.copy);
-      sqcSeeded = true;
-      renderSquadToggles();
-      renderCopyEditor();
-    }
+  if (s.game) {
+    const g = s.game;
+    const top = (g.topPoints || []).map(v => `${v.name} (${v.pts})`).join(' · ') || '—';
+    $id('game-status').textContent =
+      `Jamie: LVL ${g.level}/${g.maxLevel} · ${(g.xp ?? 0).toLocaleString()}xp` +
+      (g.nextAt ? ` (next @ ${g.nextAt.toLocaleString()})` : ' (MAX)') +
+      ` · spins queued: ${g.queuedSpins || 0} · ${g.viewerCount || 0} viewers hold points · top: ${top}`;
   }
   const wn = $id('warnings-note');
   wn.textContent = (s.warnings && s.warnings.length)
     ? `⚠ ${s.warnings.length} asset warning(s) — placeholder art in use. See Setup → Advanced → Assets.` : '';
   if (s.assetAvailable) { lastAssetMap = s.assetAvailable; refreshAssetStatuses(); }
-  if (s.milestoneTotals) {
-    window.lastMilestoneTotals = s.milestoneTotals;
-    window.lastMilestoneGoalStates = s.milestoneGoalStates || [];
-    updateGoalProgress();
-  }
 }
 setInterval(() => {
   if (Date.now() - lastStatusAt > 6000) setDot('overlay', false, 'no status');
@@ -922,7 +880,19 @@ const COPY_GROUPS = [
       ['Jackpot', 'jackpot', '{username}'],
       ['Jackpot from a gift', 'jackpotGift', '{username}, {gift}'],
       ['Subscription', 'subscribe', '{username}'],
-      ['Goal reached', 'milestoneReached', '{goal}, {total}, {counter}']
+      ['Level up', 'levelUp', '{level}']
+    ]
+  },
+  {
+    title: 'Points & spins',
+    note: 'Chat-facing replies for the points game and the wheel.',
+    fields: [
+      ['Wheel spinning', 'wheelSpinUser', '{username}'],
+      ['Wheel win', 'wheelWin', '{winner}, {item}, {xp}'],
+      ['Wheel bust', 'wheelBust', '{winner}, {item}'],
+      ['Wheel queue full', 'wheelBusy', '{username}'],
+      ['!points reply', 'pointsBalance', '{username}, {pts}'],
+      ['Not enough points', 'needPoints', '{username}, {cost}']
     ]
   },
   {
@@ -978,15 +948,7 @@ function renderCopyEditor() {
   if (!host) return;
   host.innerHTML = '';
 
-  const drip = copyCard('Jamie level meter', 'The headline uses the current level number. Keep {current} and {target} in the meter text to show live coin progress.');
-  copyField(drip, 'Empty meter', SQC.tiers.labelZero, { name: 'data-sq-copy', value: 'labelZero' }, 'no tokens');
-  copyField(drip, 'Tier headline prefix', SQC.tiers.labelPrefix, { name: 'data-sq-copy', value: 'labelPrefix' }, 'no tokens');
-  copyField(drip, 'Meter numbers', SQC.tiers.labelNext, { name: 'data-sq-copy', value: 'labelNext' }, '{current}, {target}');
-  copyField(drip, 'Max tier line', SQC.tiers.labelMax, { name: 'data-sq-copy', value: 'labelMax' }, 'no tokens');
-  copyField(drip, 'Level numbers — six, comma separated', SQC.tiers.tierNames, { name: 'data-sq-copy', value: 'tierNames' }, 'no tokens');
-  host.appendChild(drip);
-
-  const prompts = copyCard('Rotating prompts', 'One prompt per line. These rotate through the HUD card’s CTA ribbon (or the prompt pill, if the card is off). Keep them short — the ribbon is a fixed 250px slot and long lines shrink to fit.');
+  const prompts = copyCard('Rotating prompts', 'One prompt per line. These rotate through the CTA ribbon (or the prompt pill, if the ribbon is off). Keep them short — the ribbon is a fixed 250px slot and long lines shrink to fit.');
   const ta = document.createElement('textarea');
   ta.id = 'prompt-editor';
   ta.spellcheck = true;
@@ -1009,14 +971,9 @@ function applyCopyEditor() {
   document.querySelectorAll('[data-copy-key]').forEach(inp => {
     CFG.copy[inp.dataset.copyKey] = inp.value;
   });
-  const tierCopy = {};
-  document.querySelectorAll('[data-sq-copy]').forEach(inp => {
-    tierCopy[inp.dataset.sqCopy] = inp.value;
-  });
   const promptEditor = $id('prompt-editor');
   if (promptEditor) CFG.prompts.list = promptEditor.value.split('\n').map(s => s.trim()).filter(Boolean);
   pushConfig();
-  sqPush({ tiers: tierCopy });
   renderCanvas();
   const s = $id('copy-save-status');
   if (s) { s.textContent = 'Saved to Jamie overlay'; s.style.color = 'var(--light)'; }
@@ -1024,16 +981,7 @@ function applyCopyEditor() {
 function resetCopyEditor() {
   CFG.copy = fjClone(FJ_DEFAULT_CONFIG.copy);
   CFG.prompts.list = FJ_DEFAULT_CONFIG.prompts.list.slice();
-  const t = {
-    labelZero: 'FEED JAMIE!',
-    labelPrefix: 'JAMIE LVL',
-    labelNext: '{current} / {target}',
-    labelMax: 'MAX LEVEL',
-    tierNames: '1, 2, 3, 4, 5, 6'
-  };
-  SQC.tiers = fjDeepMerge(SQC.tiers, t);
   pushConfig();
-  sqPush({ tiers: t });
   renderCopyEditor();
   renderCanvas();
   const s = $id('copy-save-status');
@@ -1061,16 +1009,16 @@ function buildEls() {
      controls that do nothing. */
   if (hudOn()) {
     els.push({
-      id: 'hud', name: 'Feed Jamie card', label: 'FEED JAMIE · LVL',
-      hint: 'The goal card: level counter and the rotating CTA ribbon. Drag it flush to a screen edge and it drops that side’s border. Level comes from the care tier; CTA copy is in Look & Sound.',
+      id: 'hud', name: 'CTA ribbon', label: 'LEVEL JAMIE UP — !SPIN',
+      hint: 'The rotating purple CTA row. Drag it flush to a screen edge and it drops that side’s border. The prompt list is in Look & Sound; Jamie’s level shows on the XP tag under him.',
       box: () => {
         const s = clamp(Number(CFG.hud.scale) || 1, 0.5, 2.5);
-        return { w: 250 * s, h: 100 * s, cx: (CFG.hud.x || 0) + 125 * s, cy: (CFG.hud.y || 430) + 50 * s };
+        return { w: 250 * s, h: 40 * s, cx: (CFG.hud.x || 0) + 125 * s, cy: (CFG.hud.y || 430) + 20 * s };
       },
       setPos: (x, y) => {
         const s = clamp(Number(CFG.hud.scale) || 1, 0.5, 2.5);
         CFG.hud.x = clamp(Math.round(x - 125 * s), 0, OW - Math.round(250 * s));
-        CFG.hud.y = clamp(Math.round(y - 50 * s), 0, OH - Math.round(100 * s));
+        CFG.hud.y = clamp(Math.round(y - 20 * s), 0, OH - Math.round(40 * s));
         pushConfig();
       },
       scale: () => clamp(Number(CFG.hud.scale) || 1, 0.5, 2.5),
@@ -1113,21 +1061,6 @@ function buildEls() {
     setScale: s => { CFG.visuals.giftShowcase.width = clamp(Math.round(365 * s), 100, 520); pushConfig(); },
     vis: () => !!CFG.visuals.giftShowcase.enabled, setVis: v => { CFG.visuals.giftShowcase.enabled = v; pushConfig(); },
   });
-  for (const g of (CFG.events.milestones.goals || [])) {
-    els.push({
-      id: 'goal:' + g.id, name: g.label || 'Goal bar', pill: true,
-      label: (g.counter === 'comments' ? '💬' : '❤️') + ' ' + (g.label || 'GOAL'),
-      hint: 'Milestone bar. Target, action & escalation are in Gifts & Goals. Scale is shared by every goal bar.',
-      box: () => {
-        const s = CFG.events.milestones.scale || 1;
-        return { w: 560 * s, h: 70 * s, cx: g.x ?? 540, cy: g.y ?? 1790 };
-      },
-      setPos: (x, y) => { g.x = x; g.y = y; pushConfig(); },
-      scale: () => CFG.events.milestones.scale || 1,
-      setScale: s => { CFG.events.milestones.scale = s; pushConfig(); },
-      vis: () => g.enabled !== false, setVis: v => { g.enabled = v; pushConfig(); renderSetupGoals(); renderLiveGoals(); },
-    });
-  }
   els.push({
     id: 'jamie', name: 'Jamie', img: 'assets/feed-jamie/jamie-idle-01-in.png?v=' + FJ_CACHE_BUST,
     hint: 'Drag Jamie anywhere — across the floor, or up and down off it (that is jamie.yOffset). Scale changes his size and his reach zone follows.',
@@ -1150,44 +1083,18 @@ function buildEls() {
     vis: null, setVis: null,
   });
   els.push({
-    id: 'crowd', name: 'Squad crowd', squad: true, label: '🐾 SPLATTY SQUAD',
-    hint: 'Gifters join the squad and their splatties hang out here (feet on this box’s bottom edge). Roster, decay and reset live in Advanced → Splatty Squad.',
+    id: 'wheel', name: 'Treat wheel', squad: true, label: '🎡 TREAT WHEEL',
+    hint: 'Pops when a viewer spends points on !spin (costs and payouts are in Gifts & Game). Drag it clear of Jamie’s bounce area.',
     box: () => {
-      const baseY = SQC.crowd.y || floorSafe();
-      return { w: 340, h: 190, cx: SQC.crowd.x + 105, cy: baseY - 95 };
+      const size = CFG.wheel.size || 300;
+      const cy = CFG.wheel.y || (Math.max(30, floorSafe() * 0.32 - size / 2) + size / 2);
+      return { w: size, h: size, cx: CFG.wheel.x, cy };
     },
-    setPos: (x, y) => sqPush({ crowd: { x: Math.round(x - 105), y: Math.round(y + 95) } }),
-    scale: null, setScale: null,
-    vis: () => !!SQC.enabled, setVis: v => sqPush({ enabled: v }),
+    setPos: (x, y) => { CFG.wheel.x = Math.round(x); CFG.wheel.y = Math.round(y); pushConfig(); },
+    scale: () => (CFG.wheel.size || 300) / 300,
+    setScale: s => { CFG.wheel.size = clamp(Math.round(300 * s), 150, 600); pushConfig(); },
+    vis: () => !!CFG.wheel.enabled, setVis: v => { CFG.wheel.enabled = v; pushConfig(); },
   });
-  els.push({
-    id: 'wheel', name: 'Prize wheel', squad: true, label: '🎡 PRIZE WHEEL',
-    hint: 'Spins on qualifying gifts (min coins in Advanced → Splatty Squad). Drag it clear of Jamie’s bounce area.',
-    box: () => {
-      const size = SQC.wheel.size || 300;
-      const cy = SQC.wheel.y || (Math.max(30, floorSafe() * 0.32 - size / 2) + size / 2);
-      return { w: size, h: size, cx: SQC.wheel.x, cy };
-    },
-    setPos: (x, y) => sqPush({ wheel: { x: Math.round(x), y: Math.round(y) } }),
-    scale: () => (SQC.wheel.size || 300) / 300,
-    setScale: s => sqPush({ wheel: { size: clamp(Math.round(300 * s), 150, 600) } }),
-    vis: () => !!SQC.wheel.enabled, setVis: v => sqPush({ wheel: { enabled: v } }),
-  });
-  if (!hudOn()) {
-    els.push({
-      id: 'care', name: 'Care meter', squad: true, label: "💧 JAMIE'S DRIP",
-      hint: 'Compact Jamie level card with one full-width progress bar labeled current coins / next-level target. Drag to position it, then use Scale in the inspector.',
-      box: () => {
-        const top = SQC.tiers.meterY || floorSafe() + 14;
-        const scale = clamp(Number(SQC.tiers.meterScale) || 1, 0.5, 2);
-        return { w: 300 * scale, h: 78 * scale, cx: SQC.tiers.meterX, cy: top + 39 };
-      },
-      setPos: (x, y) => sqPush({ tiers: { meterX: Math.round(x), meterY: Math.round(y - 39) } }),
-      scale: () => clamp(Number(SQC.tiers.meterScale) || 1, 0.5, 2),
-      setScale: s => sqPush({ tiers: { meterScale: clamp(s, 0.5, 2) } }),
-      vis: () => !!SQC.tiers.enabled, setVis: v => sqPush({ tiers: { enabled: v } }),
-    });
-  }
   return els;
 }
 let sel = 'jamie', dragSess = null;
@@ -1296,7 +1203,7 @@ function renderInspector() {
     rng.oninput = () => { CFG.floor.y = +rng.value; pushConfig(); renderCanvas(); };
     card.appendChild(rng);
     const hint = document.createElement('div'); hint.className = 'hint';
-    hint.textContent = 'Where items land and Jamie stands. Jamie, the gift sign and the squad crowd ride along when it moves. Invisible on stream unless the checkbox above is on.';
+    hint.textContent = 'Where items land and Jamie stands. Jamie, the gift sign and the XP tag ride along when it moves. Invisible on stream unless the checkbox above is on.';
     card.appendChild(hint);
     return;
   }
@@ -1555,135 +1462,49 @@ function applyGiftMappings() {
 loadGiftCatalog();
 $id('gift-editor').value = JSON.stringify(CFG.events.giftMappings || [], null, 1);
 
-/* ── milestone goals ── */
-const GOAL_COUNTER_CHOICES = [['likes', '❤️ Total likes'], ['comments', '💬 Total comments']];
-const GOAL_ACTION_CHOICES = [...GIFT_ITEM_CHOICES, ['jackpot', '🌟 JACKPOT reaction (gold)']];
+/* ── Points & XP game controls ── */
 (function () {
-  const p = $id('milestones-controls');
-  toggle(p, 'Milestone goals enabled', 'events.milestones.enabled');
-  slider(p, 'Bar scale (every goal)', 'events.milestones.scale', 0.4, 2.5, 0.05, v => (+v).toFixed(2) + '×');
+  const p = $id('game-controls');
+  toggle(p, 'Game enabled', 'game.enabled');
+  noteEl(p, '<b>Earning (all free engagement):</b>');
+  slider(p, 'Points per chat message', 'game.points.perComment', 0, 50, 1, v => '+' + v);
+  slider(p, 'Chat credit cooldown', 'game.points.commentCooldownSec', 5, 600, 5, v => v + 's');
+  slider(p, 'Likes per point', 'game.points.likesPerPoint', 1, 100, 1, v => v + ' likes');
+  numberInput(p, 'Follow bonus', 'game.points.followBonus', 0, 100000);
+  numberInput(p, 'Share bonus', 'game.points.shareBonus', 0, 100000);
+  numberInput(p, 'Subscribe bonus', 'game.points.subscribeBonus', 0, 100000);
+  numberInput(p, 'Wave bonus', 'game.points.waveBonus', 0, 100000);
+  slider(p, 'Wave cooldown', 'game.points.waveCooldownSec', 5, 600, 5, v => v + 's');
+  gameTextInput(p, 'Wave keywords (comma separated)', 'game.points.waveKeywords');
+  noteEl(p, '<b>Spending:</b>');
+  slider(p, 'Keyword throw cost (ball/treat/toy)', 'game.points.keywordCost', 0, 500, 5, v => v + ' pts');
+  toggle(p, '!points balance replies', 'game.points.balanceCommand');
+  noteEl(p, '<b>!spin tiers — cost and base XP (wedge multiplier x0-x5 applies on top):</b>');
+  for (let i = 0; i < 4; i++) {
+    numberInput(p, `!spin${i + 1} cost`, `game.spin.costs.${i}`, 1, 1000000);
+    numberInput(p, `!spin${i + 1} base XP`, `game.spin.baseXp.${i}`, 1, 100000);
+  }
+  slider(p, 'Per-viewer spin cooldown', 'game.spin.perUserCooldownSec', 0, 120, 1, v => v + 's');
+  slider(p, 'Max queued spins', 'game.spin.maxQueued', 1, 12, 1);
+  noteEl(p, '<b>Jamie XP:</b>');
+  gameTextInput(p, 'Level thresholds (comma separated XP)', 'game.xp.thresholds', {
+    toText: v => (Array.isArray(v) ? v : []).join(', '),
+    fromText: t => t.split(',').map(s => Math.max(1, Math.round(+s.trim() || 0))).filter(Boolean)
+  });
+  toggle(p, 'Level aura FX around Jamie', 'game.xp.auraEnabled');
+  toggle(p, 'XP tag under Jamie', 'game.xpTag.enabled');
+  slider(p, 'XP tag offset below floor', 'game.xpTag.offsetY', -200, 400, 2, v => v + 'px');
+  slider(p, 'XP tag scale', 'game.xpTag.scale', 0.5, 2.5, 0.05, v => (+v).toFixed(2) + '×');
 })();
-let goalEditId = null;
-function goalProgressText(g) {
-  const totals = window.lastMilestoneTotals || {};
-  const liveStates = window.lastMilestoneGoalStates || [];
-  const live = liveStates.find(s => s.id === g.id);
-  const target = live ? live.target : g.target;
-  const completed = live ? live.completed : g.completed;
-  const total = totals[g.counter] || 0;
-  return {
-    pct: Math.min(100, Math.round((total / (target || 1)) * 100)),
-    text: completed ? '✅ completed' : `${total.toLocaleString()} / ${(+target).toLocaleString()}`,
-  };
-}
-function goalEmoji(g) { return g.counter === 'comments' ? '💬' : '❤️'; }
-function goalEscalateText(g) {
-  if (g.autoEscalate === false) return 'one-time';
-  return g.escalateMode === 'multiply' ? `×${g.escalateFactor || 2} and repeat` : `+${(+g.escalateAmount || 1000).toLocaleString()} and repeat`;
-}
-function renderLiveGoals() {
-  const holder = $id('live-goals');
-  holder.innerHTML = '';
-  for (const g of (CFG.events.milestones.goals || [])) {
-    if (g.enabled === false) continue;
-    const pr = goalProgressText(g);
-    const card = document.createElement('div');
-    card.className = 'card goal-card';
-    card.dataset.goal = g.id;
-    card.innerHTML = `
-      <div class="gc-top"><span class="gc-name">${goalEmoji(g)} ${(g.label || 'Goal').replace(/[<>&]/g, '')}</span>
-        <span class="gc-prog">${pr.text}</span>
-        <button class="gc-trig" title="Trigger now">🎯</button></div>
-      <div class="bar"><div style="width:${pr.pct}%"></div></div>`;
-    card.querySelector('.gc-trig').onclick = () => { send({ cmd: 'MILESTONE_TRIGGER', data: { id: g.id } }); addLog(`🎯 ${g.label || 'goal'} fired`); };
-    holder.appendChild(card);
-  }
-}
-function renderSetupGoals() {
-  const holder = $id('setup-goals');
-  holder.innerHTML = '';
-  (CFG.events.milestones.goals || []).forEach((g, i) => {
-    const pr = goalProgressText(g);
-    const card = document.createElement('div');
-    card.className = 'sg-card';
-    card.dataset.goal = g.id;
-    card.innerHTML = `
-      <div class="top"><span class="nm">${goalEmoji(g)} ${(g.label || 'Goal').replace(/[<>&]/g, '')}</span>
-        <span class="act">→ ${(GOAL_ACTION_CHOICES.find(([v]) => v === g.action) || [g.action, g.action])[1]}</span>
-        <label class="onlbl"><input type="checkbox" class="g-on" ${g.enabled !== false ? 'checked' : ''}>on</label></div>
-      <div class="bar" style="height:8px;"><div style="width:${pr.pct}%"></div></div>
-      <div class="bot"><span class="sg-prog">${pr.text} ${g.counter}</span><span>· then ${goalEscalateText(g)}</span>
-        <button class="trig">🎯 Trigger now</button>
-        <button class="edit" style="padding:3px 10px;font-size:12px;border-radius:8px;">✎ Edit</button></div>
-      <div class="adv-edit ${goalEditId === g.id ? '' : 'hidden'}"></div>`;
-    card.querySelector('.g-on').onchange = e => { g.enabled = e.target.checked; pushConfig(); renderLiveGoals(); renderCanvas(); };
-    card.querySelector('.trig').onclick = () => { send({ cmd: 'MILESTONE_TRIGGER', data: { id: g.id } }); addLog(`🎯 ${g.label || 'goal'} fired`); };
-    card.querySelector('.edit').onclick = () => { goalEditId = goalEditId === g.id ? null : g.id; renderSetupGoals(); };
-    if (goalEditId === g.id) buildGoalAdvEditor(card.querySelector('.adv-edit'), g, i);
-    holder.appendChild(card);
-  });
-}
-function buildGoalAdvEditor(box, g, idx) {
-  box.innerHTML = `
-    <div class="frow"><input type="text" class="e-label" placeholder="Goal name" value="${(g.label || '').replace(/"/g, '&quot;')}">
-      <select class="e-counter">${GOAL_COUNTER_CHOICES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
-    <div class="frow">target <input type="number" class="e-target" min="1" step="1" value="${g.target}">
-      → <select class="e-action">${GOAL_ACTION_CHOICES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
-    <div class="frow"><label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" class="e-esc" ${g.autoEscalate !== false ? 'checked' : ''}>auto-escalate:</label>
-      <select class="e-mode"><option value="add">+ add</option><option value="multiply">× multiply</option></select>
-      <input type="number" class="e-amt" min="1" step="1" value="${g.escalateAmount || 1000}" title="amount added (mode = add)">
-      <input type="number" class="e-fac" min="1.05" step="0.1" value="${g.escalateFactor || 2}" style="width:70px;" title="factor (mode = multiply)"></div>
-    <div class="frow">bar position X <input type="number" class="e-x" min="0" max="1080" step="5" value="${g.x ?? 540}">
-      Y <input type="number" class="e-y" min="0" max="1920" step="5" value="${g.y ?? 1790}">
-      <button class="warn e-del" style="margin-left:auto;padding:3px 10px;font-size:12px;">✕ Delete goal</button></div>`;
-  box.querySelector('.e-counter').value = g.counter;
-  box.querySelector('.e-action').value = GOAL_ACTION_CHOICES.some(([v]) => v === g.action) ? g.action : 'heartme';
-  box.querySelector('.e-mode').value = g.escalateMode === 'multiply' ? 'multiply' : 'add';
-  const save = () => {
-    g.label = box.querySelector('.e-label').value.trim();
-    g.counter = box.querySelector('.e-counter').value;
-    g.target = +box.querySelector('.e-target').value || 1000;
-    g.action = box.querySelector('.e-action').value;
-    g.autoEscalate = box.querySelector('.e-esc').checked;
-    g.escalateMode = box.querySelector('.e-mode').value;
-    g.escalateAmount = +box.querySelector('.e-amt').value || 1000;
-    g.escalateFactor = +box.querySelector('.e-fac').value || 2;
-    g.x = +box.querySelector('.e-x').value || 540;
-    g.y = +box.querySelector('.e-y').value || 1790;
-    pushConfig(); renderLiveGoals();
-    /* header/summary text refreshes when the editor closes — rebuilding every
-       card mid-edit would detach the field being typed in */
-  };
-  box.querySelectorAll('input,select').forEach(el => el.addEventListener('change', save));
-  box.querySelector('.e-del').onclick = () => {
-    if (!confirm(`Delete goal "${g.label || g.id}"?`)) return;
-    CFG.events.milestones.goals.splice(idx, 1);
-    goalEditId = null;
-    pushConfig(); renderSetupGoals(); renderLiveGoals(); renderCanvas();
-  };
-}
-function addGoal() {
-  const n = (CFG.events.milestones.goals || []).length;
-  CFG.events.milestones.goals.push({
-    id: 'goal-' + Math.random().toString(36).slice(2, 9),
-    label: 'New Goal', counter: 'likes', target: 1000, baseValue: 0, action: 'heartme',
-    autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
-    enabled: true, completed: false, x: 540, y: 1740 + n * 70
-  });
-  goalEditId = CFG.events.milestones.goals[CFG.events.milestones.goals.length - 1].id;
-  pushConfig(); renderSetupGoals(); renderLiveGoals(); renderCanvas();
-}
-/* light in-place progress refresh on each status tick (never rebuilds cards) */
-function updateGoalProgress() {
-  for (const g of (CFG.events.milestones.goals || [])) {
-    const pr = goalProgressText(g);
-    document.querySelectorAll(`[data-goal="${g.id}"]`).forEach(card => {
-      const bar = card.querySelector('.bar > div');
-      if (bar) bar.style.width = pr.pct + '%';
-      const t1 = card.querySelector('.gc-prog'); if (t1) t1.textContent = pr.text;
-      const t2 = card.querySelector('.sg-prog'); if (t2) t2.textContent = `${pr.text} ${g.counter}`;
-    });
-  }
+/* plain-text config field (the shared helpers are all numeric/boolean) */
+function gameTextInput(parent, label, path, opts) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label>${label}</label><input type="text" style="flex:1;min-width:160px;">`;
+  const inp = row.querySelector('input');
+  const cur = getPath(path);
+  inp.value = opts && opts.toText ? opts.toText(cur) : String(cur ?? '');
+  inp.onchange = () => setPath(path, opts && opts.fromText ? opts.fromText(inp.value) : inp.value);
+  parent.appendChild(row);
 }
 
 /* ══════════════════ LOOK & SOUND TAB ══════════════════════════ */
@@ -1869,34 +1690,6 @@ function testSoundLocal(name) {
   slider(p, 'Sound cooldown', 'audio.cooldownMs', 50, 800, 10, v => v + 'ms');
   noteEl(p, 'Volumes, mute and per-sound URLs live in Look & Sound.');
 })();
-
-/* ── Splatty Squad rules (placement is on Canvas) ── */
-function renderSquadToggles() {
-  const p = $id('squad-toggles');
-  p.innerHTML = '';
-  const mkChk = (label, get, set) => {
-    const row = document.createElement('div'); row.className = 'row';
-    row.innerHTML = `<label>${label}</label><input type="checkbox">`;
-    const inp = row.querySelector('input');
-    inp.checked = get();
-    inp.onchange = () => { set(inp.checked); renderCanvas(); };
-    p.appendChild(row);
-  };
-  mkChk('Squad crowd', () => !!SQC.enabled, v => sqPush({ enabled: v }));
-  mkChk('Prize wheel', () => !!SQC.wheel.enabled, v => sqPush({ wheel: { enabled: v } }));
-  mkChk('Jamie drip tiers', () => !!SQC.tiers.enabled, v => sqPush({ tiers: { enabled: v } }));
-  const nrow = document.createElement('div'); nrow.className = 'row';
-  nrow.innerHTML = `<label>Decay $/min</label><input type="number" step="0.1" min="0" style="width:80px" value="${SQC.tiers.decayPerMin}">`;
-  nrow.querySelector('input').onchange = e => sqPush({ tiers: { decayPerMin: Math.max(0, +e.target.value || 0) } });
-  p.appendChild(nrow);
-  const crow = document.createElement('div'); crow.className = 'row';
-  crow.innerHTML = `<label>Wheel min coins</label><input type="number" step="1" min="1" style="width:80px" value="${SQC.wheel.minCoins}">`;
-  crow.querySelector('input').onchange = e => sqPush({ wheel: { minCoins: Math.max(1, +e.target.value || 1) } });
-  p.appendChild(crow);
-  noteEl(p, 'All viewer-facing drip wording is now in the dedicated <b>Copy</b> tab.');
-  noteEl(p, 'Crowd, wheel and care-meter placement moved to the Canvas tab (gold elements).');
-}
-renderSquadToggles();
 
 /* ── ASSETS (Advanced) ── */
 /* Generated from assets/feed-jamie. The previous list was the retired pre-Cleanup6
@@ -2168,8 +1961,6 @@ function tfConnect() {
 function tfRetry() { clearTimeout(tfTimer); if (tfWanted) tfTimer = setTimeout(tfConnect, 4000); }
 
 /* ── boot ── */
-renderLiveGoals();
-renderSetupGoals();
 renderInspector();
 renderCanvas();
 ensureMirror();

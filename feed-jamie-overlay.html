@@ -48,16 +48,15 @@
      thing viewers are here for, and the plates are configurable, so any
      of them can be dragged into his space at any time.
         5  floor line
-       24  tier FX (glow / rays behind him)
-       25  milestone goal bars      ┐
-       26  care meter, like meter   │ persistent UI plates — always
-       27  HUD goal card            │ behind Jamie
+       24  level-aura FX (glow / rays behind him)
+       26  XP tag, like meter       ┐ persistent UI plates — always
+       27  CTA ribbon               │ behind Jamie
        28  wooden gift sign         │
        29  prompt pill, thrown items┘
-       30  JAMIE, squad crowd
+       30  JAMIE
        45  heart-me / jackpot veils
        50  particle effects              ┐ transient — deliberately over
-       60  prize wheel (takeover)        │ him: FX should burst in front,
+       60  treat wheel (takeover)        │ him: FX should burst in front,
        61  event label (username)        │ and the labels are read-once
        64  gift float text ("+TREAT!")   ┘ text positioned off him
        79+ setup guides, connection dot (debug only)
@@ -232,42 +231,6 @@
     opacity: 0; transition: opacity .4s, left .25s ease-out, top .25s ease-out;
   }
 
-  /* milestone goal bars — cumulative like/comment totals counting up toward a
-     configurable target that fires an action (Heart Me, Jackpot, an item) */
-  #milestone-bars { position: absolute; inset: 0; z-index: 25; pointer-events: none; }
-  /* The closest analogue to the follow meter's progress track, deliberately built
-     the same way — solid ink plate, heavy ink border, hard offset shadow — but with
-     a continuous purple fill instead of its blue segments. Goals here run to 1000+,
-     where segments would be unreadable, and the colour split keeps the two meters
-     legible side by side. */
-  .milestone-bar {
-    position: absolute; background: var(--fj-ink);
-    border: 6px solid var(--fj-ink); border-radius: 12px 30px 14px 26px;
-    box-shadow: 0 8px 0 rgba(13,13,18,.6);
-    padding: 8px 16px 10px; min-width: 260px;
-    transition: left .3s ease-out, top .3s ease-out;
-  }
-  .milestone-bar-label {
-    font: 700 20px 'Fredoka', sans-serif; letter-spacing: .12em; text-transform: uppercase;
-    color: #fff; line-height: 1;
-  }
-  .milestone-bar-track {
-    margin-top: 6px; width: 100%; height: 16px; border-radius: 6px;
-    background: rgba(255,255,255,0.15);      /* empty must stay visible over light gameplay */
-    border: 3px solid var(--fj-ink); overflow: hidden;
-    box-shadow: inset 0 3px 0 rgba(0,0,0,0.45);
-  }
-  .milestone-bar-fill {
-    height: 100%; background: var(--fj-plate);
-    box-shadow: inset 0 4px 0 rgba(255,255,255,0.45);
-    transition: width .4s ease-out;
-  }
-  .milestone-bar-nums {
-    margin-top: 3px; font: 400 22px 'Boogaloo', cursive; color: var(--fj-goldui);
-    text-align: right; font-variant-numeric: tabular-nums; line-height: 1;
-    -webkit-text-stroke: 4px var(--fj-ink); paint-order: stroke fill;
-    text-shadow: 0 4px 0 var(--fj-ink);
-  }
 
   /* wide wooden treat board — several gift → item mappings shown side by side
      as carved-in windows, planted at the floor line beside Jamie, rotating
@@ -361,54 +324,11 @@
   }
 
   /* ════════════════════════════════════════════════════════════════
-     SPLATTY SQUAD — gifter crowd, prize wheel, Jamie drip tiers
+     XP AURA + TREAT WHEEL (the crowd sprites moved to
+     _retired/splatty-squad-crowd-extract.md for wheel-reward-overlay reuse)
      ════════════════════════════════════════════════════════════════ */
 
-  /* ── crowd of mini splatties (one per unique gifter) on the floor ── */
-  #squad-crowd { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
-  .sq-fan {
-    position: absolute; object-fit: contain; pointer-events: none;
-    transform-origin: 50% 100%;
-    animation: sqCheer 2.4s ease-in-out infinite;
-  }
-  .sq-fan.mirror { scale: -1 1; }
-  @keyframes sqCheer {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-4px) scaleY(1.03); }
-  }
-  .sq-fan.hop { animation: sqHop .6s cubic-bezier(.34,1.56,.64,1); }
-  @keyframes sqHop {
-    0% { transform: translateY(0); }
-    40% { transform: translateY(-20px) scaleY(1.1); }
-    70% { transform: translateY(2px) scaleY(.9); }
-    100% { transform: translateY(0); }
-  }
-  .sq-fan.toss { animation: sqToss .7s cubic-bezier(.34,1.56,.64,1); }
-  @keyframes sqToss {
-    0% { transform: translateY(0); }
-    30% { transform: translateY(6px) scaleY(.85); }
-    60% { transform: translateY(-24px) scaleY(1.12); }
-    100% { transform: translateY(0); }
-  }
-  .sq-crown {
-    position: absolute; object-fit: contain; pointer-events: none; z-index: 31;
-    animation: sqCrownBob 2.6s ease-in-out infinite;
-    transition: left .8s cubic-bezier(.34,1.56,.64,1), top .8s cubic-bezier(.34,1.56,.64,1);
-  }
-  @keyframes sqCrownBob {
-    0%,100% { transform: translateY(0) rotate(-6deg); }
-    50% { transform: translateY(-5px) rotate(4deg); }
-  }
-  .sq-pip {
-    position: absolute; pointer-events: none; z-index: 30;
-    background: rgba(42,8,69,.9); border: 2px solid #C084FC;
-    border-radius: 999px; color: #FFF6D8;
-    font: 700 15px 'DM Sans', sans-serif;
-    padding: 2px 9px 3px; line-height: 1.2; white-space: nowrap;
-    display: none; align-items: center; justify-content: center;
-  }
-
-  /* ── prize wheel — transient, pops on gift, CSS-drawn (art can replace) ── */
+  /* ── treat wheel — transient, pops on !spin, CSS-drawn (art can replace) ── */
   #squad-wheel {
     position: absolute; z-index: 60; pointer-events: none;
     opacity: 0; transform: scale(.5);
@@ -543,139 +463,58 @@
   .jt-crown { position: absolute; object-fit: contain; opacity: 0; transition: opacity .8s; animation: sqCrownBob 2.8s ease-in-out infinite; }
   .jt-crown.on { opacity: 1; }
 
-  /* ── tier meter (badge + progress + decay hint) ── */
-  #squad-meter {
-    position: absolute; z-index: 26; pointer-events: none;
-    display: none; width: 300px;
-    transform: scale(var(--sqm-scale, 1));
-    transform-origin: center;
-    transition: transform .18s ease-out;
+  /* ── XP tag — 0/100xp · LVL 1 riding under Jamie (doodle tokens, same
+     family as the ribbon). Position is written by xpTagPlace() every time
+     Jamie's transform moves, so it follows walks and growth for free. */
+  #xp-tag {
+    position: absolute; z-index: 26; pointer-events: none; display: none;
+    transform-origin: 50% 0;
+    background: #fdf8ee; color: #1a1a1a;
+    border: 3px solid #1a1a1a; border-radius: 10px;
+    box-shadow: 0 3px 0 rgba(0,0,0,.35);
+    font-family: 'Baloo 2', system-ui, sans-serif;
+    font-weight: 800; font-size: 15px; letter-spacing: .4px;
+    padding: 2px 10px 3px; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
-  #squad-meter.show { display: block; }
-  /* Compact two-line cream-paper sticker: status gets a clean headline,
-     while the progress bar and next-tier copy share the second line. */
-  .sqm-shell {
-    display: flex; flex-direction: column; align-items: stretch; gap: 3px;
-    width: 300px;
-    background: #FFF6D8;
-    border: 4px solid #1A0A2A;
-    border-radius: 22px 12px 20px 14px;   /* wonky hand-cut corners */
-    transform: rotate(-2deg);
-    box-shadow: 0 5px 0 rgba(26,10,42,.85);
-    padding: 5px 10px 7px;
-    transition: box-shadow .6s;
+  #xp-tag.show { display: block; }
+  #xp-tag b { color: #17a24b; font-size: 18px; font-weight: 800; }
+  #xp-tag.pop { animation: xpTagPop .6s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes xpTagPop {
+    0% { scale: 1; } 45% { scale: 1.18; } 100% { scale: 1; }
   }
-  .sqm-badge {
-    display: flex; align-items: center; gap: 6px;
-    width: 100%; min-width: 0; justify-content: center; white-space: nowrap;
-    font: 400 20px 'Boogaloo', cursive; color: #3B0764; letter-spacing: 1.5px;
-  }
-  .sqm-badge .sqm-tname {
-    color: var(--sqm-edge, #7B2FBE);
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  .sqm-progress {
-    position: relative; width: 100%; height: 28px;
-    background: #E9DDBD;
-    border: 3px solid #1A0A2A;
-    border-radius: 10px 6px 9px 7px;      /* wonky, like the badge */
-    overflow: hidden;
-  }
-  .sqm-fill {
-    position: absolute; inset: 0 auto 0 0;
-    height: 100%; border-radius: 6px 3px 5px 3px;
-    background: linear-gradient(90deg, #A855F7, #FFD25A);
-    box-shadow: inset 0 -3px 0 rgba(26,10,42,.18);
-    transition: width .6s cubic-bezier(.2,.9,.3,1);
-    z-index: 0;
-  }
-  .sqm-next {
-    position: absolute; z-index: 2;
-    top: 1px; bottom: 1px; left: 50%; width: 150px;
-    transform: translateX(-50%);
-    display: flex; align-items: center; justify-content: center;
-    background: #1A0A2A;
-    border: 2px solid #FFF6D8;
-    border-radius: 8px 5px 7px 6px;
-    box-shadow: 0 1px 0 rgba(26,10,42,.5);
-    font: 700 17px 'DM Sans', sans-serif; color: #FFFFFF; letter-spacing: .35px;
-    white-space: nowrap;
-  }
-  #squad-meter.tierup .sqm-shell {
-    animation: sqmPop .7s cubic-bezier(.34,1.56,.64,1);
-    box-shadow: 0 0 18px rgba(255,210,90,.95), 0 5px 0 rgba(26,10,42,.85);
-  }
-  @keyframes sqmPop { 0%{transform:rotate(-2deg) scale(1)} 40%{transform:rotate(1deg) scale(1.22)} 100%{transform:rotate(-2deg) scale(1)} }
 
-  /* ── FEED JAMIE HUD — the consolidated goal card ──────────────────
-     "Doodle Stream HUD" design handoff, option 4a: one edge-mounted cluster
-     (Jamie sticker + LVL n/6 counter + rotating CTA ribbon) that replaces the
-     free-floating prompt pill and the squad care meter with a single fixed
-     footprint. This module is the ONE place in the overlay that uses the
-     cream/Baloo doodle tokens instead of the purple Painted Splat set — that
-     is deliberate and scoped here; do not spread these colours outward.
-     Fixed-footprint rule: state changes are colour and transform only. Nothing
-     in here may appear, disappear, or resize — this card sits inside the camera
-     safe area, where a reflowing box is far more distracting than on gameplay. */
+  /* ── CTA RIBBON — the HUD goal card, condensed to its one surviving row:
+     the purple rotating prompt, edge-mounted. (The stat row moved to #xp-tag
+     under Jamie.) The cream/Baloo doodle tokens are scoped to this module and
+     #xp-tag only; do not spread them outward. Fixed footprint: the ribbon
+     never grows, shrinks, appears or disappears on a state change — only its
+     text hard-swaps. */
   #feed-hud {
     position: absolute; z-index: 27; pointer-events: none; display: none;
     transform-origin: 0 0;
     font-family: 'Baloo 2', system-ui, sans-serif;
   }
   #feed-hud.show { display: block; }
-  .fh-card {
+  /* only when the operator empties the CTA list — an operator config change,
+     not a live state change, so the footprint rule does not apply */
+  #feed-hud.no-cta { display: none; }
+  .fh-ribbon {
     width: 250px; box-sizing: border-box;
-    background: #fdf8ee; border: 3px solid #1a1a1a; border-radius: 14px;
+    background: #6c3fd8; color: #ffd93b;
+    border: 3px solid #1a1a1a; border-radius: 14px;
     box-shadow: 0 4px 0 rgba(0,0,0,.35);
-    overflow: hidden;
+    font-weight: 800; font-size: 17px; letter-spacing: .5px;
+    white-space: nowrap; text-align: center;
+    padding: 5px 10px 6px;
+    /* Copy that still will not fit at the 11px floor gets an ellipsis rather
+       than a centred double-clip — the ribbon never widens to accommodate it. */
+    overflow: hidden; text-overflow: ellipsis;
   }
   /* edge-mounted: drop the border on the screen-edge side and keep the radius
      on the free corners only (the style guide's edge rule) */
-  #feed-hud.edge-left  .fh-card { border-left: none;  border-radius: 0 14px 14px 0; }
-  #feed-hud.edge-right .fh-card { border-right: none; border-radius: 14px 0 0 14px; }
-  /* The gap is a floor, not a preference: `space-between` degrades to ZERO
-     separation the moment the two labels outgrow the row, which reads as one
-     run-on word ("FEED JAMIELVL 0/6") rather than as an overflow. */
-  .fh-row {
-    display: flex; align-items: baseline; justify-content: space-between;
-    gap: 10px; padding: 8px 14px;
-  }
-  .fh-label {
-    font-weight: 800; font-size: 17px; letter-spacing: .5px;
-    color: #1a1a1a; white-space: nowrap;
-  }
-  .fh-lvl { font-weight: 800; white-space: nowrap; }
-  .fh-lvl-word, .fh-lvl-max { font-size: 17px; color: #1a1a1a; letter-spacing: .5px; }
-  .fh-lvl-num {
-    display: inline-block;   /* a transform on an inline box is a no-op */
-    font-size: 24px; color: #17a24b; font-variant-numeric: tabular-nums;
-    transition: color .25s;
-  }
-  .fh-ribbon {
-    background: #6c3fd8; color: #ffd93b;
-    font-weight: 800; font-size: 17px; letter-spacing: .5px;
-    white-space: nowrap; text-align: center;
-    padding: 5px 10px 6px; border-top: 3px solid #1a1a1a;
-    /* Copy that still will not fit at the 11px floor gets an ellipsis rather
-       than a centred double-clip — the card never widens to accommodate it. */
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  /* only when the operator empties the CTA list — an operator config change,
-     not a live state change, so the footprint rule does not apply */
-  #feed-hud.no-cta .fh-ribbon { display: none; }
-  /* level-up: number pulse + card shake, both transform-only and tiered by
-     level so a level 6 reads harder than a level 1 (style guide motion vocab) */
-  @keyframes fhPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
-  @keyframes fhShake {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    25% { transform: translateY(calc(-1px * var(--fh-shake, 2))) rotate(calc(-1deg * var(--fh-tilt, 0))); }
-    75% { transform: translateY(calc(1px * var(--fh-shake, 2)))  rotate(calc(1deg * var(--fh-tilt, 0))); }
-  }
-  #feed-hud.levelup .fh-lvl-num { animation: fhPulse var(--fh-pulse, 1s) ease-in-out 2; }
-  /* The iteration count is tuned per band so the shake always finishes no later
-     than the pulse — the class is cleared on the pulse's end, and a shake still
-     running at that point would be cut off mid-jitter. */
-  #feed-hud.levelup .fh-card    { animation: fhShake var(--fh-shakedur, .5s) ease-in-out var(--fh-shakeiter, 4); }
+  #feed-hud.edge-left  .fh-ribbon { border-left: none;  border-radius: 0 14px 14px 0; }
+  #feed-hud.edge-right .fh-ribbon { border-right: none; border-radius: 14px 0 0 14px; }
 </style>
 </head>
 <body>
@@ -690,8 +529,7 @@
   <div id="jamie-box"></div>
   <div id="jamie-tier-fx"></div>
   <div id="jamie"><div id="jamie-inner"></div></div>
-  <div id="squad-crowd"></div>
-  <div id="squad-meter"></div>
+  <div id="xp-tag" aria-hidden="true"></div>
   <div id="feed-hud" aria-hidden="true"></div>
   <div id="squad-wheel"></div>
   <div id="effects"></div>
@@ -699,7 +537,6 @@
   <div id="event-label"></div>
   <div id="like-meter"></div>
   <div id="roam-band"></div>
-  <div id="milestone-bars"></div>
   <svg width="0" height="0" aria-hidden="true" style="position:absolute">
     <filter id="fj-rim" x="-12%" y="-12%" width="124%" height="124%" color-interpolation-filters="sRGB">
       <feMorphology in="SourceAlpha" operator="dilate" radius="3" result="fj-fat"/>
@@ -809,23 +646,43 @@ const FJ_DEFAULT_CONFIG = {
       thresholds: { l2: 2, l3: 5, l4: 20, l5: 100 },
       sizeScaling: { enabled: true, maxScale: 2, dollarsForMax: 50 }
     },
-    /* Simple auto-mode goals: pick a cumulative counter (likes/comments), a
-       target, and an action — the goal fires once the running total reaches
-       target, shows a progress bar on screen the whole way there, and can
-       auto-escalate to a bigger target afterward (either +N flat or ×N) so
-       it keeps going without you having to reconfigure it mid-stream. */
-    milestones: {
-      enabled: true,
-      scale: 1, /* shared size for every bar; position is set per-goal below */
-      goals: [
-        { id: 'goal-likes', label: 'Like Goal', counter: 'likes', target: 1000, baseValue: 0,
-          action: 'heartme', autoEscalate: true, escalateMode: 'add', escalateAmount: 1000, escalateFactor: 2,
-          enabled: true, completed: false, x: 540, y: 1740 },
-        { id: 'goal-comments', label: 'Comment Goal', counter: 'comments', target: 50, baseValue: 0,
-          action: 'jackpot', autoEscalate: true, escalateMode: 'multiply', escalateAmount: 50, escalateFactor: 2,
-          enabled: true, completed: false, x: 540, y: 1840 }
-      ]
-    }
+  },
+  /* ── THE GAME: viewer points → !spin → Jamie XP ─────────────────────
+     TikFinity-style loop, rebuilt native: viewers earn points for
+     NON-monetized engagement (chatting = presence, likes, follows, shares,
+     waving at Jamie), then spend them. `!spin` (or !spin2/3/4 for pricier
+     tiers) spins the treat wheel; the wedge's multiplier x the tier's base
+     XP is what Jamie actually gains. Keyword throws (ball/treat/toy) can
+     also cost points, making every Jamie interaction earned rather than
+     bought. Jamie's XP climbs level thresholds; levels drive the aura FX
+     and the always-on XP tag under him. */
+  game: {
+    enabled: true,
+    points: {
+      perComment: 5, commentCooldownSec: 60,   /* "minutes in chat" proxy: chatting ~1/min earns steadily */
+      likesPerPoint: 10,                       /* 1 pt per N likes sent */
+      followBonus: 100, shareBonus: 50, subscribeBonus: 200,
+      waveBonus: 10, waveCooldownSec: 120,
+      waveKeywords: 'wave, hi jamie, hey jamie, 👋',
+      keywordCost: 10,                         /* cost to throw via ball/treat/toy comment; 0 = free */
+      balanceCommand: true                     /* !points / !pts replies with the viewer's balance */
+    },
+    spin: {
+      costs:  [50, 150, 400, 1000],            /* !spin1..!spin4 point cost */
+      baseXp: [10, 25, 60, 150],               /* per-tier base XP; wedge multiplier applies on top */
+      perUserCooldownSec: 10,
+      maxQueued: 5
+    },
+    xp: {
+      thresholds: [100, 250, 500, 1000, 2000, 4000],  /* cumulative XP to reach LVL 2..7 */
+      auraEnabled: true                        /* level-driven glow/rays/crown FX around Jamie */
+    },
+    xpTag: { enabled: true, offsetY: 12, scale: 1 }    /* the 0/100xp · LVL 1 tag under Jamie */
+  },
+  wheel: {
+    /* the treat wheel — pops on !spin (and test buttons). Position/size only;
+       what it pays out lives in game.spin above. */
+    enabled: true, x: 540, y: 0, size: 300, spinMs: 2100, holdMs: 900   /* y 0 = auto (upper third) */
   },
   prompts: {
     /* The CTA copy + rotation speed. These now feed the HUD card's ribbon
@@ -836,27 +693,26 @@ const FJ_DEFAULT_CONFIG = {
        translucent plate inverts against dark gameplay — the slider still works if
        a softer chip is wanted. */
     opacity: 1, bgOpacity: 1,
-    /* No emoji: the HUD ribbon is a 250px-wide fixed slot at 17px, and emoji
+    /* No emoji: the HUD ribbon is a fixed-width slot at 17px, and emoji
        both blow the width budget and clash with the flat sticker look. */
     list: [
-      'SAY BALL · TREAT · TOY',
-      'HEART ME = BIG REACTION',
-      'FOLLOW TO FEED JAMIE'
+      'LEVEL JAMIE UP — !SPIN',
+      'CHAT + WAVE = EARN PTS',
+      'SAY BALL · TREAT · TOY'
     ]
   },
   /* ── FEED JAMIE HUD ───────────────────────────────────────────────
      The edge-mounted goal card from the "Doodle Stream HUD" handoff
      (option 4a): Jamie sticker + LVL n/6 counter + rotating CTA ribbon,
-     ~250x100 flush to the left screen edge inside the camera safe area.
-     It is one FACE for state that already exists — the level is the squad
-     care tier, the ribbon is prompts.list — so switching it on suppresses
-     the two elements it consolidates (prompt pill + squad care meter)
-     rather than duplicating them. */
+     condensed (2026-08-01) to ONE purple row: just the rotating CTA ribbon,
+     edge-mounted. The level readout moved to the XP tag that rides under
+     Jamie (game.xpTag). While the ribbon is on it replaces the old floating
+     prompt pill. */
   hud: {
     enabled: true,
-    /* x/y are the CARD's top-left. x <= 2 mounts it flush to the left edge
+    /* x/y are the ribbon's top-left. x <= 2 mounts it flush to the left edge
        (no left border, radius on the free corners only); the mirror applies
-       at the right edge. y 390-520 is the handoff's recommended band. */
+       at the right edge. */
     x: 0, y: 430, scale: 1
   },
   copy: {
@@ -866,13 +722,18 @@ const FJ_DEFAULT_CONFIG = {
     jackpot: '@{username} triggered a Jamie JACKPOT! 🌟',
     jackpotGift: '@{username} triggered a JACKPOT with {gift}! 🌟',
     subscribe: '@{username} unlocked Jamie’s golden ball! ⭐',
-    milestoneReached: '🎯 {goal} reached! ({total} {counter})',
     likeMeter: '🦴 {current}/{target}',
     pluck: 'YOURS! 🤏',
     giftSignFallback: 'THROW {item}',
-    wheelSpinUser: '@{username} spins the treat wheel…',
+    wheelSpinUser: '@{username} spins for Jamie…',
     wheelSpinAnon: 'treat wheel…',
-    wheelWin: '{winner} won a {item}!'
+    wheelWin: '{winner} won a {item} · +{xp} XP!',
+    wheelBust: '{winner} — BUST! Jamie keeps the {item} 😅',
+    pointsBalance: '@{username} · {pts} pts',
+    needPoints: '@{username} needs {cost} pts — chat to earn!',
+    wheelBusy: '@{username} — wheel queue is full, hold on!',
+    levelUp: 'JAMIE LEVELED UP → LVL {level}! 🎉',
+    xpGain: '+{xp} XP'
   },
   visuals: {
     usernameLabels: true, likeMeter: true, particleLevel: 'low',
@@ -1091,31 +952,57 @@ function fjValidateConfig() {
   }
   for (const k of ['run', 'classic', 'spin', 'proud']) c.events.heartMeVariants[k] = c.events.heartMeVariants[k] !== false;
   c.events.subscribeDurationSec = Math.min(Math.max(num(c.events.subscribeDurationSec, 2.5), 1), 6);
-  if (!c.events.milestones || typeof c.events.milestones !== 'object') {
-    c.events.milestones = { enabled: true, x: 540, y: 1790, scale: 1, goals: [] };
+  delete c.events.milestones;   /* removed 2026-08-01; saved configs still carry it */
+  /* ── points / spin / xp game ── */
+  if (!c.game || typeof c.game !== 'object') c.game = fjClone(FJ_DEFAULT_CONFIG.game);
+  c.game.enabled = c.game.enabled !== false;
+  if (!c.game.points || typeof c.game.points !== 'object') c.game.points = fjClone(FJ_DEFAULT_CONFIG.game.points);
+  const gp = c.game.points;
+  gp.perComment = Math.min(Math.max(Math.round(num(gp.perComment, 5)), 0), 1000);
+  gp.commentCooldownSec = Math.min(Math.max(num(gp.commentCooldownSec, 60), 5), 3600);
+  gp.likesPerPoint = Math.min(Math.max(Math.round(num(gp.likesPerPoint, 10)), 1), 1000);
+  gp.followBonus = Math.min(Math.max(Math.round(num(gp.followBonus, 100)), 0), 100000);
+  gp.shareBonus = Math.min(Math.max(Math.round(num(gp.shareBonus, 50)), 0), 100000);
+  gp.subscribeBonus = Math.min(Math.max(Math.round(num(gp.subscribeBonus, 200)), 0), 100000);
+  gp.waveBonus = Math.min(Math.max(Math.round(num(gp.waveBonus, 10)), 0), 100000);
+  gp.waveCooldownSec = Math.min(Math.max(num(gp.waveCooldownSec, 120), 5), 3600);
+  if (typeof gp.waveKeywords !== 'string') gp.waveKeywords = FJ_DEFAULT_CONFIG.game.points.waveKeywords;
+  gp.keywordCost = Math.min(Math.max(Math.round(num(gp.keywordCost, 10)), 0), 100000);
+  gp.balanceCommand = gp.balanceCommand !== false;
+  if (!c.game.spin || typeof c.game.spin !== 'object') c.game.spin = fjClone(FJ_DEFAULT_CONFIG.game.spin);
+  const gs2 = c.game.spin;
+  if (!Array.isArray(gs2.costs) || gs2.costs.length !== 4) gs2.costs = FJ_DEFAULT_CONFIG.game.spin.costs.slice();
+  gs2.costs = gs2.costs.map((v, i) => Math.min(Math.max(Math.round(num(v, [50, 150, 400, 1000][i])), 1), 1000000));
+  if (!Array.isArray(gs2.baseXp) || gs2.baseXp.length !== 4) gs2.baseXp = FJ_DEFAULT_CONFIG.game.spin.baseXp.slice();
+  gs2.baseXp = gs2.baseXp.map((v, i) => Math.min(Math.max(Math.round(num(v, [10, 25, 60, 150][i])), 1), 100000));
+  gs2.perUserCooldownSec = Math.min(Math.max(num(gs2.perUserCooldownSec, 10), 0), 600);
+  gs2.maxQueued = Math.min(Math.max(Math.round(num(gs2.maxQueued, 5)), 1), 12);
+  if (!c.game.xp || typeof c.game.xp !== 'object') c.game.xp = fjClone(FJ_DEFAULT_CONFIG.game.xp);
+  /* thresholds must be a strictly-rising list — a flat or reversed pair would
+     make a level unreachable or auto-skipped */
+  if (!Array.isArray(c.game.xp.thresholds) || !c.game.xp.thresholds.length) {
+    c.game.xp.thresholds = FJ_DEFAULT_CONFIG.game.xp.thresholds.slice();
   }
-  const ms = c.events.milestones;
-  ms.enabled = ms.enabled !== false;
-  ms.scale = Math.min(Math.max(num(ms.scale, 1), 0.4), 2.5);
-  if (!Array.isArray(ms.goals)) ms.goals = [];
-  ms.goals.forEach((g, i) => {
-    g.id = g.id || ('goal-' + Math.random().toString(36).slice(2, 9));
-    g.label = String(g.label || '').slice(0, 40);
-    g.counter = ['likes', 'comments'].includes(g.counter) ? g.counter : 'likes';
-    g.target = Math.max(1, Math.round(num(g.target, 1000)));
-    g.baseValue = Math.max(0, Math.round(num(g.baseValue, 0)));
-    g.action = typeof g.action === 'string' && g.action ? g.action : 'heartme';
-    g.autoEscalate = g.autoEscalate !== false;
-    g.escalateMode = g.escalateMode === 'multiply' ? 'multiply' : 'add';
-    g.escalateAmount = Math.max(1, Math.round(num(g.escalateAmount, 1000)));
-    g.escalateFactor = Math.min(Math.max(num(g.escalateFactor, 2), 1.05), 20);
-    g.enabled = g.enabled !== false;
-    g.completed = !!g.completed;
-    /* each bar is independently positioned; stagger the fallback so newly
-       added goals don't all land exactly on top of each other by default */
-    g.x = Math.min(Math.max(num(g.x, 540), 0), 1080);
-    g.y = Math.min(Math.max(num(g.y, 1740 + i * 70), 0), 1920);
-  });
+  c.game.xp.thresholds = c.game.xp.thresholds
+    .map(v => Math.max(1, Math.round(num(v, 100)))).slice(0, 12);
+  for (let i = 1; i < c.game.xp.thresholds.length; i++) {
+    if (c.game.xp.thresholds[i] <= c.game.xp.thresholds[i - 1]) {
+      c.game.xp.thresholds[i] = c.game.xp.thresholds[i - 1] + 1;
+    }
+  }
+  c.game.xp.auraEnabled = c.game.xp.auraEnabled !== false;
+  if (!c.game.xpTag || typeof c.game.xpTag !== 'object') c.game.xpTag = fjClone(FJ_DEFAULT_CONFIG.game.xpTag);
+  c.game.xpTag.enabled = c.game.xpTag.enabled !== false;
+  c.game.xpTag.offsetY = Math.min(Math.max(num(c.game.xpTag.offsetY, 12), -200), 400);
+  c.game.xpTag.scale = Math.min(Math.max(num(c.game.xpTag.scale, 1), 0.5), 2.5);
+  /* wheel (position/timing; payouts live in game.spin) */
+  if (!c.wheel || typeof c.wheel !== 'object') c.wheel = fjClone(FJ_DEFAULT_CONFIG.wheel);
+  c.wheel.enabled = c.wheel.enabled !== false;
+  c.wheel.x = Math.min(Math.max(num(c.wheel.x, 540), 0), 1080);
+  c.wheel.y = Math.min(Math.max(num(c.wheel.y, 0), 0), 1920);
+  c.wheel.size = Math.min(Math.max(Math.round(num(c.wheel.size, 300)), 150), 600);
+  c.wheel.spinMs = Math.min(Math.max(Math.round(num(c.wheel.spinMs, 2100)), 800), 6000);
+  c.wheel.holdMs = Math.min(Math.max(Math.round(num(c.wheel.holdMs, 900)), 300), 4000);
 }
 /* size multiplier for a gift-spawned item: log curve from 1x (1 coin) up to
    maxScale (at coinsForMax coins) — big gifts read big without a 30k-coin
@@ -1277,19 +1164,11 @@ function instantFeed(itemType, opts = {}) {
 }
 function reactToGift(itemType, value, username, rawGiftName, mapping, showName) {
   const level = resolveIntensity(mapping, value);
-  /* SPLATTY SQUAD: every gift feeds the crowd roster + Jamie's care score */
-  squadOnGift(username, 'tiktok', (+value || 0) * 0.005);
   const f = CFG.events.instantFeed;
   if (f.enabled && level === 1 && itemType !== 'heartme' && (+value || 0) <= f.maxCoins && ITEM_DEFS[itemType]) {
     showGiftFloat(mapping || { itemType }, username, rawGiftName);
     instantFeed(itemType, { username });
     playSound('gift');
-    return;
-  }
-  /* prize wheel takeover (L1-L3): the wheel picks a premium treat, the crowd
-     tosses it in — replaces the default item spawn, never the mega spectacle */
-  if (itemType !== 'heartme' && squadTakeGift(level, value, username, rawGiftName, giftSizeScale(value), 'gift')) {
-    showGiftFloat(mapping || { itemType }, username, rawGiftName);
     return;
   }
   reactAtLevel(itemType, level, giftSizeScale(value), username, rawGiftName, mapping, showName, 'gift', spectacleOf(value));
@@ -1323,8 +1202,6 @@ function handleSuperchat(evt) {
   if (dollars <= 0) return;
   const username = evt.name || evt.username || null;
   const level = resolveSuperchatIntensity(dollars);
-  squadOnGift(username, 'youtube', dollars);
-  if (squadTakeGift(level, dollars / 0.005, username, 'Super Chat', superchatSizeScale(dollars), 'superchat')) return;
   const itemType = superchatItemForLevel(level);
   reactAtLevel(itemType, level, superchatSizeScale(dollars), username, 'Super Chat', null, true, 'superchat',
     spectacleOf(dollars, CFG.events.superchat.thresholds.l5));
@@ -1336,8 +1213,6 @@ function handleJewels(evt) {
   const usd = jewels * 0.005;
   const username = evt.name || evt.username || null;
   const level = resolveSuperchatIntensity(usd);
-  squadOnGift(username, 'youtube', usd);
-  if (squadTakeGift(level, jewels, username, 'Jewels', superchatSizeScale(usd), 'superchat')) return;
   const itemType = superchatItemForLevel(level);
   reactAtLevel(itemType, level, superchatSizeScale(usd), username, 'Jewels', null, true, 'superchat',
     spectacleOf(usd, CFG.events.superchat.thresholds.l5));
@@ -1364,114 +1239,119 @@ function saveGrowth() {
   try { localStorage.setItem(FJ_LS_GROWTH, JSON.stringify({ g: growth, t: Date.now() })); } catch (e) {}
 }
 
-/* ── milestone goals: cumulative like/comment totals that persist across
-   reloads, checked against each configured goal every time either counter
-   moves. ── */
-const FJ_LS_MILESTONES = 'feedJamie.milestoneTotals.v1';
-let milestoneTotals = { likes: 0, comments: 0 };
+/* ── POINTS + XP GAME ─────────────────────────────────────────────
+   Viewer side: a per-viewer point balance earned from non-monetized
+   engagement, persisted across streams (loyalty, not a per-stream drip).
+   Jamie side: XP earned from wheel spins, climbing level thresholds that
+   drive the aura FX and the tag under him. Both live OUTSIDE CFG so the
+   control panel's full-config pushes can never clobber live balances. */
+const FJ_LS_POINTS = 'feedJamie.points.v1';
+const FJ_LS_XP = 'feedJamie.xp.v1';
+let ptsState = { viewers: {} };   /* key -> { name, pts, earnAt, waveAt, spinAt, balAt, needAt } */
+let xpState = { xp: 0 };
 try {
-  const mt = JSON.parse(localStorage.getItem(FJ_LS_MILESTONES) || 'null');
-  if (mt && typeof mt === 'object') {
-    milestoneTotals.likes = Math.max(0, +mt.likes || 0);
-    milestoneTotals.comments = Math.max(0, +mt.comments || 0);
-  }
+  const s = JSON.parse(localStorage.getItem(FJ_LS_POINTS) || 'null');
+  if (s && s.viewers && typeof s.viewers === 'object') ptsState.viewers = s.viewers;
 } catch (e) {}
-let milestoneSaveTimer = null;
-function saveMilestoneTotals() {
-  clearTimeout(milestoneSaveTimer);
-  milestoneSaveTimer = setTimeout(() => {
-    try { localStorage.setItem(FJ_LS_MILESTONES, JSON.stringify(milestoneTotals)); } catch (e) {}
+try {
+  const s = JSON.parse(localStorage.getItem(FJ_LS_XP) || 'null');
+  if (s && Number.isFinite(+s.xp)) xpState.xp = Math.max(0, +s.xp);
+} catch (e) {}
+let ptsSaveTimer = null;
+function savePoints() {
+  clearTimeout(ptsSaveTimer);
+  ptsSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(FJ_LS_POINTS, JSON.stringify({ viewers: ptsState.viewers, ts: Date.now() })); } catch (e) {}
   }, 800);
 }
-function resetMilestoneTotals() {
-  milestoneTotals = { likes: 0, comments: 0 };
-  for (const g of (CFG.events.milestones.goals || [])) { g.baseValue = 0; g.completed = false; }
-  saveMilestoneTotals();
-  renderMilestoneBars();
+function saveXp() {
+  try { localStorage.setItem(FJ_LS_XP, JSON.stringify({ xp: xpState.xp, ts: Date.now() })); } catch (e) {}
+}
+const ptsKey = n => String(n || '').trim().toLowerCase();
+function viewerOf(username) {
+  const k = ptsKey(username);
+  if (!k || k === 'anon') return null;
+  return ptsState.viewers[k] || (ptsState.viewers[k] = { name: String(username), pts: 0 });
+}
+function addPoints(username, n) {
+  const v = viewerOf(username);
+  if (!v || !(n > 0)) return 0;
+  v.pts = Math.min(1000000, Math.round(v.pts + n));
+  v.name = String(username);
+  savePoints();
+  return v.pts;
+}
+function spendPoints(username, n) {
+  const v = viewerOf(username);
+  if (!v || v.pts < n) return false;
+  v.pts = Math.round(v.pts - n);
+  savePoints();
+  return true;
+}
+/* level from cumulative XP: below thresholds[0] = LVL 1; past the last = max */
+function xpLevelInfo() {
+  const th = CFG.game.xp.thresholds;
+  let level = 1;
+  for (const t of th) { if (xpState.xp >= t) level++; else break; }
+  const maxLevel = th.length + 1;
+  return { level, maxLevel, nextAt: level > th.length ? null : th[level - 1] };
+}
+function addXp(amount, username) {
+  if (!(amount > 0)) return;
+  const before = xpLevelInfo().level;
+  xpState.xp = Math.min(99999999, Math.round(xpState.xp + amount));
+  saveXp();
+  const info = xpLevelInfo();
+  xpTagRender(true);
+  if (info.level > before) {
+    /* xpApplyLevel(true) picks the celebration pose itself (grownProud, or the
+       mythic frame at max level) — no second cheer on top of it */
+    xpApplyLevel(true);
+    showEventLabel(copyText('levelUp', 'JAMIE LEVELED UP → LVL {level}! 🎉', { level: String(info.level) }),
+      CFG.visuals.usernameSeconds * 1.5, true);
+    spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + 20, 10);
+    playSound('subscribe');
+  } else {
+    xpApplyLevel(false);
+  }
   publishStatus();
 }
-/* fires a goal's action once its counter reaches target; auto-escalating
-   goals raise the target (+N or ×N) and keep going, others complete once. */
-function checkMilestones() {
-  const ms = CFG.events.milestones;
-  if (!ms || !ms.enabled) { renderMilestoneBars(); return; }
-  let changed = false;
-  for (const g of (ms.goals || [])) {
-    if (!g.enabled || g.completed) continue;
-    const total = milestoneTotals[g.counter] || 0;
-    let guard = 0;
-    while (total >= g.target && guard < 50) {
-      fireMilestoneAction(g);
-      changed = true;
-      if (g.autoEscalate) {
-        const oldTarget = g.target;
-        g.target = g.escalateMode === 'multiply'
-          ? Math.max(oldTarget + 1, Math.round(oldTarget * (g.escalateFactor || 2)))
-          : oldTarget + Math.max(1, Math.round(g.escalateAmount || 0));
-        g.baseValue = oldTarget;
-      } else {
-        g.completed = true;
-        break;
-      }
-      guard++;
+function resetXp() { xpState.xp = 0; saveXp(); xpTagRender(false); xpApplyLevel(false); publishStatus(true); }
+function resetPoints() { ptsState.viewers = {}; savePoints(); publishStatus(true); }
+/* engagement → points. `kind` decides rate + cooldown; all non-monetized. */
+function creditEngagement(kind, username, n) {
+  if (!CFG.game.enabled) return;
+  const gp = CFG.game.points;
+  const v = viewerOf(username);
+  if (!v) return;
+  const now = Date.now();
+  switch (kind) {
+    case 'comment':
+      if (v.earnAt && now - v.earnAt < gp.commentCooldownSec * 1000) return;
+      v.earnAt = now;
+      addPoints(username, gp.perComment);
+      break;
+    case 'like': {
+      /* fractional carry so 3-like taps still add up to a point eventually */
+      v.likeCarry = (v.likeCarry || 0) + Math.max(0, n || 0);
+      const pts = Math.floor(v.likeCarry / gp.likesPerPoint);
+      if (pts > 0) { v.likeCarry -= pts * gp.likesPerPoint; addPoints(username, pts); }
+      savePoints();
+      break;
     }
+    case 'follow': addPoints(username, gp.followBonus); break;
+    case 'share': addPoints(username, gp.shareBonus); break;
+    case 'subscribe': addPoints(username, gp.subscribeBonus); break;
+    case 'wave':
+      if (v.waveAt && now - v.waveAt < gp.waveCooldownSec * 1000) return;
+      v.waveAt = now;
+      addPoints(username, gp.waveBonus);
+      break;
   }
-  if (changed) { saveMilestoneTotals(); publishStatus(); }
-  renderMilestoneBars();
 }
-function fireMilestoneAction(goal) {
-  const label = goal.label || (goal.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
-  switch (goal.action) {
-    case 'heartme': triggerHeartMe(null, label); break;
-    case 'jackpot': triggerJackpot(null, label); break;
-    default:
-      if (ITEM_DEFS[goal.action]) {
-        queueSpawn(goal.action, { sourceEvent: 'milestone', priority: 92, premium: true, showName: false });
-      }
-      /* item-spawn goals have no Jamie celebration of their own, so flash the
-         dedicated GOAL-REACHED cheer (heartme/jackpot actions already animate). */
-      jamieOneShot('milestoneCheer', 900);
-      spawnFx('star', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.2, 6);
-  }
-  showEventLabel(copyText('milestoneReached', '🎯 {goal} reached! ({total} {counter})', {
-    goal: sanitizeName(label),
-    total: (milestoneTotals[goal.counter] || 0).toLocaleString(),
-    counter: goal.counter
-  }), CFG.visuals.usernameSeconds, true);
-}
-function renderMilestoneBars() {
-  const el = $('milestone-bars');
-  if (!el) return;
-  const ms = CFG.events.milestones;
-  const goals = (ms && ms.enabled) ? (ms.goals || []).filter(g => g.enabled && !g.completed) : [];
-  el.innerHTML = '';
-  for (const g of goals) {
-    const total = milestoneTotals[g.counter] || 0;
-    const base = g.baseValue || 0;
-    const span = Math.max(1, g.target - base);
-    const pct = Math.max(0, Math.min(100, ((total - base) / span) * 100));
-    const bar = document.createElement('div');
-    bar.className = 'milestone-bar';
-    /* each goal is independently positioned (not stacked) so likes/comments
-       bars can sit anywhere on screen relative to each other */
-    bar.style.left = (g.x ?? 540) + 'px';
-    bar.style.top = (g.y ?? 1790) + 'px';
-    bar.style.transform = `translate(-50%, -50%) rotate(2deg) scale(${ms.scale || 1})`;
-    const label = document.createElement('div');
-    label.className = 'milestone-bar-label';
-    label.textContent = g.label || (g.counter === 'likes' ? 'Like Goal' : 'Comment Goal');
-    const track = document.createElement('div');
-    track.className = 'milestone-bar-track';
-    const fill = document.createElement('div');
-    fill.className = 'milestone-bar-fill';
-    fill.style.width = pct + '%';
-    track.appendChild(fill);
-    const nums = document.createElement('div');
-    nums.className = 'milestone-bar-nums';
-    nums.textContent = total.toLocaleString() + ' / ' + g.target.toLocaleString();
-    bar.appendChild(label); bar.appendChild(track); bar.appendChild(nums);
-    el.appendChild(bar);
-  }
+function waveKeywordList() {
+  return String(CFG.game.points.waveKeywords || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 let growGlowTimer = null;
 let pendingGrownProud = false;
@@ -2097,9 +1977,10 @@ function currentMirror() { return poseMirror === null ? isFlipped() : poseMirror
 function applyJamieTransform() {
   const j = CFG.jamie;
   jamieEl.style.transform = `translate3d(${jamieRect.x}px, ${jamieRect.y}px, 0) rotate(${j.rotation || 0}deg)` + (currentMirror() ? ' scaleX(-1)' : '');
-  /* Tier crown/aura live on a separate full-canvas layer. Keep that layer
-     attached whenever Jamie moves, including hand-tweened Heart Me runs. */
+  /* The aura layer and the XP tag live outside the sprite. Keep both attached
+     whenever Jamie moves, including roam walks and hand-tweened Heart Me runs. */
   if (typeof sqLayoutTierFx === 'function' && jtEls) sqLayoutTierFx();
+  if (typeof xpTagPlace === 'function') xpTagPlace();
 }
 /* smoothly interpolates jamieRect.x over `ms`, re-applying the transform each
    frame — drives Heart Me's run-to-center-and-back sprint. */
@@ -2254,9 +2135,8 @@ function applyLayout() {
   el.style.left = CFG.visuals.eventLabelX + 'px';
   el.style.top = CFG.visuals.eventLabelY + 'px';
   el.style.transform = `translateX(-50%) rotate(-1.5deg) scale(${CFG.visuals.eventLabelScale})`;
-  renderMilestoneBars(); /* each bar is positioned independently — see its own x/y */
   applyGiftShowcaseLayout();
-  if (typeof squadLayout === 'function' && jtEls) squadLayout();  /* squad tracks floor/Jamie moves */
+  if (typeof gameLayout === 'function' && jtEls) gameLayout();  /* aura/wheel/xp-tag track floor/Jamie moves */
 }
 
 /* ── wide wooden treat board layout: N cells side by side, each holding a
@@ -3420,9 +3300,15 @@ function isDupComment(username, message) {
   const text = String(message || '').trim().toLowerCase();
   const key = String(username || '').trim().toLowerCase() + '|' + text;
   while (recentComments.length && now - recentComments[0].t > 5000) recentComments.shift();
+  /* The cross-user same-text check exists because one comment can arrive under
+     two username formats. It must NOT apply to !commands: identical command
+     text from DIFFERENT users within a second is the normal case (everyone
+     spamming !spin at once), and eating those silently swallows paid spins.
+     Same user + same text stays deduped — that is still a re-delivery. */
+  const isCommand = text.startsWith('!');
   for (const rc of recentComments) {
     if (rc.key === key) return true;
-    if (text && rc.text === text && now - rc.t < 1200) return true;
+    if (!isCommand && text && rc.text === text && now - rc.t < 1200) return true;
   }
   recentComments.push({ key, text, t: now });
   return false;
@@ -3479,9 +3365,7 @@ function handleEvent(evt) {
   switch (type) {
     case 'like': {
       const likeN = Math.max(1, Math.round(+evt.count || 1));
-      /* milestone totals always track likes regardless of the per-treat
-         mechanic below, so goals keep working even with it turned off */
-      milestoneTotals.likes += likeN;
+      creditEngagement('like', username, likeN);
       if (CFG.events.likesPerTreatEnabled) {
         likeAccumulator += likeN;
         while (likeAccumulator >= CFG.events.likesPerTreat) {
@@ -3490,11 +3374,11 @@ function handleEvent(evt) {
         }
         updateLikeMeter();
       }
-      checkMilestones();
       break;
     }
     case 'comment': handleComment(username, evt.message || ''); break;
     case 'follow': {
+      creditEngagement('follow', username);
       const showFollowName = !!CFG.visuals.usernameEvents.follow;
       queueSpawn('tennis-ball', {
         sourceEvent: 'follow', username, priority: 60, entry: 'throw',
@@ -3507,22 +3391,71 @@ function handleEvent(evt) {
       break;
     }
     case 'heartme': triggerHeartMe(username, '', evt.variant ? { variant: evt.variant } : {}); break;
-    case 'subscribe': triggerSubscribe(username); break;
+    case 'subscribe': creditEngagement('subscribe', username); triggerSubscribe(username); break;
     case 'gift': handleGift(evt); break;
     case 'share':
+      creditEngagement('share', username);
       /* treat a share like a keyword comment reward */
       queueSpawn(pickTreat(), { sourceEvent: 'share', username, priority: 45 });
       break;
   }
   publishStatus();
 }
+/* !commands and point costs. Runs BEFORE Jamie's reaction cooldowns — a viewer
+   spending points must never have the spend eaten by the 4s anti-spam window
+   that only exists to pace Jamie's visual reactions. */
+function handleGameCommand(username, message) {
+  if (!CFG.game.enabled) return false;
+  const m = /^!\s*(spin\s*([1-4])?|points|pts)\b/i.exec(String(message || '').trim());
+  if (!m) return false;
+  const v = viewerOf(username);
+  if (!v) return true;   /* a command with no attributable sender does nothing */
+  const now = Date.now();
+  if (/^points|^pts/i.test(m[1])) {
+    if (!CFG.game.points.balanceCommand) return true;
+    if (v.balAt && now - v.balAt < 30000) return true;   /* balance replies capped at 2/min/user */
+    v.balAt = now;
+    showEventLabel(copyText('pointsBalance', '@{username} · {pts} pts', {
+      username: sanitizeName(username), pts: v.pts.toLocaleString()
+    }), 2, false);
+    return true;
+  }
+  const tier = Math.min(4, Math.max(1, +(m[2] || 1)));
+  const cost = CFG.game.spin.costs[tier - 1];
+  if (v.spinAt && now - v.spinAt < CFG.game.spin.perUserCooldownSec * 1000) return true;
+  if (wheelQueue.length >= CFG.game.spin.maxQueued) {
+    showEventLabel(copyText('wheelBusy', '@{username} — wheel queue is full, hold on!', {
+      username: sanitizeName(username)
+    }), 2, false);
+    return true;
+  }
+  if (!spendPoints(username, cost)) {
+    if (!v.needAt || now - v.needAt > 20000) {
+      v.needAt = now;
+      showEventLabel(copyText('needPoints', '@{username} needs {cost} pts — chat to earn!', {
+        username: sanitizeName(username), cost: cost.toLocaleString()
+      }), 2.5, false);
+    }
+    return true;
+  }
+  v.spinAt = now;
+  queueWheelSpin({ tier, username });
+  return true;
+}
 function handleComment(username, message) {
   if (isDupComment(username, message)) return;
-  /* counted for milestone goals regardless of Jamie's reaction cooldown below —
-     that cooldown is only an anti-spam limit on Jamie's own visual reaction,
-     not on how many comments actually came in. */
-  milestoneTotals.comments++;
-  checkMilestones();
+  /* presence credit counts every real comment, before any reaction cooldown —
+     those cooldowns pace Jamie's visuals, not how much a viewer engaged */
+  creditEngagement('comment', username);
+  if (handleGameCommand(username, message)) return;
+  const lower = String(message || '').toLowerCase();
+  if (waveKeywordList().some(k => k && lower.includes(k))) {
+    creditEngagement('wave', username);
+    /* a wave gets a soft acknowledgement, never a queued reaction: look over,
+       float a couple of hearts. Cooldown-free visually — it is cheap and cute. */
+    if (['IDLE', 'TRACKING'].includes(J.state)) jamieOneShot('look', 700);
+    spawnFx('heart', jamieRect.x + jamieRect.w / 2, jamieRect.y + jamieRect.h * 0.15, 2);
+  }
   const now = performance.now();
   if (now - lastCommentAt < CFG.events.commentCooldown * 1000) return;
   const ukey = String(username || 'anon').toLowerCase();
@@ -3535,6 +3468,23 @@ function handleComment(username, message) {
     if (words.includes(kw.toLowerCase())) { matched = action; break; }
   }
   if (matched) {
+    /* interacting with Jamie is EARNED: keyword throws cost points (0 = free).
+       'look' stays free — it is a glance, not an interaction. */
+    const cost = CFG.game.enabled ? CFG.game.points.keywordCost : 0;
+    if (matched !== 'look' && cost > 0) {
+      const v = viewerOf(username);
+      if (!v) return;
+      if (!spendPoints(username, cost)) {
+        const nowMs = Date.now();
+        if (!v.needAt || nowMs - v.needAt > 20000) {
+          v.needAt = nowMs;
+          showEventLabel(copyText('needPoints', '@{username} needs {cost} pts — chat to earn!', {
+            username: sanitizeName(username), cost: cost.toLocaleString()
+          }), 2.5, false);
+        }
+        return;
+      }
+    }
     lastCommentAt = now; userCommentAt[ukey] = now;
     if (matched === 'look') { jamieOneShot('look', 900); return; }
     const itemType = matched === 'random-treat' ? pickTreat() : matched;
@@ -4269,187 +4219,16 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ════════════════════════════════════════════════════════════════
-   14b. SPLATTY SQUAD — the gifter crowd, the prize wheel, and Jamie's
-   decaying drip tiers. Their three enabled flags are intentionally
-   independent: SQ.enabled is the crowd only; wheel.enabled controls the
-   wheel; tiers.enabled controls the meter, tier FX, care, and decay.
-   All state and settings live OUTSIDE CFG so the control panel's
-   full-config pushes can never clobber them.
+   14b. XP AURA + TREAT WHEEL — what survives the Splatty Squad carve-out
+   (2026-08-01). The gifter crowd/roster is extracted to
+   _retired/splatty-squad-crowd-extract.md (intended next home: the wheel
+   reward overlay's bricks). The USD care/drip model is deleted outright —
+   Jamie's level is now XP from the points game, and the wheel spins on
+   !spin instead of on gifts. The aura FX and the wheel visuals are kept
+   as-is and rewired.
    ════════════════════════════════════════════════════════════════ */
 
-const SQ_LS_CFG   = 'feedJamie.squad.cfg.v1';
-const SQ_LS_STATE = 'feedJamie.squad.state.v1';
-const SQ_STALE_MS = 6 * 3600e3;   // saved state older than this = new stream, start fresh
-
-const SQ_DEFAULT = {
-  enabled: true,
-  crowd: { x: 890, y: 0, maxFans: 7, fanSize: 64, spreadX: 34 },   // y 0 = auto (feet on the floor line)
-  wheel: { enabled: true, x: 540, y: 0, size: 300, minCoins: 1, spinMs: 2100, holdMs: 700 },  // y 0 = auto (upper third)
-  tiers: {
-    enabled: true,
-    /* care score is USD-normalized so coins/jewels/superchats all feed it */
-    thresholds: [0.01, 12.5, 30, 60, 125, 225],   // T1..T6
-    decayPerMin: 0.4,                              // USD drained per minute — "keep him glowing"
-    meterX: 260, meterY: 0, meterScale: 1,         // meterY 0 = auto (just under the floor)
-    /* Every string the care meter shows is editable from the control panel —
-       these are only the defaults. */
-    labelZero: 'FEED JAMIE!',
-    labelPrefix: 'JAMIE LVL',
-    labelMax: 'MAX LEVEL',
-    labelNext: '{current} / {target}',
-    tierNames: '1, 2, 3, 4, 5, 6',
-  },
-};
-let SQ = fjClone(SQ_DEFAULT);
-try { SQ = fjDeepMerge(SQ, JSON.parse(localStorage.getItem(SQ_LS_CFG) || 'null') || {}); } catch (e) {}
-/* One-time copy migration from the old novelty tier names to simple levels.
-   Only exact legacy defaults are changed, so custom operator copy is preserved. */
-if (SQ.tiers.tierNames === 'HAPPY, GLOWING, RICHES, RADIANT, UNTOUCHABLE, MYTHIC') {
-  SQ.tiers.tierNames = 'T1, T2, T3, T4, T5, T6';
-}
-if (SQ.tiers.labelPrefix === 'JAMIE IS') SQ.tiers.labelPrefix = 'JAMIE DRIP';
-if (SQ.tiers.labelNext === '{coins} coins to {tier}') SQ.tiers.labelNext = '{coins} coins to level up';
-if (SQ.tiers.tierNames === 'T1, T2, T3, T4, T5, T6') SQ.tiers.tierNames = '1, 2, 3, 4, 5, 6';
-if (SQ.tiers.labelPrefix === 'JAMIE DRIP') SQ.tiers.labelPrefix = 'JAMIE LVL';
-if (SQ.tiers.labelNext === '{coins} coins to level up') SQ.tiers.labelNext = '{current} / {target}';
-if (SQ.tiers.labelMax === 'MAX DRIP — keep him there!') SQ.tiers.labelMax = 'MAX LEVEL';
-try { localStorage.setItem(SQ_LS_CFG, JSON.stringify(SQ)); } catch (e) {}
-
-const sqState = {
-  gifters: {},           // key → { name, platform, usd }
-  careUsd: 0,
-  lastTickAt: Date.now(),
-  topKey: null,
-  tier: 0,
-};
-try {
-  const s = JSON.parse(localStorage.getItem(SQ_LS_STATE) || 'null');
-  if (s && s.ts && Date.now() - s.ts < SQ_STALE_MS) {
-    sqState.gifters = s.gifters || {};
-    sqState.careUsd = +s.careUsd || 0;
-  }
-} catch (e) {}
-function sqPersist() {
-  try {
-    localStorage.setItem(SQ_LS_STATE, JSON.stringify({
-      gifters: sqState.gifters, careUsd: sqState.careUsd, ts: Date.now(),
-    }));
-  } catch (e) {}
-}
-const sqKey = (n) => String(n || '').trim().toLowerCase();
-
-/* ── tier model (decay-based) ── */
-const SQ_TIER_NAMES = ['', '1', '2', '3', '4', '5', '6'];
-/* Operator-editable tier names, parsed from the comma-separated config string.
-   Falls back to the built-in list per-slot, so a blank or half-filled field can
-   never blank out the meter mid-stream. */
-function sqTierNames() {
-  const parsed = String((SQ.tiers && SQ.tiers.tierNames) || '')
-    .split(',').map(t => t.trim());
-  return SQ_TIER_NAMES.map((def, i) => (i === 0 ? '' : (parsed[i - 1] || def)));
-}
-const sqCopy = (k, def) => {
-  const v = SQ.tiers && SQ.tiers[k];
-  return v == null ? def : String(v);
-};
-function sqTierOf(usd) {
-  const t = SQ.tiers.thresholds;
-  for (let i = t.length - 1; i >= 0; i--) if (usd >= t[i]) return i + 1;
-  return 0;
-}
-
-/* ── crowd ── */
-const sqFanEls = [];
-let sqCrownEl = null, sqPipEl = null;
-const SQ_FAN_ART = {
-  yt: ['splatty-fan-yt-01', 'splatty-fan-yt-02', 'splatty-fan-yt-03', 'splatty-fan-yt-04', 'splatty-fan-yt-05', 'splatty-fan-yt-06']
-    .map(f => `assets/top-splatty/character/${f}.png`),
-  tt: ['splatty-fan-tt-01', 'splatty-fan-tt-02', 'splatty-fan-tt-03', 'splatty-fan-tt-04', 'splatty-fan-tt-05', 'splatty-fan-tt-06']
-    .map(f => `assets/top-splatty/character/${f}.png`),
-};
-const SQ_CROWN_ART = 'assets/top-splatty/ui/top-splatty-crown.png';
-const SQ_ICED_CROWN_ART = 'assets/top-splatty/ui/crown-iced.png';
-
-function sqBuildCrowd() {
-  const box = $('squad-crowd');
-  box.innerHTML = '';
-  sqFanEls.length = 0;
-  for (let i = 0; i < 8; i++) {
-    const img = document.createElement('img');
-    img.className = 'sq-fan';
-    img.style.display = 'none';
-    img.style.animationDelay = (i * 0.32) + 's';
-    box.appendChild(img);
-    sqFanEls.push(img);
-  }
-  sqPipEl = document.createElement('div');
-  sqPipEl.className = 'sq-pip';
-  box.appendChild(sqPipEl);
-  sqCrownEl = document.createElement('img');
-  sqCrownEl.className = 'sq-crown';
-  sqCrownEl.src = SQ_CROWN_ART;
-  sqCrownEl.style.display = 'none';
-  box.appendChild(sqCrownEl);
-}
-
-/* fans sorted by total (top treater closest to Jamie, wearing the crown) */
-function sqUpdateCrowd() {
-  if (!sqFanEls.length) return;
-  const rows = Object.entries(sqState.gifters)
-    .map(([k, g]) => ({ key: k, ...g }))
-    .sort((a, b) => b.usd - a.usd);
-  sqState.topKey = rows.length ? rows[0].key : null;
-  const show = SQ.enabled ? Math.min(sqFanEls.length - 1, rows.length) : 0;
-  const jamieOnLeft = CFG.jamie.side !== 'right';
-  const size = SQ.crowd.fanSize;
-  const crowdBaseY = SQ.crowd.y || CFG.floor.y;   // feet line: canvas placement or the floor
-  const jitter = [0, -6, 4, -3, 6, -5, 3, -4];
-  let crownTarget = null;
-  sqFanEls.forEach((img, i) => {
-    if (i >= show) { img.style.display = 'none'; return; }
-    const row = rows[i];
-    const w = size * (1 - i * 0.055);
-    /* rank 0 stands closest to Jamie; the line walks away from him */
-    const step = (w * 0.62) + SQ.crowd.spreadX * 0.3;
-    const x = jamieOnLeft ? SQ.crowd.x + i * step : SQ.crowd.x - i * step;
-    const pool = SQ_FAN_ART[row.platform === 'youtube' ? 'yt' : 'tt'];
-    const art = pool[i % pool.length];
-    if (img.dataset.src !== art) { img.src = art; img.dataset.src = art; }
-    img.classList.toggle('mirror', jamieOnLeft);   // face toward Jamie
-    img.style.width = w + 'px'; img.style.height = w + 'px';
-    img.style.left = (x - w / 2) + 'px';
-    img.style.top = (crowdBaseY - w + 4 + jitter[i]) + 'px';
-    img.style.display = '';
-    img.dataset.gifter = row.key;
-    if (i === 0) crownTarget = { x, w, top: crowdBaseY - w + 4 + jitter[0] };
-  });
-  const extra = rows.length - show;
-  if (extra > 0 && SQ.enabled) {
-    sqPipEl.textContent = '+' + extra;
-    sqPipEl.style.display = 'flex';
-    const lastX = jamieOnLeft ? SQ.crowd.x + show * (size * 0.62 + SQ.crowd.spreadX * 0.3) : SQ.crowd.x - show * (size * 0.62 + SQ.crowd.spreadX * 0.3);
-    sqPipEl.style.left = (lastX - 22) + 'px';
-    sqPipEl.style.top = (crowdBaseY - 26) + 'px';
-  } else sqPipEl.style.display = 'none';
-  if (crownTarget) {
-    const cw = crownTarget.w * 0.62, ch = cw * 0.72;
-    sqCrownEl.style.width = cw + 'px'; sqCrownEl.style.height = ch + 'px';
-    sqCrownEl.style.left = (crownTarget.x - cw / 2) + 'px';
-    sqCrownEl.style.top = (crownTarget.top - ch * 0.72) + 'px';
-    sqCrownEl.style.display = '';
-  } else sqCrownEl.style.display = 'none';
-}
-function sqFansReact(cls, onlyKey) {
-  sqFanEls.forEach((img) => {
-    if (img.style.display === 'none') return;
-    if (onlyKey && img.dataset.gifter !== onlyKey) return;
-    img.classList.remove('hop', 'toss'); void img.offsetWidth;
-    img.classList.add(cls);
-    setTimeout(() => img.classList.remove(cls), 750);
-  });
-}
-
-/* ── Jamie drip-tier FX ── */
+/* ── Jamie level-aura FX (was drip-tier FX; now driven by XP level) ── */
 let jtEls = null;
 function sqBuildTierFx() {
   const box = $('jamie-tier-fx');
@@ -4517,71 +4296,45 @@ function sqBuildOrbit(count) {
     jtEls.orbit.appendChild(img);
   }
 }
-const SQ_ORBIT_COUNT = { 0: 0, 1: 0, 2: 0, 3: 2, 4: 3, 5: 4, 6: 6 };
-function sqApplyTier() {
+const XP_CROWN_ART = 'assets/top-splatty/ui/top-splatty-crown.png';
+const XP_ICED_CROWN_ART = 'assets/top-splatty/ui/crown-iced.png';
+/* aura escalation by XP LEVEL (1..7 with the default 6 thresholds). The same
+   FX ladder the care tiers used, shifted up one: a fresh Jamie at level 1
+   shows nothing, and the iced crown is saved for max level. */
+const XP_ORBIT_COUNT = { 1: 0, 2: 0, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6 };
+function xpApplyLevel(popped) {
   if (!jtEls) return;
-  const tier = SQ.tiers.enabled ? sqTierOf(sqState.careUsd) : 0;
-  const prev = sqState.tier;
-  jtEls.glow.classList.toggle('on', tier >= 2);
-  jtEls.rays.classList.toggle('on', tier >= 4);
-  jtEls.spot.classList.toggle('on', tier >= 5);
-  jtEls.halo.classList.toggle('on', tier >= 6);
-  jtEls.sparkles.forEach(s => s.classList.toggle('on', tier >= 5));
-  jtEls.crown.classList.toggle('on', tier >= 4);
-  const crownSrc = tier >= 6 ? SQ_ICED_CROWN_ART : SQ_CROWN_ART;
+  const { level, maxLevel } = xpLevelInfo();
+  const on = CFG.game.enabled && CFG.game.xp.auraEnabled;
+  const lv = on ? level : 1;
+  jtEls.glow.classList.toggle('on', lv >= 2);
+  jtEls.rays.classList.toggle('on', lv >= 4);
+  jtEls.spot.classList.toggle('on', lv >= 5);
+  jtEls.halo.classList.toggle('on', lv >= maxLevel);
+  jtEls.sparkles.forEach(s => s.classList.toggle('on', lv >= 5));
+  jtEls.crown.classList.toggle('on', lv >= 4);
+  const crownSrc = lv >= maxLevel ? XP_ICED_CROWN_ART : XP_CROWN_ART;
   if (jtEls.crown.dataset.src !== crownSrc) { jtEls.crown.src = crownSrc; jtEls.crown.dataset.src = crownSrc; }
-  const wantOrbit = SQ_ORBIT_COUNT[tier] || 0;
+  const wantOrbit = Math.min(6, XP_ORBIT_COUNT[lv] ?? (lv >= 7 ? 6 : 0));
   if (jtEls.orbit.childElementCount !== wantOrbit) sqBuildOrbit(wantOrbit);
-  sqState.tier = tier;
-  sqUpdateMeter(tier > prev && prev > 0);
-  if (tier > prev && prev > 0) {
-    if (jamieRect) spawnFx('sparkleGold', jamieRect.x + jamieRect.w / 2, jamieRect.y + 20, 10);
-    playSound('subscribe');
-    if (['IDLE', 'TRACKING'].includes(J.state)) {
-      /* MYTHIC unlock gets its dedicated celebration frame */
-      if (tier >= 6 && assetAvailable['jamie-my-03-peak.png']) jamieOneShot('mythicCelebrate', 1600);
-      else jamieOneShot('grownProud', 1200);
-    }
+  if (popped && ['IDLE', 'TRACKING'].includes(J.state)) {
+    /* max level gets the dedicated celebration frame */
+    if (lv >= maxLevel && assetAvailable['jamie-my-03-peak.png']) jamieOneShot('mythicCelebrate', 1600);
+    else jamieOneShot('grownProud', 1200);
   }
 }
 
-/* ── FEED JAMIE HUD — design handoff "Doodle Stream HUD", option 4a ──
-   One edge-mounted card carrying the Jamie sticker, a LVL n/6 counter and the
-   rotating CTA ribbon. The level is the squad care tier and the CTA copy is
-   CFG.prompts.list, so this is a new face for existing state, not a second
-   scoring system. Because it consolidates the prompt pill and the care meter,
-   both of those hide while it is on (CFG.hud.enabled = false restores them). */
-const FH_RAMP = ['#17a24b', '#e8871a', '#e5312b'];   /* green → orange → red */
-const FH_PULSE  = ['1s', '.6s', '.35s'];             /* faster = higher tier */
-const FH_SHAKE  = ['.5s', '.32s', '.2s'];
-const FH_SHAKE_PX = ['2', '3.5', '3.5'];             /* never bigger — it hurts legibility */
-const FH_TILT   = ['0', '0', '0.4'];
-const FH_SHAKE_N = ['4', '3', '3'];                  /* keeps shake ≤ pulse: 2.0/0.96/0.6s vs 2.0/1.2/0.7s */
-
+/* ── CTA RIBBON — the HUD goal card condensed (2026-08-01) to its one
+   surviving row: the purple rotating prompt, edge-mounted. The level readout
+   moved to the XP tag under Jamie; while the ribbon is on it replaces the
+   old floating prompt pill. */
 function fhOn() { return !!(CFG.hud && CFG.hud.enabled); }
 
 function fhBuild() {
   const m = $('feed-hud');
   if (!m.dataset.built) {
-    m.innerHTML =
-      '<div class="fh-card">' +
-        '<div class="fh-row">' +
-          '<span class="fh-label">FEED JAMIE</span>' +
-          '<span class="fh-lvl">' +
-            '<span class="fh-lvl-word">LVL </span>' +
-            '<span class="fh-lvl-num">0</span>' +
-            '<span class="fh-lvl-max">/6</span>' +
-          '</span>' +
-        '</div>' +
-        '<div class="fh-ribbon"></div>' +
-      '</div>';
+    m.innerHTML = '<div class="fh-ribbon"></div>';
     m.dataset.built = '1';
-    /* Drop the class once the pulse finishes. Left on, it would replay every
-       time the card is hidden and shown again (an operator toggling the HUD
-       would see a phantom level-up). */
-    m.addEventListener('animationend', e => {
-      if (e.animationName === 'fhPulse') m.classList.remove('levelup');
-    });
   }
   return m;
 }
@@ -4606,6 +4359,7 @@ function fhLayout() {
      separate side flag, so dragging it to either edge on the control panel's
      canvas produces the right border/radius without a second setting to keep
      in sync. Anything in between keeps the full four-sided border. */
+  /* the ribbon is 250px wide at scale 1 — same edge maths as the old card */
   m.classList.toggle('edge-left', x <= 2);
   m.classList.toggle('edge-right', x + 250 * scale >= 1078);
   m.style.left = x + 'px';
@@ -4614,104 +4368,56 @@ function fhLayout() {
   fhFitRibbon();
 }
 
-function fhUpdate(popped) {
-  if (!fhOn()) return;
-  const m = fhBuild();
-  const max = (SQ.tiers.thresholds || []).length || 6;
-  const lvl = Math.max(0, Math.min(max, sqState.tier || 0));
-  m.querySelector('.fh-lvl-num').textContent = String(lvl);
-  m.querySelector('.fh-lvl-max').textContent = '/' + max;
-  /* The escalation ramp is spread across the level RANGE rather than pinned to
-     tier numbers, so a re-tuned thresholds list still lands red at the top. */
-  const band = lvl <= 0 ? 0 : Math.min(2, Math.floor((lvl - 1) / Math.max(1, max / 3)));
-  m.querySelector('.fh-lvl-num').style.color = FH_RAMP[band];
-  if (!popped) return;
-  m.style.setProperty('--fh-pulse', FH_PULSE[band]);
-  m.style.setProperty('--fh-shakedur', FH_SHAKE[band]);
-  m.style.setProperty('--fh-shake', FH_SHAKE_PX[band]);
-  m.style.setProperty('--fh-tilt', FH_TILT[band]);
-  m.style.setProperty('--fh-shakeiter', FH_SHAKE_N[band]);
-  m.classList.remove('levelup'); void m.offsetWidth; m.classList.add('levelup');
+/* ── XP TAG — the 0/100xp · LVL 1 readout riding under Jamie ── */
+function xpTagRender(popped) {
+  const t = $('xp-tag');
+  if (!t) return;
+  const cfgT = CFG.game.xpTag;
+  const on = CFG.game.enabled && cfgT.enabled && !J.hidden;
+  t.classList.toggle('show', on);
+  if (!on) return;
+  const { level, nextAt } = xpLevelInfo();
+  t.innerHTML = nextAt === null
+    ? `<b>${xpState.xp.toLocaleString()}</b>xp · MAX LVL`
+    : `<b>${xpState.xp.toLocaleString()}</b>/${nextAt.toLocaleString()}xp · LVL ${level}`;
+  if (popped) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); }
+  xpTagPlace();
+}
+/* position tracks Jamie's live rect — called from applyJamieTransform, so it
+   follows roam walks, growth, and Heart Me sprints without its own loop */
+function xpTagPlace() {
+  const t = $('xp-tag');
+  if (!t || !t.classList.contains('show') || !jamieRect) return;
+  t.style.left = (jamieRect.x + jamieRect.w / 2) + 'px';
+  t.style.top = (CFG.floor.y + (CFG.jamie.yOffset || 0) + CFG.game.xpTag.offsetY) + 'px';
+  t.style.transform = 'translateX(-50%) scale(' + CFG.game.xpTag.scale + ')';
 }
 
-/* ── tier meter ── */
-function sqUpdateMeter(popped) {
-  const m = $('squad-meter');
-  /* The HUD card renders the same tier as its LVL counter, so it takes over
-     from this meter entirely rather than sitting alongside it. */
-  fhUpdate(popped);
-  if (!SQ.tiers.enabled || fhOn()) { m.classList.remove('show'); return; }
-  m.classList.add('show');
-  const tier = sqState.tier;
-  const th = SQ.tiers.thresholds;
-  const NAMES = sqTierNames();
-  const name = NAMES[tier] || 'FEED ME';
-  const next = tier < th.length ? th[tier] : null;
-  if (!m.dataset.built) {
-    m.innerHTML = `<div class="sqm-shell">
-      <div class="sqm-badge">🐶 <span class="sqm-tname"></span></div>
-      <div class="sqm-progress"><div class="sqm-fill"></div><div class="sqm-next"></div></div>
-    </div>`;
-    m.dataset.built = '1';
-  }
-  m.querySelector('.sqm-tname').textContent =
-    tier > 0 ? `${sqCopy('labelPrefix', 'JAMIE LVL')} ${name}`.trim() : sqCopy('labelZero', 'FEED JAMIE!');
-  /* tier-name ink on the cream paper badge: purple → navy → red as tiers climb */
-  m.style.setProperty('--sqm-edge', tier >= 6 ? '#c8342c' : tier >= 4 ? '#1d3f7a' : '#7B2FBE');
-  const fill = m.querySelector('.sqm-fill');
-  const nextEl = m.querySelector('.sqm-next');
-  if (next != null) {
-    const currentCoins = Math.max(0, Math.round(sqState.careUsd / 0.005));
-    const targetCoins = Math.max(1, Math.ceil(next / 0.005));
-    const pct = Math.min(100, Math.max(0, currentCoins / targetCoins * 100));
-    fill.style.width = pct.toFixed(1) + '%';
-    const gapCoins = Math.max(1, Math.ceil((next - sqState.careUsd) / 0.005));
-    const compactCoins = n => {
-      if (n < 1000) return n.toLocaleString();
-      const k = n / 1000;
-      return (k < 10 && Math.abs(k - Math.round(k)) > 0.01 ? k.toFixed(1) : Math.round(k).toString()) + 'K';
-    };
-    nextEl.textContent = sqCopy('labelNext', '{current} / {target}')
-      .replace(/\{coins\}/g, gapCoins.toLocaleString())
-      .replace(/\{tier\}/g, NAMES[tier + 1] || '')
-      .replace(/\{current\}/g, compactCoins(currentCoins))
-      .replace(/\{target\}/g, compactCoins(targetCoins))
-      .trim();
-  } else {
-    fill.style.width = '100%';
-    nextEl.textContent = sqCopy('labelMax', 'MAX LEVEL');
-  }
-  const mx = SQ.tiers.meterX, my = SQ.tiers.meterY || (CFG.floor.y + 14);
-  const meterScale = Math.max(0.5, Math.min(2, Number(SQ.tiers.meterScale) || 1));
-  m.style.setProperty('--sqm-scale', String(meterScale));
-  m.style.left = (mx - 150) + 'px';
-  m.style.top = my + 'px';
-  if (popped) { m.classList.remove('tierup'); void m.offsetWidth; m.classList.add('tierup'); }
-}
-
-/* decay loop — Jamie's drip fades unless chat keeps treating him.
-   The clock advances every tick even when there's nothing to drain, so the
-   first gift is never back-charged for time spent at zero. */
-setInterval(() => {
-  const now = Date.now();
-  const mins = (now - sqState.lastTickAt) / 60000;
-  sqState.lastTickAt = now;
-  if (!SQ.tiers.enabled || sqState.careUsd <= 0) return;
-  sqState.careUsd = Math.max(0, sqState.careUsd - SQ.tiers.decayPerMin * mins);
-  sqPersist();
-  sqApplyTier();
-}, 5000);
-
-/* ── prize wheel ── */
-const SQ_WHEEL_ITEMS = ['golden-bone', 'diamond-biscuit', 'galaxy-treat', 'royal-burger',
-                        'golden-tennis-ball', 'heart-large', 'treat-heart', 'squeaky-toy'];
-/* wedge weights per intensity level: small gifts land modest prizes more often */
-const SQ_WHEEL_WEIGHTS = {
-  1: [6, 6, 4, 4, 8, 8, 34, 30],
-  2: [12, 12, 8, 8, 16, 16, 16, 12],
-  3: [20, 20, 16, 14, 14, 10, 4, 2],
+/* ── the treat wheel — now spun by !spin, paid in points, paying out XP ── */
+const WHEEL_ITEMS = ['golden-bone', 'diamond-biscuit', 'galaxy-treat', 'royal-burger',
+                     'golden-tennis-ball', 'heart-large', 'treat-heart', 'squeaky-toy'];
+/* per-wedge XP multiplier. royal-burger is THE JACKPOT (x5 + full celebration);
+   squeaky-toy is the bust — Jamie keeps the toy, no XP. */
+const WHEEL_MULT = [3, 3, 4, 5, 2, 2, 1, 0];
+const WHEEL_JACKPOT_WEDGE = 3;
+/* wedge weights per SPIN TIER (!spin1..4): pricier spins, better odds */
+const WHEEL_WEIGHTS = {
+  1: [4, 4, 2, 1, 8, 10, 41, 30],
+  2: [10, 10, 6, 3, 14, 16, 26, 15],
+  3: [16, 16, 12, 7, 16, 14, 12, 7],
+  4: [20, 20, 16, 12, 14, 10, 5, 3],
 };
 let sqWheelBusy = false;
+const wheelQueue = [];
+function queueWheelSpin(job) {
+  wheelQueue.push(job);
+  drainWheelQueue();
+  publishStatus();
+}
+function drainWheelQueue() {
+  if (sqWheelBusy || !wheelQueue.length || !CFG.wheel.enabled) return;
+  sqSpinWheel(wheelQueue.shift());
+}
 function sqBuildWheel() {
   const w = $('squad-wheel');
   w.innerHTML = `<div class="sq-wheel-caption"></div><div class="sq-wheel-ptr"></div><div class="sq-wheel-disc"></div>`;
@@ -4732,7 +4438,7 @@ function sqBuildWheel() {
     sqLayoutWheel();
   };
   ptrImg.src = CFG.assets.basePath + 'items/wheel-pointer.png?v=' + FJ_CACHE_BUST;
-  SQ_WHEEL_ITEMS.forEach((item, i) => {
+  WHEEL_ITEMS.forEach((item, i) => {
     const img = document.createElement('img');
     img.className = 'sq-wheel-icon';
     const def = ITEM_DEFS[item];
@@ -4751,11 +4457,11 @@ function sqBuildWheel() {
 }
 function sqLayoutWheel() {
   const w = $('squad-wheel');
-  const size = SQ.wheel.size;
+  const size = CFG.wheel.size;
   w.style.width = size + 'px';
   w.style.height = (size + 34) + 'px';
-  w.style.left = (SQ.wheel.x - size / 2) + 'px';
-  w.style.top = (SQ.wheel.y ? SQ.wheel.y - size / 2 : Math.max(30, CFG.floor.y * 0.32 - size / 2)) + 'px';
+  w.style.left = (CFG.wheel.x - size / 2) + 'px';
+  w.style.top = (CFG.wheel.y ? CFG.wheel.y - size / 2 : Math.max(30, CFG.floor.y * 0.32 - size / 2)) + 'px';
   const disc = w.querySelector('.sq-wheel-disc');
   if (!disc) return;
   const ptrImg = w.querySelector('.sq-wheel-ptr-img');
@@ -4768,24 +4474,25 @@ function sqLayoutWheel() {
     el.style.top = (size / 2 + Math.sin(ang) * r - iconSize / 2 - 6) + 'px';
   });
 }
-function sqPickWedge(level) {
-  const wts = SQ_WHEEL_WEIGHTS[Math.min(3, Math.max(1, level))];
+function sqPickWedge(tier) {
+  const wts = WHEEL_WEIGHTS[Math.min(4, Math.max(1, tier))];
   const sum = wts.reduce((a, b) => a + b, 0);
   let r = Math.random() * sum;
   for (let i = 0; i < wts.length; i++) { r -= wts[i]; if (r <= 0) return i; }
   return 0;
 }
 let sqWheelRot = 0;
-function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
+function sqSpinWheel({ tier, username }) {
   sqWheelBusy = true;
   const w = $('squad-wheel');
   const disc = w.querySelector('.sq-wheel-disc');
   const cap = w.querySelector('.sq-wheel-caption');
   cap.textContent = username
-    ? copyText('wheelSpinUser', '@{username} spins the treat wheel…', { username: sanitizeName(username) })
+    ? copyText('wheelSpinUser', '@{username} spins for Jamie…', { username: sanitizeName(username) })
     : copyText('wheelSpinAnon', 'treat wheel…');
-  const wedge = sqPickWedge(level);
-  const item = SQ_WHEEL_ITEMS[wedge];
+  const wedge = sqPickWedge(tier);
+  const item = WHEEL_ITEMS[wedge];
+  const xp = CFG.game.spin.baseXp[Math.min(3, Math.max(0, tier - 1))] * WHEEL_MULT[wedge];
   /* pointer at top: land wedge center under it */
   const target = 360 * 4 + (360 - (wedge * 45 + 22.5));
   sqWheelRot += target - (sqWheelRot % 360);
@@ -4794,89 +4501,54 @@ function sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent }) {
   disc.style.transition = 'none';
   disc.style.transform = `rotate(${sqWheelRot - target}deg)`;
   void disc.offsetWidth;
-  disc.style.transition = `transform ${SQ.wheel.spinMs}ms cubic-bezier(.12,.68,.16,1)`;
+  disc.style.transition = `transform ${CFG.wheel.spinMs}ms cubic-bezier(.12,.68,.16,1)`;
   disc.style.transform = `rotate(${sqWheelRot}deg)`;
   playSound('bounce');
   /* timers, not transitionend — must complete even in a throttled tab */
   setTimeout(() => {
     w.classList.add('landed');
-    cap.textContent = copyText('wheelWin', '{winner} won a {item}!', {
-      winner: username ? '@' + sanitizeName(username) : 'chat',
-      item: GIFT_ITEM_LABELS[item] || item
-    });
-    playSound('jackpot');
+    const winner = username ? '@' + sanitizeName(username) : 'chat';
+    const itemLabel = GIFT_ITEM_LABELS[item] || item;
+    cap.textContent = xp > 0
+      ? copyText('wheelWin', '{winner} won a {item} · +{xp} XP!', { winner, item: itemLabel, xp: xp.toLocaleString() })
+      : copyText('wheelBust', '{winner} — BUST! Jamie keeps the {item} 😅', { winner, item: itemLabel });
+    playSound(xp > 0 ? 'jackpot' : 'pop');
     setTimeout(() => {
       w.classList.remove('show', 'landed');
       w.classList.add('hide');
       sqWheelBusy = false;
-      /* the crowd tosses the prize toward Jamie */
-      if (SQ.enabled) sqFansReact('toss');
+      /* the prize launches from the wheel toward Jamie, whichever side he is on */
       const jamieOnLeft = CFG.jamie.side !== 'right';
-      const prizeStartX = SQ.enabled ? SQ.crowd.x : SQ.wheel.x;
-      const prizeStartY = SQ.enabled
-        ? (SQ.crowd.y || CFG.floor.y) - 30
-        : (SQ.wheel.y || Math.max(30, CFG.floor.y * 0.32));
       queueSpawn(item, {
-        sourceEvent: sourceEvent || 'gift', username,
-        priority: 80, premium: true, showName: !!CFG.visuals.usernameEvents.gift,
+        sourceEvent: 'spin', username,
+        priority: 80, premium: WHEEL_MULT[wedge] >= 2, showName: !!CFG.visuals.usernameEvents.gift,
         nameSeconds: CFG.visuals.usernameSeconds * 1.5,
-        sizeScale: (sizeScale || 1) * 1.1,
-        intensityLevel: Math.max(2, level),
-        startX: prizeStartX, startY: prizeStartY,
+        sizeScale: 1 + Math.min(0.5, WHEEL_MULT[wedge] * 0.1),
+        intensityLevel: Math.max(1, Math.min(3, tier)),
+        startX: CFG.wheel.x,
+        startY: CFG.wheel.y || Math.max(30, CFG.floor.y * 0.32),
         dirX: jamieOnLeft ? -1 : 1,
       });
       playSound('gift');
-    }, SQ.wheel.holdMs);
-  }, SQ.wheel.spinMs + 150);
+      if (xp > 0) addXp(xp, username);
+      /* the jackpot wedge is the ONE remaining jackpot trigger in the game path —
+         gifts still have theirs via the intensity ladder */
+      if (wedge === WHEEL_JACKPOT_WEDGE) triggerJackpot(username, GIFT_ITEM_LABELS[item] || 'the wheel');
+      drainWheelQueue();
+    }, CFG.wheel.holdMs);
+  }, CFG.wheel.spinMs + 150);
 }
 
-/* ── gift intake (all platforms funnel through here) ── */
-function squadOnGift(username, platform, usd) {
-  if (!(usd > 0)) return;
-  /* Care and crowd intake are separate. Turning off the crowd must not turn
-     off the drip system, and turning off drip must not stop the crowd. */
-  if (SQ.tiers.enabled) sqBumpCare(usd);
-  if (!SQ.enabled || !username) return;
-  const k = sqKey(username);
-  const g = sqState.gifters[k] || (sqState.gifters[k] = { name: username, platform, usd: 0 });
-  g.usd += usd;
-  g.name = username;
-  g.platform = platform;
-  const wasTop = sqState.topKey;
-  sqUpdateCrowd();
-  if (sqState.topKey && sqState.topKey !== wasTop && wasTop) playSound('jackpot');  // crown hopped
-  sqFansReact('hop', k);
-  sqPersist();
-}
-function sqBumpCare(usd) {
-  if (!SQ.tiers.enabled || !(usd > 0)) return;
-  sqState.careUsd += usd;
-  sqApplyTier();
-  sqPersist();
-}
-/* wheel takeover: returns true if the wheel owns this gift's item spawn */
-function squadTakeGift(level, value, username, rawGiftName, sizeScale, sourceEvent) {
-  if (!SQ.wheel.enabled) return false;
-  if (sqWheelBusy) return false;
-  if (level >= 4) return false;               // mega gifts keep the heart-me/jackpot spectacle
-  if ((+value || 0) < SQ.wheel.minCoins) return false;
-  sqSpinWheel({ level, username, rawGiftName, sizeScale, sourceEvent });
-  return true;
-}
-
-function squadLayout() {
-  sqUpdateCrowd();
+function gameLayout() {
   sqLayoutTierFx();
   sqLayoutWheel();
-  sqUpdateMeter(false);
+  xpTagRender(false);
 }
-function squadBoot() {
-  sqBuildCrowd();
+function gameBoot() {
   sqBuildTierFx();
   sqBuildWheel();
-  sqState.lastTickAt = Date.now();
-  squadLayout();
-  sqApplyTier();
+  gameLayout();
+  xpApplyLevel(false);
 }
 
 /* ── 15. COMMS: Ably + BroadcastChannel + localStorage ─────────── */
@@ -4911,10 +4583,17 @@ function processMessage(msg) {
     case 'SHOW':   setHidden(false); break;
     case 'RESET_STATE': forceReset('control'); break;
     case 'RESET_GROWTH': resetGrowth(); break;
-    case 'MILESTONE_RESET': resetMilestoneTotals(); break;
-    case 'MILESTONE_TRIGGER': {
-      const goal = (CFG.events.milestones.goals || []).find(g => g.id === (msg.data && msg.data.id));
-      if (goal) fireMilestoneAction(goal);
+    case 'XP_RESET': resetXp(); break;
+    case 'XP_ADD': addXp(Math.max(0, Math.round(+((msg.data || {}).amount) || 0)), (msg.data || {}).username || null); break;
+    case 'POINTS_RESET': resetPoints(); break;
+    case 'POINTS_ADD': {
+      const d = msg.data || {};
+      if (d.username) { addPoints(d.username, Math.max(0, Math.round(+d.amount || 0))); publishStatus(true); }
+      break;
+    }
+    case 'SPIN_TEST': {
+      const d = msg.data || {};
+      queueWheelSpin({ tier: Math.min(4, Math.max(1, Math.round(+d.tier || 1))), username: d.username || 'test_viewer' });
       break;
     }
     case 'FX_REACT': { const d = msg.data || {}; reactToFx(String(d.kind || ''), +d.x); break; }
@@ -4952,27 +4631,6 @@ function processMessage(msg) {
       fjLoadAssets();
       break;
     case 'REQUEST_STATUS': publishStatus(true); break;
-    case 'SQUAD_CONFIG':
-      /* partial merge — squad settings live outside CFG on purpose */
-      SQ = fjDeepMerge(SQ, msg.data || {});
-      try { localStorage.setItem(SQ_LS_CFG, JSON.stringify(SQ)); } catch (e) {}
-      squadLayout(); sqApplyTier();
-      publishStatus(true);
-      break;
-    case 'SQUAD_RESET':
-      sqState.gifters = {}; sqState.careUsd = 0; sqState.topKey = null;
-      sqPersist(); squadLayout(); sqApplyTier();
-      publishStatus(true);
-      break;
-    case 'SQUAD_ADD_CARE':
-      sqBumpCare(Math.max(0, +((msg.data || {}).usd) || 0));
-      break;
-    case 'SQUAD_TEST_GIFT': {
-      const d = msg.data || {};
-      if ((d.platform || 'tiktok') === 'youtube') handleJewels({ amount: +d.amount || 200, name: d.username || 'yt_tester' });
-      else handleEvent({ type: 'gift', value: +d.amount || 99, username: d.username || 'tt_tester', giftName: 'Test Gift' });
-      break;
-    }
     case 'PLAY_SOUND': if (msg.data && msg.data.sound) playSound(msg.data.sound); break;
     case 'FORCE_CATCH': { const o = objects.find(x => !x.captured); if (o) captureObject(o); break; }
     case 'FORCE_MISS': jamieOneShot('miss', 800); break;
@@ -5002,33 +4660,20 @@ function publishStatus(immediate) {
         reactionActive: activeJamieReaction ? activeJamieReaction.kind : null,
         likeProgress: likeAccumulator, likesPerTreat: CFG.events.likesPerTreat,
         growth: Math.round(growth * 100) / 100,
-        milestoneTotals: { ...milestoneTotals },
-        /* auto-escalating goals move their own target/baseValue on the overlay
-           side (see checkMilestones) — send the live values back so the
-           control panel's progress readout doesn't go stale after a goal fires,
-           even though the editable target field itself stays as last typed. */
-        milestoneGoalStates: (CFG.events.milestones.goals || []).map(g => ({
-          id: g.id, target: g.target, baseValue: g.baseValue, completed: g.completed
-        })),
         lastEvent: lastEventInfo,
-        squad: {
-          enabled: SQ.enabled, wheel: SQ.wheel.enabled, tiers: SQ.tiers.enabled,
-          careUsd: Math.round(sqState.careUsd * 100) / 100,
-          tier: sqState.tier, tierName: sqTierNames()[sqState.tier] || '—',
-          decayPerMin: SQ.tiers.decayPerMin,
-          copy: {
-            labelZero: SQ.tiers.labelZero,
-            labelPrefix: SQ.tiers.labelPrefix,
-            labelNext: SQ.tiers.labelNext,
-            labelMax: SQ.tiers.labelMax,
-            tierNames: SQ.tiers.tierNames
-          },
-          gifterCount: Object.keys(sqState.gifters).length,
-          topTreater: sqState.topKey ? {
-            name: sqState.gifters[sqState.topKey].name,
-            usd: Math.round(sqState.gifters[sqState.topKey].usd * 100) / 100,
-          } : null,
-        },
+        game: (() => {
+          const info = xpLevelInfo();
+          const top = Object.values(ptsState.viewers)
+            .sort((a, b) => b.pts - a.pts).slice(0, 3)
+            .map(v => ({ name: v.name, pts: v.pts }));
+          return {
+            enabled: CFG.game.enabled,
+            xp: xpState.xp, level: info.level, maxLevel: info.maxLevel, nextAt: info.nextAt,
+            queuedSpins: wheelQueue.length + (sqWheelBusy ? 1 : 0),
+            viewerCount: Object.keys(ptsState.viewers).length,
+            topPoints: top
+          };
+        })(),
         warnings: assetWarnings.slice(0, 40),
         assetAvailable: Object.fromEntries(Object.entries(assetAvailable)),
         ts: Date.now()
@@ -5188,7 +4833,7 @@ window.feedJamie = {
     reactionQueued: jamieReactionQueue.length,
     reactionActive: activeJamieReaction ? activeJamieReaction.kind : null,
     likeAccumulator, warnings: assetWarnings.slice(),
-    milestoneTotals: { ...milestoneTotals },
+    xp: xpState.xp, level: xpLevelInfo().level,
     config: fjClone(CFG)
   }),
   resetGrowth,
@@ -5205,7 +4850,7 @@ promptLoop();
 giftShowcaseLoop();
 initComms();
 fjLoadAssets();
-squadBoot();
+gameBoot();
 /* The ribbon's shrink-to-fit measures text, so it has to run again once Baloo 2
    actually lands — the fallback metrics differ enough to mis-size the CTA. */
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { try { fhFitRibbon(); } catch (e) {} });
