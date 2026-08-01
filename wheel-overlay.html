@@ -610,8 +610,9 @@ const EFFECT_GLYPH = { stamp: '✦', flood: '◒', crack: '◆', ball: '●', mo
 /* Operator-tunable reel config. The URL param is only the pre-hydrate default;
    dock settings win (snapshot hydrate), and wheel-control's `wheel.reel-config`
    publish applies live without a reload. Offsets move the reel's centre off
-   (540, 700); scale resizes around that centre. Applied per spin — the reel is
-   rebuilt for every run, so a change shows on the next spin. */
+   (540, 960) — the exact middle of the stage; scale resizes around that centre.
+   Applied per spin — the reel is rebuilt for every run, so a change shows on
+   the next spin. */
 const reelCfg = {
   style: new URLSearchParams(location.search).get('reel') === 'slot' ? 'slot' : 'wheel',
   offsetX: 0, offsetY: 0, scale: 1,
@@ -1002,7 +1003,9 @@ function startSpinning(run) {
   const tier = spin.tier, idx = Math.max(0, TIER_ORDER.indexOf(tier));
   const dur = reelDuration(spin.gift?.totalValue);
   // Operator offsets move the reel's centre; scale resizes around it (reelCfg).
-  const cx = 540 + reelCfg.offsetX, cy = 700 + reelCfg.offsetY;
+  // Base centre is the TRUE middle of the 1080×1920 stage — zero offset means
+  // centred, full stop (the handoff's 700 read as "way too far down" on stream).
+  const cx = 540 + reelCfg.offsetX, cy = 960 + reelCfg.offsetY;
   const rnodes = [];
   const rmk = (css, parent) => {
     const d = document.createElement('div');
@@ -1013,12 +1016,20 @@ function startSpinning(run) {
   };
   /* One scaled root for every reel node. Scale CANNOT go on the wheel/card
      itself — om-pop animates transform on those with fill:both, so it would
-     overwrite any scale set there the moment the entrance animation ends. */
+     overwrite any scale set there the moment the entrance animation ends.
+
+     Mounted on #lane-wheel, NOT #wheel-stage: the stage is the legacy rail's
+     ~200px flex-centred box and carries a translateY transform, which makes it
+     the containing block for absolute descendants — reel coordinates written
+     in stage space were being re-offset by its centring (+~850px), which is
+     why the wheel rendered far below where every number said it should. The
+     lane is a clean untransformed 1080×1920 box, so stage coords mean what
+     they say. */
   const reelRoot = (() => {
     const d = document.createElement('div');
     d.style.cssText = `position:absolute;left:0;top:0;width:1080px;height:1920px;` +
       `transform-origin:${cx}px ${cy}px;transform:scale(${reelCfg.scale})`;
-    runNode(run, laneWheel, d);
+    runNode(run, document.getElementById('lane-wheel'), d);
     rnodes.push(d);
     return d;
   })();
