@@ -1798,6 +1798,13 @@ function fjResolveFrame(file) {
   }
   return null;
 }
+/* False until the first full asset probe settles. Boot draws Jamie BEFORE the
+   probe (showFrame runs synchronously, fjLoadAssets is async), and in that
+   window every frame resolves to "missing" — which used to flash the
+   placeholder SVG for the probe's duration on every reload. The placeholder
+   is a statement that art is MISSING; before the probe we simply don't know
+   yet, and the honest render for "don't know yet" is nothing. */
+let assetsProbed = false;
 async function fjLoadAssets() {
   try {
     const res = await fetch(CFG.assets.basePath + CFG.assets.manifestFile, { cache: 'no-cache' });
@@ -1811,6 +1818,7 @@ async function fjLoadAssets() {
   Object.values(ITEM_DEFS).forEach(d => files.add(d.file));
   await Promise.all([...files].map(fjProbe));
   for (const f of files) if (!assetAvailable[f]) assetWarnings.push('missing: ' + f);
+  assetsProbed = true;
   jamieRender(true);
   publishStatus();
 }
@@ -2475,9 +2483,11 @@ function showFrame(file, opts = {}) {
       anchorYPct
     );
   } else {
-    /* placeholder SVG — pose conveyed via container classes */
+    /* placeholder SVG — pose conveyed via container classes. Never during the
+       boot probe window: fjLoadAssets re-renders when it settles, and a frame
+       that is genuinely missing gets its placeholder then. */
     jamieEl.classList.add('no-real-art');
-    if (!jamieInner.querySelector('svg')) { jamieInner.innerHTML = jamiePlaceholderSVG(); jamieImgLayers = []; lastShownUrl = null; }
+    if (assetsProbed && !jamieInner.querySelector('svg')) { jamieInner.innerHTML = jamiePlaceholderSVG(); jamieImgLayers = []; lastShownUrl = null; }
   }
 }
 function jamieRender(force) {
